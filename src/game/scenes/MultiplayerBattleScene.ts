@@ -318,7 +318,7 @@ export class MultiplayerBattleScene extends Scene {
 
       const direction = state.faction === 'zombies' ? -1 : 1;
       const moveAmount = state.moveSpeed * deltaSeconds;
-      state.col = state.col + direction * moveAmount;
+      state.col = Math.max(0, Math.min(GRID_COLS - 1, state.col + direction * moveAmount));
 
       const { x, y } = this.gridManager.toPixel(state.row, state.col);
       sprite.setPosition(x, y);

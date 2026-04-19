@@ -378,9 +378,9 @@ export class BattleScene extends Scene {
       const direction = state.faction === 'zombies' ? -1 : 1;
       const moveAmount = state.moveSpeed * deltaSeconds;
 
-      // Update col as a float for smooth movement
+      // Update col as a float for smooth movement, clamp to grid bounds
       const newCol = state.col + direction * moveAmount;
-      state.col = newCol;
+      state.col = Math.max(0, Math.min(GRID_COLS - 1, newCol));
 
       // Update sprite position
       const { x, y } = this.gridManager.toPixel(state.row, state.col);
