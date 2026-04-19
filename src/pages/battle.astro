@@ -8,7 +8,7 @@ import GameLayout from '../layouts/GameLayout.astro';
     import { launchGame } from '../game/main';
 
     const params = new URLSearchParams(window.location.search);
-    const mode = (params.get('mode') || 'ai') as 'ai' | 'multiplayer';
+    const mode = (params.get('mode') || 'ai') as 'ai' | 'multiplayer' | 'freeplay';
     const player = (params.get('player') || 'lukas') as 'lukas' | 'toby';
     const roomId = params.get('room') || undefined;
 

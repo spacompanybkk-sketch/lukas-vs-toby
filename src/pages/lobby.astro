@@ -14,10 +14,15 @@ import GameLayout from '../layouts/GameLayout.astro';
         Checking opponent status...
       </div>
 
-      <div class="flex gap-6 mt-8">
+      <div class="flex gap-4 mt-8 flex-wrap justify-center">
         <a id="btn-ai" href="#"
            class="px-8 py-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-xl font-bold transition-colors">
           Play vs AI
+        </a>
+
+        <a id="btn-freeplay" href="#"
+           class="px-8 py-4 bg-amber-800 hover:bg-amber-700 rounded-lg text-xl font-bold transition-colors">
+          Free Play
         </a>
 
         <button id="btn-multiplayer" disabled
@@ -55,6 +60,7 @@ import GameLayout from '../layouts/GameLayout.astro';
     goOnline(player!);
 
     document.getElementById('btn-ai')!.setAttribute('href', `/battle?mode=ai&player=${player}`);
+    document.getElementById('btn-freeplay')!.setAttribute('href', `/battle?mode=freeplay&player=${player}`);
 
     const btnMultiplayer = document.getElementById('btn-multiplayer') as HTMLButtonElement;
     const statusEl = document.getElementById('opponent-status')!;

@@ -10,9 +10,9 @@ export const GAME_HEIGHT = GRID_OFFSET_Y + GRID_ROWS * TILE_SIZE + 140;
 export const ENERGY_TICK_INTERVAL = 2000;
 export const ENERGY_TICK_AMOUNT = 5;
 export const ENERGY_KILL_REWARD = 10;
-export const STARTING_ENERGY = 50;
+export const STARTING_ENERGY = 500;
 
-export const BASE_HP = 500;  // was 1000 — easier to destroy
+export const BASE_HP = 2000;
 
 export const UNIT_COSTS: Record<string, number> = {
   peashooter: 100,

@@ -8,7 +8,7 @@ import { GAME_WIDTH, GAME_HEIGHT } from './constants';
 import type { Faction } from './types';
 
 export interface GameOptions {
-  mode: 'ai' | 'multiplayer';
+  mode: 'ai' | 'multiplayer' | 'freeplay';
   player: 'lukas' | 'toby';
   roomId?: string;
 }

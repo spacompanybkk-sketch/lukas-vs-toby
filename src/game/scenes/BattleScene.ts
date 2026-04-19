@@ -24,7 +24,7 @@ import { createBrainEater, BRAIN_EATER_PROJECTILE } from '../entities/zombies/Br
 import { createVeryFastWalker } from '../entities/zombies/VeryFastWalker';
 import { createSkeletonWarrior, SKELETON_BLOCK_COOLDOWN } from '../entities/zombies/SkeletonWarrior';
 import type { Faction } from '../types';
-import { getPlayerFaction } from '../main';
+import { getPlayerFaction, gameOptions } from '../main';
 
 /** Projectile type mapping per unit key */
 const UNIT_PROJECTILE_MAP: Record<string, string> = {
@@ -78,6 +78,8 @@ export class BattleScene extends Scene {
 
   private playerFaction!: Faction;
   private gameOver: boolean = false;
+  private isFreeplay: boolean = false;
+  private waveText!: GameObjects.Text;
 
   constructor() {
     super('BattleScene');
@@ -94,6 +96,7 @@ export class BattleScene extends Scene {
     this.lastSunflowerTick = 0;
     this.skeletonBlockTimers = new Map();
     this.gameOver = false;
+    this.isFreeplay = gameOptions.mode === 'freeplay';
     this.playerFaction = getPlayerFaction();
 
     // Systems
@@ -156,6 +159,19 @@ export class BattleScene extends Scene {
       this.gameOver = true;
       window.location.href = '/';
     });
+
+    // Wave counter (visible in all modes, prominent in freeplay)
+    this.waveText = this.add.text(GAME_WIDTH / 2, 16, '', {
+      fontSize: this.isFreeplay ? '20px' : '14px',
+      color: this.isFreeplay ? '#ffaa00' : '#888888',
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    if (this.isFreeplay) {
+      this.add.text(GAME_WIDTH / 2, 40, 'FREE PLAY — Survive!', {
+        fontSize: '12px', color: '#ffaa00',
+      }).setOrigin(0.5, 0);
+    }
   }
 
   update(time: number, delta: number): void {
@@ -210,13 +226,30 @@ export class BattleScene extends Scene {
       }
     }
 
-    // 10. Win condition
-    if (this.plantBaseHp <= 0) {
-      this.gameOver = true;
-      this.scene.start('GameOverScene', { winner: 'zombies' });
-    } else if (this.zombieBaseHp <= 0) {
-      this.gameOver = true;
-      this.scene.start('GameOverScene', { winner: 'plants' });
+    // 10. Wave counter update
+    this.waveText.setText(`Wave: ${this.waveManager.getWaveCount()}`);
+
+    // 11. Win condition
+    if (this.isFreeplay) {
+      // Freeplay: you lose when your base is destroyed
+      const playerBaseHp = this.playerFaction === 'plants' ? this.plantBaseHp : this.zombieBaseHp;
+      if (playerBaseHp <= 0) {
+        this.gameOver = true;
+        const waves = this.waveManager.getWaveCount();
+        this.scene.start('GameOverScene', {
+          winner: this.playerFaction === 'plants' ? 'zombies' : 'plants',
+          freeplay: true,
+          waves,
+        });
+      }
+    } else {
+      if (this.plantBaseHp <= 0) {
+        this.gameOver = true;
+        this.scene.start('GameOverScene', { winner: 'zombies' });
+      } else if (this.zombieBaseHp <= 0) {
+        this.gameOver = true;
+        this.scene.start('GameOverScene', { winner: 'plants' });
+      }
     }
   }
 
