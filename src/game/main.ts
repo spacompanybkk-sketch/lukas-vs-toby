@@ -2,6 +2,7 @@ import { Game, AUTO } from 'phaser';
 import type { Types } from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { BattleScene } from './scenes/BattleScene';
+import { GameOverScene } from './scenes/GameOverScene';
 import { GAME_WIDTH, GAME_HEIGHT } from './constants';
 
 export function launchGame(parent: string): Game {
@@ -18,7 +19,7 @@ export function launchGame(parent: string): Game {
         debug: false,
       },
     },
-    scene: [BootScene, BattleScene],
+    scene: [BootScene, BattleScene, GameOverScene],
   };
 
   return new Game(config);
