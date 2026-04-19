@@ -5,11 +5,11 @@ export type SpawnCallback = (unitKey: string, row: number) => void;
 export class WaveManager {
   private aiFaction: Faction;
   private onSpawn: SpawnCallback;
-  private spawnInterval: number = 6000;
+  private spawnInterval: number = 8000;
   private lastSpawnTime: number = 0;
   private availableUnits: string[];
   private waveCount: number = 0;
-  private firstSpawnDelay: number = 8000; // 8s grace period before first spawn
+  private firstSpawnDelay: number = 12000; // 12s grace period before first spawn
 
   constructor(aiFaction: Faction, onSpawn: SpawnCallback) {
     this.aiFaction = aiFaction;
@@ -31,8 +31,8 @@ export class WaveManager {
     const row = Math.floor(Math.random() * 5);
     this.onSpawn(unitKey, row);
 
-    // Gradually speed up spawns over time (min 3s interval)
-    if (this.waveCount % 10 === 0 && this.spawnInterval > 3000) {
+    // Gradually speed up spawns over time (min 4s interval)
+    if (this.waveCount % 15 === 0 && this.spawnInterval > 4000) {
       this.spawnInterval -= 500;
     }
   }

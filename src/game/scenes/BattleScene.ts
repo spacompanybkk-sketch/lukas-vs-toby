@@ -381,6 +381,7 @@ export class BattleScene extends Scene {
             if (time - lastBlock >= SKELETON_BLOCK_COOLDOWN) {
               this.skeletonBlockTimers.set(unit.state.id, time);
               // Block the projectile — destroy it without dealing damage
+              this.showBlockEffect(unitPixel.x, unitPixel.y);
               toRemove.push(i);
               hit = true;
               break;
@@ -451,6 +452,8 @@ export class BattleScene extends Scene {
       // WalnutBomb explosion on death
       if (dead.state.key === 'walnutBomb') {
         this.walnutExplosion(dead.state);
+        const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
+        this.showExplosion(x, y);
       }
 
       // Energy reward for killing enemy units
@@ -489,32 +492,89 @@ export class BattleScene extends Scene {
   }
 
   private drawGrid(): void {
+    // Battlefield background
+    if (this.textures.exists('battlefield')) {
+      const bg = this.add.sprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'battlefield');
+      bg.setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+      bg.setAlpha(0.15);
+    }
+
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const { x, y } = this.gridManager.toPixel(row, col);
-        const tileKey = (row + col) % 2 === 0 ? 'tile' : 'tileDark';
-        this.add.sprite(x, y, tileKey);
+        // Use AI-generated tile images if available, fallback to procedural
+        const lightKey = this.textures.exists('tileImg') ? 'tileImg' : 'tile';
+        const darkKey = this.textures.exists('tileDarkImg') ? 'tileDarkImg' : 'tileDark';
+        const tileKey = (row + col) % 2 === 0 ? lightKey : darkKey;
+        const tile = this.add.sprite(x, y, tileKey);
+        tile.setDisplaySize(TILE_SIZE, TILE_SIZE);
+        tile.setAlpha(0.7);
       }
     }
   }
 
   private drawBases(): void {
-    const plantBaseX = GRID_OFFSET_X - TILE_SIZE / 2 - 10;
-    for (let row = 0; row < GRID_ROWS; row++) {
-      const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
-      this.add.sprite(plantBaseX, y, 'base').setTint(0x00cc00);
-    }
-    this.add.text(plantBaseX - 20, GRID_OFFSET_Y - 30, 'PLANT\nBASE', {
-      fontSize: '12px', color: '#00cc00', align: 'center',
-    });
+    const plantBaseX = GRID_OFFSET_X - TILE_SIZE / 2 - 20;
+    const zombieBaseX = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + TILE_SIZE / 2 + 20;
+    const baseHeight = GRID_ROWS * TILE_SIZE;
+    const baseCenterY = GRID_OFFSET_Y + baseHeight / 2;
 
-    const zombieBaseX = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + TILE_SIZE / 2 + 10;
-    for (let row = 0; row < GRID_ROWS; row++) {
-      const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
-      this.add.sprite(zombieBaseX, y, 'base').setTint(0x884488);
+    // Plant base — use AI image if available
+    if (this.textures.exists('plantBase')) {
+      const pb = this.add.sprite(plantBaseX, baseCenterY, 'plantBase');
+      pb.setDisplaySize(TILE_SIZE + 10, baseHeight);
+    } else {
+      for (let row = 0; row < GRID_ROWS; row++) {
+        const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
+        this.add.sprite(plantBaseX, y, 'base').setTint(0x00cc00);
+      }
     }
-    this.add.text(zombieBaseX - 20, GRID_OFFSET_Y - 30, 'ZOMBIE\nBASE', {
-      fontSize: '12px', color: '#884488', align: 'center',
+    this.add.text(plantBaseX, GRID_OFFSET_Y - 20, 'PLANT BASE', {
+      fontSize: '11px', color: '#00cc00', align: 'center', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    // Zombie base — use AI image if available
+    if (this.textures.exists('zombieBase')) {
+      const zb = this.add.sprite(zombieBaseX, baseCenterY, 'zombieBase');
+      zb.setDisplaySize(TILE_SIZE + 10, baseHeight);
+    } else {
+      for (let row = 0; row < GRID_ROWS; row++) {
+        const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
+        this.add.sprite(zombieBaseX, y, 'base').setTint(0x884488);
+      }
+    }
+    this.add.text(zombieBaseX, GRID_OFFSET_Y - 20, 'ZOMBIE BASE', {
+      fontSize: '11px', color: '#884488', align: 'center', fontStyle: 'bold',
+    }).setOrigin(0.5);
+  }
+
+  /** Show explosion effect at a position */
+  private showExplosion(x: number, y: number): void {
+    if (!this.textures.exists('explosion')) return;
+    const fx = this.add.sprite(x, y, 'explosion');
+    fx.setDisplaySize(TILE_SIZE * 1.5, TILE_SIZE * 1.5);
+    fx.setAlpha(0.9);
+    this.tweens.add({
+      targets: fx,
+      alpha: 0,
+      scale: 1.5,
+      duration: 500,
+      onComplete: () => fx.destroy(),
+    });
+  }
+
+  /** Show shield block effect */
+  private showBlockEffect(x: number, y: number): void {
+    if (!this.textures.exists('shieldBlock')) return;
+    const fx = this.add.sprite(x, y, 'shieldBlock');
+    fx.setDisplaySize(TILE_SIZE, TILE_SIZE);
+    fx.setAlpha(0.8);
+    this.tweens.add({
+      targets: fx,
+      alpha: 0,
+      y: y - 20,
+      duration: 400,
+      onComplete: () => fx.destroy(),
     });
   }
 }

@@ -23,9 +23,24 @@ export class BootScene extends Scene {
     this.load.image('plantBase', '/assets/bases/plant-base.png');
     this.load.image('zombieBase', '/assets/bases/zombie-base.png');
 
-    // Load tile images if they exist
+    // Load tile images
     this.load.image('tileImg', '/assets/tiles/grass-light.png');
     this.load.image('tileDarkImg', '/assets/tiles/grass-dark.png');
+
+    // Load effects
+    this.load.image('explosion', '/assets/effects/explosion.png');
+    this.load.image('healEffect', '/assets/effects/heal.png');
+    this.load.image('shieldBlock', '/assets/effects/shield-block.png');
+
+    // Load game over backgrounds
+    this.load.image('plantsWinBg', '/assets/gameover/plants-win.png');
+    this.load.image('zombiesWinBg', '/assets/gameover/zombies-win.png');
+
+    // Load battlefield background
+    this.load.image('battlefield', '/assets/bg/battlefield.png');
+
+    // Load VS splash
+    this.load.image('vsSplash', '/assets/portraits/vs-splash.png');
   }
 
   create(): void {
