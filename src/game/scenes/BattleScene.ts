@@ -143,6 +143,19 @@ export class BattleScene extends Scene {
     this.plantBaseBar.update(this.plantBaseHp, BASE_HP);
     this.zombieBaseBar = new HealthBar(this, zombieBaseX, barY, 60, 8);
     this.zombieBaseBar.update(this.zombieBaseHp, BASE_HP);
+
+    // Quit button
+    const quitBtn = this.add.text(GAME_WIDTH - 16, 16, 'QUIT', {
+      fontSize: '16px',
+      color: '#ff4444',
+      backgroundColor: '#333333',
+      padding: { x: 8, y: 4 },
+    }).setOrigin(1, 0).setInteractive();
+
+    quitBtn.on('pointerdown', () => {
+      this.gameOver = true;
+      window.location.href = '/';
+    });
   }
 
   update(time: number, delta: number): void {

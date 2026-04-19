@@ -22,5 +22,14 @@ export class GameOverScene extends Scene {
     restartText.on('pointerdown', () => {
       this.scene.start('BattleScene');
     });
+
+    const backText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 90, 'Back to Lobby', {
+      fontSize: '18px',
+      color: '#aaaaaa',
+    }).setOrigin(0.5).setInteractive();
+
+    backText.on('pointerdown', () => {
+      window.location.href = '/';
+    });
   }
 }
