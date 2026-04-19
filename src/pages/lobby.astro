@@ -1,0 +1,74 @@
+---
+import GameLayout from '../layouts/GameLayout.astro';
+---
+<GameLayout title="Lobby — Lukas Plants vs Toby Zombies">
+  <div id="lobby" class="flex flex-col items-center gap-8">
+    <h2 class="text-3xl font-bold" id="welcome-text">Loading...</h2>
+
+    <div class="flex flex-col items-center gap-4">
+      <div id="opponent-status" class="text-lg text-gray-400">
+        Checking opponent status...
+      </div>
+
+      <div class="flex gap-6 mt-8">
+        <a id="btn-ai" href="#"
+           class="px-8 py-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-xl font-bold transition-colors">
+          Play vs AI
+        </a>
+
+        <button id="btn-multiplayer" disabled
+                class="px-8 py-4 bg-gray-800 rounded-lg text-xl font-bold text-gray-500 cursor-not-allowed transition-colors">
+          Battle Opponent!
+        </button>
+      </div>
+    </div>
+
+    <a href="/" class="text-sm text-gray-500 hover:text-gray-300 mt-8">&larr; Back to character select</a>
+  </div>
+
+  <script>
+    import { goOnline, watchOpponent, type Player } from '../firebase/presence';
+    import { createGameRoom, joinRoom } from '../firebase/multiplayer';
+
+    const params = new URLSearchParams(window.location.search);
+    const player = params.get('player') as Player | null;
+
+    if (!player || (player !== 'lukas' && player !== 'toby')) {
+      window.location.href = '/';
+    }
+
+    const opponent: Player = player === 'lukas' ? 'toby' : 'lukas';
+    const opponentName = opponent === 'lukas' ? 'Lukas' : 'Toby';
+    const playerName = player === 'lukas' ? 'Lukas' : 'Toby';
+
+    document.getElementById('welcome-text')!.textContent = `Welcome, ${playerName}!`;
+
+    goOnline(player!);
+
+    document.getElementById('btn-ai')!.setAttribute('href', `/battle?mode=ai&player=${player}`);
+
+    const btnMultiplayer = document.getElementById('btn-multiplayer') as HTMLButtonElement;
+    const statusEl = document.getElementById('opponent-status')!;
+
+    watchOpponent(player!, (online) => {
+      if (online) {
+        statusEl.innerHTML = `<span class="text-green-400">${opponentName} is ONLINE!</span>`;
+        btnMultiplayer.disabled = false;
+        btnMultiplayer.className = 'px-8 py-4 bg-red-700 hover:bg-red-600 rounded-lg text-xl font-bold cursor-pointer transition-colors';
+        btnMultiplayer.textContent = `Battle ${opponentName}!`;
+      } else {
+        statusEl.innerHTML = `<span class="text-gray-500">${opponentName} is offline</span>`;
+        btnMultiplayer.disabled = true;
+        btnMultiplayer.className = 'px-8 py-4 bg-gray-800 rounded-lg text-xl font-bold text-gray-500 cursor-not-allowed transition-colors';
+        btnMultiplayer.textContent = 'Battle Opponent!';
+      }
+    });
+
+    btnMultiplayer.addEventListener('click', () => {
+      if (btnMultiplayer.disabled) return;
+      const roomId = createGameRoom();
+      joinRoom(roomId, player!);
+      window.location.href = `/battle?mode=multiplayer&player=${player}&room=${roomId}`;
+    });
+  </script>
+</GameLayout>
