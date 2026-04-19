@@ -65,3 +65,19 @@ export function setRoomStatus(roomId: string, status: 'waiting' | 'playing' | 'f
 export function deleteRoom(roomId: string): void {
   remove(ref(db, `rooms/${roomId}`));
 }
+
+export function sendChallenge(fromPlayer: Player, roomId: string): void {
+  const toPlayer: Player = fromPlayer === 'lukas' ? 'toby' : 'lukas';
+  set(ref(db, `challenges/${toPlayer}`), { roomId, from: fromPlayer });
+}
+
+export function watchChallenge(player: Player, callback: (data: { roomId: string; from: Player } | null) => void): () => void {
+  const challengeRef = ref(db, `challenges/${player}`);
+  return onValue(challengeRef, (snap) => {
+    callback(snap.val());
+  });
+}
+
+export function clearChallenge(player: Player): void {
+  remove(ref(db, `challenges/${player}`));
+}

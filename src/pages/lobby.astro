@@ -5,16 +5,16 @@ import GameLayout from '../layouts/GameLayout.astro';
   <div id="lobby" class="flex flex-col items-center gap-8">
     <!-- Player portrait -->
     <img id="player-portrait" src="/assets/portraits/lukas-lobby.png" alt="Player"
-         class="w-48 h-48 rounded-xl object-cover shadow-lg" />
+         class="w-32 h-32 md:w-48 md:h-48 rounded-xl object-cover shadow-lg" />
 
-    <h2 class="text-3xl font-bold" id="welcome-text">Loading...</h2>
+    <h2 class="text-2xl md:text-3xl font-bold" id="welcome-text">Loading...</h2>
 
     <div class="flex flex-col items-center gap-4">
       <div id="opponent-status" class="text-lg text-gray-400">
         Checking opponent status...
       </div>
 
-      <div class="flex gap-4 mt-8 flex-wrap justify-center">
+      <div class="flex flex-col md:flex-row gap-3 md:gap-4 mt-8 flex-wrap justify-center">
         <a id="btn-campaign" href="#"
            class="px-10 py-5 bg-green-700 hover:bg-green-600 rounded-lg text-2xl font-bold transition-colors">
           Campaign
@@ -55,7 +55,7 @@ import GameLayout from '../layouts/GameLayout.astro';
 
   <script>
     import { goOnline, watchOpponent, type Player } from '../firebase/presence';
-    import { createGameRoom, joinRoom } from '../firebase/multiplayer';
+    import { createGameRoom, joinRoom, watchRoom, sendChallenge, watchChallenge, clearChallenge } from '../firebase/multiplayer';
     import { loadSave, saveSave, getUpgradeCost, getUpgradeMultipliers } from '../game/SaveManager';
     import { UNIT_STATS, UNIT_COSTS } from '../game/constants';
 
@@ -194,11 +194,43 @@ import GameLayout from '../layouts/GameLayout.astro';
       }
     });
 
+    // Watch for incoming challenges
+    watchChallenge(player!, (challenge) => {
+      if (challenge) {
+        statusEl.innerHTML = `<span class="text-yellow-400">${challenge.from === 'lukas' ? 'Lukas' : 'Toby'} wants to battle!</span>`;
+        btnMultiplayer.disabled = false;
+        btnMultiplayer.className = 'px-10 py-5 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-2xl font-bold cursor-pointer transition-colors animate-pulse';
+        btnMultiplayer.textContent = 'Accept Challenge!';
+
+        // Override click handler to accept challenge
+        btnMultiplayer.onclick = () => {
+          joinRoom(challenge.roomId, player!);
+          clearChallenge(player!);
+          window.location.href = `/battle?mode=multiplayer&player=${player}&room=${challenge.roomId}`;
+        };
+      }
+    });
+
     btnMultiplayer.addEventListener('click', () => {
       if (btnMultiplayer.disabled) return;
       const roomId = createGameRoom();
       joinRoom(roomId, player!);
-      window.location.href = `/battle?mode=multiplayer&player=${player}&room=${roomId}`;
+      sendChallenge(player!, roomId);
+
+      // Show waiting state
+      btnMultiplayer.disabled = true;
+      btnMultiplayer.textContent = 'Waiting for opponent...';
+      btnMultiplayer.className = 'px-10 py-5 bg-gray-600 rounded-lg text-2xl font-bold text-gray-300 cursor-wait transition-colors';
+
+      // Watch for opponent to join
+      watchRoom(roomId, (room) => {
+        if (room) {
+          const opponentKey = player === 'lukas' ? 'toby' : 'lukas';
+          if (room[opponentKey]?.ready) {
+            window.location.href = `/battle?mode=multiplayer&player=${player}&room=${roomId}`;
+          }
+        }
+      });
     });
   </script>
 </GameLayout>
