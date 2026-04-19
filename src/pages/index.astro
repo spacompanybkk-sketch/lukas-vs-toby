@@ -2,10 +2,29 @@
 import GameLayout from '../layouts/GameLayout.astro';
 ---
 <GameLayout title="Lukas Plants vs Toby Zombies">
-  <div id="game-container" class="mx-auto"></div>
+  <div class="flex flex-col items-center gap-8">
+    <h1 class="text-5xl font-bold tracking-wider" style="font-family: monospace;">
+      LUKAS PLANTS<br/>
+      <span class="text-gray-500">vs</span><br/>
+      TOBY ZOMBIES
+    </h1>
 
-  <script>
-    import { launchGame } from '../game/main';
-    launchGame('game-container');
-  </script>
+    <p class="text-xl text-gray-400">Who are you?</p>
+
+    <div class="flex gap-8">
+      <a href="/lobby?player=lukas"
+         class="group flex flex-col items-center gap-4 p-8 border-4 border-green-700 rounded-lg bg-green-950/50 hover:bg-green-900/60 hover:border-green-500 transition-all cursor-pointer w-64">
+        <div class="w-24 h-24 bg-green-600 rounded-lg flex items-center justify-center text-4xl group-hover:scale-110 transition-transform">L</div>
+        <span class="text-2xl font-bold text-green-400">LUKAS</span>
+        <span class="text-sm text-green-600">Commander of Plants</span>
+      </a>
+
+      <a href="/lobby?player=toby"
+         class="group flex flex-col items-center gap-4 p-8 border-4 border-purple-700 rounded-lg bg-purple-950/50 hover:bg-purple-900/60 hover:border-purple-500 transition-all cursor-pointer w-64">
+        <div class="w-24 h-24 bg-purple-600 rounded-lg flex items-center justify-center text-4xl group-hover:scale-110 transition-transform">T</div>
+        <span class="text-2xl font-bold text-purple-400">TOBY</span>
+        <span class="text-sm text-purple-600">Lord of Zombies</span>
+      </a>
+    </div>
+  </div>
 </GameLayout>
