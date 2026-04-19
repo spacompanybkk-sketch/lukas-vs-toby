@@ -30,27 +30,36 @@ export class HUD {
   }
 
   private createUnitBar(unitCards: UnitCard[]): void {
-    const barY = GAME_HEIGHT - 80;
-    const startX = GAME_WIDTH / 2 - (unitCards.length * 100) / 2;
+    // Adaptive sizing based on number of cards
+    const count = unitCards.length;
+    const maxWidth = GAME_WIDTH - 40;
+    const cardSpacing = Math.min(100, Math.floor(maxWidth / count));
+    const cardW = cardSpacing - 8;
+    const cardH = 66;
+    const previewSize = Math.min(40, cardW - 10);
+
+    const barY = GAME_HEIGHT - 70;
+    const totalWidth = count * cardSpacing;
+    const startX = (GAME_WIDTH - totalWidth) / 2;
 
     unitCards.forEach((card, i) => {
-      const x = startX + i * 100 + 50;
+      const x = startX + i * cardSpacing + cardSpacing / 2;
       const container = this.scene.add.container(x, barY);
 
       const bg = this.scene.add.graphics();
       bg.fillStyle(0x333333, 0.8);
-      bg.fillRoundedRect(-44, -36, 88, 76, 10);
+      bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 6);
       container.add(bg);
 
-      const preview = this.scene.add.sprite(0, -10, card.textureKey).setDisplaySize(50, 50);
+      const preview = this.scene.add.sprite(0, -8, card.textureKey).setDisplaySize(previewSize, previewSize);
       container.add(preview);
 
-      const costText = this.scene.add.text(0, 24, `${card.cost}`, {
-        fontSize: '12px', color: '#ffcc00', align: 'center',
+      const costText = this.scene.add.text(0, cardH / 2 - 14, `${card.cost}`, {
+        fontSize: '10px', color: '#ffcc00', align: 'center',
       }).setOrigin(0.5);
       container.add(costText);
 
-      const hitArea = this.scene.add.rectangle(0, 0, 88, 76).setInteractive({ draggable: true });
+      const hitArea = this.scene.add.rectangle(0, 0, cardW, cardH).setInteractive({ draggable: true });
       hitArea.setData('unitKey', card.key);
       container.add(hitArea);
 

@@ -9,11 +9,16 @@ export class CombatManager {
     for (const unit of allUnits) {
       if (unit.faction === attacker.faction) continue;
       if (!unit.isAlive()) continue;
-      if (unit.row !== attacker.row) continue;
+      if (Math.abs(unit.row - attacker.row) > 0.5) continue;
 
       const distance = unit.col - attacker.col;
-      if (attacker.faction === 'plants' && distance <= 0) continue;
-      if (attacker.faction === 'zombies' && distance >= 0) continue;
+
+      // Plants target enemies to the right (positive distance)
+      // BUT also target enemies on the same tile (distance ~0) for melee/overlap
+      if (attacker.faction === 'plants' && distance < -0.5) continue;
+      // Zombies target enemies to the left (negative distance)
+      // BUT also target enemies on the same tile
+      if (attacker.faction === 'zombies' && distance > 0.5) continue;
 
       const absDistance = Math.abs(distance);
       if (absDistance > effectiveRange) continue;

@@ -121,15 +121,22 @@ import GameLayout from '../layouts/GameLayout.astro';
     updateLinks();
 
     // Marketplace — show ALL units, faction determines which you play
-    const allUnitKeys = ['peashooter', 'sunflower', 'walnutBomb', 'brainEater', 'veryFastWalker', 'skeletonWarrior'];
+    const allUnitKeys = [
+      'peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'cherryBomber',
+      'avocadoBunker', 'mangoPult', 'kernelPult', 'pumpkinSquash', 'torchwood',
+      'brainEater', 'veryFastWalker', 'skeletonWarrior', 'skeletonArcher',
+      'necromancer', 'hotTopic', 'tridentZombie', 'desertZombie', 'cowboyZombie', 'brainRot',
+    ];
 
     const unitLabels: Record<string, string> = {
-      peashooter: 'Peashooter',
-      sunflower: 'Sunflower',
-      walnutBomb: 'WalnutBomb',
-      brainEater: 'BrainEater',
-      veryFastWalker: 'FastWalker',
-      skeletonWarrior: 'Skeleton',
+      peashooter: 'Peashooter', sunflower: 'Sunflower', walnutBomb: 'WalnutBomb',
+      potatoMine: 'PotatoMine', cherryBomber: 'CherryBomb', avocadoBunker: 'AvoBunker',
+      mangoPult: 'MangoPult', kernelPult: 'KernelPult', pumpkinSquash: 'PumpSquash',
+      torchwood: 'Torchwood',
+      brainEater: 'BrainEater', veryFastWalker: 'FastWalker', skeletonWarrior: 'SkelWarrior',
+      skeletonArcher: 'SkelArcher', necromancer: 'Necromancer', hotTopic: 'HotTopic',
+      tridentZombie: 'Trident', desertZombie: 'Desert', cowboyZombie: 'Cowboy',
+      brainRot: 'BrainRot',
     };
 
     function renderMarketplace(): void {

@@ -26,8 +26,8 @@ export class WaveManager {
     this.firstSpawnDelay = options?.firstDelay ?? 12000;
     this.maxWaves = options?.maxWaves;
     this.availableUnits = aiFaction === 'zombies'
-      ? ['brainEater', 'veryFastWalker', 'skeletonWarrior']
-      : ['peashooter', 'sunflower', 'walnutBomb'];
+      ? ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'skeletonArcher', 'necromancer', 'hotTopic', 'tridentZombie', 'desertZombie', 'cowboyZombie', 'brainRot']
+      : ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'cherryBomber', 'avocadoBunker', 'mangoPult', 'kernelPult', 'pumpkinSquash', 'torchwood'];
   }
 
   update(time: number): void {

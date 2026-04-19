@@ -17,12 +17,29 @@ import { HealthBar } from '../ui/HealthBar';
 import { UnitState } from '../entities/Unit';
 import { PROJECTILE_CONFIGS } from '../entities/Projectile';
 import type { ProjectileConfig } from '../entities/Projectile';
+// Plant imports
 import { createPeashooter, PEASHOOTER_PROJECTILE } from '../entities/plants/Peashooter';
 import { createSunflower, SUNFLOWER_PROJECTILE, SUNFLOWER_ENERGY_INTERVAL, SUNFLOWER_ENERGY_AMOUNT } from '../entities/plants/Sunflower';
 import { createWalnutBomb, WALNUT_EXPLOSION_RADIUS, WALNUT_EXPLOSION_DAMAGE } from '../entities/plants/WalnutBomb';
+import { createPotatoMine, POTATO_MINE_EXPLOSION_DAMAGE, POTATO_MINE_EXPLOSION_RADIUS } from '../entities/plants/PotatoMine';
+import { createCherryBomber, CHERRY_EXPLOSION_DAMAGE, CHERRY_EXPLOSION_RADIUS } from '../entities/plants/CherryBomber';
+import { createAvocadoBunker } from '../entities/plants/AvocadoBunker';
+import { createMangoPult, MANGO_PROJECTILE } from '../entities/plants/MangoPult';
+import { createKernelPult, KERNEL_PULT_PROJECTILE } from '../entities/plants/KernelPult';
+import { createPumpkinSquash } from '../entities/plants/PumpkinSquash';
+import { createTorchwood, TORCH_DAMAGE_MULTIPLIER } from '../entities/plants/Torchwood';
+// Zombie imports
 import { createBrainEater, BRAIN_EATER_PROJECTILE } from '../entities/zombies/BrainEater';
 import { createVeryFastWalker } from '../entities/zombies/VeryFastWalker';
 import { createSkeletonWarrior, SKELETON_BLOCK_COOLDOWN } from '../entities/zombies/SkeletonWarrior';
+import { createSkeletonArcher, BONE_ARROW_PROJECTILE } from '../entities/zombies/SkeletonArcher';
+import { createNecromancer, NECRO_HEAL_AMOUNT, NECRO_HEAL_INTERVAL } from '../entities/zombies/Necromancer';
+import { createHotTopic, HP_GAIN_PER_EAT, DAMAGE_GAIN_PER_EAT } from '../entities/zombies/HotTopic';
+import { createTridentZombie, TRIDENT_PROJECTILE } from '../entities/zombies/TridentZombie';
+import { createDesertZombie, SAND_PROJECTILE } from '../entities/zombies/DesertZombie';
+import { createCowboyZombie, COWBOY_PROJECTILE } from '../entities/zombies/CowboyZombie';
+import { createBrainRot, ROT_BRAIN_PROJECTILE } from '../entities/zombies/BrainRot';
+
 import type { Faction } from '../types';
 import { getPlayerFaction, gameOptions } from '../main';
 import { loadSave, saveSave, getUpgradeMultipliers } from '../SaveManager';
@@ -31,7 +48,14 @@ import { loadSave, saveSave, getUpgradeMultipliers } from '../SaveManager';
 const UNIT_PROJECTILE_MAP: Record<string, string> = {
   peashooter: PEASHOOTER_PROJECTILE,
   sunflower: SUNFLOWER_PROJECTILE,
+  mangoPult: MANGO_PROJECTILE,
+  kernelPult: KERNEL_PULT_PROJECTILE,
   brainEater: BRAIN_EATER_PROJECTILE,
+  skeletonArcher: BONE_ARROW_PROJECTILE,
+  tridentZombie: TRIDENT_PROJECTILE,
+  desertZombie: SAND_PROJECTILE,
+  cowboyZombie: COWBOY_PROJECTILE,
+  brainRot: ROT_BRAIN_PROJECTILE,
 };
 
 /** Factory mapping */
@@ -39,9 +63,23 @@ const UNIT_FACTORIES: Record<string, (id: string) => UnitState> = {
   peashooter: createPeashooter,
   sunflower: createSunflower,
   walnutBomb: createWalnutBomb,
+  potatoMine: createPotatoMine,
+  cherryBomber: createCherryBomber,
+  avocadoBunker: createAvocadoBunker,
+  mangoPult: createMangoPult,
+  kernelPult: createKernelPult,
+  pumpkinSquash: createPumpkinSquash,
+  torchwood: createTorchwood,
   brainEater: createBrainEater,
   veryFastWalker: createVeryFastWalker,
   skeletonWarrior: createSkeletonWarrior,
+  skeletonArcher: createSkeletonArcher,
+  necromancer: createNecromancer,
+  hotTopic: createHotTopic,
+  tridentZombie: createTridentZombie,
+  desertZombie: createDesertZombie,
+  cowboyZombie: createCowboyZombie,
+  brainRot: createBrainRot,
 };
 
 interface ActiveUnit {
@@ -125,14 +163,28 @@ export class BattleScene extends Scene {
 
     // HUD — show unit cards for the player's faction
     const plantCards: UnitCard[] = [
-      { key: 'peashooter', label: 'Peashooter', cost: UNIT_COSTS.peashooter, textureKey: 'peashooter' },
-      { key: 'sunflower', label: 'Sunflower', cost: UNIT_COSTS.sunflower, textureKey: 'sunflower' },
-      { key: 'walnutBomb', label: 'WalnutBomb', cost: UNIT_COSTS.walnutBomb, textureKey: 'walnutBomb' },
+      { key: 'peashooter', label: 'Pea', cost: UNIT_COSTS.peashooter, textureKey: 'peashooter' },
+      { key: 'sunflower', label: 'Sun', cost: UNIT_COSTS.sunflower, textureKey: 'sunflower' },
+      { key: 'walnutBomb', label: 'Walnut', cost: UNIT_COSTS.walnutBomb, textureKey: 'walnutBomb' },
+      { key: 'potatoMine', label: 'Mine', cost: UNIT_COSTS.potatoMine, textureKey: 'potatoMine' },
+      { key: 'cherryBomber', label: 'Cherry', cost: UNIT_COSTS.cherryBomber, textureKey: 'cherryBomber' },
+      { key: 'avocadoBunker', label: 'Avo', cost: UNIT_COSTS.avocadoBunker, textureKey: 'avocadoBunker' },
+      { key: 'mangoPult', label: 'Mango', cost: UNIT_COSTS.mangoPult, textureKey: 'mangoPult' },
+      { key: 'kernelPult', label: 'Kernel', cost: UNIT_COSTS.kernelPult, textureKey: 'kernelPult' },
+      { key: 'pumpkinSquash', label: 'Pump', cost: UNIT_COSTS.pumpkinSquash, textureKey: 'pumpkinSquash' },
+      { key: 'torchwood', label: 'Torch', cost: UNIT_COSTS.torchwood, textureKey: 'torchwood' },
     ];
     const zombieCards: UnitCard[] = [
-      { key: 'brainEater', label: 'BrainEater', cost: UNIT_COSTS.brainEater, textureKey: 'brainEater' },
-      { key: 'veryFastWalker', label: 'FastWalker', cost: UNIT_COSTS.veryFastWalker, textureKey: 'veryFastWalker' },
-      { key: 'skeletonWarrior', label: 'Skeleton', cost: UNIT_COSTS.skeletonWarrior, textureKey: 'skeletonWarrior' },
+      { key: 'brainEater', label: 'Brain', cost: UNIT_COSTS.brainEater, textureKey: 'brainEater' },
+      { key: 'veryFastWalker', label: 'Fast', cost: UNIT_COSTS.veryFastWalker, textureKey: 'veryFastWalker' },
+      { key: 'skeletonWarrior', label: 'Skel', cost: UNIT_COSTS.skeletonWarrior, textureKey: 'skeletonWarrior' },
+      { key: 'skeletonArcher', label: 'Arch', cost: UNIT_COSTS.skeletonArcher, textureKey: 'skeletonArcher' },
+      { key: 'necromancer', label: 'Necro', cost: UNIT_COSTS.necromancer, textureKey: 'necromancer' },
+      { key: 'hotTopic', label: 'Hot', cost: UNIT_COSTS.hotTopic, textureKey: 'hotTopic' },
+      { key: 'tridentZombie', label: 'Trid', cost: UNIT_COSTS.tridentZombie, textureKey: 'tridentZombie' },
+      { key: 'desertZombie', label: 'Desert', cost: UNIT_COSTS.desertZombie, textureKey: 'desertZombie' },
+      { key: 'cowboyZombie', label: 'Cow', cost: UNIT_COSTS.cowboyZombie, textureKey: 'cowboyZombie' },
+      { key: 'brainRot', label: 'Rot', cost: UNIT_COSTS.brainRot, textureKey: 'brainRot' },
     ];
     const unitCards = this.playerFaction === 'plants' ? plantCards : zombieCards;
     this.hud = new HUD(this, unitCards, () => {});

@@ -8,16 +8,40 @@ export class BootScene extends Scene {
   }
 
   preload(): void {
-    // Load AI-generated PNG sprites
+    // Load AI-generated PNG sprites — Plants
     this.load.image('peashooter', '/assets/sprites/peashooter.png');
     this.load.image('sunflower', '/assets/sprites/sunflower.png');
     this.load.image('walnutBomb', '/assets/sprites/walnutBomb.png');
+    this.load.image('potatoMine', '/assets/sprites/potatoMine.png');
+    this.load.image('cherryBomber', '/assets/sprites/cherryBomber.png');
+    this.load.image('avocadoBunker', '/assets/sprites/avocadoBunker.png');
+    this.load.image('mangoPult', '/assets/sprites/mangoPult.png');
+    this.load.image('kernelPult', '/assets/sprites/kernelPult.png');
+    this.load.image('pumpkinSquash', '/assets/sprites/pumpkinSquash.png');
+    this.load.image('torchwood', '/assets/sprites/torchwood.png');
+
+    // Zombies
     this.load.image('brainEater', '/assets/sprites/brainEater.png');
     this.load.image('veryFastWalker', '/assets/sprites/veryFastWalker.png');
     this.load.image('skeletonWarrior', '/assets/sprites/skeletonWarrior.png');
+    this.load.image('skeletonArcher', '/assets/sprites/skeletonArcher.png');
+    this.load.image('necromancer', '/assets/sprites/necromancer.png');
+    this.load.image('hotTopic', '/assets/sprites/hotTopic.png');
+    this.load.image('tridentZombie', '/assets/sprites/tridentZombie.png');
+    this.load.image('desertZombie', '/assets/sprites/desertZombie.png');
+    this.load.image('cowboyZombie', '/assets/sprites/cowboyZombie.png');
+    this.load.image('brainRot', '/assets/sprites/brainRot.png');
+
+    // Projectiles
     this.load.image('pea', '/assets/sprites/pea.png');
     this.load.image('kernel', '/assets/sprites/kernel.png');
     this.load.image('brain', '/assets/sprites/brain.png');
+    this.load.image('mango', '/assets/sprites/mango.png');
+    this.load.image('butter', '/assets/sprites/butter.png');
+    this.load.image('boneArrow', '/assets/sprites/boneArrow.png');
+    this.load.image('trident', '/assets/sprites/trident.png');
+    this.load.image('rotBrain', '/assets/sprites/rotBrain.png');
+    this.load.image('sand', '/assets/sprites/sand.png');
 
     // Load base images if they exist, otherwise will use procedural fallback
     this.load.image('plantBase', '/assets/bases/plant-base.png');
