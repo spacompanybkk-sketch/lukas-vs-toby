@@ -1,11 +1,11 @@
 export const GRID_ROWS = 5;
 export const GRID_COLS = 10;
-export const TILE_SIZE = 64;
-export const GRID_OFFSET_X = 80;
-export const GRID_OFFSET_Y = 100;
+export const TILE_SIZE = 80;
+export const GRID_OFFSET_X = 100;
+export const GRID_OFFSET_Y = 80;
 
-export const GAME_WIDTH = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + 100;
-export const GAME_HEIGHT = GRID_OFFSET_Y + GRID_ROWS * TILE_SIZE + 140;
+export const GAME_WIDTH = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + 120;
+export const GAME_HEIGHT = GRID_OFFSET_Y + GRID_ROWS * TILE_SIZE + 160;
 
 export const ENERGY_TICK_INTERVAL = 2000;
 export const ENERGY_TICK_AMOUNT = 5;

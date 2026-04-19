@@ -339,7 +339,7 @@ export class BattleScene extends Scene {
 
     const { x, y } = this.gridManager.toPixel(attacker.row, attacker.col);
     const sprite = this.add.sprite(x, y, config.textureKey);
-    sprite.setDisplaySize(16, 16); // Scale down projectile PNGs
+    sprite.setDisplaySize(20, 20); // Scale down projectile PNGs
 
     this.projectiles.push({
       sprite,

@@ -32,7 +32,7 @@ export class DragDropManager {
       const cost = UNIT_COSTS[key];
       if (this.energyManager.getEnergy() < cost) return;
       this.currentDragKey = key;
-      this.dragPreview = this.scene.add.sprite(0, 0, key).setAlpha(0.6).setDisplaySize(56, 56);
+      this.dragPreview = this.scene.add.sprite(0, 0, key).setAlpha(0.6).setDisplaySize(72, 72);
     });
 
     this.scene.input.on('drag', (pointer: Input.Pointer) => {

@@ -16,17 +16,17 @@ import GameLayout from '../layouts/GameLayout.astro';
 
       <div class="flex gap-4 mt-8 flex-wrap justify-center">
         <a id="btn-ai" href="#"
-           class="px-8 py-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-xl font-bold transition-colors">
+           class="px-10 py-5 bg-gray-700 hover:bg-gray-600 rounded-lg text-2xl font-bold transition-colors">
           Play vs AI
         </a>
 
         <a id="btn-freeplay" href="#"
-           class="px-8 py-4 bg-amber-800 hover:bg-amber-700 rounded-lg text-xl font-bold transition-colors">
+           class="px-10 py-5 bg-amber-800 hover:bg-amber-700 rounded-lg text-2xl font-bold transition-colors">
           Free Play
         </a>
 
         <button id="btn-multiplayer" disabled
-                class="px-8 py-4 bg-gray-800 rounded-lg text-xl font-bold text-gray-500 cursor-not-allowed transition-colors">
+                class="px-10 py-5 bg-gray-800 rounded-lg text-2xl font-bold text-gray-500 cursor-not-allowed transition-colors">
           Battle Opponent!
         </button>
       </div>
@@ -69,12 +69,12 @@ import GameLayout from '../layouts/GameLayout.astro';
       if (online) {
         statusEl.innerHTML = `<span class="text-green-400">${opponentName} is ONLINE!</span>`;
         btnMultiplayer.disabled = false;
-        btnMultiplayer.className = 'px-8 py-4 bg-red-700 hover:bg-red-600 rounded-lg text-xl font-bold cursor-pointer transition-colors';
+        btnMultiplayer.className = 'px-10 py-5 bg-red-700 hover:bg-red-600 rounded-lg text-2xl font-bold cursor-pointer transition-colors';
         btnMultiplayer.textContent = `Battle ${opponentName}!`;
       } else {
         statusEl.innerHTML = `<span class="text-gray-500">${opponentName} is offline</span>`;
         btnMultiplayer.disabled = true;
-        btnMultiplayer.className = 'px-8 py-4 bg-gray-800 rounded-lg text-xl font-bold text-gray-500 cursor-not-allowed transition-colors';
+        btnMultiplayer.className = 'px-10 py-5 bg-gray-800 rounded-lg text-2xl font-bold text-gray-500 cursor-not-allowed transition-colors';
         btnMultiplayer.textContent = 'Battle Opponent!';
       }
     });

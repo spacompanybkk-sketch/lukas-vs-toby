@@ -26,13 +26,13 @@ export function launchGame(parent: string, options?: GameOptions): Game {
 
   const config: Types.Core.GameConfig = {
     type: AUTO,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
     parent,
     backgroundColor: '#1a1a2e',
     scale: {
-      mode: 2, // FIT
-      autoCenter: 1, // CENTER_BOTH
+      mode: 2, // Phaser.Scale.FIT
+      autoCenter: 1, // Phaser.Scale.CENTER_BOTH
+      width: GAME_WIDTH,
+      height: GAME_HEIGHT,
     },
     physics: {
       default: 'arcade',

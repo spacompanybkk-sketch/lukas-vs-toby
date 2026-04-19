@@ -355,7 +355,7 @@ export class MultiplayerBattleScene extends Scene {
 
     const { x, y } = this.gridManager.toPixel(attacker.row, attacker.col);
     const sprite = this.add.sprite(x, y, config.textureKey);
-    sprite.setDisplaySize(16, 16);
+    sprite.setDisplaySize(20, 20);
 
     this.projectiles.push({ sprite, config, row: attacker.row });
   }
