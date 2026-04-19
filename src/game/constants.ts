@@ -17,7 +17,7 @@ export const BASE_HP = 5000;
 export const UNIT_COSTS: Record<string, number> = {
   peashooter: 100,
   sunflower: 50,
-  walnutBomb: 125,
+  walnutBomb: 75,
   brainEater: 100,
   veryFastWalker: 50,
   skeletonWarrior: 125,
@@ -27,7 +27,7 @@ export const UNIT_COSTS: Record<string, number> = {
 export const UNIT_STATS: Record<string, { hp: number; damage: number; attackSpeed: number; range: number; moveSpeed: number }> = {
   peashooter:      { hp: 180, damage: 7,  attackSpeed: 2700, range: 9, moveSpeed: 0 },
   sunflower:       { hp: 100, damage: 5,  attackSpeed: 3000, range: 3, moveSpeed: 0 },
-  walnutBomb:      { hp: 575, damage: 80, attackSpeed: 0,    range: 0, moveSpeed: 0 },
+  walnutBomb:      { hp: 800, damage: 150, attackSpeed: 0,    range: 0, moveSpeed: 0 },
   brainEater:      { hp: 150, damage: 7,  attackSpeed: 3000, range: 4, moveSpeed: 0.3 },
   veryFastWalker:  { hp: 130, damage: 8,  attackSpeed: 1500, range: 0, moveSpeed: 0.65 },
   skeletonWarrior: { hp: 325, damage: 15, attackSpeed: 2000, range: 0, moveSpeed: 0.4 },
