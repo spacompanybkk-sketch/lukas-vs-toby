@@ -10,9 +10,10 @@ import GameLayout from '../layouts/GameLayout.astro';
     const params = new URLSearchParams(window.location.search);
     const mode = (params.get('mode') || 'ai') as 'ai' | 'multiplayer' | 'freeplay' | 'campaign';
     const player = (params.get('player') || 'lukas') as 'lukas' | 'toby';
+    const faction = (params.get('faction') || 'plants') as 'plants' | 'zombies';
     const roomId = params.get('room') || undefined;
     const level = params.get('level') ? parseInt(params.get('level')!, 10) : undefined;
 
-    launchGame('game-container', { mode, player, roomId, level });
+    launchGame('game-container', { mode, player, faction, roomId, level });
   </script>
 </GameLayout>

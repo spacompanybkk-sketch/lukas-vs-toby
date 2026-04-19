@@ -9,6 +9,13 @@ import GameLayout from '../layouts/GameLayout.astro';
 
     <h2 class="text-2xl md:text-3xl font-bold" id="welcome-text">Loading...</h2>
 
+    <!-- Faction selector -->
+    <div class="flex gap-3 items-center">
+      <span class="text-sm text-gray-400">Play as:</span>
+      <button id="btn-plants" class="px-5 py-2 rounded-lg text-lg font-bold transition-colors bg-green-700 text-white">Plants</button>
+      <button id="btn-zombies" class="px-5 py-2 rounded-lg text-lg font-bold transition-colors bg-gray-700 text-gray-400">Zombies</button>
+    </div>
+
     <div class="flex flex-col items-center gap-4">
       <div id="opponent-status" class="text-lg text-gray-400">
         Checking opponent status...
@@ -79,25 +86,42 @@ import GameLayout from '../layouts/GameLayout.astro';
 
     goOnline(player!);
 
-    document.getElementById('btn-ai')!.setAttribute('href', `/battle?mode=ai&player=${player}`);
-    document.getElementById('btn-freeplay')!.setAttribute('href', `/battle?mode=freeplay&player=${player}`);
+    // Faction state — player can choose plants or zombies
+    let selectedFaction: 'plants' | 'zombies' = 'plants';
+    const btnPlants = document.getElementById('btn-plants')!;
+    const btnZombies = document.getElementById('btn-zombies')!;
 
-    // Campaign button
+    function updateFactionUI(): void {
+      if (selectedFaction === 'plants') {
+        btnPlants.className = 'px-5 py-2 rounded-lg text-lg font-bold transition-colors bg-green-700 text-white';
+        btnZombies.className = 'px-5 py-2 rounded-lg text-lg font-bold transition-colors bg-gray-700 text-gray-400';
+      } else {
+        btnPlants.className = 'px-5 py-2 rounded-lg text-lg font-bold transition-colors bg-gray-700 text-gray-400';
+        btnZombies.className = 'px-5 py-2 rounded-lg text-lg font-bold transition-colors bg-purple-700 text-white';
+      }
+      updateLinks();
+      renderMarketplace();
+    }
+
+    function updateLinks(): void {
+      const f = selectedFaction;
+      const save = loadSave(player!);
+      document.getElementById('btn-ai')!.setAttribute('href', `/battle?mode=ai&player=${player}&faction=${f}`);
+      document.getElementById('btn-freeplay')!.setAttribute('href', `/battle?mode=freeplay&player=${player}&faction=${f}`);
+      document.getElementById('btn-campaign')!.setAttribute('href', `/battle?mode=campaign&player=${player}&faction=${f}&level=${save.currentLevel}`);
+      document.getElementById('campaign-level')!.textContent = `Level ${save.currentLevel}/20`;
+      document.getElementById('toby-dollars')!.textContent = `${save.tobyDollars} Toby Dollars`;
+    }
+
+    btnPlants.addEventListener('click', () => { selectedFaction = 'plants'; updateFactionUI(); });
+    btnZombies.addEventListener('click', () => { selectedFaction = 'zombies'; updateFactionUI(); });
+
+    // Initial setup
     const save = loadSave(player!);
-    document.getElementById('btn-campaign')!.setAttribute(
-      'href',
-      `/battle?mode=campaign&player=${player}&level=${save.currentLevel}`
-    );
+    updateLinks();
 
-    // Campaign info
-    document.getElementById('campaign-level')!.textContent = `Level ${save.currentLevel}/20`;
-    document.getElementById('toby-dollars')!.textContent = `${save.tobyDollars} Toby Dollars`;
-
-    // Marketplace
-    const playerFaction = player === 'lukas' ? 'plants' : 'zombies';
-    const unitKeys = playerFaction === 'plants'
-      ? ['peashooter', 'sunflower', 'walnutBomb']
-      : ['brainEater', 'veryFastWalker', 'skeletonWarrior'];
+    // Marketplace — show ALL units, faction determines which you play
+    const allUnitKeys = ['peashooter', 'sunflower', 'walnutBomb', 'brainEater', 'veryFastWalker', 'skeletonWarrior'];
 
     const unitLabels: Record<string, string> = {
       peashooter: 'Peashooter',
@@ -115,7 +139,7 @@ import GameLayout from '../layouts/GameLayout.astro';
 
       document.getElementById('toby-dollars')!.textContent = `${currentSave.tobyDollars} Toby Dollars`;
 
-      for (const unitKey of unitKeys) {
+      for (const unitKey of allUnitKeys) {
         const level = currentSave.upgrades[unitKey] ?? 0;
         const maxed = level >= 10;
         const cost = getUpgradeCost(level);
@@ -206,7 +230,7 @@ import GameLayout from '../layouts/GameLayout.astro';
         btnMultiplayer.onclick = () => {
           joinRoom(challenge.roomId, player!);
           clearChallenge(player!);
-          window.location.href = `/battle?mode=multiplayer&player=${player}&room=${challenge.roomId}`;
+          window.location.href = `/battle?mode=multiplayer&player=${player}&faction=${selectedFaction}&room=${challenge.roomId}`;
         };
       }
     });
@@ -227,7 +251,7 @@ import GameLayout from '../layouts/GameLayout.astro';
         if (room) {
           const opponentKey = player === 'lukas' ? 'toby' : 'lukas';
           if (room[opponentKey]?.ready) {
-            window.location.href = `/battle?mode=multiplayer&player=${player}&room=${roomId}`;
+            window.location.href = `/battle?mode=multiplayer&player=${player}&faction=${selectedFaction}&room=${roomId}`;
           }
         }
       });

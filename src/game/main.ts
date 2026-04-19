@@ -10,14 +10,15 @@ import type { Faction } from './types';
 export interface GameOptions {
   mode: 'ai' | 'multiplayer' | 'freeplay' | 'campaign';
   player: 'lukas' | 'toby';
+  faction: Faction;
   roomId?: string;
   level?: number;
 }
 
-export let gameOptions: GameOptions = { mode: 'ai', player: 'lukas' };
+export let gameOptions: GameOptions = { mode: 'ai', player: 'lukas', faction: 'plants' };
 
 export function getPlayerFaction(): Faction {
-  return gameOptions.player === 'lukas' ? 'plants' : 'zombies';
+  return gameOptions.faction;
 }
 
 export function launchGame(parent: string, options?: GameOptions): Game {
