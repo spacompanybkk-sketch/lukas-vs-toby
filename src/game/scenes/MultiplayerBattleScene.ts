@@ -419,17 +419,25 @@ export class MultiplayerBattleScene extends Scene {
   }
 
   private checkBaseDamage(): void {
+    const time = this.time?.now ?? 0;
+
     for (const unit of this.units) {
       if (!unit.state.isAlive()) continue;
       if (unit.state.isStationary()) continue;
 
       if (unit.state.faction === 'zombies' && unit.state.col <= 0) {
-        this.plantBaseHp -= unit.state.damage;
-        unit.state.takeDamage(unit.state.hp);
+        unit.state.col = 0;
+        if (unit.state.canAttack(time)) {
+          unit.state.recordAttack(time);
+          this.plantBaseHp -= unit.state.damage;
+        }
       }
       if (unit.state.faction === 'plants' && unit.state.col >= GRID_COLS - 1) {
-        this.zombieBaseHp -= unit.state.damage;
-        unit.state.takeDamage(unit.state.hp);
+        unit.state.col = GRID_COLS - 1;
+        if (unit.state.canAttack(time)) {
+          unit.state.recordAttack(time);
+          this.zombieBaseHp -= unit.state.damage;
+        }
       }
     }
   }

@@ -413,19 +413,27 @@ export class BattleScene extends Scene {
   }
 
   private checkBaseDamage(): void {
+    const time = this.time?.now ?? 0;
+
     for (const unit of this.units) {
       if (!unit.state.isAlive()) continue;
       if (unit.state.isStationary()) continue;
 
-      // Zombies reaching the left edge damage plant base
+      // Zombies reaching the left edge — stay and attack the plant base
       if (unit.state.faction === 'zombies' && unit.state.col <= 0) {
-        this.plantBaseHp -= unit.state.damage;
-        unit.state.takeDamage(unit.state.hp); // Kill the unit
+        unit.state.col = 0; // Clamp position at the base
+        if (unit.state.canAttack(time)) {
+          unit.state.recordAttack(time);
+          this.plantBaseHp -= unit.state.damage;
+        }
       }
-      // Plants reaching the right edge damage zombie base (future-proofing)
+      // Plants reaching the right edge — stay and attack the zombie base
       if (unit.state.faction === 'plants' && unit.state.col >= GRID_COLS - 1) {
-        this.zombieBaseHp -= unit.state.damage;
-        unit.state.takeDamage(unit.state.hp);
+        unit.state.col = GRID_COLS - 1;
+        if (unit.state.canAttack(time)) {
+          unit.state.recordAttack(time);
+          this.zombieBaseHp -= unit.state.damage;
+        }
       }
     }
   }
