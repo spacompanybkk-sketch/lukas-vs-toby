@@ -44,20 +44,20 @@ export class BootScene extends Scene {
     // Tile fallbacks (used if PNG tiles not loaded)
     if (!this.textures.exists('tile')) {
       const g1 = this.add.graphics();
-      g1.fillStyle(0x335533, 0.3);
+      g1.fillStyle(0x3d6b3d, 0.6);
       g1.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      g1.lineStyle(1, 0x446644, 0.2);
-      g1.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
+      g1.lineStyle(2, 0x4a8a4a, 0.5);
+      g1.strokeRect(1, 1, TILE_SIZE - 2, TILE_SIZE - 2);
       g1.generateTexture('tile', TILE_SIZE, TILE_SIZE);
       g1.destroy();
     }
 
     if (!this.textures.exists('tileDark')) {
       const g2 = this.add.graphics();
-      g2.fillStyle(0x2a4a2a, 0.3);
+      g2.fillStyle(0x2d5a2d, 0.6);
       g2.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-      g2.lineStyle(1, 0x3a5a3a, 0.2);
-      g2.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
+      g2.lineStyle(2, 0x3a7a3a, 0.5);
+      g2.strokeRect(1, 1, TILE_SIZE - 2, TILE_SIZE - 2);
       g2.generateTexture('tileDark', TILE_SIZE, TILE_SIZE);
       g2.destroy();
     }

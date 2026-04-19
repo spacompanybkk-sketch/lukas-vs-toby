@@ -30,6 +30,10 @@ export function launchGame(parent: string, options?: GameOptions): Game {
     height: GAME_HEIGHT,
     parent,
     backgroundColor: '#1a1a2e',
+    scale: {
+      mode: 2, // FIT
+      autoCenter: 1, // CENTER_BOTH
+    },
     physics: {
       default: 'arcade',
       arcade: {

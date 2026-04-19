@@ -42,7 +42,7 @@ export class HUD {
       bg.fillRoundedRect(-35, -30, 70, 60, 8);
       container.add(bg);
 
-      const preview = this.scene.add.sprite(0, -10, card.textureKey).setScale(0.6);
+      const preview = this.scene.add.sprite(0, -10, card.textureKey).setDisplaySize(40, 40);
       container.add(preview);
 
       const costText = this.scene.add.text(0, 18, `${card.cost}`, {
