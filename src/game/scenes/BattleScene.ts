@@ -235,6 +235,8 @@ export class BattleScene extends Scene {
 
     const { x, y } = this.gridManager.toPixel(row, col);
     const sprite = this.add.sprite(x, y, unitKey);
+    // Scale down from 1024x1024 PNGs to fit tile size
+    sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
     const healthBar = new HealthBar(this, x, y - TILE_SIZE / 2 - 4);
     healthBar.update(unitState.hp, unitState.maxHp);
 
@@ -283,16 +285,16 @@ export class BattleScene extends Scene {
       if (state.key === 'walnutBomb') continue;
 
       const target = this.combatManager.findTarget(state, allStates);
-      if (!target) continue;
-
-      state.recordAttack(time);
 
       const projectileKey = UNIT_PROJECTILE_MAP[state.key];
       if (projectileKey && state.range > 1) {
-        // Ranged attack — fire projectile
+        // Ranged units always fire toward the enemy base, even without a target
+        // This allows projectiles to reach and damage the base
+        state.recordAttack(time);
         this.fireProjectile(state, projectileKey);
-      } else {
-        // Melee attack — direct damage
+      } else if (target) {
+        // Melee attack — only if there's an adjacent target
+        state.recordAttack(time);
         target.takeDamage(state.damage);
       }
     }
@@ -304,6 +306,7 @@ export class BattleScene extends Scene {
 
     const { x, y } = this.gridManager.toPixel(attacker.row, attacker.col);
     const sprite = this.add.sprite(x, y, config.textureKey);
+    sprite.setDisplaySize(16, 16); // Scale down projectile PNGs
 
     this.projectiles.push({
       sprite,

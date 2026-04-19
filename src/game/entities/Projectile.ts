@@ -8,7 +8,7 @@ export interface ProjectileConfig {
 }
 
 export const PROJECTILE_CONFIGS: Record<string, ProjectileConfig> = {
-  pea: { textureKey: 'pea', damage: 25, speed: 400, faction: 'plants' },     // was 20dmg/300spd
-  kernel: { textureKey: 'kernel', damage: 10, speed: 350, faction: 'plants' }, // was 250spd
-  brain: { textureKey: 'brain', damage: 20, speed: 250, faction: 'zombies' }, // was 25dmg/200spd
+  pea: { textureKey: 'pea', damage: 20, speed: 300, faction: 'plants' },
+  kernel: { textureKey: 'kernel', damage: 8, speed: 250, faction: 'plants' },
+  brain: { textureKey: 'brain', damage: 18, speed: 200, faction: 'zombies' },
 };
