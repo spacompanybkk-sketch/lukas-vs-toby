@@ -1,0 +1,11 @@
+---
+import GameLayout from '../layouts/GameLayout.astro';
+---
+<GameLayout title="Lukas Plants vs Toby Zombies">
+  <div id="game-container" class="mx-auto"></div>
+
+  <script>
+    import { launchGame } from '../game/main';
+    launchGame('game-container');
+  </script>
+</GameLayout>
