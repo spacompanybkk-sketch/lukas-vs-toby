@@ -15,6 +15,11 @@ import GameLayout from '../layouts/GameLayout.astro';
       </div>
 
       <div class="flex gap-4 mt-8 flex-wrap justify-center">
+        <a id="btn-campaign" href="#"
+           class="px-10 py-5 bg-green-700 hover:bg-green-600 rounded-lg text-2xl font-bold transition-colors">
+          Campaign
+        </a>
+
         <a id="btn-ai" href="#"
            class="px-10 py-5 bg-gray-700 hover:bg-gray-600 rounded-lg text-2xl font-bold transition-colors">
           Play vs AI
@@ -30,6 +35,19 @@ import GameLayout from '../layouts/GameLayout.astro';
           Battle Opponent!
         </button>
       </div>
+
+      <!-- Campaign progress -->
+      <div id="campaign-info" class="text-center mt-4">
+        <span id="campaign-level" class="text-sm text-gray-400"></span>
+        <span class="mx-2 text-gray-600">|</span>
+        <span id="toby-dollars" class="text-sm text-yellow-400 font-bold"></span>
+      </div>
+
+      <!-- Marketplace -->
+      <div id="marketplace" class="mt-8 w-full max-w-2xl mx-auto">
+        <h3 class="text-xl font-bold text-center mb-4 text-yellow-400">Marketplace</h3>
+        <div id="upgrade-grid" class="grid grid-cols-2 gap-3 sm:grid-cols-3"></div>
+      </div>
     </div>
 
     <a href="/" class="text-sm text-gray-500 hover:text-gray-300 mt-8">&larr; Back to character select</a>
@@ -38,6 +56,8 @@ import GameLayout from '../layouts/GameLayout.astro';
   <script>
     import { goOnline, watchOpponent, type Player } from '../firebase/presence';
     import { createGameRoom, joinRoom } from '../firebase/multiplayer';
+    import { loadSave, saveSave, getUpgradeCost, getUpgradeMultipliers } from '../game/SaveManager';
+    import { UNIT_STATS, UNIT_COSTS } from '../game/constants';
 
     const params = new URLSearchParams(window.location.search);
     const player = params.get('player') as Player | null;
@@ -61,6 +81,101 @@ import GameLayout from '../layouts/GameLayout.astro';
 
     document.getElementById('btn-ai')!.setAttribute('href', `/battle?mode=ai&player=${player}`);
     document.getElementById('btn-freeplay')!.setAttribute('href', `/battle?mode=freeplay&player=${player}`);
+
+    // Campaign button
+    const save = loadSave(player!);
+    document.getElementById('btn-campaign')!.setAttribute(
+      'href',
+      `/battle?mode=campaign&player=${player}&level=${save.currentLevel}`
+    );
+
+    // Campaign info
+    document.getElementById('campaign-level')!.textContent = `Level ${save.currentLevel}/20`;
+    document.getElementById('toby-dollars')!.textContent = `${save.tobyDollars} Toby Dollars`;
+
+    // Marketplace
+    const playerFaction = player === 'lukas' ? 'plants' : 'zombies';
+    const unitKeys = playerFaction === 'plants'
+      ? ['peashooter', 'sunflower', 'walnutBomb']
+      : ['brainEater', 'veryFastWalker', 'skeletonWarrior'];
+
+    const unitLabels: Record<string, string> = {
+      peashooter: 'Peashooter',
+      sunflower: 'Sunflower',
+      walnutBomb: 'WalnutBomb',
+      brainEater: 'BrainEater',
+      veryFastWalker: 'FastWalker',
+      skeletonWarrior: 'Skeleton',
+    };
+
+    function renderMarketplace(): void {
+      const currentSave = loadSave(player!);
+      const grid = document.getElementById('upgrade-grid')!;
+      grid.innerHTML = '';
+
+      document.getElementById('toby-dollars')!.textContent = `${currentSave.tobyDollars} Toby Dollars`;
+
+      for (const unitKey of unitKeys) {
+        const level = currentSave.upgrades[unitKey] ?? 0;
+        const maxed = level >= 10;
+        const cost = getUpgradeCost(level);
+        const canAfford = currentSave.tobyDollars >= cost;
+        const stats = UNIT_STATS[unitKey];
+        const { hpMult, damageMult } = getUpgradeMultipliers(level);
+
+        const card = document.createElement('div');
+        card.className = 'bg-gray-800 rounded-lg p-3 flex flex-col items-center gap-2';
+
+        const name = document.createElement('div');
+        name.className = 'font-bold text-sm';
+        name.textContent = unitLabels[unitKey] || unitKey;
+        card.appendChild(name);
+
+        const levelText = document.createElement('div');
+        levelText.className = 'text-xs text-gray-400';
+        levelText.textContent = `Lvl ${level}/10`;
+        card.appendChild(levelText);
+
+        const statsText = document.createElement('div');
+        statsText.className = 'text-xs text-gray-500';
+        statsText.textContent = `HP: ${Math.round(stats.hp * hpMult)} | DMG: ${Math.round(stats.damage * damageMult)}`;
+        card.appendChild(statsText);
+
+        if (!maxed) {
+          const btn = document.createElement('button');
+          btn.className = canAfford
+            ? 'mt-1 px-3 py-1 bg-yellow-600 hover:bg-yellow-500 rounded text-xs font-bold transition-colors'
+            : 'mt-1 px-3 py-1 bg-gray-700 rounded text-xs font-bold text-gray-500 cursor-not-allowed';
+          btn.textContent = `Upgrade (${cost} TD)`;
+          btn.disabled = !canAfford;
+
+          if (canAfford) {
+            btn.addEventListener('click', () => {
+              const s = loadSave(player!);
+              const currentLvl = s.upgrades[unitKey] ?? 0;
+              const c = getUpgradeCost(currentLvl);
+              if (s.tobyDollars >= c && currentLvl < 10) {
+                s.tobyDollars -= c;
+                s.upgrades[unitKey] = currentLvl + 1;
+                saveSave(player!, s);
+                renderMarketplace();
+              }
+            });
+          }
+
+          card.appendChild(btn);
+        } else {
+          const maxLabel = document.createElement('div');
+          maxLabel.className = 'mt-1 text-xs text-green-400 font-bold';
+          maxLabel.textContent = 'MAX';
+          card.appendChild(maxLabel);
+        }
+
+        grid.appendChild(card);
+      }
+    }
+
+    renderMarketplace();
 
     const btnMultiplayer = document.getElementById('btn-multiplayer') as HTMLButtonElement;
     const statusEl = document.getElementById('opponent-status')!;
