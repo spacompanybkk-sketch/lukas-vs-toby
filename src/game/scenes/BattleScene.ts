@@ -125,9 +125,15 @@ export class BattleScene extends Scene {
 
     // Wave manager (AI spawns the opposing faction)
     const aiFaction: Faction = this.playerFaction === 'plants' ? 'zombies' : 'plants';
-    const aiSpawnCol = this.playerFaction === 'plants' ? GRID_COLS - 1 : 0;
     this.waveManager = new WaveManager(aiFaction, (unitKey, row) => {
-      this.spawnUnit(unitKey, row, aiSpawnCol, aiFaction);
+      if (aiFaction === 'zombies') {
+        // Zombies always spawn on the rightmost column
+        this.spawnUnit(unitKey, row, GRID_COLS - 1, aiFaction);
+      } else {
+        // AI plants spawn on a random column (plants can go anywhere)
+        const col = Math.floor(Math.random() * GRID_COLS);
+        this.spawnUnit(unitKey, row, col, aiFaction);
+      }
     });
 
     // Drag drop (player places their faction's units)

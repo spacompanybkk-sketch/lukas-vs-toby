@@ -44,7 +44,8 @@ export class DragDropManager {
     this.scene.input.on('dragend', (pointer: Input.Pointer) => {
       if (!this.dragPreview || !this.currentDragKey) { this.cleanup(); return; }
       const { row, col } = this.gridManager.toGrid(pointer.x, pointer.y);
-      const validCol = this.playerFaction === 'plants' ? col >= 0 && col <= 4 : col >= 5 && col <= 9;
+      // Plants can place on any tile; zombies can only place on their first column (col 9)
+      const validCol = this.playerFaction === 'plants' ? col >= 0 && col <= 9 : col === 9;
       if (this.gridManager.isValid(row, col) && validCol && this.gridManager.isEmpty(row, col)) {
         const cost = UNIT_COSTS[this.currentDragKey];
         if (this.energyManager.spend(cost)) {
