@@ -12,7 +12,7 @@ export const ENERGY_TICK_AMOUNT = 5;
 export const ENERGY_KILL_REWARD = 10;
 export const STARTING_ENERGY = 50;
 
-export const BASE_HP = 1000;
+export const BASE_HP = 500;  // was 1000 — easier to destroy
 
 export const UNIT_COSTS: Record<string, number> = {
   peashooter: 100,
@@ -24,10 +24,10 @@ export const UNIT_COSTS: Record<string, number> = {
 };
 
 export const UNIT_STATS: Record<string, { hp: number; damage: number; attackSpeed: number; range: number; moveSpeed: number }> = {
-  peashooter:      { hp: 100, damage: 20, attackSpeed: 1000, range: 9, moveSpeed: 0 },
+  peashooter:      { hp: 100, damage: 25, attackSpeed: 900,  range: 9, moveSpeed: 0 },  // was 20dmg/1000ms
   sunflower:       { hp: 75,  damage: 10, attackSpeed: 1500, range: 3, moveSpeed: 0 },
   walnutBomb:      { hp: 300, damage: 80, attackSpeed: 0,    range: 0, moveSpeed: 0 },
-  brainEater:      { hp: 120, damage: 25, attackSpeed: 2000, range: 4, moveSpeed: 1 },
-  veryFastWalker:  { hp: 60,  damage: 15, attackSpeed: 800,  range: 0, moveSpeed: 3 },
-  skeletonWarrior: { hp: 200, damage: 30, attackSpeed: 1200, range: 0, moveSpeed: 1.5 },
+  brainEater:      { hp: 100, damage: 20, attackSpeed: 2000, range: 4, moveSpeed: 1 },   // was 120hp/25dmg
+  veryFastWalker:  { hp: 50,  damage: 12, attackSpeed: 800,  range: 0, moveSpeed: 3 },   // was 60hp/15dmg
+  skeletonWarrior: { hp: 180, damage: 25, attackSpeed: 1200, range: 0, moveSpeed: 1.5 }, // was 200hp/30dmg
 };

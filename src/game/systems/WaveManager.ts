@@ -5,7 +5,7 @@ export type SpawnCallback = (unitKey: string, row: number) => void;
 export class WaveManager {
   private aiFaction: Faction;
   private onSpawn: SpawnCallback;
-  private spawnInterval: number = 4000;
+  private spawnInterval: number = 5500; // was 4000 — slower spawning
   private lastSpawnTime: number = 0;
   private availableUnits: string[];
 
