@@ -8,10 +8,11 @@ import GameLayout from '../layouts/GameLayout.astro';
     import { launchGame } from '../game/main';
 
     const params = new URLSearchParams(window.location.search);
-    const mode = (params.get('mode') || 'ai') as 'ai' | 'multiplayer' | 'freeplay';
+    const mode = (params.get('mode') || 'ai') as 'ai' | 'multiplayer' | 'freeplay' | 'campaign';
     const player = (params.get('player') || 'lukas') as 'lukas' | 'toby';
     const roomId = params.get('room') || undefined;
+    const level = params.get('level') ? parseInt(params.get('level')!, 10) : undefined;
 
-    launchGame('game-container', { mode, player, roomId });
+    launchGame('game-container', { mode, player, roomId, level });
   </script>
 </GameLayout>

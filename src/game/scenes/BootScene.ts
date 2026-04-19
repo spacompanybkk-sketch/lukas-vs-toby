@@ -51,6 +51,7 @@ export class BootScene extends Scene {
     if (gameOptions.mode === 'multiplayer') {
       this.scene.start('MultiplayerBattleScene');
     } else {
+      // 'ai', 'freeplay', and 'campaign' all use BattleScene
       this.scene.start('BattleScene');
     }
   }

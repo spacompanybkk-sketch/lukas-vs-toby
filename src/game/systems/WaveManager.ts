@@ -2,18 +2,29 @@ import type { Faction } from '../types';
 
 export type SpawnCallback = (unitKey: string, row: number) => void;
 
+export interface WaveManagerOptions {
+  interval?: number;
+  firstDelay?: number;
+  maxWaves?: number;
+}
+
 export class WaveManager {
   private aiFaction: Faction;
   private onSpawn: SpawnCallback;
-  private spawnInterval: number = 8000;
+  private spawnInterval: number;
   private lastSpawnTime: number = 0;
   private availableUnits: string[];
   private waveCount: number = 0;
-  private firstSpawnDelay: number = 12000; // 12s grace period before first spawn
+  private firstSpawnDelay: number;
+  private maxWaves: number | undefined;
+  private allWavesSpawned: boolean = false;
 
-  constructor(aiFaction: Faction, onSpawn: SpawnCallback) {
+  constructor(aiFaction: Faction, onSpawn: SpawnCallback, options?: WaveManagerOptions) {
     this.aiFaction = aiFaction;
     this.onSpawn = onSpawn;
+    this.spawnInterval = options?.interval ?? 8000;
+    this.firstSpawnDelay = options?.firstDelay ?? 12000;
+    this.maxWaves = options?.maxWaves;
     this.availableUnits = aiFaction === 'zombies'
       ? ['brainEater', 'veryFastWalker', 'skeletonWarrior']
       : ['peashooter', 'sunflower', 'walnutBomb'];
@@ -22,6 +33,12 @@ export class WaveManager {
   update(time: number): void {
     // Grace period at start
     if (time < this.firstSpawnDelay) return;
+
+    // Stop spawning if maxWaves reached
+    if (this.maxWaves !== undefined && this.waveCount >= this.maxWaves) {
+      this.allWavesSpawned = true;
+      return;
+    }
 
     if (time - this.lastSpawnTime < this.spawnInterval) return;
     this.lastSpawnTime = time;
@@ -39,5 +56,13 @@ export class WaveManager {
 
   getWaveCount(): number {
     return this.waveCount;
+  }
+
+  getMaxWaves(): number | undefined {
+    return this.maxWaves;
+  }
+
+  areAllWavesSpawned(): boolean {
+    return this.allWavesSpawned;
   }
 }

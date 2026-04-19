@@ -4,12 +4,12 @@ import {
   GRID_ROWS, GRID_COLS, TILE_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y,
   GAME_WIDTH, BASE_HP, STARTING_ENERGY,
   ENERGY_TICK_INTERVAL, ENERGY_TICK_AMOUNT, ENERGY_KILL_REWARD,
-  UNIT_COSTS,
+  UNIT_COSTS, CAMPAIGN_LEVELS, LOSS_REWARD_PERCENT,
 } from '../constants';
 import { GridManager } from '../systems/GridManager';
 import { EnergyManager } from '../systems/EnergyManager';
 import { CombatManager } from '../systems/CombatManager';
-import { WaveManager } from '../systems/WaveManager';
+import { WaveManager, type WaveManagerOptions } from '../systems/WaveManager';
 import { DragDropManager } from '../systems/DragDropManager';
 import { HUD } from '../ui/HUD';
 import type { UnitCard } from '../ui/HUD';
@@ -25,6 +25,7 @@ import { createVeryFastWalker } from '../entities/zombies/VeryFastWalker';
 import { createSkeletonWarrior, SKELETON_BLOCK_COOLDOWN } from '../entities/zombies/SkeletonWarrior';
 import type { Faction } from '../types';
 import { getPlayerFaction, gameOptions } from '../main';
+import { loadSave, saveSave, getUpgradeMultipliers } from '../SaveManager';
 
 /** Projectile type mapping per unit key */
 const UNIT_PROJECTILE_MAP: Record<string, string> = {
@@ -79,7 +80,10 @@ export class BattleScene extends Scene {
   private playerFaction!: Faction;
   private gameOver: boolean = false;
   private isFreeplay: boolean = false;
+  private isCampaign: boolean = false;
+  private campaignLevel: number = 0;
   private waveText!: GameObjects.Text;
+  private levelText!: GameObjects.Text;
 
   constructor() {
     super('BattleScene');
@@ -97,7 +101,18 @@ export class BattleScene extends Scene {
     this.skeletonBlockTimers = new Map();
     this.gameOver = false;
     this.isFreeplay = gameOptions.mode === 'freeplay';
+    this.isCampaign = gameOptions.mode === 'campaign';
+    this.campaignLevel = gameOptions.level ?? 1;
     this.playerFaction = getPlayerFaction();
+
+    // Campaign: override base HP from level config
+    const levelConfig = this.isCampaign
+      ? CAMPAIGN_LEVELS.find(l => l.level === this.campaignLevel)
+      : undefined;
+    if (this.isCampaign && levelConfig) {
+      this.plantBaseHp = levelConfig.baseHp;
+      this.zombieBaseHp = levelConfig.baseHp;
+    }
 
     // Systems
     this.gridManager = new GridManager();
@@ -125,6 +140,9 @@ export class BattleScene extends Scene {
 
     // Wave manager (AI spawns the opposing faction)
     const aiFaction: Faction = this.playerFaction === 'plants' ? 'zombies' : 'plants';
+    const waveOptions: WaveManagerOptions | undefined = this.isCampaign && levelConfig
+      ? { interval: levelConfig.waveInterval, firstDelay: levelConfig.firstDelay, maxWaves: levelConfig.maxWaves }
+      : undefined;
     this.waveManager = new WaveManager(aiFaction, (unitKey, row) => {
       if (aiFaction === 'zombies') {
         // Zombies always spawn on the rightmost column
@@ -134,7 +152,7 @@ export class BattleScene extends Scene {
         const col = Math.floor(Math.random() * GRID_COLS);
         this.spawnUnit(unitKey, row, col, aiFaction);
       }
-    });
+    }, waveOptions);
 
     // Drag drop (player places their faction's units)
     this.dragDropManager = new DragDropManager(
@@ -148,10 +166,11 @@ export class BattleScene extends Scene {
     const plantBaseX = GRID_OFFSET_X - TILE_SIZE / 2 - 10;
     const zombieBaseX = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + TILE_SIZE / 2 + 10;
     const barY = GRID_OFFSET_Y - 15;
+    const maxBaseHp = this.isCampaign && levelConfig ? levelConfig.baseHp : BASE_HP;
     this.plantBaseBar = new HealthBar(this, plantBaseX, barY, 60, 8);
-    this.plantBaseBar.update(this.plantBaseHp, BASE_HP);
+    this.plantBaseBar.update(this.plantBaseHp, maxBaseHp);
     this.zombieBaseBar = new HealthBar(this, zombieBaseX, barY, 60, 8);
-    this.zombieBaseBar.update(this.zombieBaseHp, BASE_HP);
+    this.zombieBaseBar.update(this.zombieBaseHp, maxBaseHp);
 
     // Quit button
     const quitBtn = this.add.text(GAME_WIDTH - 16, 16, 'QUIT', {
@@ -166,17 +185,23 @@ export class BattleScene extends Scene {
       window.location.href = '/';
     });
 
-    // Wave counter (visible in all modes, prominent in freeplay)
+    // Wave counter (visible in all modes, prominent in freeplay/campaign)
+    const waveStyle = this.isFreeplay || this.isCampaign;
     this.waveText = this.add.text(GAME_WIDTH / 2, 16, '', {
-      fontSize: this.isFreeplay ? '20px' : '14px',
-      color: this.isFreeplay ? '#ffaa00' : '#888888',
+      fontSize: waveStyle ? '20px' : '14px',
+      color: waveStyle ? '#ffaa00' : '#888888',
       fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
+    // Level name for campaign
+    this.levelText = this.add.text(GAME_WIDTH / 2, 40, '', {
+      fontSize: '12px', color: '#ffaa00',
+    }).setOrigin(0.5, 0);
+
     if (this.isFreeplay) {
-      this.add.text(GAME_WIDTH / 2, 40, 'FREE PLAY — Survive!', {
-        fontSize: '12px', color: '#ffaa00',
-      }).setOrigin(0.5, 0);
+      this.levelText.setText('FREE PLAY — Survive!');
+    } else if (this.isCampaign && levelConfig) {
+      this.levelText.setText(`Level ${levelConfig.level}: ${levelConfig.name}`);
     }
   }
 
@@ -219,9 +244,12 @@ export class BattleScene extends Scene {
     this.cleanupDeadUnits();
 
     // 9. HUD updates
+    const currentMaxBaseHp = this.isCampaign
+      ? (CAMPAIGN_LEVELS.find(l => l.level === this.campaignLevel)?.baseHp ?? BASE_HP)
+      : BASE_HP;
     this.hud.updateEnergy(this.energyManager.getEnergy());
-    this.plantBaseBar.update(this.plantBaseHp, BASE_HP);
-    this.zombieBaseBar.update(this.zombieBaseHp, BASE_HP);
+    this.plantBaseBar.update(this.plantBaseHp, currentMaxBaseHp);
+    this.zombieBaseBar.update(this.zombieBaseHp, currentMaxBaseHp);
 
     // Update unit health bars
     for (const unit of this.units) {
@@ -233,10 +261,47 @@ export class BattleScene extends Scene {
     }
 
     // 10. Wave counter update
-    this.waveText.setText(`Wave: ${this.waveManager.getWaveCount()}`);
+    const maxWaves = this.waveManager.getMaxWaves();
+    if (maxWaves !== undefined) {
+      this.waveText.setText(`Wave: ${this.waveManager.getWaveCount()}/${maxWaves}`);
+    } else {
+      this.waveText.setText(`Wave: ${this.waveManager.getWaveCount()}`);
+    }
 
     // 11. Win condition
-    if (this.isFreeplay) {
+    if (this.isCampaign) {
+      const playerBaseHp = this.playerFaction === 'plants' ? this.plantBaseHp : this.zombieBaseHp;
+      const enemyBaseHp = this.playerFaction === 'plants' ? this.zombieBaseHp : this.plantBaseHp;
+
+      // Player loses if their base is destroyed
+      if (playerBaseHp <= 0) {
+        this.gameOver = true;
+        this.scene.start('GameOverScene', {
+          winner: this.playerFaction === 'plants' ? 'zombies' : 'plants',
+          campaign: true,
+          campaignLevel: this.campaignLevel,
+          campaignWin: false,
+        });
+        return;
+      }
+
+      // Player wins if enemy base destroyed OR all waves spawned and no enemy units alive
+      const enemyBaseDead = enemyBaseHp <= 0;
+      const allWavesDone = this.waveManager.areAllWavesSpawned();
+      const noEnemyUnits = !this.units.some(u =>
+        u.state.isAlive() && u.state.faction !== this.playerFaction
+      );
+
+      if (enemyBaseDead || (allWavesDone && noEnemyUnits)) {
+        this.gameOver = true;
+        this.scene.start('GameOverScene', {
+          winner: this.playerFaction,
+          campaign: true,
+          campaignLevel: this.campaignLevel,
+          campaignWin: true,
+        });
+      }
+    } else if (this.isFreeplay) {
       // Freeplay: you lose when your base is destroyed
       const playerBaseHp = this.playerFaction === 'plants' ? this.plantBaseHp : this.zombieBaseHp;
       if (playerBaseHp <= 0) {
@@ -265,6 +330,17 @@ export class BattleScene extends Scene {
 
     const id = `unit_${this.nextUnitId++}`;
     const unitState = factory(id);
+
+    // Apply campaign upgrades for the player's units
+    if (this.isCampaign && faction === this.playerFaction) {
+      const save = loadSave(gameOptions.player);
+      const upgradeLevel = save.upgrades[unitKey] ?? 0;
+      if (upgradeLevel > 0) {
+        const { hpMult, damageMult } = getUpgradeMultipliers(upgradeLevel);
+        unitState.applyUpgrade(hpMult, damageMult);
+      }
+    }
+
     unitState.setPosition(row, col);
 
     // Place on grid (only for stationary units)

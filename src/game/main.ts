@@ -8,9 +8,10 @@ import { GAME_WIDTH, GAME_HEIGHT } from './constants';
 import type { Faction } from './types';
 
 export interface GameOptions {
-  mode: 'ai' | 'multiplayer' | 'freeplay';
+  mode: 'ai' | 'multiplayer' | 'freeplay' | 'campaign';
   player: 'lukas' | 'toby';
   roomId?: string;
+  level?: number;
 }
 
 export let gameOptions: GameOptions = { mode: 'ai', player: 'lukas' };

@@ -4,8 +4,8 @@ export class UnitState {
   public readonly id: string;
   public readonly key: string;
   public readonly faction: Faction;
-  public readonly maxHp: number;
-  public readonly damage: number;
+  public maxHp: number;
+  public damage: number;
   public readonly attackSpeed: number;
   public readonly range: number;
   public readonly moveSpeed: number;
@@ -39,4 +39,11 @@ export class UnitState {
   }
   recordAttack(currentTime: number): void { this.lastAttackTime = currentTime; }
   isStationary(): boolean { return this.moveSpeed === 0; }
+
+  /** Apply upgrade multipliers to HP and damage */
+  applyUpgrade(hpMult: number, damageMult: number): void {
+    this.maxHp = Math.round(this.maxHp * hpMult);
+    this.hp = this.maxHp;
+    this.damage = Math.round(this.damage * damageMult);
+  }
 }
