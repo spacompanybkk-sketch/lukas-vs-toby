@@ -64,7 +64,7 @@ import GameLayout from '../layouts/GameLayout.astro';
     import { goOnline, watchOpponent, type Player } from '../firebase/presence';
     import { createGameRoom, joinRoom, watchRoom, sendChallenge, watchChallenge, clearChallenge } from '../firebase/multiplayer';
     import { loadSave, saveSave, getUpgradeCost, getUpgradeMultipliers } from '../game/SaveManager';
-    import { UNIT_STATS, UNIT_COSTS } from '../game/constants';
+    import { UNIT_STATS, UNIT_COSTS, UNIT_UNLOCK_LEVELS } from '../game/constants';
 
     const params = new URLSearchParams(window.location.search);
     const player = params.get('player') as Player | null;
@@ -147,6 +147,8 @@ import GameLayout from '../layouts/GameLayout.astro';
       document.getElementById('toby-dollars')!.textContent = `${currentSave.tobyDollars} Toby Dollars`;
 
       for (const unitKey of allUnitKeys) {
+        const unlockLevel = UNIT_UNLOCK_LEVELS[unitKey] ?? 1;
+        const isLocked = currentSave.currentLevel < unlockLevel;
         const level = currentSave.upgrades[unitKey] ?? 0;
         const maxed = level >= 10;
         const cost = getUpgradeCost(level);
@@ -155,11 +157,15 @@ import GameLayout from '../layouts/GameLayout.astro';
         const { hpMult, damageMult } = getUpgradeMultipliers(level);
 
         const card = document.createElement('div');
-        card.className = 'bg-gray-800 rounded-lg p-3 flex flex-col items-center gap-2';
+        card.className = isLocked
+          ? 'bg-gray-900 rounded-lg p-3 flex flex-col items-center gap-2 opacity-50'
+          : 'bg-gray-800 rounded-lg p-3 flex flex-col items-center gap-2';
 
         const name = document.createElement('div');
         name.className = 'font-bold text-sm';
-        name.textContent = unitLabels[unitKey] || unitKey;
+        name.textContent = isLocked
+          ? `🔒 ${unitLabels[unitKey] || unitKey}`
+          : (unitLabels[unitKey] || unitKey);
         card.appendChild(name);
 
         const levelText = document.createElement('div');
@@ -172,7 +178,12 @@ import GameLayout from '../layouts/GameLayout.astro';
         statsText.textContent = `HP: ${Math.round(stats.hp * hpMult)} | DMG: ${Math.round(stats.damage * damageMult)}`;
         card.appendChild(statsText);
 
-        if (!maxed) {
+        if (isLocked) {
+          const lockLabel = document.createElement('div');
+          lockLabel.className = 'mt-1 text-xs text-gray-500';
+          lockLabel.textContent = `Unlocks at Level ${unlockLevel}`;
+          card.appendChild(lockLabel);
+        } else if (!maxed) {
           const btn = document.createElement('button');
           btn.className = canAfford
             ? 'mt-1 px-3 py-1 bg-yellow-600 hover:bg-yellow-500 rounded text-xs font-bold transition-colors'

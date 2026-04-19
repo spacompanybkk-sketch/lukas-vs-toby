@@ -85,5 +85,32 @@ export const CAMPAIGN_LEVELS = [
   { level: 20, name: 'Final Showdown',    waveInterval: 2500,  firstDelay: 5000,  baseHp: 9000, reward: 1000, maxWaves: 50 },
 ];
 
+// Unit unlock progression — which level unlocks each unit
+// Level 1 = available from the start
+export const UNIT_UNLOCK_LEVELS: Record<string, number> = {
+  // Plants — start with 3, unlock rest through campaign
+  peashooter: 1,    // starter
+  sunflower: 1,     // starter
+  walnutBomb: 1,    // starter
+  potatoMine: 3,
+  kernelPult: 5,
+  mangoPult: 7,
+  avocadoBunker: 10,
+  torchwood: 12,
+  cherryBomber: 15,
+  pumpkinSquash: 18,
+  // Zombies — start with 3, unlock rest through campaign
+  brainEater: 1,    // starter
+  veryFastWalker: 1, // starter
+  skeletonWarrior: 1, // starter
+  desertZombie: 3,
+  skeletonArcher: 5,
+  hotTopic: 7,
+  cowboyZombie: 10,
+  necromancer: 12,
+  tridentZombie: 15,
+  brainRot: 18,
+};
+
 // Losing a level gives 2-3% of the win reward
 export const LOSS_REWARD_PERCENT = 0.025;

@@ -4,7 +4,7 @@ import {
   GRID_ROWS, GRID_COLS, TILE_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y,
   GAME_WIDTH, GAME_HEIGHT, BASE_HP, STARTING_ENERGY,
   ENERGY_TICK_INTERVAL, ENERGY_TICK_AMOUNT, ENERGY_KILL_REWARD,
-  UNIT_COSTS, CAMPAIGN_LEVELS, LOSS_REWARD_PERCENT,
+  UNIT_COSTS, CAMPAIGN_LEVELS, LOSS_REWARD_PERCENT, UNIT_UNLOCK_LEVELS,
 } from '../constants';
 import { GridManager } from '../systems/GridManager';
 import { EnergyManager } from '../systems/EnergyManager';
@@ -186,7 +186,10 @@ export class BattleScene extends Scene {
       { key: 'cowboyZombie', label: 'Cow', cost: UNIT_COSTS.cowboyZombie, textureKey: 'cowboyZombie' },
       { key: 'brainRot', label: 'Rot', cost: UNIT_COSTS.brainRot, textureKey: 'brainRot' },
     ];
-    const unitCards = this.playerFaction === 'plants' ? plantCards : zombieCards;
+    // Filter cards by unlock level — campaign uses current level, other modes unlock all
+    const playerLevel = this.isCampaign ? this.campaignLevel : 20;
+    const allCards = this.playerFaction === 'plants' ? plantCards : zombieCards;
+    const unitCards = allCards.filter(c => (UNIT_UNLOCK_LEVELS[c.key] ?? 1) <= playerLevel);
     this.hud = new HUD(this, unitCards, () => {});
     this.hud.updateEnergy(this.energyManager.getEnergy());
 

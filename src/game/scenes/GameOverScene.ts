@@ -1,5 +1,5 @@
 import { Scene } from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, CAMPAIGN_LEVELS, LOSS_REWARD_PERCENT } from '../constants';
+import { GAME_WIDTH, GAME_HEIGHT, CAMPAIGN_LEVELS, LOSS_REWARD_PERCENT, UNIT_UNLOCK_LEVELS } from '../constants';
 import { loadSave, saveSave } from '../SaveManager';
 import { gameOptions } from '../main';
 
@@ -115,6 +115,21 @@ export class GameOverScene extends Scene {
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, `Balance: ${save.tobyDollars} TD`, {
       fontSize: '16px', color: '#aaaaaa',
     }).setOrigin(0.5);
+
+    // Show newly unlocked units
+    if (won) {
+      const nextLevel = levelNum + 1;
+      const newUnlocks = Object.entries(UNIT_UNLOCK_LEVELS)
+        .filter(([, unlockAt]) => unlockAt === nextLevel)
+        .map(([key]) => key);
+      if (newUnlocks.length > 0) {
+        const names = newUnlocks.join(', ');
+        this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 55, `NEW UNIT UNLOCKED: ${names}!`, {
+          fontSize: '18px', color: '#00ffaa', fontStyle: 'bold',
+          stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5);
+      }
+    }
 
     // Next Level / Retry button
     const actionLabel = won ? 'Next Level' : 'Retry';
