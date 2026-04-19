@@ -24,6 +24,7 @@ import { createBrainEater, BRAIN_EATER_PROJECTILE } from '../entities/zombies/Br
 import { createVeryFastWalker } from '../entities/zombies/VeryFastWalker';
 import { createSkeletonWarrior, SKELETON_BLOCK_COOLDOWN } from '../entities/zombies/SkeletonWarrior';
 import type { Faction } from '../types';
+import { getPlayerFaction } from '../main';
 
 /** Projectile type mapping per unit key */
 const UNIT_PROJECTILE_MAP: Record<string, string> = {
@@ -75,6 +76,7 @@ export class BattleScene extends Scene {
   private lastSunflowerTick: number = 0;
   private skeletonBlockTimers: Map<string, number> = new Map();
 
+  private playerFaction!: Faction;
   private gameOver: boolean = false;
 
   constructor() {
@@ -92,6 +94,7 @@ export class BattleScene extends Scene {
     this.lastSunflowerTick = 0;
     this.skeletonBlockTimers = new Map();
     this.gameOver = false;
+    this.playerFaction = getPlayerFaction();
 
     // Systems
     this.gridManager = new GridManager();
@@ -102,25 +105,33 @@ export class BattleScene extends Scene {
     this.drawGrid();
     this.drawBases();
 
-    // HUD
-    const unitCards: UnitCard[] = [
+    // HUD — show unit cards for the player's faction
+    const plantCards: UnitCard[] = [
       { key: 'peashooter', label: 'Peashooter', cost: UNIT_COSTS.peashooter, textureKey: 'peashooter' },
       { key: 'sunflower', label: 'Sunflower', cost: UNIT_COSTS.sunflower, textureKey: 'sunflower' },
       { key: 'walnutBomb', label: 'WalnutBomb', cost: UNIT_COSTS.walnutBomb, textureKey: 'walnutBomb' },
     ];
+    const zombieCards: UnitCard[] = [
+      { key: 'brainEater', label: 'BrainEater', cost: UNIT_COSTS.brainEater, textureKey: 'brainEater' },
+      { key: 'veryFastWalker', label: 'FastWalker', cost: UNIT_COSTS.veryFastWalker, textureKey: 'veryFastWalker' },
+      { key: 'skeletonWarrior', label: 'Skeleton', cost: UNIT_COSTS.skeletonWarrior, textureKey: 'skeletonWarrior' },
+    ];
+    const unitCards = this.playerFaction === 'plants' ? plantCards : zombieCards;
     this.hud = new HUD(this, unitCards, () => {});
     this.hud.updateEnergy(this.energyManager.getEnergy());
 
-    // Wave manager (AI spawns zombies)
-    this.waveManager = new WaveManager('zombies', (unitKey, row) => {
-      this.spawnUnit(unitKey, row, GRID_COLS - 1, 'zombies');
+    // Wave manager (AI spawns the opposing faction)
+    const aiFaction: Faction = this.playerFaction === 'plants' ? 'zombies' : 'plants';
+    const aiSpawnCol = this.playerFaction === 'plants' ? GRID_COLS - 1 : 0;
+    this.waveManager = new WaveManager(aiFaction, (unitKey, row) => {
+      this.spawnUnit(unitKey, row, aiSpawnCol, aiFaction);
     });
 
-    // Drag drop (player places plants)
+    // Drag drop (player places their faction's units)
     this.dragDropManager = new DragDropManager(
-      this, this.gridManager, this.energyManager, 'plants',
+      this, this.gridManager, this.energyManager, this.playerFaction,
       (unitKey, row, col) => {
-        this.spawnUnit(unitKey, row, col, 'plants');
+        this.spawnUnit(unitKey, row, col, this.playerFaction);
       },
     );
 
@@ -380,7 +391,7 @@ export class BattleScene extends Scene {
       }
 
       // Energy reward for killing enemy units
-      if (dead.state.faction === 'zombies') {
+      if (dead.state.faction !== this.playerFaction) {
         this.energyManager.addKillReward(ENERGY_KILL_REWARD);
       }
 

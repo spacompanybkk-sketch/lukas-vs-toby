@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import { TILE_SIZE } from '../constants';
+import { gameOptions } from '../main';
 
 export class BootScene extends Scene {
   constructor() {
@@ -22,7 +23,11 @@ export class BootScene extends Scene {
   }
 
   create(): void {
-    this.scene.start('BattleScene');
+    if (gameOptions.mode === 'multiplayer') {
+      this.scene.start('MultiplayerBattleScene');
+    } else {
+      this.scene.start('BattleScene');
+    }
   }
 
   private createPlaceholderTexture(
