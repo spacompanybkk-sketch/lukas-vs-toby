@@ -3,6 +3,10 @@ import GameLayout from '../layouts/GameLayout.astro';
 ---
 <GameLayout title="Lobby — Lukas Plants vs Toby Zombies">
   <div id="lobby" class="flex flex-col items-center gap-8">
+    <!-- Player portrait -->
+    <img id="player-portrait" src="/assets/portraits/lukas-lobby.png" alt="Player"
+         class="w-48 h-48 rounded-xl object-cover shadow-lg" />
+
     <h2 class="text-3xl font-bold" id="welcome-text">Loading...</h2>
 
     <div class="flex flex-col items-center gap-4">
@@ -42,6 +46,11 @@ import GameLayout from '../layouts/GameLayout.astro';
     const playerName = player === 'lukas' ? 'Lukas' : 'Toby';
 
     document.getElementById('welcome-text')!.textContent = `Welcome, ${playerName}!`;
+
+    // Set player portrait
+    const portrait = document.getElementById('player-portrait') as HTMLImageElement;
+    portrait.src = `/assets/portraits/${player}-lobby.png`;
+    portrait.alt = playerName;
 
     goOnline(player!);
 
