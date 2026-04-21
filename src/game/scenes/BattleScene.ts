@@ -93,6 +93,7 @@ interface ActiveUnit {
 interface ActiveProjectile {
   sprite: GameObjects.Sprite;
   config: ProjectileConfig;
+  damage: number; // actual damage (scaled by unit level)
   row: number;
 }
 
@@ -530,7 +531,11 @@ export class BattleScene extends Scene {
 
         const aCol = Math.round(a.state.col);
         const bCol = Math.round(b.state.col);
-        if (aCol !== bCol) continue;
+        if (aCol !== bCol) {
+          // Not on same tile — reset timer if they were tracking
+          this.mergeManager.resetOverlap(a.state, b.state);
+          continue;
+        }
 
         const result = this.mergeManager.trackOverlap(a.state, b.state, delta);
         if (result) {
@@ -640,6 +645,7 @@ export class BattleScene extends Scene {
     this.projectiles.push({
       sprite,
       config,
+      damage: attacker.damage, // use attacker's scaled damage (reflects level)
       row: attacker.row,
     });
   }
@@ -678,8 +684,8 @@ export class BattleScene extends Scene {
             }
           }
 
-          // Deal damage
-          unit.state.takeDamage(proj.config.damage);
+          // Deal damage (uses attacker's level-scaled damage)
+          unit.state.takeDamage(proj.damage);
           toRemove.push(i);
           hit = true;
           break;
@@ -693,10 +699,10 @@ export class BattleScene extends Scene {
       const rightEdge = GRID_OFFSET_X + GRID_COLS * TILE_SIZE;
 
       if (proj.config.faction === 'plants' && proj.sprite.x > rightEdge) {
-        this.zombieBaseHp -= proj.config.damage;
+        this.zombieBaseHp -= proj.damage;
         toRemove.push(i);
       } else if (proj.config.faction === 'zombies' && proj.sprite.x < leftEdge) {
-        this.plantBaseHp -= proj.config.damage;
+        this.plantBaseHp -= proj.damage;
         toRemove.push(i);
       }
     }
