@@ -114,3 +114,6 @@ export const UNIT_UNLOCK_LEVELS: Record<string, number> = {
 
 // Losing a level gives 2-3% of the win reward
 export const LOSS_REWARD_PERCENT = 0.025;
+
+// Merge system
+export const MERGE_OVERLAP_DURATION = 1000; // ms for zombie auto-merge
