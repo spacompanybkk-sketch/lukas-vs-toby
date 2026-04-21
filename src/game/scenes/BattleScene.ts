@@ -14,7 +14,8 @@ import { DragDropManager } from '../systems/DragDropManager';
 import { HUD } from '../ui/HUD';
 import type { UnitCard } from '../ui/HUD';
 import { HealthBar } from '../ui/HealthBar';
-import { UnitState } from '../entities/Unit';
+import { UnitState, MAX_UNIT_LEVEL } from '../entities/Unit';
+import { MergeManager } from '../systems/MergeManager';
 import { PROJECTILE_CONFIGS } from '../entities/Projectile';
 import type { ProjectileConfig } from '../entities/Projectile';
 // Plant imports
@@ -86,6 +87,7 @@ interface ActiveUnit {
   state: UnitState;
   sprite: GameObjects.Sprite;
   healthBar: HealthBar;
+  levelBadge?: GameObjects.Text;
 }
 
 interface ActiveProjectile {
@@ -100,6 +102,7 @@ export class BattleScene extends Scene {
   private combatManager!: CombatManager;
   private waveManager!: WaveManager;
   private dragDropManager!: DragDropManager;
+  private mergeManager!: MergeManager;
   private hud!: HUD;
 
   private units: ActiveUnit[] = [];
@@ -156,6 +159,7 @@ export class BattleScene extends Scene {
     this.gridManager = new GridManager();
     this.energyManager = new EnergyManager(STARTING_ENERGY);
     this.combatManager = new CombatManager();
+    this.mergeManager = new MergeManager();
 
     // Draw battlefield
     this.drawGrid();
@@ -214,6 +218,12 @@ export class BattleScene extends Scene {
       this, this.gridManager, this.energyManager, this.playerFaction,
       (unitKey, row, col) => {
         this.spawnUnit(unitKey, row, col, this.playerFaction);
+      },
+      (unitKey, row, col) => {
+        this.mergeUnitAt(unitKey, row, col);
+      },
+      (row, col) => {
+        return this.findStaticUnitAt(row, col);
       },
     );
 
@@ -285,6 +295,9 @@ export class BattleScene extends Scene {
 
     // 4. Zombie movement
     this.updateMovement(delta);
+
+    // 4b. Zombie auto-merge (moving units overlapping same tile)
+    this.checkZombieMerges(delta);
 
     // 5. Combat (ranged fire projectiles, melee deal direct damage)
     this.updateCombat(time);
@@ -386,10 +399,11 @@ export class BattleScene extends Scene {
     const id = `unit_${this.nextUnitId++}`;
     const unitState = factory(id);
 
-    // Apply campaign upgrades for the player's units
-    if (this.isCampaign && faction === this.playerFaction) {
+    // Apply marketplace upgrades for the player's units (all modes)
+    let upgradeLevel = 0;
+    if (faction === this.playerFaction) {
       const save = loadSave(gameOptions.player);
-      const upgradeLevel = save.upgrades[unitKey] ?? 0;
+      upgradeLevel = save.upgrades[unitKey] ?? 0;
       if (upgradeLevel > 0) {
         const { hpMult, damageMult } = getUpgradeMultipliers(upgradeLevel);
         unitState.applyUpgrade(hpMult, damageMult);
@@ -410,7 +424,141 @@ export class BattleScene extends Scene {
     const healthBar = new HealthBar(this, x, y - TILE_SIZE / 2 - 4);
     healthBar.update(unitState.hp, unitState.maxHp);
 
-    this.units.push({ state: unitState, sprite, healthBar });
+    // Level badge (will be populated by updateLevelBadge when units level up via merge)
+    let levelBadge: GameObjects.Text | undefined;
+
+    this.units.push({ state: unitState, sprite, healthBar, levelBadge });
+  }
+
+  /** Find a stationary unit at a specific grid cell (for merge targeting) */
+  private findStaticUnitAt(row: number, col: number): UnitState | null {
+    const unitId = this.gridManager.getUnitAt(row, col);
+    if (!unitId) return null;
+    const unit = this.units.find(u => u.state.id === unitId);
+    return unit?.state ?? null;
+  }
+
+  /** Merge a new unit into an existing one at (row, col) via drag-drop */
+  private mergeUnitAt(unitKey: string, row: number, col: number): void {
+    const existing = this.units.find(u =>
+      u.state.isAlive() && u.state.key === unitKey &&
+      u.state.row === row && Math.round(u.state.col) === col
+    );
+    if (!existing) return;
+
+    // Create a temporary unit to act as the "incoming" for merge
+    const factory = UNIT_FACTORIES[unitKey];
+    if (!factory) return;
+    const tempUnit = factory(`merge_temp_${this.nextUnitId++}`);
+
+    if (!this.mergeManager.canMerge(existing.state, tempUnit)) return;
+
+    const result = this.mergeManager.merge(existing.state, tempUnit);
+
+    // Swap sprite texture to evolved version
+    const newKey = result.newTextureKey;
+    if (this.textures.exists(newKey)) {
+      existing.sprite.setTexture(newKey);
+    }
+    existing.sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+
+    // Update or create level badge
+    this.updateLevelBadge(existing);
+
+    // Pulse animation
+    this.tweens.add({
+      targets: existing.sprite,
+      scaleX: existing.sprite.scaleX * 1.3,
+      scaleY: existing.sprite.scaleY * 1.3,
+      duration: 150,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+    });
+  }
+
+  /** Update or create the level badge for a unit */
+  private updateLevelBadge(unit: ActiveUnit): void {
+    const level = unit.state.level;
+    if (level <= 1) return;
+
+    const { x, y } = this.gridManager.toPixel(unit.state.row, unit.state.col);
+    const badgeColors: Record<number, string> = {
+      2: '#CD7F32',
+      3: '#C0C0C0',
+      4: '#FFD700',
+      5: '#B265FF',
+    };
+    const color = badgeColors[level] ?? '#ffffff';
+    const stars = '\u2605'.repeat(level - 1);
+
+    if (unit.levelBadge) {
+      unit.levelBadge.setText(stars);
+      unit.levelBadge.setColor(color);
+      unit.levelBadge.setPosition(x + TILE_SIZE / 2 - 4, y - TILE_SIZE / 2 + 2);
+    } else {
+      unit.levelBadge = this.add.text(
+        x + TILE_SIZE / 2 - 4,
+        y - TILE_SIZE / 2 + 2,
+        stars,
+        { fontSize: '10px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 2 }
+      ).setOrigin(1, 0).setDepth(10);
+    }
+  }
+
+  /** Check for zombie auto-merges: same-type moving units on the same tile */
+  private checkZombieMerges(delta: number): void {
+    const movingUnits = this.units.filter(u =>
+      u.state.isAlive() && !u.state.isStationary() && u.state.level < MAX_UNIT_LEVEL
+    );
+
+    for (let i = 0; i < movingUnits.length; i++) {
+      for (let j = i + 1; j < movingUnits.length; j++) {
+        const a = movingUnits[i];
+        const b = movingUnits[j];
+
+        if (a.state.key !== b.state.key) continue;
+        if (a.state.faction !== b.state.faction) continue;
+        if (a.state.row !== b.state.row) continue;
+
+        const aCol = Math.round(a.state.col);
+        const bCol = Math.round(b.state.col);
+        if (aCol !== bCol) continue;
+
+        const result = this.mergeManager.trackOverlap(a.state, b.state, delta);
+        if (result) {
+          const consumed = result.consumed === a.state ? a : b;
+          const survivor = result.survivor === a.state ? a : b;
+
+          // Swap survivor sprite texture
+          const newKey = result.newTextureKey;
+          if (this.textures.exists(newKey)) {
+            survivor.sprite.setTexture(newKey);
+          }
+          survivor.sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+
+          // Update level badge
+          this.updateLevelBadge(survivor);
+
+          // Pulse animation
+          this.tweens.add({
+            targets: survivor.sprite,
+            scaleX: survivor.sprite.scaleX * 1.3,
+            scaleY: survivor.sprite.scaleY * 1.3,
+            duration: 150,
+            yoyo: true,
+            ease: 'Quad.easeOut',
+          });
+
+          // Destroy consumed unit
+          consumed.state.takeDamage(Infinity);
+          consumed.sprite.destroy();
+          consumed.healthBar.destroy();
+          if (consumed.levelBadge) consumed.levelBadge.destroy();
+
+          return; // Process one merge per frame to avoid iterator issues
+        }
+      }
+    }
   }
 
   private updateMovement(delta: number): void {
@@ -440,6 +588,9 @@ export class BattleScene extends Scene {
       // Update sprite position
       const { x, y } = this.gridManager.toPixel(state.row, state.col);
       sprite.setPosition(x, y);
+      if (unit.levelBadge) {
+        unit.levelBadge.setPosition(x + TILE_SIZE / 2 - 8, y - TILE_SIZE / 2 + 2);
+      }
     }
   }
 
@@ -582,7 +733,21 @@ export class BattleScene extends Scene {
     for (const dead of deadUnits) {
       // WalnutBomb explosion on death
       if (dead.state.key === 'walnutBomb') {
-        this.walnutExplosion(dead.state);
+        this.aoeExplosion(dead.state, WALNUT_EXPLOSION_DAMAGE * dead.state.level, WALNUT_EXPLOSION_RADIUS);
+        const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
+        this.showExplosion(x, y);
+      }
+
+      // CherryBomber explosion on death
+      if (dead.state.key === 'cherryBomber') {
+        this.aoeExplosion(dead.state, CHERRY_EXPLOSION_DAMAGE * dead.state.level, CHERRY_EXPLOSION_RADIUS);
+        const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
+        this.showExplosion(x, y);
+      }
+
+      // PotatoMine explosion on death
+      if (dead.state.key === 'potatoMine') {
+        this.aoeExplosion(dead.state, POTATO_MINE_EXPLOSION_DAMAGE * dead.state.level, POTATO_MINE_EXPLOSION_RADIUS);
         const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
         this.showExplosion(x, y);
       }
@@ -599,25 +764,27 @@ export class BattleScene extends Scene {
 
       // Clean up skeleton block timer
       this.skeletonBlockTimers.delete(dead.state.id);
+      this.mergeManager.clearTimers(dead.state.id);
 
       // Destroy visuals
       dead.sprite.destroy();
       dead.healthBar.destroy();
+      if (dead.levelBadge) dead.levelBadge.destroy();
     }
 
     this.units = this.units.filter(u => u.state.isAlive());
   }
 
-  private walnutExplosion(walnut: UnitState): void {
+  private aoeExplosion(source: UnitState, damage: number, radius: number): void {
     for (const unit of this.units) {
       if (!unit.state.isAlive()) continue;
-      if (unit.state.faction === walnut.faction) continue;
+      if (unit.state.faction === source.faction) continue;
 
-      const rowDist = Math.abs(unit.state.row - walnut.row);
-      const colDist = Math.abs(unit.state.col - walnut.col);
+      const rowDist = Math.abs(unit.state.row - source.row);
+      const colDist = Math.abs(unit.state.col - source.col);
 
-      if (rowDist <= WALNUT_EXPLOSION_RADIUS && colDist <= WALNUT_EXPLOSION_RADIUS) {
-        unit.state.takeDamage(WALNUT_EXPLOSION_DAMAGE);
+      if (rowDist <= radius && colDist <= radius) {
+        unit.state.takeDamage(damage);
       }
     }
   }
