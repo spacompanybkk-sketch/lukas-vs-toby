@@ -370,13 +370,21 @@ export class BattleScene extends Scene {
         });
       }
     } else if (this.isFreeplay) {
-      // Freeplay: you lose when your base is destroyed
+      // Freeplay: you lose when your base is destroyed, you win when enemy base is destroyed
       const playerBaseHp = this.playerFaction === 'plants' ? this.plantBaseHp : this.zombieBaseHp;
+      const enemyBaseHp = this.playerFaction === 'plants' ? this.zombieBaseHp : this.plantBaseHp;
+      const waves = this.waveManager.getWaveCount();
       if (playerBaseHp <= 0) {
         this.gameOver = true;
-        const waves = this.waveManager.getWaveCount();
         this.scene.start('GameOverScene', {
           winner: this.playerFaction === 'plants' ? 'zombies' : 'plants',
+          freeplay: true,
+          waves,
+        });
+      } else if (enemyBaseHp <= 0) {
+        this.gameOver = true;
+        this.scene.start('GameOverScene', {
+          winner: this.playerFaction,
           freeplay: true,
           waves,
         });
@@ -728,45 +736,39 @@ export class BattleScene extends Scene {
   }
 
   private cleanupDeadUnits(): void {
-    const deadUnits = this.units.filter(u => !u.state.isAlive());
-
-    for (const dead of deadUnits) {
-      // WalnutBomb explosion on death
+    // First pass: handle explosions (which may kill additional units)
+    const explodingUnits = this.units.filter(u => !u.state.isAlive() &&
+      (u.state.key === 'walnutBomb' || u.state.key === 'cherryBomber' || u.state.key === 'potatoMine')
+    );
+    for (const dead of explodingUnits) {
       if (dead.state.key === 'walnutBomb') {
         this.aoeExplosion(dead.state, WALNUT_EXPLOSION_DAMAGE * dead.state.level, WALNUT_EXPLOSION_RADIUS);
         const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
         this.showExplosion(x, y);
       }
-
-      // CherryBomber explosion on death
       if (dead.state.key === 'cherryBomber') {
         this.aoeExplosion(dead.state, CHERRY_EXPLOSION_DAMAGE * dead.state.level, CHERRY_EXPLOSION_RADIUS);
         const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
         this.showExplosion(x, y);
       }
-
-      // PotatoMine explosion on death
       if (dead.state.key === 'potatoMine') {
         this.aoeExplosion(dead.state, POTATO_MINE_EXPLOSION_DAMAGE * dead.state.level, POTATO_MINE_EXPLOSION_RADIUS);
         const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
         this.showExplosion(x, y);
       }
+    }
 
-      // Energy reward for killing enemy units
+    // Second pass: clean up ALL dead units (including those killed by explosions)
+    const deadUnits = this.units.filter(u => !u.state.isAlive());
+    for (const dead of deadUnits) {
       if (dead.state.faction !== this.playerFaction) {
         this.energyManager.addKillReward(ENERGY_KILL_REWARD);
       }
-
-      // Remove from grid
       if (dead.state.isStationary()) {
         this.gridManager.remove(dead.state.row, Math.round(dead.state.col));
       }
-
-      // Clean up skeleton block timer
       this.skeletonBlockTimers.delete(dead.state.id);
       this.mergeManager.clearTimers(dead.state.id);
-
-      // Destroy visuals
       dead.sprite.destroy();
       dead.healthBar.destroy();
       if (dead.levelBadge) dead.levelBadge.destroy();
