@@ -1,10 +1,14 @@
 import { Scene, Input, GameObjects } from 'phaser';
 import { GridManager } from './GridManager';
 import { EnergyManager } from './EnergyManager';
-import { UNIT_COSTS } from '../constants';
+import { UNIT_COSTS, UNIT_STATS } from '../constants';
+import { MAX_UNIT_LEVEL } from '../entities/Unit';
+import type { UnitState } from '../entities/Unit';
 import type { Faction } from '../types';
 
 export type PlaceUnitCallback = (unitKey: string, row: number, col: number) => void;
+export type MergeUnitCallback = (unitKey: string, row: number, col: number) => void;
+export type FindUnitAtCallback = (row: number, col: number) => UnitState | null;
 
 export class DragDropManager {
   private scene: Scene;
@@ -12,16 +16,21 @@ export class DragDropManager {
   private energyManager: EnergyManager;
   private playerFaction: Faction;
   private onPlaceUnit: PlaceUnitCallback;
+  private onMergeUnit: MergeUnitCallback;
+  private findUnitAt: FindUnitAtCallback;
   private dragPreview: GameObjects.Sprite | null = null;
   private currentDragKey: string | null = null;
 
   constructor(
     scene: Scene, gridManager: GridManager, energyManager: EnergyManager,
     playerFaction: Faction, onPlaceUnit: PlaceUnitCallback,
+    onMergeUnit: MergeUnitCallback, findUnitAt: FindUnitAtCallback,
   ) {
     this.scene = scene; this.gridManager = gridManager;
     this.energyManager = energyManager; this.playerFaction = playerFaction;
     this.onPlaceUnit = onPlaceUnit;
+    this.onMergeUnit = onMergeUnit;
+    this.findUnitAt = findUnitAt;
     this.setupListeners();
   }
 
@@ -44,14 +53,30 @@ export class DragDropManager {
     this.scene.input.on('dragend', (pointer: Input.Pointer) => {
       if (!this.dragPreview || !this.currentDragKey) { this.cleanup(); return; }
       const { row, col } = this.gridManager.toGrid(pointer.x, pointer.y);
-      // Plants can place on any tile; zombies can only place on their first column (col 9)
       const validCol = this.playerFaction === 'plants' ? col >= 0 && col <= 9 : col === 9;
-      if (this.gridManager.isValid(row, col) && validCol && this.gridManager.isEmpty(row, col)) {
+
+      if (!this.gridManager.isValid(row, col) || !validCol) { this.cleanup(); return; }
+
+      const isMoving = (UNIT_STATS[this.currentDragKey]?.moveSpeed ?? 0) > 0;
+
+      if (isMoving || this.gridManager.isEmpty(row, col)) {
+        // Empty tile (or moving unit) — place normally
         const cost = UNIT_COSTS[this.currentDragKey];
         if (this.energyManager.spend(cost)) {
           this.onPlaceUnit(this.currentDragKey, row, col);
         }
+      } else {
+        // Tile occupied — check for merge
+        const existing = this.findUnitAt(row, col);
+        if (existing && existing.key === this.currentDragKey && existing.level < MAX_UNIT_LEVEL) {
+          const cost = UNIT_COSTS[this.currentDragKey];
+          if (this.energyManager.spend(cost)) {
+            this.onMergeUnit(this.currentDragKey, row, col);
+          }
+        }
+        // Otherwise: blocked (different type or max level)
       }
+
       this.cleanup();
     });
   }
