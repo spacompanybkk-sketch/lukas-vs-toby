@@ -32,6 +32,19 @@ export class BootScene extends Scene {
     this.load.image('cowboyZombie', '/assets/sprites/cowboyZombie.png');
     this.load.image('brainRot', '/assets/sprites/brainRot.png');
 
+    // Load level-up evolution sprites (L2-L5 for all units)
+    const allUnitKeys = [
+      'peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'cherryBomber',
+      'avocadoBunker', 'mangoPult', 'kernelPult', 'pumpkinSquash', 'torchwood',
+      'brainEater', 'veryFastWalker', 'skeletonWarrior', 'skeletonArcher',
+      'necromancer', 'hotTopic', 'tridentZombie', 'desertZombie', 'cowboyZombie', 'brainRot',
+    ];
+    for (const unitKey of allUnitKeys) {
+      for (let lvl = 2; lvl <= 5; lvl++) {
+        this.load.image(`${unitKey}-L${lvl}`, `/assets/sprites/${unitKey}-L${lvl}.png`);
+      }
+    }
+
     // Projectiles
     this.load.image('pea', '/assets/sprites/pea.png');
     this.load.image('kernel', '/assets/sprites/kernel.png');
