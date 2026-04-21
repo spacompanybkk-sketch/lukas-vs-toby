@@ -204,11 +204,17 @@ export class BattleScene extends Scene {
       ? { interval: levelConfig.waveInterval, firstDelay: levelConfig.firstDelay, maxWaves: levelConfig.maxWaves }
       : undefined;
     this.waveManager = new WaveManager(aiFaction, (unitKey, row) => {
+      // AI merge logic: chance to level up an existing same-type unit instead of spawning fresh
+      // Merge chance increases with wave count: starts at 10%, caps at 50%
+      const mergeChance = Math.min(0.1 + this.waveManager.getWaveCount() * 0.02, 0.5);
+      if (Math.random() < mergeChance) {
+        const merged = this.tryAiMerge(unitKey, aiFaction);
+        if (merged) return;
+      }
+
       if (aiFaction === 'zombies') {
-        // Zombies always spawn on the rightmost column
         this.spawnUnit(unitKey, row, GRID_COLS - 1, aiFaction);
       } else {
-        // AI plants spawn on a random column (plants can go anywhere)
         const col = Math.floor(Math.random() * GRID_COLS);
         this.spawnUnit(unitKey, row, col, aiFaction);
       }
@@ -437,6 +443,52 @@ export class BattleScene extends Scene {
     let levelBadge: GameObjects.Text | undefined;
 
     this.units.push({ state: unitState, sprite, healthBar, levelBadge });
+  }
+
+  /** AI attempts to merge a spawned unit into an existing same-type unit on the field.
+   *  Prefers merging into lower-level units. Returns true if merge happened. */
+  private tryAiMerge(unitKey: string, faction: Faction): boolean {
+    // Find all alive same-type units belonging to this faction that can be leveled
+    const candidates = this.units.filter(u =>
+      u.state.isAlive() && u.state.key === unitKey &&
+      u.state.faction === faction && u.state.level < MAX_UNIT_LEVEL
+    );
+    if (candidates.length === 0) return false;
+
+    // Pick the lowest-level candidate (AI prioritizes building up weaker units)
+    candidates.sort((a, b) => a.state.level - b.state.level);
+    const target = candidates[0];
+
+    // Create temp unit for merge
+    const factory = UNIT_FACTORIES[unitKey];
+    if (!factory) return false;
+    const tempUnit = factory(`ai_merge_${this.nextUnitId++}`);
+
+    if (!this.mergeManager.canMerge(target.state, tempUnit)) return false;
+
+    const result = this.mergeManager.merge(target.state, tempUnit);
+
+    // Swap sprite texture
+    const newKey = result.newTextureKey;
+    if (this.textures.exists(newKey)) {
+      target.sprite.setTexture(newKey);
+    }
+    target.sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+
+    // Update level badge
+    this.updateLevelBadge(target);
+
+    // Pulse animation
+    this.tweens.add({
+      targets: target.sprite,
+      scaleX: target.sprite.scaleX * 1.3,
+      scaleY: target.sprite.scaleY * 1.3,
+      duration: 150,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+    });
+
+    return true;
   }
 
   /** Find a stationary unit at a specific grid cell (for merge targeting) */
