@@ -2,6 +2,25 @@
 import GameLayout from '../layouts/GameLayout.astro';
 ---
 <GameLayout title="Battle — Lukas Plants vs Toby Zombies">
+  <!-- Faction picker for freeplay mode -->
+  <div id="faction-picker" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-gray-900/95">
+    <div class="flex flex-col items-center gap-6">
+      <h2 class="text-3xl font-bold text-white">Free Play — Choose Your Side</h2>
+      <div class="flex gap-6">
+        <button id="pick-plants"
+                class="px-10 py-8 bg-green-700 hover:bg-green-600 rounded-xl text-2xl font-bold text-white transition-colors flex flex-col items-center gap-2">
+          <span class="text-4xl">🌱</span>
+          Plants
+        </button>
+        <button id="pick-zombies"
+                class="px-10 py-8 bg-purple-700 hover:bg-purple-600 rounded-xl text-2xl font-bold text-white transition-colors flex flex-col items-center gap-2">
+          <span class="text-4xl">🧟</span>
+          Zombies
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="game-container" class="mx-auto" style="width: 100%; height: 100vh;"></div>
 
   <script>
@@ -10,10 +29,31 @@ import GameLayout from '../layouts/GameLayout.astro';
     const params = new URLSearchParams(window.location.search);
     const mode = (params.get('mode') || 'ai') as 'ai' | 'multiplayer' | 'freeplay' | 'campaign';
     const player = (params.get('player') || 'lukas') as 'lukas' | 'toby';
-    const faction = (params.get('faction') || 'plants') as 'plants' | 'zombies';
     const roomId = params.get('room') || undefined;
     const level = params.get('level') ? parseInt(params.get('level')!, 10) : undefined;
 
-    launchGame('game-container', { mode, player, faction, roomId, level });
+    function startGame(faction: 'plants' | 'zombies'): void {
+      launchGame('game-container', { mode, player, faction, roomId, level });
+    }
+
+    if (mode === 'freeplay') {
+      // Show faction picker for freeplay
+      const picker = document.getElementById('faction-picker')!;
+      picker.classList.remove('hidden');
+
+      document.getElementById('pick-plants')!.addEventListener('click', () => {
+        picker.classList.add('hidden');
+        startGame('plants');
+      });
+
+      document.getElementById('pick-zombies')!.addEventListener('click', () => {
+        picker.classList.add('hidden');
+        startGame('zombies');
+      });
+    } else {
+      // Other modes: use faction from URL param
+      const faction = (params.get('faction') || 'plants') as 'plants' | 'zombies';
+      startGame(faction);
+    }
   </script>
 </GameLayout>

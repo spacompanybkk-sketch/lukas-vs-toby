@@ -41,10 +41,10 @@ export const UNIT_COSTS: Record<string, number> = {
 export const UNIT_STATS: Record<string, { hp: number; damage: number; attackSpeed: number; range: number; moveSpeed: number }> = {
   peashooter:      { hp: 180, damage: 7,  attackSpeed: 2700, range: 9, moveSpeed: 0 },
   sunflower:       { hp: 100, damage: 5,  attackSpeed: 3000, range: 3, moveSpeed: 0 },
-  walnutBomb:      { hp: 800, damage: 150, attackSpeed: 0,    range: 0, moveSpeed: 0 },
+  walnutBomb:      { hp: 640, damage: 150, attackSpeed: 0,    range: 0, moveSpeed: 0 },
   potatoMine:      { hp: 50,  damage: 200, attackSpeed: 0,    range: 0, moveSpeed: 0 },
   cherryBomber:    { hp: 50,  damage: 300, attackSpeed: 0,    range: 0, moveSpeed: 0 },
-  avocadoBunker:   { hp: 1200, damage: 0,  attackSpeed: 0,    range: 0, moveSpeed: 0 },
+  avocadoBunker:   { hp: 960, damage: 0,  attackSpeed: 0,    range: 0, moveSpeed: 0 },
   mangoPult:       { hp: 120, damage: 15, attackSpeed: 2500, range: 9, moveSpeed: 0 },
   kernelPult:      { hp: 120, damage: 8,  attackSpeed: 2000, range: 9, moveSpeed: 0 },
   pumpkinSquash:   { hp: 200, damage: 50, attackSpeed: 3000, range: 3, moveSpeed: 0 },
