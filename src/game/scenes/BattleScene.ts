@@ -1,5 +1,7 @@
 import { Scene, GameObjects, Physics } from 'phaser';
 import * as Phaser from 'phaser';
+import { TIER_COLORS, PALETTE, FONT_HEADING } from '../ui/palette';
+import { chompPlant, evaporateZombie, explosionBurst } from '../fx/DeathFx';
 import {
   GRID_ROWS, GRID_COLS, TILE_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y,
   GAME_WIDTH, GAME_HEIGHT, BASE_HP, STARTING_ENERGY,
@@ -88,6 +90,7 @@ interface ActiveUnit {
   sprite: GameObjects.Sprite;
   healthBar: HealthBar;
   levelBadge?: GameObjects.Text;
+  levelBadgeGfx?: GameObjects.Graphics;
 }
 
 interface ActiveProjectile {
@@ -244,36 +247,53 @@ export class BattleScene extends Scene {
     this.zombieBaseBar = new HealthBar(this, zombieBaseX, barY, 60, 8);
     this.zombieBaseBar.update(this.zombieBaseHp, maxBaseHp);
 
-    // Quit button
-    const quitBtn = this.add.text(GAME_WIDTH - 16, 16, 'QUIT', {
-      fontSize: '16px',
-      color: '#ff4444',
-      backgroundColor: '#333333',
-      padding: { x: 8, y: 4 },
-    }).setOrigin(1, 0).setInteractive();
+    // Quit button — parchment style
+    const quitBg = this.add.graphics().setDepth(20);
+    quitBg.fillStyle(PALETTE.parchment);
+    quitBg.fillRoundedRect(GAME_WIDTH - 80, 10, 66, 32, 4);
+    quitBg.lineStyle(2, PALETTE.woodDark);
+    quitBg.strokeRoundedRect(GAME_WIDTH - 80, 10, 66, 32, 4);
+
+    const quitBtn = this.add.text(GAME_WIDTH - 47, 26, 'QUIT', {
+      fontFamily: FONT_HEADING,
+      fontSize: '10px',
+      color: '#E63946',
+    }).setOrigin(0.5).setDepth(21).setInteractive();
 
     quitBtn.on('pointerdown', () => {
       this.gameOver = true;
       window.location.href = '/';
     });
 
-    // Wave counter (visible in all modes, prominent in freeplay/campaign)
-    const waveStyle = this.isFreeplay || this.isCampaign;
-    this.waveText = this.add.text(GAME_WIDTH / 2, 16, '', {
-      fontSize: waveStyle ? '20px' : '14px',
-      color: waveStyle ? '#ffaa00' : '#888888',
-      fontStyle: 'bold',
-    }).setOrigin(0.5, 0);
+    // Wave banner — parchment box top-center
+    const bannerW = 240;
+    const bannerX = GAME_WIDTH / 2 - bannerW / 2;
+    const bannerBg = this.add.graphics().setDepth(20);
+    bannerBg.fillStyle(PALETTE.parchment, 0.9);
+    bannerBg.fillRoundedRect(bannerX, 6, bannerW, 52, 6);
+    bannerBg.lineStyle(2, PALETTE.woodDark);
+    bannerBg.strokeRoundedRect(bannerX, 6, bannerW, 52, 6);
 
     // Level name for campaign
-    this.levelText = this.add.text(GAME_WIDTH / 2, 40, '', {
-      fontSize: '12px', color: '#ffaa00',
-    }).setOrigin(0.5, 0);
+    this.levelText = this.add.text(GAME_WIDTH / 2, 14, '', {
+      fontFamily: FONT_HEADING,
+      fontSize: '7px',
+      color: '#4D2F18',
+    }).setOrigin(0.5, 0).setDepth(21);
+
+    // Wave counter
+    this.waveText = this.add.text(GAME_WIDTH / 2, 30, '', {
+      fontFamily: FONT_NUMERIC,
+      fontSize: '22px',
+      color: '#D6440F',
+    }).setOrigin(0.5, 0).setDepth(21);
 
     if (this.isFreeplay) {
-      this.levelText.setText('FREE PLAY — Survive!');
+      this.levelText.setText('FREE PLAY');
     } else if (this.isCampaign && levelConfig) {
-      this.levelText.setText(`Level ${levelConfig.level}: ${levelConfig.name}`);
+      this.levelText.setText(`LVL ${levelConfig.level}: ${levelConfig.name.toUpperCase()}`);
+    } else {
+      this.levelText.setText('VS AI');
     }
   }
 
@@ -537,32 +557,48 @@ export class BattleScene extends Scene {
     });
   }
 
-  /** Update or create the level badge for a unit */
+  /** Update or create the level badge for a unit (circle with tier color) */
   private updateLevelBadge(unit: ActiveUnit): void {
     const level = unit.state.level;
-    if (level <= 1) return;
+    if (level <= 1) {
+      // Remove badge if downgraded (shouldn't happen, but safe)
+      if (unit.levelBadge) { unit.levelBadge.destroy(); unit.levelBadge = undefined; }
+      if (unit.levelBadgeGfx) { unit.levelBadgeGfx.destroy(); unit.levelBadgeGfx = undefined; }
+      return;
+    }
 
     const { x, y } = this.gridManager.toPixel(unit.state.row, unit.state.col);
-    const badgeColors: Record<number, string> = {
-      2: '#CD7F32',
-      3: '#C0C0C0',
-      4: '#FFD700',
-      5: '#B265FF',
-    };
-    const color = badgeColors[level] ?? '#ffffff';
-    const stars = '\u2605'.repeat(level - 1);
+    const badgeX = x + TILE_SIZE / 2 - 10;
+    const badgeY = y - TILE_SIZE / 2 + 10;
+    const tierColor = TIER_COLORS[level - 1] ?? 0xffffff;
+    const radius = 10;
 
-    if (unit.levelBadge) {
-      unit.levelBadge.setText(stars);
-      unit.levelBadge.setColor(color);
-      unit.levelBadge.setPosition(x + TILE_SIZE / 2 - 4, y - TILE_SIZE / 2 + 2);
+    // Graphics circle
+    if (unit.levelBadgeGfx) {
+      unit.levelBadgeGfx.clear();
     } else {
-      unit.levelBadge = this.add.text(
-        x + TILE_SIZE / 2 - 4,
-        y - TILE_SIZE / 2 + 2,
-        stars,
-        { fontSize: '10px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 2 }
-      ).setOrigin(1, 0).setDepth(10);
+      unit.levelBadgeGfx = this.add.graphics().setDepth(11);
+    }
+    // Drop shadow
+    unit.levelBadgeGfx.fillStyle(PALETTE.ink, 0.5);
+    unit.levelBadgeGfx.fillCircle(badgeX + 1, badgeY + 1, radius);
+    // Circle fill
+    unit.levelBadgeGfx.fillStyle(tierColor);
+    unit.levelBadgeGfx.fillCircle(badgeX, badgeY, radius);
+    // Ink border
+    unit.levelBadgeGfx.lineStyle(2, PALETTE.ink);
+    unit.levelBadgeGfx.strokeCircle(badgeX, badgeY, radius);
+
+    // Level number text
+    if (unit.levelBadge) {
+      unit.levelBadge.setText(`${level}`);
+      unit.levelBadge.setPosition(badgeX, badgeY);
+    } else {
+      unit.levelBadge = this.add.text(badgeX, badgeY, `${level}`, {
+        fontFamily: FONT_HEADING,
+        fontSize: '9px',
+        color: '#1A1410',
+      }).setOrigin(0.5).setDepth(12);
     }
   }
 
@@ -619,6 +655,7 @@ export class BattleScene extends Scene {
           consumed.sprite.destroy();
           consumed.healthBar.destroy();
           if (consumed.levelBadge) consumed.levelBadge.destroy();
+          if (consumed.levelBadgeGfx) consumed.levelBadgeGfx.destroy();
 
           return; // Process one merge per frame to avoid iterator issues
         }
@@ -653,8 +690,9 @@ export class BattleScene extends Scene {
       // Update sprite position
       const { x, y } = this.gridManager.toPixel(state.row, state.col);
       sprite.setPosition(x, y);
-      if (unit.levelBadge) {
-        unit.levelBadge.setPosition(x + TILE_SIZE / 2 - 8, y - TILE_SIZE / 2 + 2);
+      if (unit.levelBadge || unit.levelBadgeGfx) {
+        // Redraw badge at new position for moving units
+        this.updateLevelBadge(unit);
       }
     }
   }
@@ -827,9 +865,22 @@ export class BattleScene extends Scene {
       }
       this.skeletonBlockTimers.delete(dead.state.id);
       this.mergeManager.clearTimers(dead.state.id);
+
+      // Death FX
+      const { x, y } = this.gridManager.toPixel(dead.state.row, dead.state.col);
+      const isExplosive = dead.state.key === 'walnutBomb' || dead.state.key === 'cherryBomber' || dead.state.key === 'potatoMine';
+      if (isExplosive) {
+        explosionBurst(this, x, y);
+      } else if (dead.state.faction === 'plants') {
+        chompPlant(this, x, y);
+      } else {
+        evaporateZombie(this, x, y);
+      }
+
       dead.sprite.destroy();
       dead.healthBar.destroy();
       if (dead.levelBadge) dead.levelBadge.destroy();
+      if (dead.levelBadgeGfx) dead.levelBadgeGfx.destroy();
     }
 
     this.units = this.units.filter(u => u.state.isAlive());

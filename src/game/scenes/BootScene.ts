@@ -78,6 +78,15 @@ export class BootScene extends Scene {
 
     // Load VS splash
     this.load.image('vsSplash', '/assets/portraits/vs-splash.png');
+
+    // UI frames and coins
+    this.load.image('cardFramePlant', '/assets/ui/card-frame-plant.png');
+    this.load.image('cardFrameZombie', '/assets/ui/card-frame-zombie.png');
+    this.load.image('coinLukie', '/assets/ui/coin-lukie.png');
+    this.load.image('coinToby', '/assets/ui/coin-toby.png');
+
+    // Logo
+    this.load.image('logo', '/assets/landing/logo.png');
   }
 
   create(): void {
