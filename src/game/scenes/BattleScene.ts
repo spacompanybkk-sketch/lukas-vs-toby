@@ -1,6 +1,6 @@
 import { Scene, GameObjects, Physics } from 'phaser';
 import * as Phaser from 'phaser';
-import { TIER_COLORS, PALETTE, FONT_HEADING } from '../ui/palette';
+import { TIER_COLORS, PALETTE, FONT_HEADING, FONT_NUMERIC } from '../ui/palette';
 import { chompPlant, evaporateZombie, explosionBurst } from '../fx/DeathFx';
 import {
   GRID_ROWS, GRID_COLS, TILE_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y,
@@ -206,20 +206,22 @@ export class BattleScene extends Scene {
     const waveOptions: WaveManagerOptions | undefined = this.isCampaign && levelConfig
       ? { interval: levelConfig.waveInterval, firstDelay: levelConfig.firstDelay, maxWaves: levelConfig.maxWaves }
       : undefined;
-    this.waveManager = new WaveManager(aiFaction, (unitKey, row) => {
+    this.waveManager = new WaveManager(aiFaction, (unitKey, _row) => {
       // AI merge logic: chance to level up an existing same-type unit instead of spawning fresh
-      // Merge chance increases with wave count: starts at 10%, caps at 50%
       const mergeChance = Math.min(0.1 + this.waveManager.getWaveCount() * 0.02, 0.5);
       if (Math.random() < mergeChance) {
         const merged = this.tryAiMerge(unitKey, aiFaction);
         if (merged) return;
       }
 
+      // Threat-weighted lane selection: spawn in lanes where enemies are closest to AI's base
+      const spawnRow = this.pickThreatWeightedRow(aiFaction);
+
       if (aiFaction === 'zombies') {
-        this.spawnUnit(unitKey, row, GRID_COLS - 1, aiFaction);
+        this.spawnUnit(unitKey, spawnRow, GRID_COLS - 1, aiFaction);
       } else {
         const col = Math.floor(Math.random() * GRID_COLS);
-        this.spawnUnit(unitKey, row, col, aiFaction);
+        this.spawnUnit(unitKey, spawnRow, col, aiFaction);
       }
     }, waveOptions);
 
@@ -250,9 +252,9 @@ export class BattleScene extends Scene {
     // Quit button — parchment style
     const quitBg = this.add.graphics().setDepth(20);
     quitBg.fillStyle(PALETTE.parchment);
-    quitBg.fillRoundedRect(GAME_WIDTH - 80, 10, 66, 32, 4);
+    quitBg.fillRect(GAME_WIDTH - 80, 10, 66, 32);
     quitBg.lineStyle(2, PALETTE.woodDark);
-    quitBg.strokeRoundedRect(GAME_WIDTH - 80, 10, 66, 32, 4);
+    quitBg.strokeRect(GAME_WIDTH - 80, 10, 66, 32);
 
     const quitBtn = this.add.text(GAME_WIDTH - 47, 26, 'QUIT', {
       fontFamily: FONT_HEADING,
@@ -270,9 +272,9 @@ export class BattleScene extends Scene {
     const bannerX = GAME_WIDTH / 2 - bannerW / 2;
     const bannerBg = this.add.graphics().setDepth(20);
     bannerBg.fillStyle(PALETTE.parchment, 0.9);
-    bannerBg.fillRoundedRect(bannerX, 6, bannerW, 52, 6);
+    bannerBg.fillRect(bannerX, 6, bannerW, 52);
     bannerBg.lineStyle(2, PALETTE.woodDark);
-    bannerBg.strokeRoundedRect(bannerX, 6, bannerW, 52, 6);
+    bannerBg.strokeRect(bannerX, 6, bannerW, 52);
 
     // Level name for campaign
     this.levelText = this.add.text(GAME_WIDTH / 2, 14, '', {
@@ -463,6 +465,45 @@ export class BattleScene extends Scene {
     let levelBadge: GameObjects.Text | undefined;
 
     this.units.push({ state: unitState, sprite, healthBar, levelBadge });
+  }
+
+  /** Pick a row weighted by threat level — lanes with enemies closer to AI's base get higher priority */
+  private pickThreatWeightedRow(aiFaction: Faction): number {
+    const enemyFaction = aiFaction === 'zombies' ? 'plants' : 'zombies';
+    // For each row, find how close the nearest enemy is to the AI's base
+    // Zombies' base is at col 9 (right), plants' base is at col 0 (left)
+    const weights: number[] = [];
+    for (let row = 0; row < GRID_ROWS; row++) {
+      let closestThreat = 0; // 0 = no threat, higher = more urgent
+      for (const unit of this.units) {
+        if (!unit.state.isAlive()) continue;
+        if (unit.state.faction !== enemyFaction) continue;
+        if (unit.state.row !== row) continue;
+
+        // How deep into AI territory is this enemy? (0-1 scale, 1 = at the base)
+        let penetration: number;
+        if (aiFaction === 'zombies') {
+          // Zombie base is right (col 9), enemy plants advance right
+          penetration = unit.state.col / (GRID_COLS - 1);
+        } else {
+          // Plant base is left (col 0), enemy zombies advance left
+          penetration = 1 - (unit.state.col / (GRID_COLS - 1));
+        }
+        closestThreat = Math.max(closestThreat, penetration);
+      }
+      // Base weight of 1 (so empty lanes still get occasional spawns)
+      // Threat adds up to 9x extra weight when enemy is at the base
+      weights.push(1 + closestThreat * 9);
+    }
+
+    // Weighted random selection
+    const total = weights.reduce((a, b) => a + b, 0);
+    let roll = Math.random() * total;
+    for (let row = 0; row < GRID_ROWS; row++) {
+      roll -= weights[row];
+      if (roll <= 0) return row;
+    }
+    return Math.floor(Math.random() * GRID_ROWS);
   }
 
   /** AI attempts to merge a spawned unit into an existing same-type unit on the field.
