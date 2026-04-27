@@ -36,8 +36,8 @@ import GameLayout from '../layouts/GameLayout.astro';
       launchGame('game-container', { mode, player, faction, roomId, level });
     }
 
-    if (mode === 'freeplay') {
-      // Show faction picker for freeplay
+    if (mode === 'freeplay' && !params.get('faction')) {
+      // No faction specified — show picker
       const picker = document.getElementById('faction-picker')!;
       picker.classList.remove('hidden');
 
@@ -51,7 +51,7 @@ import GameLayout from '../layouts/GameLayout.astro';
         startGame('zombies');
       });
     } else {
-      // Other modes: use faction from URL param
+      // Faction from URL param (lobby sets this), or default to plants
       const faction = (params.get('faction') || 'plants') as 'plants' | 'zombies';
       startGame(faction);
     }
