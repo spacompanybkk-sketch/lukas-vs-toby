@@ -66,9 +66,13 @@ export function deleteRoom(roomId: string): void {
   remove(ref(db, `rooms/${roomId}`));
 }
 
-export function sendChallenge(fromPlayer: Player, roomId: string): void {
+export function sendChallenge(fromPlayer: Player, roomId: string, faction: 'plants' | 'zombies'): void {
   const toPlayer: Player = fromPlayer === 'lukas' ? 'toby' : 'lukas';
-  set(ref(db, `challenges/${toPlayer}`), { roomId, from: fromPlayer });
+  set(ref(db, `challenges/${toPlayer}`), { roomId, from: fromPlayer, faction });
+}
+
+export function storeFactionInRoom(roomId: string, player: Player, faction: 'plants' | 'zombies'): void {
+  set(ref(db, `rooms/${roomId}/factions/${player}`), faction);
 }
 
 export function watchChallenge(player: Player, callback: (data: { roomId: string; from: Player } | null) => void): () => void {

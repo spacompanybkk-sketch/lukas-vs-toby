@@ -61,8 +61,16 @@ import GameLayout from '../layouts/GameLayout.astro';
   </div>
 
   <script>
+    // Show errors on screen for debugging
+    window.onerror = (msg, src, line, col, err) => {
+      const el = document.createElement('pre');
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:red;color:white;padding:16px;font-size:14px;white-space:pre-wrap';
+      el.textContent = `LOBBY ERROR: ${msg}\n${src}:${line}:${col}\n${err?.stack || ''}`;
+      document.body.appendChild(el);
+    };
+
     import { goOnline, watchOpponent, type Player } from '../firebase/presence';
-    import { createGameRoom, joinRoom, watchRoom, sendChallenge, watchChallenge, clearChallenge } from '../firebase/multiplayer';
+    import { createGameRoom, joinRoom, watchRoom, sendChallenge, watchChallenge, clearChallenge, storeFactionInRoom } from '../firebase/multiplayer';
     import { loadSave, saveSave, getUpgradeCost, getUpgradeMultipliers } from '../game/SaveManager';
     import { UNIT_STATS, UNIT_COSTS, UNIT_UNLOCK_LEVELS } from '../game/constants';
 
@@ -84,7 +92,7 @@ import GameLayout from '../layouts/GameLayout.astro';
     portrait.src = `/assets/portraits/${player}-lobby.png`;
     portrait.alt = playerName;
 
-    goOnline(player!);
+    try { goOnline(player!); } catch (e) { console.warn('Firebase presence unavailable:', e); }
 
     // Faction state — player can choose plants or zombies
     let selectedFaction: 'plants' | 'zombies' = 'plants';
@@ -222,7 +230,7 @@ import GameLayout from '../layouts/GameLayout.astro';
     const btnMultiplayer = document.getElementById('btn-multiplayer') as HTMLButtonElement;
     const statusEl = document.getElementById('opponent-status')!;
 
-    watchOpponent(player!, (online) => {
+    try { watchOpponent(player!, (online) => {
       if (online) {
         statusEl.innerHTML = `<span class="text-green-400">${opponentName} is ONLINE!</span>`;
         btnMultiplayer.disabled = false;
@@ -236,28 +244,34 @@ import GameLayout from '../layouts/GameLayout.astro';
       }
     });
 
+    } catch (e) { console.warn('watchOpponent failed:', e); }
+
     // Watch for incoming challenges
-    watchChallenge(player!, (challenge) => {
+    try { watchChallenge(player!, (challenge) => {
       if (challenge) {
         statusEl.innerHTML = `<span class="text-yellow-400">${challenge.from === 'lukas' ? 'Lukas' : 'Toby'} wants to battle!</span>`;
         btnMultiplayer.disabled = false;
         btnMultiplayer.className = 'px-10 py-5 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-2xl font-bold cursor-pointer transition-colors animate-pulse';
         btnMultiplayer.textContent = 'Accept Challenge!';
 
-        // Override click handler to accept challenge
+        // Override click handler to accept challenge — get opposite faction from challenger
         btnMultiplayer.onclick = () => {
+          const challengerFaction = (challenge as any).faction || 'plants';
+          const myFaction = challengerFaction === 'plants' ? 'zombies' : 'plants';
           joinRoom(challenge.roomId, player!);
+          storeFactionInRoom(challenge.roomId, player!, myFaction);
           clearChallenge(player!);
-          window.location.href = `/battle?mode=multiplayer&player=${player}&faction=${selectedFaction}&room=${challenge.roomId}`;
+          window.location.href = `/battle?mode=multiplayer&player=${player}&faction=${myFaction}&room=${challenge.roomId}`;
         };
       }
-    });
+    }); } catch (e) { console.warn('watchChallenge failed:', e); }
 
     btnMultiplayer.addEventListener('click', () => {
       if (btnMultiplayer.disabled) return;
       const roomId = createGameRoom();
       joinRoom(roomId, player!);
-      sendChallenge(player!, roomId);
+      storeFactionInRoom(roomId, player!, selectedFaction);
+      sendChallenge(player!, roomId, selectedFaction);
 
       // Show waiting state
       btnMultiplayer.disabled = true;
