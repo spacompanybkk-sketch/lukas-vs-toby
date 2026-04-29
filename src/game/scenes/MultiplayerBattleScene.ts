@@ -12,7 +12,8 @@ import { DragDropManager } from '../systems/DragDropManager';
 import { HUD } from '../ui/HUD';
 import type { UnitCard } from '../ui/HUD';
 import { HealthBar } from '../ui/HealthBar';
-import { UnitState } from '../entities/Unit';
+import { UnitState, MAX_UNIT_LEVEL } from '../entities/Unit';
+import { MergeManager } from '../systems/MergeManager';
 import { PROJECTILE_CONFIGS } from '../entities/Projectile';
 import type { ProjectileConfig } from '../entities/Projectile';
 import { createPeashooter, PEASHOOTER_PROJECTILE } from '../entities/plants/Peashooter';
@@ -101,6 +102,7 @@ export class MultiplayerBattleScene extends Scene {
   private gridManager!: GridManager;
   private energyManager!: EnergyManager;
   private combatManager!: CombatManager;
+  private mergeManager!: MergeManager;
   private dragDropManager!: DragDropManager;
   private hud!: HUD;
 
@@ -152,6 +154,7 @@ export class MultiplayerBattleScene extends Scene {
     this.gridManager = new GridManager();
     this.energyManager = new EnergyManager(STARTING_ENERGY);
     this.combatManager = new CombatManager();
+    this.mergeManager = new MergeManager();
 
     this.drawGrid();
     this.drawBases();
@@ -193,15 +196,13 @@ export class MultiplayerBattleScene extends Scene {
     this.hud = new HUD(this, unitCards, () => {});
     this.hud.updateEnergy(this.energyManager.getEnergy());
 
-    // Drag drop — both host and guest send placement actions
+    // Drag drop — both host and guest send placement/merge actions
     this.dragDropManager = new DragDropManager(
       this, this.gridManager, this.energyManager, this.playerFaction,
       (unitKey, row, col) => {
         if (this.isHost) {
-          // Host places directly
           this.spawnUnit(unitKey, row, col, this.playerFaction);
         }
-        // Both send action to Firebase
         if (this.roomId) {
           sendAction(this.roomId, {
             type: 'place_unit',
@@ -210,8 +211,24 @@ export class MultiplayerBattleScene extends Scene {
           });
         }
       },
-      () => {}, // merge not supported in multiplayer
-      () => null,
+      (unitKey, row, col) => {
+        if (this.isHost) {
+          this.mergeUnitAt(unitKey, row, col, this.playerFaction);
+        }
+        if (this.roomId) {
+          sendAction(this.roomId, {
+            type: 'place_unit', // reuse place_unit with merge flag
+            player: gameOptions.player,
+            unitKey, row, col,
+          });
+        }
+      },
+      (row, col) => {
+        const unitId = this.gridManager.getUnitAt(row, col);
+        if (!unitId) return null;
+        const unit = this.units.find(u => u.state.id === unitId);
+        return unit?.state ?? null;
+      },
     );
 
     // Base health bars
@@ -244,12 +261,21 @@ export class MultiplayerBattleScene extends Scene {
     }
 
     if (this.isHost) {
-      // HOST: watch for guest's placement actions
+      // HOST: watch for guest's placement/merge actions
       this.unsubscribeActions = watchActions(this.roomId, (action: GameAction) => {
-        if (action.player === gameOptions.player) return; // ignore own actions
+        if (action.player === gameOptions.player) return;
         if (action.type === 'place_unit' && action.unitKey && action.row != null && action.col != null) {
           const guestFaction: Faction = this.playerFaction === 'plants' ? 'zombies' : 'plants';
-          this.spawnUnit(action.unitKey, action.row, action.col, guestFaction);
+          // Try merge first — if there's a same-type unit on that tile, merge it
+          const existing = this.units.find(u =>
+            u.state.isAlive() && u.state.key === action.unitKey &&
+            u.state.row === action.row && Math.round(u.state.col) === action.col
+          );
+          if (existing && existing.state.level < MAX_UNIT_LEVEL) {
+            this.mergeUnitAt(action.unitKey, action.row, action.col, guestFaction);
+          } else {
+            this.spawnUnit(action.unitKey, action.row, action.col, guestFaction);
+          }
         }
       });
     } else {
@@ -440,6 +466,37 @@ export class MultiplayerBattleScene extends Scene {
   }
 
   // ── Simulation (HOST only) ──────────────────────────────────────
+
+  private mergeUnitAt(unitKey: string, row: number, col: number, faction: Faction): void {
+    const existing = this.units.find(u =>
+      u.state.isAlive() && u.state.key === unitKey &&
+      u.state.faction === faction &&
+      u.state.row === row && Math.round(u.state.col) === col
+    );
+    if (!existing) return;
+
+    const factory = UNIT_FACTORIES[unitKey];
+    if (!factory) return;
+    const tempUnit = factory(`merge_temp_${this.nextUnitId++}`);
+    if (!this.mergeManager.canMerge(existing.state, tempUnit)) return;
+
+    const result = this.mergeManager.merge(existing.state, tempUnit);
+    const newKey = result.newTextureKey;
+    if (this.textures.exists(newKey)) {
+      existing.sprite.setTexture(newKey);
+    }
+    existing.sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+
+    // Pulse animation
+    this.tweens.add({
+      targets: existing.sprite,
+      scaleX: existing.sprite.scaleX * 1.3,
+      scaleY: existing.sprite.scaleY * 1.3,
+      duration: 150,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+    });
+  }
 
   private spawnUnit(unitKey: string, row: number, col: number, faction: Faction): void {
     const factory = UNIT_FACTORIES[unitKey];
