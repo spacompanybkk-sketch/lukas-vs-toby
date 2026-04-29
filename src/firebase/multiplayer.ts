@@ -85,3 +85,36 @@ export function watchChallenge(player: Player, callback: (data: { roomId: string
 export function clearChallenge(player: Player): void {
   remove(ref(db, `challenges/${player}`));
 }
+
+// ── State sync for host-authority multiplayer ──
+
+export interface UnitSync {
+  id: string;
+  key: string;
+  faction: 'plants' | 'zombies';
+  row: number;
+  col: number;
+  hp: number;
+  maxHp: number;
+  level: number;
+}
+
+export interface GameState {
+  units: UnitSync[];
+  plantBaseHp: number;
+  zombieBaseHp: number;
+  gameOver: boolean;
+  winner?: 'plants' | 'zombies';
+}
+
+export function sendGameState(roomId: string, state: GameState): void {
+  set(ref(db, `rooms/${roomId}/gameState`), state);
+}
+
+export function watchGameState(roomId: string, callback: (state: GameState) => void): () => void {
+  const stateRef = ref(db, `rooms/${roomId}/gameState`);
+  return onValue(stateRef, (snap) => {
+    const data = snap.val();
+    if (data) callback(data);
+  });
+}

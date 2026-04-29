@@ -1,7 +1,7 @@
 import { Scene, GameObjects } from 'phaser';
 import {
   GRID_ROWS, GRID_COLS, TILE_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y,
-  GAME_WIDTH, BASE_HP, STARTING_ENERGY,
+  GAME_WIDTH, GAME_HEIGHT, BASE_HP, STARTING_ENERGY,
   ENERGY_TICK_INTERVAL, ENERGY_TICK_AMOUNT, ENERGY_KILL_REWARD,
   UNIT_COSTS,
 } from '../constants';
@@ -35,12 +35,14 @@ import { createTridentZombie, TRIDENT_PROJECTILE } from '../entities/zombies/Tri
 import { createDesertZombie, SAND_PROJECTILE } from '../entities/zombies/DesertZombie';
 import { createCowboyZombie, COWBOY_PROJECTILE } from '../entities/zombies/CowboyZombie';
 import { createBrainRot, ROT_BRAIN_PROJECTILE } from '../entities/zombies/BrainRot';
+import { PALETTE, FONT_HEADING } from '../ui/palette';
 import type { Faction } from '../types';
 import { gameOptions, getPlayerFaction } from '../main';
-import { sendAction, watchActions, setRoomStatus } from '../../firebase/multiplayer';
-import type { GameAction } from '../../firebase/multiplayer';
+import {
+  sendAction, watchActions, setRoomStatus, sendGameState, watchGameState,
+} from '../../firebase/multiplayer';
+import type { GameAction, UnitSync, GameState } from '../../firebase/multiplayer';
 
-/** Projectile type mapping per unit key */
 const UNIT_PROJECTILE_MAP: Record<string, string> = {
   peashooter: PEASHOOTER_PROJECTILE,
   sunflower: SUNFLOWER_PROJECTILE,
@@ -54,7 +56,6 @@ const UNIT_PROJECTILE_MAP: Record<string, string> = {
   brainRot: ROT_BRAIN_PROJECTILE,
 };
 
-/** Factory mapping */
 const UNIT_FACTORIES: Record<string, (id: string) => UnitState> = {
   peashooter: createPeashooter,
   sunflower: createSunflower,
@@ -87,9 +88,15 @@ interface ActiveUnit {
 interface ActiveProjectile {
   sprite: GameObjects.Sprite;
   config: ProjectileConfig;
+  damage: number;
   row: number;
 }
 
+/**
+ * Host-authority multiplayer:
+ * - Challenger = HOST: runs full simulation, syncs state to Firebase every 500ms
+ * - Accepter = GUEST: only sends placement commands, renders state from host
+ */
 export class MultiplayerBattleScene extends Scene {
   private gridManager!: GridManager;
   private energyManager!: EnergyManager;
@@ -108,19 +115,21 @@ export class MultiplayerBattleScene extends Scene {
 
   private lastEnergyTick: number = 0;
   private lastSunflowerTick: number = 0;
+  private lastStateSyncTime: number = 0;
   private skeletonBlockTimers: Map<string, number> = new Map();
 
   private playerFaction!: Faction;
   private roomId!: string;
+  private isHost!: boolean;
   private gameOver: boolean = false;
   private unsubscribeActions?: () => void;
+  private unsubscribeState?: () => void;
 
   constructor() {
     super('MultiplayerBattleScene');
   }
 
   create(): void {
-    // Reset state
     this.units = [];
     this.projectiles = [];
     this.nextUnitId = 0;
@@ -128,27 +137,34 @@ export class MultiplayerBattleScene extends Scene {
     this.zombieBaseHp = BASE_HP;
     this.lastEnergyTick = 0;
     this.lastSunflowerTick = 0;
+    this.lastStateSyncTime = 0;
     this.skeletonBlockTimers = new Map();
     this.gameOver = false;
 
     this.playerFaction = getPlayerFaction();
     this.roomId = gameOptions.roomId || '';
+    // Challenger (lukas by convention, or whoever created the room) is host
+    // We detect host by checking if this player initiated the challenge
+    // Simple heuristic: the player whose faction matches what's in the URL is host
+    // More reliable: store host in room data. For now, use player name as tie-break
+    this.isHost = gameOptions.player === 'lukas';
 
-    // Systems
     this.gridManager = new GridManager();
     this.energyManager = new EnergyManager(STARTING_ENERGY);
     this.combatManager = new CombatManager();
 
-    // Draw battlefield
     this.drawGrid();
     this.drawBases();
 
-    // MULTIPLAYER label
-    this.add.text(GAME_WIDTH / 2, 16, 'MULTIPLAYER', {
-      fontSize: '16px', color: '#ff4444', fontStyle: 'bold',
+    // Label
+    const roleLabel = this.isHost ? 'HOST' : 'GUEST';
+    this.add.text(GAME_WIDTH / 2, 16, `MULTIPLAYER (${roleLabel})`, {
+      fontFamily: FONT_HEADING,
+      fontSize: '10px',
+      color: '#ff4444',
     }).setOrigin(0.5, 0);
 
-    // HUD — all units unlocked at full power for multiplayer
+    // HUD — all units
     const plantCards: UnitCard[] = [
       { key: 'peashooter', label: 'Pea', cost: UNIT_COSTS.peashooter, textureKey: 'peashooter' },
       { key: 'sunflower', label: 'Sun', cost: UNIT_COSTS.sunflower, textureKey: 'sunflower' },
@@ -177,30 +193,25 @@ export class MultiplayerBattleScene extends Scene {
     this.hud = new HUD(this, unitCards, () => {});
     this.hud.updateEnergy(this.energyManager.getEnergy());
 
-    // No WaveManager — opponent actions come from Firebase
-
-    // Drag drop (player places their faction's units, also sends action to Firebase)
+    // Drag drop — both host and guest send placement actions
     this.dragDropManager = new DragDropManager(
       this, this.gridManager, this.energyManager, this.playerFaction,
       (unitKey, row, col) => {
-        this.spawnUnit(unitKey, row, col, this.playerFaction);
-        // Send placement action to Firebase
+        if (this.isHost) {
+          // Host places directly
+          this.spawnUnit(unitKey, row, col, this.playerFaction);
+        }
+        // Both send action to Firebase
         if (this.roomId) {
           sendAction(this.roomId, {
             type: 'place_unit',
             player: gameOptions.player,
-            unitKey,
-            row,
-            col,
+            unitKey, row, col,
           });
         }
       },
-      (_unitKey, _row, _col) => {
-        // Merge not supported in multiplayer yet
-      },
-      (_row, _col) => {
-        return null;
-      },
+      () => {}, // merge not supported in multiplayer
+      () => null,
     );
 
     // Base health bars
@@ -213,14 +224,15 @@ export class MultiplayerBattleScene extends Scene {
     this.zombieBaseBar.update(this.zombieBaseHp, BASE_HP);
 
     // Quit button
-    const quitBtn = this.add.text(GAME_WIDTH - 16, 16, 'QUIT', {
-      fontSize: '16px',
-      color: '#ff4444',
-      backgroundColor: '#333333',
-      padding: { x: 8, y: 4 },
-    }).setOrigin(1, 0).setInteractive();
-
-    quitBtn.on('pointerdown', () => {
+    const quitHit = this.add.rectangle(GAME_WIDTH - 47, 26, 66, 32)
+      .setInteractive({ useHandCursor: true }).setDepth(22).setAlpha(0.001);
+    const quitBg = this.add.graphics().setDepth(20);
+    quitBg.fillStyle(PALETTE.parchment);
+    quitBg.fillRect(GAME_WIDTH - 80, 10, 66, 32);
+    this.add.text(GAME_WIDTH - 47, 26, 'QUIT', {
+      fontFamily: FONT_HEADING, fontSize: '10px', color: '#E63946',
+    }).setOrigin(0.5).setDepth(21);
+    quitHit.on('pointerdown', () => {
       this.gameOver = true;
       this.cleanup();
       window.location.href = '/';
@@ -231,73 +243,77 @@ export class MultiplayerBattleScene extends Scene {
       setRoomStatus(this.roomId, 'playing');
     }
 
-    // Watch for opponent actions from Firebase
-    if (this.roomId) {
+    if (this.isHost) {
+      // HOST: watch for guest's placement actions
       this.unsubscribeActions = watchActions(this.roomId, (action: GameAction) => {
-        this.handleRemoteAction(action);
+        if (action.player === gameOptions.player) return; // ignore own actions
+        if (action.type === 'place_unit' && action.unitKey && action.row != null && action.col != null) {
+          const guestFaction: Faction = this.playerFaction === 'plants' ? 'zombies' : 'plants';
+          this.spawnUnit(action.unitKey, action.row, action.col, guestFaction);
+        }
       });
-    }
-  }
-
-  private handleRemoteAction(action: GameAction): void {
-    // Ignore our own actions
-    if (action.player === gameOptions.player) return;
-
-    if (action.type === 'place_unit' && action.unitKey != null && action.row != null && action.col != null) {
-      const opponentFaction: Faction = this.playerFaction === 'plants' ? 'zombies' : 'plants';
-      this.spawnUnit(action.unitKey, action.row, action.col, opponentFaction);
-    } else if (action.type === 'game_over') {
-      if (!this.gameOver && action.winner) {
-        this.gameOver = true;
-        this.cleanup();
-        this.scene.start('GameOverScene', { winner: action.winner });
-      }
+    } else {
+      // GUEST: watch for host's state sync
+      this.unsubscribeState = watchGameState(this.roomId, (state: GameState) => {
+        this.applyGameState(state);
+      });
     }
   }
 
   update(time: number, delta: number): void {
     if (this.gameOver) return;
 
-    // 1. Passive energy tick
-    if (time - this.lastEnergyTick >= ENERGY_TICK_INTERVAL) {
-      this.lastEnergyTick = time;
-      this.energyManager.addPassive(ENERGY_TICK_AMOUNT);
-    }
-
-    // 2. Sunflower energy production
-    if (time - this.lastSunflowerTick >= SUNFLOWER_ENERGY_INTERVAL) {
-      this.lastSunflowerTick = time;
-      const sunflowerCount = this.units.filter(
-        u => u.state.key === 'sunflower' && u.state.isAlive(),
-      ).length;
-      if (sunflowerCount > 0) {
-        this.energyManager.addFromProducer(SUNFLOWER_ENERGY_AMOUNT * sunflowerCount);
+    if (this.isHost) {
+      // HOST runs full simulation
+      if (time - this.lastEnergyTick >= ENERGY_TICK_INTERVAL) {
+        this.lastEnergyTick = time;
+        this.energyManager.addPassive(ENERGY_TICK_AMOUNT);
       }
+
+      if (time - this.lastSunflowerTick >= SUNFLOWER_ENERGY_INTERVAL) {
+        this.lastSunflowerTick = time;
+        const sunflowerCount = this.units.filter(
+          u => u.state.key === 'sunflower' && u.state.isAlive(),
+        ).length;
+        if (sunflowerCount > 0) {
+          this.energyManager.addFromProducer(SUNFLOWER_ENERGY_AMOUNT * sunflowerCount);
+        }
+      }
+
+      this.updateMovement(delta);
+      this.updateCombat(time);
+      this.updateProjectiles(delta, time);
+      this.checkBaseDamage();
+      this.cleanupDeadUnits();
+
+      // Sync state to Firebase every 500ms
+      if (time - this.lastStateSyncTime >= 500) {
+        this.lastStateSyncTime = time;
+        this.syncState();
+      }
+
+      // Win condition (host decides)
+      if (this.plantBaseHp <= 0) {
+        this.endGame('zombies');
+      } else if (this.zombieBaseHp <= 0) {
+        this.endGame('plants');
+      }
+    } else {
+      // GUEST: only does energy for local HUD display + projectile rendering
+      if (time - this.lastEnergyTick >= ENERGY_TICK_INTERVAL) {
+        this.lastEnergyTick = time;
+        this.energyManager.addPassive(ENERGY_TICK_AMOUNT);
+      }
+
+      // Move projectiles locally for smooth rendering
+      this.updateProjectilesVisualOnly(delta);
     }
 
-    // No WaveManager update — multiplayer has no AI
-
-    // 3. Unit movement
-    this.updateMovement(delta);
-
-    // 4. Combat
-    this.updateCombat(time);
-
-    // 5. Projectile movement and collision
-    this.updateProjectiles(delta, time);
-
-    // 6. Base damage from units reaching edges
-    this.checkBaseDamage();
-
-    // 7. Dead unit cleanup
-    this.cleanupDeadUnits();
-
-    // 8. HUD updates
+    // Both: HUD updates
     this.hud.updateEnergy(this.energyManager.getEnergy());
     this.plantBaseBar.update(this.plantBaseHp, BASE_HP);
     this.zombieBaseBar.update(this.zombieBaseHp, BASE_HP);
 
-    // Update unit health bars
     for (const unit of this.units) {
       if (unit.state.isAlive()) {
         const { x, y } = this.gridManager.toPixel(unit.state.row, unit.state.col);
@@ -305,35 +321,125 @@ export class MultiplayerBattleScene extends Scene {
         unit.healthBar.update(unit.state.hp, unit.state.maxHp);
       }
     }
+  }
 
-    // 9. Win condition
-    if (this.plantBaseHp <= 0) {
+  /** HOST: sync full game state to Firebase */
+  private syncState(): void {
+    const unitSyncs: UnitSync[] = this.units
+      .filter(u => u.state.isAlive())
+      .map(u => ({
+        id: u.state.id,
+        key: u.state.key,
+        faction: u.state.faction,
+        row: u.state.row,
+        col: Math.round(u.state.col * 100) / 100, // reduce precision for Firebase
+        hp: u.state.hp,
+        maxHp: u.state.maxHp,
+        level: u.state.level,
+      }));
+
+    sendGameState(this.roomId, {
+      units: unitSyncs,
+      plantBaseHp: this.plantBaseHp,
+      zombieBaseHp: this.zombieBaseHp,
+      gameOver: false,
+    });
+  }
+
+  /** GUEST: apply state received from host */
+  private applyGameState(state: GameState): void {
+    if (state.gameOver && state.winner) {
       this.gameOver = true;
-      const winner = 'zombies' as const;
-      if (this.roomId) {
-        sendAction(this.roomId, { type: 'game_over', player: gameOptions.player, winner });
-        setRoomStatus(this.roomId, 'finished');
-      }
       this.cleanup();
-      this.scene.start('GameOverScene', { winner });
-    } else if (this.zombieBaseHp <= 0) {
-      this.gameOver = true;
-      const winner = 'plants' as const;
-      if (this.roomId) {
-        sendAction(this.roomId, { type: 'game_over', player: gameOptions.player, winner });
-        setRoomStatus(this.roomId, 'finished');
-      }
-      this.cleanup();
-      this.scene.start('GameOverScene', { winner });
+      this.scene.start('GameOverScene', { winner: state.winner });
+      return;
     }
+
+    this.plantBaseHp = state.plantBaseHp;
+    this.zombieBaseHp = state.zombieBaseHp;
+
+    if (!state.units) return;
+
+    const receivedIds = new Set(state.units.map(u => u.id));
+
+    // Remove units that no longer exist in host state
+    for (const unit of this.units) {
+      if (!receivedIds.has(unit.state.id)) {
+        unit.sprite.destroy();
+        unit.healthBar.destroy();
+        unit.state.takeDamage(Infinity);
+      }
+    }
+    this.units = this.units.filter(u => u.state.isAlive());
+
+    // Update existing units or create new ones
+    for (const sync of state.units) {
+      const existing = this.units.find(u => u.state.id === sync.id);
+      if (existing) {
+        // Update position and HP
+        existing.state.hp = sync.hp;
+        existing.state.maxHp = sync.maxHp;
+        existing.state.col = sync.col;
+        existing.state.row = sync.row;
+        existing.state.level = sync.level;
+        const { x, y } = this.gridManager.toPixel(sync.row, sync.col);
+        existing.sprite.setPosition(x, y);
+
+        // Update texture if level changed
+        const textureKey = sync.level > 1 ? `${sync.key}-L${sync.level}` : sync.key;
+        if (this.textures.exists(textureKey) && existing.sprite.texture.key !== textureKey) {
+          existing.sprite.setTexture(textureKey);
+          existing.sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+        }
+      } else {
+        // New unit — create it
+        this.createUnitFromSync(sync);
+      }
+    }
+  }
+
+  private createUnitFromSync(sync: UnitSync): void {
+    const factory = UNIT_FACTORIES[sync.key];
+    if (!factory) return;
+
+    const unitState = factory(sync.id);
+    unitState.setPosition(sync.row, sync.col);
+    unitState.hp = sync.hp;
+    unitState.maxHp = sync.maxHp;
+    unitState.level = sync.level;
+
+    const { x, y } = this.gridManager.toPixel(sync.row, sync.col);
+    const textureKey = sync.level > 1 ? `${sync.key}-L${sync.level}` : sync.key;
+    const spriteKey = this.textures.exists(textureKey) ? textureKey : sync.key;
+    const sprite = this.add.sprite(x, y, spriteKey);
+    sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+    const healthBar = new HealthBar(this, x, y - TILE_SIZE / 2 - 4);
+    healthBar.update(unitState.hp, unitState.maxHp);
+
+    this.units.push({ state: unitState, sprite, healthBar });
+  }
+
+  private endGame(winner: 'plants' | 'zombies'): void {
+    this.gameOver = true;
+    // Send final state with game over
+    sendGameState(this.roomId, {
+      units: [],
+      plantBaseHp: this.plantBaseHp,
+      zombieBaseHp: this.zombieBaseHp,
+      gameOver: true,
+      winner,
+    });
+    setRoomStatus(this.roomId, 'finished');
+    this.cleanup();
+    this.scene.start('GameOverScene', { winner });
   }
 
   private cleanup(): void {
-    if (this.unsubscribeActions) {
-      this.unsubscribeActions();
-      this.unsubscribeActions = undefined;
-    }
+    if (this.unsubscribeActions) { this.unsubscribeActions(); this.unsubscribeActions = undefined; }
+    if (this.unsubscribeState) { this.unsubscribeState(); this.unsubscribeState = undefined; }
   }
+
+  // ── Simulation (HOST only) ──────────────────────────────────────
 
   private spawnUnit(unitKey: string, row: number, col: number, faction: Faction): void {
     const factory = UNIT_FACTORIES[unitKey];
@@ -343,7 +449,6 @@ export class MultiplayerBattleScene extends Scene {
     const unitState = factory(id);
     unitState.setPosition(row, col);
 
-    // Place on grid (only for stationary units)
     if (unitState.isStationary()) {
       if (!this.gridManager.place(row, col, id)) return;
     }
@@ -359,7 +464,6 @@ export class MultiplayerBattleScene extends Scene {
 
   private updateMovement(delta: number): void {
     const deltaSeconds = delta / 1000;
-
     for (const unit of this.units) {
       const { state, sprite } = unit;
       if (!state.isAlive() || state.isStationary()) continue;
@@ -372,8 +476,7 @@ export class MultiplayerBattleScene extends Scene {
       }
 
       const direction = state.faction === 'zombies' ? -1 : 1;
-      const moveAmount = state.moveSpeed * deltaSeconds;
-      state.col = Math.max(0, Math.min(GRID_COLS - 1, state.col + direction * moveAmount));
+      state.col = Math.max(0, Math.min(GRID_COLS - 1, state.col + state.moveSpeed * deltaSeconds * direction));
 
       const { x, y } = this.gridManager.toPixel(state.row, state.col);
       sprite.setPosition(x, y);
@@ -382,22 +485,17 @@ export class MultiplayerBattleScene extends Scene {
 
   private updateCombat(time: number): void {
     const allStates = this.units.map(u => u.state);
-
     for (const unit of this.units) {
       const { state } = unit;
-      if (!state.isAlive()) continue;
-      if (!state.canAttack(time)) continue;
+      if (!state.isAlive() || !state.canAttack(time)) continue;
       if (state.key === 'walnutBomb') continue;
 
       const target = this.combatManager.findTarget(state, allStates);
-
       const projectileKey = UNIT_PROJECTILE_MAP[state.key];
       if (projectileKey && state.range > 1) {
-        // Ranged units always fire toward enemy base, even without a target
         state.recordAttack(time);
         this.fireProjectile(state, projectileKey);
       } else if (target) {
-        // Melee attack — only if adjacent target
         state.recordAttack(time);
         target.takeDamage(state.damage);
       }
@@ -407,12 +505,9 @@ export class MultiplayerBattleScene extends Scene {
   private fireProjectile(attacker: UnitState, projectileKey: string): void {
     const config = PROJECTILE_CONFIGS[projectileKey];
     if (!config) return;
-
     const { x, y } = this.gridManager.toPixel(attacker.row, attacker.col);
-    const sprite = this.add.sprite(x, y, config.textureKey);
-    sprite.setDisplaySize(20, 20);
-
-    this.projectiles.push({ sprite, config, row: attacker.row });
+    const sprite = this.add.sprite(x, y, config.textureKey).setDisplaySize(20, 20);
+    this.projectiles.push({ sprite, config, damage: attacker.damage, row: attacker.row });
   }
 
   private updateProjectiles(delta: number, time: number): void {
@@ -422,8 +517,7 @@ export class MultiplayerBattleScene extends Scene {
     for (let i = 0; i < this.projectiles.length; i++) {
       const proj = this.projectiles[i];
       const direction = proj.config.faction === 'plants' ? 1 : -1;
-      const moveX = proj.config.speed * deltaSeconds * direction;
-      proj.sprite.x += moveX;
+      proj.sprite.x += proj.config.speed * deltaSeconds * direction;
 
       let hit = false;
       for (const unit of this.units) {
@@ -432,42 +526,53 @@ export class MultiplayerBattleScene extends Scene {
         if (unit.state.row !== proj.row) continue;
 
         const unitPixel = this.gridManager.toPixel(unit.state.row, unit.state.col);
-        const dist = Math.abs(proj.sprite.x - unitPixel.x);
-
-        if (dist < TILE_SIZE / 2) {
+        if (Math.abs(proj.sprite.x - unitPixel.x) < TILE_SIZE / 2) {
           if (unit.state.key === 'skeletonWarrior') {
             const lastBlock = this.skeletonBlockTimers.get(unit.state.id) ?? -Infinity;
             if (time - lastBlock >= SKELETON_BLOCK_COOLDOWN) {
               this.skeletonBlockTimers.set(unit.state.id, time);
-              toRemove.push(i);
-              hit = true;
-              break;
+              toRemove.push(i); hit = true; break;
             }
           }
-
-          unit.state.takeDamage(proj.config.damage);
-          toRemove.push(i);
-          hit = true;
-          break;
+          unit.state.takeDamage(proj.damage);
+          toRemove.push(i); hit = true; break;
         }
       }
-
       if (hit) continue;
 
       const leftEdge = GRID_OFFSET_X;
       const rightEdge = GRID_OFFSET_X + GRID_COLS * TILE_SIZE;
-
       if (proj.config.faction === 'plants' && proj.sprite.x > rightEdge) {
-        this.zombieBaseHp -= proj.config.damage;
-        toRemove.push(i);
+        this.zombieBaseHp -= proj.damage; toRemove.push(i);
       } else if (proj.config.faction === 'zombies' && proj.sprite.x < leftEdge) {
-        this.plantBaseHp -= proj.config.damage;
+        this.plantBaseHp -= proj.damage; toRemove.push(i);
+      }
+    }
+
+    for (const idx of [...new Set(toRemove)].sort((a, b) => b - a)) {
+      this.projectiles[idx].sprite.destroy();
+      this.projectiles.splice(idx, 1);
+    }
+  }
+
+  /** GUEST: just move projectile sprites for smooth visuals */
+  private updateProjectilesVisualOnly(delta: number): void {
+    const deltaSeconds = delta / 1000;
+    const toRemove: number[] = [];
+    const leftEdge = GRID_OFFSET_X - 50;
+    const rightEdge = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + 50;
+
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const proj = this.projectiles[i];
+      const direction = proj.config.faction === 'plants' ? 1 : -1;
+      proj.sprite.x += proj.config.speed * deltaSeconds * direction;
+
+      if (proj.sprite.x < leftEdge || proj.sprite.x > rightEdge) {
         toRemove.push(i);
       }
     }
 
-    const uniqueRemove = [...new Set(toRemove)].sort((a, b) => b - a);
-    for (const idx of uniqueRemove) {
+    for (const idx of [...new Set(toRemove)].sort((a, b) => b - a)) {
       this.projectiles[idx].sprite.destroy();
       this.projectiles.splice(idx, 1);
     }
@@ -475,11 +580,8 @@ export class MultiplayerBattleScene extends Scene {
 
   private checkBaseDamage(): void {
     const time = this.time?.now ?? 0;
-
     for (const unit of this.units) {
-      if (!unit.state.isAlive()) continue;
-      if (unit.state.isStationary()) continue;
-
+      if (!unit.state.isAlive() || unit.state.isStationary()) continue;
       if (unit.state.faction === 'zombies' && unit.state.col <= 0) {
         unit.state.col = 0;
         if (unit.state.canAttack(time)) {
@@ -498,23 +600,18 @@ export class MultiplayerBattleScene extends Scene {
   }
 
   private cleanupDeadUnits(): void {
-    // First pass: handle explosions (which may kill additional units)
     const explodingUnits = this.units.filter(u => !u.state.isAlive() &&
       (u.state.key === 'walnutBomb' || u.state.key === 'cherryBomber' || u.state.key === 'potatoMine')
     );
     for (const dead of explodingUnits) {
-      if (dead.state.key === 'walnutBomb') {
+      if (dead.state.key === 'walnutBomb')
         this.aoeExplosion(dead.state, WALNUT_EXPLOSION_DAMAGE * dead.state.level, WALNUT_EXPLOSION_RADIUS);
-      }
-      if (dead.state.key === 'cherryBomber') {
+      if (dead.state.key === 'cherryBomber')
         this.aoeExplosion(dead.state, CHERRY_EXPLOSION_DAMAGE * dead.state.level, CHERRY_EXPLOSION_RADIUS);
-      }
-      if (dead.state.key === 'potatoMine') {
+      if (dead.state.key === 'potatoMine')
         this.aoeExplosion(dead.state, POTATO_MINE_EXPLOSION_DAMAGE * dead.state.level, POTATO_MINE_EXPLOSION_RADIUS);
-      }
     }
 
-    // Second pass: clean up ALL dead units (including those killed by explosions)
     const deadUnits = this.units.filter(u => !u.state.isAlive());
     for (const dead of deadUnits) {
       if (dead.state.faction !== this.playerFaction) {
@@ -527,51 +624,67 @@ export class MultiplayerBattleScene extends Scene {
       dead.sprite.destroy();
       dead.healthBar.destroy();
     }
-
     this.units = this.units.filter(u => u.state.isAlive());
   }
 
   private aoeExplosion(source: UnitState, damage: number, radius: number): void {
     for (const unit of this.units) {
-      if (!unit.state.isAlive()) continue;
-      if (unit.state.faction === source.faction) continue;
-
-      const rowDist = Math.abs(unit.state.row - source.row);
-      const colDist = Math.abs(unit.state.col - source.col);
-
-      if (rowDist <= radius && colDist <= radius) {
+      if (!unit.state.isAlive() || unit.state.faction === source.faction) continue;
+      if (Math.abs(unit.state.row - source.row) <= radius && Math.abs(unit.state.col - source.col) <= radius) {
         unit.state.takeDamage(damage);
       }
     }
   }
 
+  // ── Rendering ───────────────────────────────────────────────────
+
   private drawGrid(): void {
+    if (this.textures.exists('battlefield')) {
+      const bg = this.add.sprite(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'battlefield');
+      bg.setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+      bg.setAlpha(0.15);
+    }
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const { x, y } = this.gridManager.toPixel(row, col);
-        const tileKey = (row + col) % 2 === 0 ? 'tile' : 'tileDark';
-        this.add.sprite(x, y, tileKey);
+        const lightKey = this.textures.exists('tileImg') ? 'tileImg' : 'tile';
+        const darkKey = this.textures.exists('tileDarkImg') ? 'tileDarkImg' : 'tileDark';
+        const tileKey = (row + col) % 2 === 0 ? lightKey : darkKey;
+        const tile = this.add.sprite(x, y, tileKey);
+        tile.setDisplaySize(TILE_SIZE, TILE_SIZE);
+        tile.setAlpha(0.7);
       }
     }
   }
 
   private drawBases(): void {
-    const plantBaseX = GRID_OFFSET_X - TILE_SIZE / 2 - 10;
-    for (let row = 0; row < GRID_ROWS; row++) {
-      const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
-      this.add.sprite(plantBaseX, y, 'base').setTint(0x00cc00);
-    }
-    this.add.text(plantBaseX - 20, GRID_OFFSET_Y - 30, 'LUKAS\nBASE', {
-      fontSize: '12px', color: '#00cc00', align: 'center',
-    });
+    const plantBaseX = GRID_OFFSET_X - TILE_SIZE / 2 - 20;
+    const zombieBaseX = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + TILE_SIZE / 2 + 20;
+    const baseHeight = GRID_ROWS * TILE_SIZE;
+    const baseCenterY = GRID_OFFSET_Y + baseHeight / 2;
 
-    const zombieBaseX = GRID_OFFSET_X + GRID_COLS * TILE_SIZE + TILE_SIZE / 2 + 10;
-    for (let row = 0; row < GRID_ROWS; row++) {
-      const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
-      this.add.sprite(zombieBaseX, y, 'base').setTint(0x884488);
+    if (this.textures.exists('plantBase')) {
+      this.add.sprite(plantBaseX, baseCenterY, 'plantBase').setDisplaySize(TILE_SIZE + 10, baseHeight);
+    } else {
+      for (let row = 0; row < GRID_ROWS; row++) {
+        const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
+        this.add.sprite(plantBaseX, y, 'base').setTint(0x00cc00);
+      }
     }
-    this.add.text(zombieBaseX - 20, GRID_OFFSET_Y - 30, 'TOBY\nBASE', {
-      fontSize: '12px', color: '#884488', align: 'center',
-    });
+    this.add.text(plantBaseX, GRID_OFFSET_Y - 20, 'PLANT BASE', {
+      fontSize: '11px', color: '#00cc00', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    if (this.textures.exists('zombieBase')) {
+      this.add.sprite(zombieBaseX, baseCenterY, 'zombieBase').setDisplaySize(TILE_SIZE + 10, baseHeight);
+    } else {
+      for (let row = 0; row < GRID_ROWS; row++) {
+        const y = GRID_OFFSET_Y + row * TILE_SIZE + TILE_SIZE / 2;
+        this.add.sprite(zombieBaseX, y, 'base').setTint(0x884488);
+      }
+    }
+    this.add.text(zombieBaseX, GRID_OFFSET_Y - 20, 'ZOMBIE BASE', {
+      fontSize: '11px', color: '#884488', fontStyle: 'bold',
+    }).setOrigin(0.5);
   }
 }
