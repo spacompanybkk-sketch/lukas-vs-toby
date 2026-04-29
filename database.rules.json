@@ -7,6 +7,10 @@
     "rooms": {
       ".read": true,
       ".write": true
+    },
+    "challenges": {
+      ".read": true,
+      ".write": true
     }
   }
 }
