@@ -249,20 +249,22 @@ export class BattleScene extends Scene {
     this.zombieBaseBar = new HealthBar(this, zombieBaseX, barY, 60, 8);
     this.zombieBaseBar.update(this.zombieBaseHp, maxBaseHp);
 
-    // Quit button — parchment style
+    // Quit button — parchment style with full-size hit area
     const quitBg = this.add.graphics().setDepth(20);
     quitBg.fillStyle(PALETTE.parchment);
     quitBg.fillRect(GAME_WIDTH - 80, 10, 66, 32);
     quitBg.lineStyle(2, PALETTE.woodDark);
     quitBg.strokeRect(GAME_WIDTH - 80, 10, 66, 32);
 
-    const quitBtn = this.add.text(GAME_WIDTH - 47, 26, 'QUIT', {
+    this.add.text(GAME_WIDTH - 47, 26, 'QUIT', {
       fontFamily: FONT_HEADING,
       fontSize: '10px',
       color: '#E63946',
-    }).setOrigin(0.5).setDepth(21).setInteractive();
+    }).setOrigin(0.5).setDepth(21);
 
-    quitBtn.on('pointerdown', () => {
+    const quitHit = this.add.rectangle(GAME_WIDTH - 47, 26, 66, 32)
+      .setInteractive({ useHandCursor: true }).setDepth(22).setAlpha(0.001);
+    quitHit.on('pointerdown', () => {
       this.gameOver = true;
       window.location.href = '/';
     });

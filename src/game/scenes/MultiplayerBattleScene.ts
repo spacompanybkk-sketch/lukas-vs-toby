@@ -146,6 +146,12 @@ export class MultiplayerBattleScene extends Scene {
           });
         }
       },
+      (_unitKey, _row, _col) => {
+        // Merge not supported in multiplayer yet
+      },
+      (_row, _col) => {
+        return null;
+      },
     );
 
     // Base health bars
