@@ -498,21 +498,31 @@ export class MultiplayerBattleScene extends Scene {
   }
 
   private cleanupDeadUnits(): void {
-    const deadUnits = this.units.filter(u => !u.state.isAlive());
-
-    for (const dead of deadUnits) {
+    // First pass: handle explosions (which may kill additional units)
+    const explodingUnits = this.units.filter(u => !u.state.isAlive() &&
+      (u.state.key === 'walnutBomb' || u.state.key === 'cherryBomber' || u.state.key === 'potatoMine')
+    );
+    for (const dead of explodingUnits) {
       if (dead.state.key === 'walnutBomb') {
-        this.walnutExplosion(dead.state);
+        this.aoeExplosion(dead.state, WALNUT_EXPLOSION_DAMAGE * dead.state.level, WALNUT_EXPLOSION_RADIUS);
       }
+      if (dead.state.key === 'cherryBomber') {
+        this.aoeExplosion(dead.state, CHERRY_EXPLOSION_DAMAGE * dead.state.level, CHERRY_EXPLOSION_RADIUS);
+      }
+      if (dead.state.key === 'potatoMine') {
+        this.aoeExplosion(dead.state, POTATO_MINE_EXPLOSION_DAMAGE * dead.state.level, POTATO_MINE_EXPLOSION_RADIUS);
+      }
+    }
 
+    // Second pass: clean up ALL dead units (including those killed by explosions)
+    const deadUnits = this.units.filter(u => !u.state.isAlive());
+    for (const dead of deadUnits) {
       if (dead.state.faction !== this.playerFaction) {
         this.energyManager.addKillReward(ENERGY_KILL_REWARD);
       }
-
       if (dead.state.isStationary()) {
         this.gridManager.remove(dead.state.row, Math.round(dead.state.col));
       }
-
       this.skeletonBlockTimers.delete(dead.state.id);
       dead.sprite.destroy();
       dead.healthBar.destroy();
@@ -521,16 +531,16 @@ export class MultiplayerBattleScene extends Scene {
     this.units = this.units.filter(u => u.state.isAlive());
   }
 
-  private walnutExplosion(walnut: UnitState): void {
+  private aoeExplosion(source: UnitState, damage: number, radius: number): void {
     for (const unit of this.units) {
       if (!unit.state.isAlive()) continue;
-      if (unit.state.faction === walnut.faction) continue;
+      if (unit.state.faction === source.faction) continue;
 
-      const rowDist = Math.abs(unit.state.row - walnut.row);
-      const colDist = Math.abs(unit.state.col - walnut.col);
+      const rowDist = Math.abs(unit.state.row - source.row);
+      const colDist = Math.abs(unit.state.col - source.col);
 
-      if (rowDist <= WALNUT_EXPLOSION_RADIUS && colDist <= WALNUT_EXPLOSION_RADIUS) {
-        unit.state.takeDamage(WALNUT_EXPLOSION_DAMAGE);
+      if (rowDist <= radius && colDist <= radius) {
+        unit.state.takeDamage(damage);
       }
     }
   }
