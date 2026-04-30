@@ -224,10 +224,17 @@ export class MultiplayerBattleScene extends Scene {
         }
       },
       (row, col) => {
+        // Find any player unit at this position
         const unitId = this.gridManager.getUnitAt(row, col);
-        if (!unitId) return null;
-        const unit = this.units.find(u => u.state.id === unitId);
-        return unit?.state ?? null;
+        if (unitId) {
+          const unit = this.units.find(u => u.state.id === unitId && u.state.faction === this.playerFaction);
+          if (unit) return unit.state;
+        }
+        const moving = this.units.find(u =>
+          u.state.isAlive() && u.state.faction === this.playerFaction &&
+          u.state.row === row && Math.round(u.state.col) === col
+        );
+        return moving?.state ?? null;
       },
     );
 

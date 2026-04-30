@@ -235,7 +235,15 @@ export class BattleScene extends Scene {
         this.mergeUnitAt(unitKey, row, col);
       },
       (row, col) => {
-        return this.findStaticUnitAt(row, col);
+        // Find any player unit at this position (stationary via grid, or moving via position)
+        const gridUnit = this.findStaticUnitAt(row, col);
+        if (gridUnit && gridUnit.faction === this.playerFaction) return gridUnit;
+        // Also check moving units at this tile
+        const moving = this.units.find(u =>
+          u.state.isAlive() && u.state.faction === this.playerFaction &&
+          u.state.row === row && Math.round(u.state.col) === col
+        );
+        return moving?.state ?? null;
       },
     );
 
@@ -566,6 +574,7 @@ export class BattleScene extends Scene {
   private mergeUnitAt(unitKey: string, row: number, col: number): void {
     const existing = this.units.find(u =>
       u.state.isAlive() && u.state.key === unitKey &&
+      u.state.faction === this.playerFaction &&
       u.state.row === row && Math.round(u.state.col) === col
     );
     if (!existing) return;

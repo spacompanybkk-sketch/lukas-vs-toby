@@ -59,23 +59,24 @@ export class DragDropManager {
 
       const isMoving = (UNIT_STATS[this.currentDragKey]?.moveSpeed ?? 0) > 0;
 
-      if (isMoving || this.gridManager.isEmpty(row, col)) {
-        // Empty tile (or moving unit) — place normally
+      // Check for merge first — if there's a same-type, same-faction unit on the tile
+      const existing = this.findUnitAt(row, col);
+      if (existing && existing.key === this.currentDragKey
+        && existing.faction === this.playerFaction
+        && existing.level < MAX_UNIT_LEVEL) {
+        // Merge into existing unit
+        const cost = UNIT_COSTS[this.currentDragKey];
+        if (this.energyManager.spend(cost)) {
+          this.onMergeUnit(this.currentDragKey, row, col);
+        }
+      } else if (isMoving || this.gridManager.isEmpty(row, col)) {
+        // Empty tile (or moving unit that doesn't occupy grid) — place normally
         const cost = UNIT_COSTS[this.currentDragKey];
         if (this.energyManager.spend(cost)) {
           this.onPlaceUnit(this.currentDragKey, row, col);
         }
-      } else {
-        // Tile occupied — check for merge
-        const existing = this.findUnitAt(row, col);
-        if (existing && existing.key === this.currentDragKey && existing.level < MAX_UNIT_LEVEL) {
-          const cost = UNIT_COSTS[this.currentDragKey];
-          if (this.energyManager.spend(cost)) {
-            this.onMergeUnit(this.currentDragKey, row, col);
-          }
-        }
-        // Otherwise: blocked (different type or max level)
       }
+      // Otherwise: blocked (different type, different faction, or max level)
 
       this.cleanup();
     });
