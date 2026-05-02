@@ -105,6 +105,7 @@ export interface GameState {
   zombieBaseHp: number;
   gameOver: boolean;
   winner?: 'plants' | 'zombies';
+  paused?: boolean;
 }
 
 export function sendGameState(roomId: string, state: GameState): void {

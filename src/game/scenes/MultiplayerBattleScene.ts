@@ -124,8 +124,12 @@ export class MultiplayerBattleScene extends Scene {
   private roomId!: string;
   private isHost!: boolean;
   private gameOver: boolean = false;
+  private isPaused: boolean = false;
+  private pauseOverlay?: GameObjects.Graphics;
+  private pauseText?: GameObjects.Text;
   private unsubscribeActions?: () => void;
   private unsubscribeState?: () => void;
+  private unsubscribePause?: () => void;
 
   constructor() {
     super('MultiplayerBattleScene');
@@ -247,15 +251,43 @@ export class MultiplayerBattleScene extends Scene {
     this.zombieBaseBar = new HealthBar(this, zombieBaseX, barY, 60, 8);
     this.zombieBaseBar.update(this.zombieBaseHp, BASE_HP);
 
+    // Pause button (host only) — left of quit
+    if (this.isHost) {
+      const pauseBg = this.add.graphics().setDepth(20);
+      pauseBg.fillStyle(PALETTE.parchment);
+      pauseBg.fillRect(GAME_WIDTH - 152, 10, 66, 32);
+      pauseBg.lineStyle(2, PALETTE.woodDark);
+      pauseBg.strokeRect(GAME_WIDTH - 152, 10, 66, 32);
+      this.add.text(GAME_WIDTH - 119, 26, 'PAUSE', {
+        fontFamily: FONT_HEADING, fontSize: '9px', color: '#4D2F18',
+      }).setOrigin(0.5).setDepth(21);
+      const pauseHit = this.add.rectangle(GAME_WIDTH - 119, 26, 66, 32)
+        .setInteractive({ useHandCursor: true }).setDepth(22).setAlpha(0.001);
+      pauseHit.on('pointerdown', () => {
+        this.togglePause();
+      });
+    }
+
+    // Pause overlay (hidden by default, shown for both host and guest)
+    this.pauseOverlay = this.add.graphics().setDepth(50).setVisible(false);
+    this.pauseOverlay.fillStyle(0x000000, 0.6);
+    this.pauseOverlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.pauseText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'PAUSED', {
+      fontFamily: FONT_HEADING, fontSize: '32px', color: '#FFD23F',
+      stroke: '#1A1410', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(51).setVisible(false);
+
     // Quit button
-    const quitHit = this.add.rectangle(GAME_WIDTH - 47, 26, 66, 32)
-      .setInteractive({ useHandCursor: true }).setDepth(22).setAlpha(0.001);
     const quitBg = this.add.graphics().setDepth(20);
     quitBg.fillStyle(PALETTE.parchment);
     quitBg.fillRect(GAME_WIDTH - 80, 10, 66, 32);
+    quitBg.lineStyle(2, PALETTE.woodDark);
+    quitBg.strokeRect(GAME_WIDTH - 80, 10, 66, 32);
     this.add.text(GAME_WIDTH - 47, 26, 'QUIT', {
       fontFamily: FONT_HEADING, fontSize: '10px', color: '#E63946',
     }).setOrigin(0.5).setDepth(21);
+    const quitHit = this.add.rectangle(GAME_WIDTH - 47, 26, 66, 32)
+      .setInteractive({ useHandCursor: true }).setDepth(22).setAlpha(0.001);
     quitHit.on('pointerdown', () => {
       this.gameOver = true;
       this.cleanup();
@@ -293,8 +325,22 @@ export class MultiplayerBattleScene extends Scene {
     }
   }
 
+  /** Host toggles pause and syncs to guest via gameState */
+  private togglePause(): void {
+    if (!this.isHost) return;
+    this.isPaused = !this.isPaused;
+    this.showPauseOverlay(this.isPaused);
+    // Sync pause state immediately
+    this.syncState();
+  }
+
+  private showPauseOverlay(show: boolean): void {
+    if (this.pauseOverlay) this.pauseOverlay.setVisible(show);
+    if (this.pauseText) this.pauseText.setVisible(show);
+  }
+
   update(time: number, delta: number): void {
-    if (this.gameOver) return;
+    if (this.gameOver || this.isPaused) return;
 
     if (this.isHost) {
       // HOST runs full simulation
@@ -376,6 +422,7 @@ export class MultiplayerBattleScene extends Scene {
       plantBaseHp: this.plantBaseHp,
       zombieBaseHp: this.zombieBaseHp,
       gameOver: false,
+      paused: this.isPaused,
     });
   }
 
@@ -387,6 +434,10 @@ export class MultiplayerBattleScene extends Scene {
       this.scene.start('GameOverScene', { winner: state.winner });
       return;
     }
+
+    // Sync pause state from host
+    this.isPaused = !!state.paused;
+    this.showPauseOverlay(this.isPaused);
 
     this.plantBaseHp = state.plantBaseHp;
     this.zombieBaseHp = state.zombieBaseHp;
