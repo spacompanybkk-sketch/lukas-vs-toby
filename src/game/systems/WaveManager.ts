@@ -48,6 +48,13 @@ export class WaveManager {
     const row = Math.floor(Math.random() * 5);
     this.onSpawn(unitKey, row);
 
+    // 25% chance to spawn an extra unit in a different lane
+    if (Math.random() < 0.25) {
+      const extraKey = this.availableUnits[Math.floor(Math.random() * this.availableUnits.length)];
+      const extraRow = Math.floor(Math.random() * 5);
+      this.onSpawn(extraKey, extraRow);
+    }
+
     // Gradually speed up spawns over time (min 4s interval)
     if (this.waveCount % 15 === 0 && this.spawnInterval > 4000) {
       this.spawnInterval -= 500;

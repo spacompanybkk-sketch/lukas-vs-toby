@@ -5,6 +5,7 @@ import { chompPlant, evaporateZombie, explosionBurst } from '../fx/DeathFx';
 import {
   GRID_ROWS, GRID_COLS, TILE_SIZE, GRID_OFFSET_X, GRID_OFFSET_Y,
   GAME_WIDTH, GAME_HEIGHT, BASE_HP, STARTING_ENERGY,
+  STARTING_ENERGY_CAMPAIGN, STARTING_ENERGY_FREEPLAY,
   ENERGY_TICK_INTERVAL, ENERGY_TICK_AMOUNT, ENERGY_KILL_REWARD,
   UNIT_COSTS, CAMPAIGN_LEVELS, LOSS_REWARD_PERCENT, UNIT_UNLOCK_LEVELS,
 } from '../constants';
@@ -161,7 +162,10 @@ export class BattleScene extends Scene {
 
     // Systems
     this.gridManager = new GridManager();
-    this.energyManager = new EnergyManager(STARTING_ENERGY);
+    const startEnergy = this.isCampaign ? STARTING_ENERGY_CAMPAIGN
+      : this.isFreeplay ? STARTING_ENERGY_FREEPLAY
+      : STARTING_ENERGY;
+    this.energyManager = new EnergyManager(startEnergy);
     this.combatManager = new CombatManager();
     this.mergeManager = new MergeManager();
 

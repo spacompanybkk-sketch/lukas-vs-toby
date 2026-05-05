@@ -11,6 +11,8 @@ export const ENERGY_TICK_INTERVAL = 2000;
 export const ENERGY_TICK_AMOUNT = 5;
 export const ENERGY_KILL_REWARD = 10;
 export const STARTING_ENERGY = 500;
+export const STARTING_ENERGY_CAMPAIGN = 175;
+export const STARTING_ENERGY_FREEPLAY = 300;
 
 export const BASE_HP = 5000;
 
