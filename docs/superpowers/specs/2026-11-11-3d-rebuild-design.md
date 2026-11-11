@@ -138,8 +138,11 @@ the fair band any other way, and then move only in steps of 25.
 - Attack kinds: melee, straight shot (stops at the first enemy), lobbed shot (lands on
   a tile, ignores shields), piercing shot (passes through several), none.
 - A unit attacks the nearest enemy ahead of it in its lane within range. A zombie in
-  range of the plant base attacks the base. A plant's straight shot that meets no
-  zombie flies on and hits the zombie base, at a reduced damage factor.
+  range of the plant base attacks the base.
+- Plants hit the zombie base with shots, as in the old game. Every plant whose shot
+  reaches the whole lane (Peashooter, Kernel-pult, Mango-pult) keeps firing when its
+  lane holds no zombie, and those shots land on the zombie base at a reduced damage
+  factor. A straight shot whose target dies in flight carries on the same way.
 - Statuses: stun (cannot act), blind (attacks miss), tied (cannot act, visible lasso),
   poison and burn (damage over time), heal.
 - Zombies may overlap in a lane; they are drawn slightly offset so a stack reads.
@@ -238,8 +241,10 @@ more income), and a brothers' scoreboard that both computers see.
 - Marketplace as today: ten upgrade steps per unit, each adding health and damage.
   Applies in Adventure, Quick Battle and Free Play. Never in Versus.
 - Almanac: every unlocked unit on a 3D turntable with its role, stat bars and five looks.
-- Old saves (`lpvtz_save_lukas`, `lpvtz_save_toby`) are read once: coins and upgrade
-  levels carry over; campaign progress restarts because the levels are new.
+- Old saves (`lpvtz_save_lukas`, `lpvtz_save_toby`) are read once. Coins carry over.
+  Old upgrade levels are refunded as the coins they cost (level n cost 100 × n(n+1)/2)
+  rather than kept, so the new levels are not flattened by old +100% units. Campaign
+  progress restarts because the levels are new.
 
 ## 10. Balance
 
@@ -269,10 +274,31 @@ Thresholds (Versus rules, equal skill):
 | Side behind at 2:00 still wins | at least 20% |
 | Matches without a winner | 0, apart from true double knockouts |
 
+How the measures apply:
+
+- Cost efficiency from lane duels is measured only for units that fight on their own:
+  Peashooter, Kernel-pult, Mango-pult, Pumpkin Squash, and every zombie except
+  Necromancer.
+- One-use units (Potato Mine, Cherry Bomber, and Walnut Bomb's blast) are measured by
+  what they destroy: the average enemy spend removed per use must be 0.9 to 1.5 times
+  their own price.
+- Sunflower is exempt from the removal band, since it is the plants' income. Its check
+  is that the best number of Sunflowers to own is between 2 and 6: players told to
+  build none, or ten, lose to players who build three to five.
+- Torchwood, Avocado Bunker, Walnut Bomb and Necromancer are judged by the removal band
+  alone.
+
+When a threshold and a rule in section 6 cannot both hold, change in this order: the
+unit's numbers, then its price, then the detail of its behaviour while keeping its name
+and role. Thresholds are not loosened without telling Michal.
+
 Campaign levels are checked the same way with three stand-in players (a beginner, an
-average player, an expert): the expert wins at least 95% everywhere, the average
-player's win rate falls smoothly from about 95% in world 1 to about 50% at the last
-level, and no level is harder than the one two after it.
+average player, an expert), on Normal difficulty. The expert wins at least 95%
+everywhere without any Marketplace upgrades. The average player, buying upgrades at the
+rate the level rewards allow, sees a win rate that falls smoothly from about 95% in
+world 1 to about 50% at the last level. No level is harder than the one two after it.
+Each boy can set his own Adventure to Easy, Normal or Hard at any time; Easy and Hard
+change only income, by 25% either way.
 
 ## 11. Look and motion
 
@@ -293,7 +319,7 @@ crystal crypt on the right, as in today's base art.
   powers, a replay of the winning blow, victory orbit.
 - World life: swaying grass, drifting clouds, fireflies, snow, embers, animated water
   and lava, bases that smoke and crumble as they lose health.
-- Rendering: shadow-mapped sun, hemisphere fill, baked voxel ambient occlusion, bloom
+- Rendering: shadow-mapped sun, hemisphere fill, ambient occlusion, bloom
   on glowing parts, light depth of field, vignette, per-world colour grade. Resolution
   scales down automatically before the frame rate drops.
 - UI: chunky toy-like panels and buttons, bouncy transitions, card portraits rendered
@@ -335,6 +361,13 @@ the same fixed delay) with the step it applies on and publishes one ordered list
 state checksum goes out every few seconds; on a mismatch the guest reloads the host's
 snapshot. Leaving the tab pauses the match for both; a dropped connection shows a
 waiting screen and resumes from a snapshot.
+
+The old game, if a boy still has it open, listens on `presence/lukas`,
+`presence/toby`, `challenges/<name>` and `rooms`. The new game therefore writes only
+under `presence/v2`, `challenges/v2` and `rooms/v2`, which the existing rules still
+allow. Automated tests use the in-memory transport. The Firebase transport gets one
+scripted two-window run against the live database under `rooms/v2/test-*`, cleaned up
+afterwards.
 
 ## 14. Controls
 
@@ -393,3 +426,15 @@ File layout inside each layer, the voxel model format, animation blending, the p
 system, the exact UI component structure, the tuner's search method, level-by-level
 content, and all starting numbers not fixed here. Gamepad support and a downloadable
 replay clip are welcome later and must not be designed out.
+
+## 18. Questions only Michal can answer
+
+None of these blocks phases 1 or 2.
+
+1. How old are Lukas and Toby? It sets the default difficulty and how the levels are
+   tuned (phase 3 onward). Until answered, tuning assumes roughly 7 to 11.
+2. What is the second computer for two-computer Versus? A slower machine needs the low
+   graphics setting tested there, and a way to reach the game before it is deployed
+   (phase 5).
+3. "Video playability" was read as smooth, cinematic play with a replay of the winning
+   blow. If he meant whole-match replays or saved clips, phase 6 grows.
