@@ -51,11 +51,7 @@ const TRIANGLE_CEILING = 5000;
  * Models allowed past the ceiling, each with its reason. Empty: every unit fits. Add one only
  * where the look truly needs it, with the level and the count it may reach.
  */
-const TRIANGLE_OVERRIDES: Record<string, number> = {
-  // Over the ceiling when the ceiling came in; each is cut below it later in the same round.
-  sunflower: 7164,
-  walnutBomb: 8492,
-};
+const TRIANGLE_OVERRIDES: Record<string, number> = {};
 
 describe('the registry', () => {
   it('has the three plants of the first level', () => {
