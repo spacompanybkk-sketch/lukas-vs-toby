@@ -180,8 +180,10 @@ describe('zombie clips', () => {
     expect(get(sampled(crumble, 0.12), 'head').py).toBeGreaterThan(3);
     const end = sampled(crumble, 0.35);
     expect(get(end, 'head').px).toBeGreaterThan(2);
-    expect(get(end, 'root').sy).toBeLessThan(0.7);
-    expect(get(sampled(crumble, 5), 'root').sy).toBeCloseTo(get(end, 'root').sy, 6);
+    expect(get(end, 'root').py).toBeLessThan(-1);
+    expect(get(end, 'legL').sy).toBeLessThan(0.7);
+    expect(get(end, 'torso').rz).toBeGreaterThan(0.3);
+    expect(get(sampled(crumble, 5), 'root').py).toBeCloseTo(get(end, 'root').py, 6);
   });
 
   it('idle and cheer loop without a seam', () => {

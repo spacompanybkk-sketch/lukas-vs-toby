@@ -299,8 +299,14 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   if (phase !== null && params.get('clip') !== null) posePhase(params.get('clip') as string, phase);
   else pose(params.get('clip'), number(params, 't'));
 
-  // A card frames the unit's envelope, with room above for what higher levels wear.
-  if (portrait) renderer.rig.frameSubject(envelopeAround(cells), { ...view, side: 0.08, top: 0.16, bottom: 0.05 });
+  // A card frames the unit's envelope, with room above for what higher levels wear. A
+  // small unit (the Bone Minion is half size) brings the camera inside the renderer's near
+  // plane of 2 tiles, so a card draws from closer in.
+  if (portrait) {
+    const small = cells.some((cell) => (getModelDef(cell.key).envelope ?? UNIT_ENVELOPE)[1] < UNIT_ENVELOPE[1]);
+    if (small) renderer.camera.near = 0.25;
+    renderer.rig.frameSubject(envelopeAround(cells), { ...view, side: 0.08, top: 0.16, bottom: 0.05 });
+  }
 
   // Labels, in the UI layer: the level under each model, and each model's name once, at the
   // left of its row. Short, so that neighbours a tile apart do not overlap.

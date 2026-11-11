@@ -7,10 +7,27 @@ import { atLevels, bipedModel, mirrorZ } from './biped';
 // bandage ends trailing from its wrist and the back of its head, a little sand-coloured
 // headdress with purple stripes, and a handful of sand to throw. Its trim is the stripes.
 //
-//   2  a full pharaoh's headdress: a taller cap and lappets flaring out past the shoulders
-//   3  a cobra rising off the brow; the stripes turn iron
-//   4  crystal stripes and cobra
-//   5  a broad gold collar with warm gems; gold stripes and cobra
+//   2  a full headdress: a taller cap and lappets flaring out past the shoulders
+//   3  a pharaoh's: the headdress turns to iron striped with sand, a cobra rising off the brow
+//   4  a glowing crystal headdress and cobra
+//   5  a gold headdress and cobra, and a broad gold collar with warm gems
+
+/** The pharaoh's headdress (nemes): a cap, lappets flaring past the shoulders, a tail behind. */
+const nemes = (from: number, to: number, cloth: string, stripe: string): Box[] =>
+  atLevels(from, to, [
+    { at: [-5, 13.5, -3.5], size: [7.5, 1.5, 7], color: cloth },
+    { at: [-4.5, 15, -3], size: [6.5, 1, 6], color: cloth },
+    { at: [-4.5, 15.5, -1.5], size: [6.5, 0.5, 1], color: stripe },
+    { at: [-4.5, 15.5, 1], size: [6.5, 0.5, 1], color: stripe },
+    { at: [-5, 14, 3], size: [7.5, 0.5, 0.5], color: stripe },
+    { at: [-3, 8.5, 3.5], size: [2.5, 5, 1], color: cloth },
+    { at: [-3, 7.5, 4], size: [3, 1, 1], color: 'sandDark' },
+    { at: [-3, 10, 4], size: [2.5, 0.5, 0.5], color: stripe },
+    { at: [-3, 12, 4], size: [2.5, 0.5, 0.5], color: stripe },
+    { at: [-3, 8.5, -4.5], size: [2.5, 5, 1], color: cloth },
+    { at: [-3, 7.5, -5], size: [3, 1, 1], color: 'sandDark' },
+    { at: [1.5, 10, -1.5], size: [1.5, 4, 3], color: 'sandDark' },
+  ]);
 
 const head: Box[] = [
   // Wrapped head, darker underneath, with bands of darker bandage round it.
@@ -36,21 +53,10 @@ const head: Box[] = [
     { at: [-2.5, 11, 3], size: [2, 0.5, 0.5], color: 'clothPurple' },
     { at: [-2.5, 10, -3.5], size: [2, 3.5, 0.5], color: 'sand' },
   ]),
-  // Level 2 up: the full headdress, taller, striped over the top, the lappets flaring out.
-  ...atLevels(2, 5, [
-    { at: [-5, 13.5, -3.5], size: [7.5, 1.5, 7], color: 'sand' },
-    { at: [-4.5, 15, -3], size: [6.5, 1, 6], color: 'sand' },
-    { at: [-4.5, 15.5, -1.5], size: [6.5, 0.5, 1], color: 'clothPurple' },
-    { at: [-4.5, 15.5, 1], size: [6.5, 0.5, 1], color: 'clothPurple' },
-    { at: [-5, 14, 3], size: [7.5, 0.5, 0.5], color: 'clothPurple' },
-    { at: [-3, 8.5, 3.5], size: [2.5, 5, 1], color: 'sand' },
-    { at: [-3, 7.5, 4], size: [3, 1, 1], color: 'sandDark' },
-    { at: [-3, 10, 4], size: [2.5, 0.5, 0.5], color: 'clothPurple' },
-    { at: [-3, 12, 4], size: [2.5, 0.5, 0.5], color: 'clothPurple' },
-    { at: [-3, 8.5, -4.5], size: [2.5, 5, 1], color: 'sand' },
-    { at: [-3, 7.5, -5], size: [3, 1, 1], color: 'sandDark' },
-    { at: [1.5, 10, -1.5], size: [1.5, 4, 3], color: 'sandDark' },
-  ]),
+  // Level 2: the full headdress, taller, striped over the top, the lappets flaring out. From
+  // level 3 it is a pharaoh's: the cloth turns to metal and the stripes to sand.
+  ...nemes(2, 2, 'sand', 'clothPurple'),
+  ...nemes(3, 5, 'clothPurple', 'sand'),
   // A cobra rising off the brow: iron at 3, crystal at 4, gold at 5.
   ...atLevels(3, 3, [
     { at: [-6, 13.5, -0.5], size: [1, 2.5, 1], color: 'levelIron' },

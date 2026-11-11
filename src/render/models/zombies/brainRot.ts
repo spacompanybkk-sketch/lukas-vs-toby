@@ -69,10 +69,11 @@ const torso: Box[] = [
   { at: [-1, 6.5, 2.5], size: [1.5, 1, 0.5], color: 'toxicGreenDark' },
   // Level 5: a gold tank on its back, a cap and a hose over the shoulder.
   ...atLevels(5, 5, [
-    { at: [2, 5, -2], size: [2, 5, 3], color: 'levelGold' },
-    { at: [2.5, 5, -2.5], size: [1, 5, 4], color: 'levelGold' },
-    { at: [2.5, 10, -1.5], size: [1, 1, 2], color: 'levelGoldDark' },
-    { at: [2.5, 11, -1], size: [1, 1, 1], color: 'poison', emissive: 2 },
+    { at: [2, 5, -2], size: [2.5, 7, 3], color: 'levelGold' },
+    { at: [2.5, 5, -2.5], size: [1.5, 7, 4], color: 'levelGold' },
+    { at: [2, 8.5, -2.5], size: [2.5, 0.5, 4], color: 'levelGoldDark' },
+    { at: [2.5, 12, -1.5], size: [1.5, 1, 2], color: 'levelGoldDark' },
+    { at: [3, 13, -1], size: [1, 1, 1], color: 'poison', emissive: 2 },
     { at: [0, 8.5, -2.5], size: [2, 0.5, 0.5], color: 'levelGoldDark' },
     { at: [-2, 8.5, -2.5], size: [2, 0.5, 0.5], color: 'levelGoldDark' },
   ]),

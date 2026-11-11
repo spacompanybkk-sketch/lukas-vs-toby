@@ -31,19 +31,16 @@ const head: Box[] = [
   { at: [-4.5, 9.5, 0.5], size: [0.5, 1, 1], color: 'tooth' },
   // Level 2 up: horns curling up and out off both sides of the skull.
   ...atLevels(2, 5, [
-    { at: [-1.5, 13, 3], size: [1.5, 1, 1], color: 'boneShadow' },
-    { at: [-1.5, 14, 3.5], size: [1.5, 1.5, 1], color: 'bone' },
-    { at: [-2, 15.5, 3.5], size: [1, 1.5, 1], color: 'bone' },
-    { at: [-1.5, 13, -4], size: [1.5, 1, 1], color: 'boneShadow' },
-    { at: [-1.5, 14, -4.5], size: [1.5, 1.5, 1], color: 'bone' },
-    { at: [-2, 15.5, -4.5], size: [1, 1.5, 1], color: 'bone' },
+    { at: [-1.5, 13, 3], size: [1, 1, 1], color: 'boneShadow' },
+    { at: [-2, 14, 3.5], size: [1, 3, 1], color: 'bone' },
+    { at: [-1.5, 13, -4], size: [1, 1, 1], color: 'boneShadow' },
+    { at: [-2, 14, -4.5], size: [1, 3, 1], color: 'bone' },
   ]),
-  // Level 3 up: a helmet with a crest, between the horns, and a nose guard.
+  // Level 3 up: a helmet with a crest, between the horns.
   ...plate([
     { at: [-4.5, 13.5, -3], size: [7, 1, 6], color: 'levelIronDark' },
     { at: [-4, 14.5, -2.5], size: [6, 1.5, 5], color: 'levelIron' },
     { at: [-3, 16, -0.5], size: [5, 1, 1], color: 'levelIronDark' },
-    { at: [-5, 11.5, -0.5], size: [0.5, 2, 1], color: 'levelIron' },
   ]),
 ];
 
@@ -136,12 +133,11 @@ export const skeletonWarrior = bipedModel({
           { at: [-2, 8.5, 4.5], size: [0.5, 0.5, 0.5], color: 'socket' },
         ]),
         ...atLevels(3, 5, [
-          { at: [-5.5, 4, 4.5], size: [6, 9, 1], color: 'iron' },
-          { at: [-5, 4.5, 5], size: [5, 8, 0.5], color: 'clothPurple' },
+          { at: [-5, 4, 4.5], size: [5, 9, 1], color: 'iron' },
+          { at: [-4.5, 5, 5], size: [4, 7, 0.5], color: 'clothPurple' },
           { at: [-3.5, 8, 5], size: [2, 2, 0.5], color: 'bone' },
-          { at: [-3.5, 9, 5], size: [0.5, 0.5, 0.5], color: 'socket' },
-          { at: [-2, 9, 5], size: [0.5, 0.5, 0.5], color: 'socket' },
-          { at: [-3, 5.5, 5], size: [1, 1.5, 0.5], color: 'clothDark' },
+          { at: [-3, 9, 5], size: [1, 0.5, 0.5], color: 'socket' },
+          { at: [-3, 6, 5], size: [1, 1, 0.5], color: 'clothDark' },
         ]),
       ],
     },

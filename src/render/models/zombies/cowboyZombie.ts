@@ -10,7 +10,7 @@ import { atLevels, bipedModel, mirrorZ } from './biped';
 //   2  a bigger hat with a taller crown, and a sheriff's star on the hat and the vest
 //   3  iron star, buckle, barrel, studs round the hat band, and spurs
 //   4  a glowing crystal lasso; crystal star and barrel
-//   5  a gold lasso, star, buckle and barrel
+//   5  a gold lasso, star, buckle and barrel; a gold hat band and brim edge
 
 /** The lasso's rope, by level: rope, then crystal at 4 and gold at 5. */
 const rope = (boxes: Box[]): Box[] => [
@@ -46,6 +46,12 @@ const head: Box[] = [
     { at: [-2.5, 17, -1.5], size: [3, 0.5, 3], color: 'hatBrownDark' },
     { at: [-4, 15, -1], size: [0.5, 1.5, 2], color: 'iron' },
     { at: [-4, 15.5, -1.5], size: [0.5, 0.5, 3], color: 'iron' },
+  ]),
+  // Level 5: a gold band round the hat and a gold edge to the brim.
+  ...atLevels(5, 5, [
+    { at: [-3.5, 14, -3], size: [5, 0.5, 6], color: 'levelGold' },
+    { at: [-6, 13.5, -4.5], size: [0.5, 0.5, 9], color: 'levelGold' },
+    { at: [2.5, 13.5, -4.5], size: [0.5, 0.5, 9], color: 'levelGold' },
   ]),
   // Level 3 up: studs round the hat band.
   ...atLevels(3, 5, [

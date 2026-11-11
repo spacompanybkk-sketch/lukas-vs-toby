@@ -545,8 +545,9 @@ export function zombieRise(parts?: Partial<BipedParts>): Clip {
 
 /**
  * Falling apart, 0.35 s: the head pops up off the shoulders and tumbles away behind, the
- * arms drop, the body slumps down and spreads. It stays like that; the debris and the puff
- * are effects.
+ * arms drop, the legs fold and the body slumps forward and sinks. Nothing is squashed, so
+ * the head and what the hands hold keep their shape. It stays like that; the debris and
+ * the puff are effects.
  */
 export function zombieCrumble(parts?: Partial<BipedParts>): Clip {
   const p = bipedOf(parts);
@@ -558,9 +559,10 @@ export function zombieCrumble(parts?: Partial<BipedParts>): Clip {
     sample(t, pose) {
       const u = clamp(t / duration, 0, 1);
       const slump = easeInQuad(u);
+      // The legs fold and the hips sink; the body itself is not squashed, so the head and
+      // whatever it holds keep their shape.
       const hips = pose[p.root] as PartPose;
-      hips.sy = 1 - 0.6 * slump;
-      hips.sx = hips.sz = 1 + 0.22 * slump;
+      hips.py = -2.5 * slump;
       const chest = pose[p.torso] as PartPose;
       chest.rz = 30 * DEG * slump;
       // The head: up fast, then arcing back and down, spinning.
@@ -571,8 +573,11 @@ export function zombieCrumble(parts?: Partial<BipedParts>): Clip {
       top.s = 1 - 0.1 * u;
       (pose[p.armL] as PartPose).rz = 50 * DEG * slump;
       (pose[p.armR] as PartPose).rz = 60 * DEG * slump;
-      (pose[p.legL] as PartPose).rx = 20 * DEG * slump;
-      (pose[p.legR] as PartPose).rx = -20 * DEG * slump;
+      const legL = pose[p.legL] as PartPose;
+      const legR = pose[p.legR] as PartPose;
+      legL.sy = legR.sy = 1 - 0.5 * slump;
+      legL.rx = 20 * DEG * slump;
+      legR.rx = -20 * DEG * slump;
     },
   };
 }
