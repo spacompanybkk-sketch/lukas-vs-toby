@@ -178,6 +178,26 @@ describe('sudden death', () => {
     expect(m.state.baseHp.plants).toBe(m.state.baseHp.zombies);
   });
 
+  it('is a function of the tick: a state set up past the start emits the event once and drains at its own seconds', () => {
+    const m = fresh();
+    m.state.tick = SUDDEN_DEATH_TICK + seconds(40);
+    const first = m.step();
+    expect(eventsOf(first, 'suddenDeath')).toHaveLength(1);
+    // 40 s in: 3000 × (0.005 + 0.0001 × 40) / 30 = 0.9
+    expect(eventsOf(first, 'baseDamaged').map((e) => e.amount)).toEqual([0.9, 0.9].map((v) => expect.closeTo(v, 12)));
+    const second = m.step();
+    expect(eventsOf(second, 'suddenDeath')).toEqual([]);
+    expect(eventsOf(second, 'baseDamaged')).toHaveLength(2);
+  });
+
+  it('drains nothing when the config has it off, whatever the flag says', () => {
+    const m = fresh(false);
+    m.state.suddenDeath = true;
+    m.state.tick = SUDDEN_DEATH_TICK + 300;
+    expect(m.step()).toEqual([]);
+    expect(m.state.baseHp).toEqual({ plants: 3000, zombies: 3000 });
+  });
+
   it('takes its numbers from the balance table', () => {
     const b = cloneBalance(BALANCE);
     b.suddenDeath = { startSeconds: 10, baseRate: 0.03, growthPerSecond: 0.06 };

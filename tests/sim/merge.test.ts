@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, seconds } from '../../src/data/balance';
+import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
+import type { Balance } from '../../src/data/balance';
+import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
-import type { Command, CommandRejection, Unit } from '../../src/sim/types';
+import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
+import type { Command, CommandRejection, Unit, UnitKey } from '../../src/sim/types';
 import { eventsOf, merge, place, remove } from './helpers';
 
 /**
@@ -61,6 +64,65 @@ describe('merging', () => {
     pea.hp = 0.2; // 600 × 0.2 / 300 = 0.4, which rounds to 0
     m.step([merge('plants', 'peashooter', pea.id)]);
     expect(unitById(m, pea.id)).toMatchObject({ level: 2, hp: 1, maxHp: 600 });
+  });
+
+  describe('with fractional level multipliers [0, 1, 1.9, 2.7, 3.4, 4]', () => {
+    function tuned(): Balance {
+      const b = cloneBalance(BALANCE);
+      b.levelScale = [0, 1, 1.9, 2.7, 3.4, 4];
+      b.units.peashooter!.hp = 175; // 175 × 1.9 = 332.5, 175 × 2.7 = 472.50000000000006
+      return b;
+    }
+
+    /** Merges `key` from level 1 to 5, setting its health with `hpBefore` before each merge. */
+    function climb(key: UnitKey, hpBefore: (u: Unit) => number): Array<[number, number, number]> {
+      const b = tuned();
+      const config = defaultConfig(7, b);
+      config.startEnergy = { plants: 10_000, zombies: 10_000 };
+      const m = new Match(config, b);
+      // Alone on the lawn: nothing can hurt it, so its health is only what the merges make it.
+      const u = spawnUnit(m.state, b, key, 2, UNIT_INFO[key].faction === 'plants' ? 0.5 : ZOMBIE_SPAWN_X);
+      const seen: Array<[number, number, number]> = [];
+      for (let level = 2; level <= 5; level++) {
+        const cmd = merge(UNIT_INFO[key].faction, key, u.id);
+        while (m.check(cmd) === 'recharging') m.step();
+        u.hp = hpBefore(u);
+        expect(eventsOf(m.step([cmd]), 'unitMerged')).toEqual([{ type: 'unitMerged', unitId: u.id, level }]);
+        seen.push([u.level, u.hp, u.maxHp]);
+      }
+      return seen;
+    }
+
+    function expectWholeAndInRange(seen: Array<[number, number, number]>): void {
+      for (const [level, hp, maxHp] of seen) {
+        expect(Number.isInteger(maxHp), `level ${level} maxHp ${maxHp}`).toBe(true);
+        expect(Number.isInteger(hp), `level ${level} hp ${hp}`).toBe(true);
+        expect(hp, `level ${level}`).toBeGreaterThan(0);
+        expect(hp, `level ${level}`).toBeLessThanOrEqual(maxHp);
+      }
+    }
+
+    it('rounds max health and keeps a unit merged at full health exactly full', () => {
+      const seen = climb('peashooter', (u) => u.maxHp);
+      expect(seen).toEqual([[2, 333, 333], [3, 473, 473], [4, 595, 595], [5, 700, 700]]);
+      expectWholeAndInRange(seen);
+    });
+
+    it('keeps a unit merged at 1 hp at a whole, positive health', () => {
+      const seen = climb('peashooter', () => 1);
+      // round(333 × 1 / 175) = 2, round(473 / 333) = 1, round(595 / 473) = 1, round(700 / 595) = 1
+      expect(seen).toEqual([[2, 2, 333], [3, 1, 473], [4, 1, 595], [5, 1, 700]]);
+      expectWholeAndInRange(seen);
+    });
+
+    it.each(['peashooter', 'sunflower', 'walnutBomb', 'brainEater', 'veryFastWalker', 'skeletonWarrior'] as UnitKey[])(
+      '%s stays whole and within its max at full health, at 1 hp and in between',
+      (key) => {
+        expectWholeAndInRange(climb(key, (u) => u.maxHp));
+        expectWholeAndInRange(climb(key, () => 1));
+        expectWholeAndInRange(climb(key, (u) => Math.max(1, u.maxHp - 0.5)));
+      },
+    );
   });
 
   it('merging a zombie mid-walk keeps its x: only level, health, spent, energy and the card change', () => {

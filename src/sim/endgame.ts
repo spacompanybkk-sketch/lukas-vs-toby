@@ -8,11 +8,13 @@ import type { Faction, SimEvent, SimState } from './types';
  * Step stage 7, after deaths: sudden death, then the winner. Does nothing once a winner is set
  * (and `Match.step` does not even get here then), so a match ends exactly once.
  *
- * Sudden death, only when `config.suddenDeath`: on the tick equal to `seconds(startSeconds)` the
- * flag is set and `suddenDeath` emitted, and from that same step on both bases lose
- * `balance.baseHp × (baseRate + growthPerSecond × secondsSinceStart) / 30` every tick, where
- * `secondsSinceStart = (tick − startTick) / 30` (0 on the first step). Both lose the same absolute
- * amount (plants' base first, `lane: null`), so the healthier base outlasts the other.
+ * Sudden death is a function of the tick: it is active on every step where `config.suddenDeath`
+ * is true and `tick >= startTick` (`startTick = seconds(startSeconds)`). On each such step both
+ * bases lose `balance.baseHp × (baseRate + growthPerSecond × secondsSinceStart) / 30`, where
+ * `secondsSinceStart = (tick − startTick) / 30`, the same absolute amount for both (plants' base
+ * first, `lane: null`), so the healthier base outlasts the other. The `suddenDeath` event is
+ * emitted once, on the first step where it is active and the state flag was still false; that
+ * step sets the flag. In a match counting up from tick 0 that first step is tick `startTick`.
  *
  * Winner: a base at or below 0 has fallen and its side loses; both fallen on the same tick is a
  * `'draw'`. `matchEnded` is emitted on the step the winner is decided, as that step's last event.
@@ -26,13 +28,11 @@ export function tickEndgame(s: SimState, b: Balance, events: SimEvent[]): void {
 function tickSuddenDeath(s: SimState, b: Balance, events: SimEvent[]): void {
   const rule = b.suddenDeath;
   const startTick = seconds(rule.startSeconds);
-  // `>=`, not `===`: the same tick in any match that counts up from 0, and a state that was set
-  // up past the start (a scenario or a test) still gets its sudden death instead of none.
-  if (s.config.suddenDeath && !s.suddenDeath && s.tick >= startTick) {
+  if (!s.config.suddenDeath || s.tick < startTick) return;
+  if (!s.suddenDeath) {
     s.suddenDeath = true;
     events.push({ type: 'suddenDeath' });
   }
-  if (!s.suddenDeath) return;
   const secondsSinceStart = (s.tick - startTick) / TICKS_PER_SECOND;
   const amount = b.baseHp * (rule.baseRate + rule.growthPerSecond * secondsSinceStart) / TICKS_PER_SECOND;
   damageBase(s, 'plants', amount, null, events);
