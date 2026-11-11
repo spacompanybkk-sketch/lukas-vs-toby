@@ -1,10 +1,3 @@
-import { seconds } from '../data/balance';
-import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
-import { payBounty } from './economy';
-import { levelScale, nearestEnemyAhead, statsFor } from './lookup';
-import { BASE_STOP_X, COLS, TICKS_PER_SECOND } from './types';
-import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
-
 /**
  * Fighting: attacks, projectiles, damage, deaths and blasts.
  *
@@ -13,10 +6,18 @@ import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
  * removals keep the rest in place. Events are pushed in the order things happen: an attack or a
  * hit before the damage it does, a death before its bounty and its blast.
  *
- * A unit at or below 0 hp is out of the fight from that moment: nothing aims at it, blocks on
- * it or is hit in its place, so a shot meant for it flies on. It still finishes its own attack
- * on the tick it falls (it was struck at the same moment), and `resolveDeaths` removes it.
+ * Game rule: a unit at or below 0 hp is out of the fight from that moment. Nothing aims at it,
+ * blocks on it or is hit in its place, so a shot meant for it flies on, and a blast skips it. It
+ * still finishes its own attack on the tick it falls (it was struck at the same moment), and
+ * `resolveDeaths` removes it.
  */
+
+import { seconds } from '../data/balance';
+import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
+import { payBounty } from './economy';
+import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
+import { BASE_STOP_X, COLS, TICKS_PER_SECOND } from './types';
+import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
 
 type DeathBlast = NonNullable<UnitStats['deathBlast']>;
 
@@ -28,14 +29,17 @@ type DeathBlast = NonNullable<UnitStats['deathBlast']>;
  *   stands at, for `melee.damage × levelScale[level]`.
  * - Shots: a unit with its shot ready fires when it has something to shoot. A plant always has
  *   (it fires down an empty lane at the zombie base). A zombie needs a living plant ahead within
- *   range, or the plant base within range (`x <= range`). The projectile appears at the
- *   shooter's x and first moves on the next tick.
+ *   range, or the plant base within range (`x <= range`), and never shoots while it is blocked:
+ *   it throws on the approach and only bites once it stands at a plant or the base. (`blocked`
+ *   comes from the movement stage, so a zombie whose plant fell earlier this tick holds both its
+ *   bite and its shot for that one tick.) The projectile appears at the shooter's x and first
+ *   moves on the next tick.
  */
 export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
     const stats = statsFor(b, u.key);
     if (stats.melee && u.blocked && u.meleeTimer === 0) bite(s, b, u, stats.melee, events);
-    if (stats.shot && u.shotTimer === 0) shoot(s, b, u, stats.shot, events);
+    if (stats.shot && !u.blocked && u.shotTimer === 0) shoot(s, b, u, stats.shot, events);
   }
 }
 
@@ -146,19 +150,24 @@ export function damageBase(s: SimState, side: Faction, amount: number, lane: num
 }
 
 /**
- * Step stage 6: every unit at or below 0 hp is removed, in ascending id, with `unitDied` and then
- * its bounty. A dying unit with a death blast then explodes, damaging every living enemy within
- * its radius. Repeats until nobody is at or below 0, so blasts can chain within one step.
+ * Step stage 6: every unit that is down (hp not above 0, see `isStanding`) is removed, in
+ * ascending id, with `unitDied` and then its bounty. A dying unit with a death blast then
+ * explodes, damaging every standing enemy within its radius. Repeats until everyone left is
+ * standing, so blasts can chain within one step.
  */
 export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void {
   // Units already down when this stage starts fell to attacks or projectiles. Blasts are the only
   // damage dealt in here and they skip units already down, so everyone who falls in a later round
   // took their last damage from a blast.
   let cause: 'damage' | 'blast' = 'damage';
-  for (;;) {
-    const dying = s.units.filter((u) => u.hp <= 0);
-    if (dying.length === 0) return;
-    s.units = s.units.filter((u) => u.hp > 0);
+  while (!s.units.every(isStanding)) { // nothing is allocated on the usual tick where nobody falls
+    const standing: Unit[] = [];
+    const dying: Unit[] = [];
+    for (const u of s.units) {
+      if (isStanding(u)) standing.push(u);
+      else dying.push(u);
+    }
+    s.units = standing;
     for (const u of dying) {
       events.push({
         type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level, cause,
@@ -171,11 +180,16 @@ export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void
   }
 }
 
+/**
+ * A death blast: every standing enemy within `radius` (straight-line distance, lanes one tile
+ * apart) takes `damage × levelScale[level]`. Game rule: a unit already down is skipped, as it is
+ * for every other attack (see `nearestEnemyAhead`).
+ */
 function explode(s: SimState, b: Balance, source: Unit, blast: DeathBlast, events: SimEvent[]): void {
   events.push({ type: 'explosion', lane: source.lane, x: source.x, radius: blast.radius, sourceKey: source.key });
   const amount = blast.damage * levelScale(b, source.level);
   for (const u of s.units) {
-    if (u.faction === source.faction || u.hp <= 0) continue;
+    if (u.faction === source.faction || !isStanding(u)) continue;
     const dx = u.x - source.x;
     const dLane = u.lane - source.lane;
     if (Math.sqrt(dx * dx + dLane * dLane) <= blast.radius) damageUnit(s, u, amount, events);

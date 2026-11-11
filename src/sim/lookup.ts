@@ -1,7 +1,7 @@
+/** Read-only lookups shared by the step stages. None of them changes the state. */
+
 import type { Balance, UnitStats } from '../data/balance';
 import type { Faction, SimState, Unit, UnitKey } from './types';
-
-/** Read-only lookups shared by the step stages. None of them changes the state. */
 
 /** A unit type's numbers. A key the table has no numbers for is an error, never a silent zero. */
 export function statsFor(b: Balance, key: UnitKey): UnitStats {
@@ -18,10 +18,23 @@ export function levelScale(b: Balance, level: number): number {
 }
 
 /**
- * The nearest living unit of the side opposite `faction` in `lane` that is ahead of `x` by at
+ * Whether a unit is still in the fight. Anything but a positive hp counts as down, NaN included,
+ * so a broken number can neither keep a unit alive nor make it vanish without a `unitDied`.
+ */
+export function isStanding(u: Unit): boolean {
+  return u.hp > 0;
+}
+
+/**
+ * The nearest standing unit of the side opposite `faction` in `lane` that is ahead of `x` by at
  * most `reach` tiles. Ahead means towards larger x for plants and towards smaller x for zombies;
  * a unit standing exactly at `x` counts. Ties go to the lower id (`s.units` is kept in ascending
- * id order). A unit at or below 0 hp is already out of the fight and never counts.
+ * id order).
+ *
+ * Game rule: a unit that is down (see `isStanding`) never counts. Within a tick, a unit brought
+ * to 0 hp is out of the fight at once: a projectile passes through it to the next enemy or the
+ * base, a zombie is not held up by it, and (in `combat.ts`) a blast skips it. `resolveDeaths`
+ * removes it at the end of the tick.
  */
 export function nearestEnemyAhead(
   s: SimState, faction: Faction, lane: number, x: number, reach: number,
@@ -29,7 +42,7 @@ export function nearestEnemyAhead(
   let nearest: Unit | null = null;
   let nearestDistance = 0;
   for (const u of s.units) {
-    if (u.faction === faction || u.lane !== lane || u.hp <= 0) continue;
+    if (u.faction === faction || u.lane !== lane || !isStanding(u)) continue;
     const distance = faction === 'plants' ? u.x - x : x - u.x;
     if (distance < 0 || distance > reach) continue;
     if (nearest === null || distance < nearestDistance) {

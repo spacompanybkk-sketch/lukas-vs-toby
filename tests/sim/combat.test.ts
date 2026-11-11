@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
-import { damageBase, damageUnit, resolveDeaths } from '../../src/sim/combat';
+import { damageBase, damageUnit, resolveDeaths, tickProjectiles } from '../../src/sim/combat';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
-import type { SimEvent, Unit } from '../../src/sim/types';
+import type { Projectile, SimEvent, Unit } from '../../src/sim/types';
 import { eventsOf } from './helpers';
 
 /**
@@ -30,6 +30,23 @@ const anyHit = (events: SimEvent[]): boolean => eventsOf(events, 'projectileHit'
 
 function hitsOn(events: SimEvent[], u: Unit) {
   return eventsOf(events, 'projectileHit').filter((e) => e.targetId === u.id);
+}
+
+type Flight = Pick<Projectile, 'faction' | 'kind' | 'lane' | 'x' | 'speed' | 'damage'>;
+
+/** Puts a projectile in flight as if fired on the previous tick, so it moves on the next one. */
+function launch(m: Match, flight: Flight): Projectile {
+  const p: Projectile = { ...flight, id: m.state.nextId, ownerId: 0, spawnTick: m.state.tick - 1 };
+  m.state.nextId += 1;
+  m.state.projectiles.push(p);
+  return p;
+}
+
+/** A pea exactly as a level-1 Peashooter fires it. */
+function pea(lane: number, x: number): Flight {
+  const shot = BALANCE.units.peashooter?.shot;
+  if (!shot) throw new Error('no peashooter shot');
+  return { faction: 'plants', kind: shot.kind, lane, x, speed: shot.speed / 30, damage: shot.damage };
 }
 
 describe('shots and projectiles', () => {
@@ -242,43 +259,85 @@ describe('shots and projectiles', () => {
   });
 });
 
+describe('projectile hit edges', () => {
+  it("a zombie just behind a pea's starting point is not hit", () => {
+    const m = fresh();
+    const behind = spawnUnit(m.state, BALANCE, 'brainEater', 1, 4.999);
+    const p = launch(m, pea(1, 5));
+    const events: SimEvent[] = [];
+
+    tickProjectiles(m.state, m.balance, events);
+
+    expect(events).toEqual([]);
+    expect(behind.hp).toBe(400);
+    expect(m.state.projectiles).toEqual([p]);
+    expect(p.x).toBeCloseTo(5 + 6 / 30, 12);
+  });
+
+  it.each([
+    ['a pea', 'plants', 'pea', 'brainEater', 5.75, 5.76],
+    ['a brain', 'zombies', 'brain', 'sunflower', 4.25, 4.24],
+  ] as const)('%s hits a unit exactly speed + hitRadius from its start, and not one past it', (_name, faction, kind, key, edge, past) => {
+    const b = cloneBalance(BALANCE);
+    b.hitRadius = 0.5; // with a speed of 0.25 the edge, 0.75 from the start, is exact in binary
+    for (const [x, hit] of [[edge, true], [past, false]] as const) {
+      const m = fresh(b);
+      const u = spawnUnit(m.state, b, key, 2, x);
+      launch(m, { faction, kind, lane: 2, x: 5, speed: 0.25, damage: 20 });
+      const events: SimEvent[] = [];
+      tickProjectiles(m.state, b, events);
+      expect([x, hitsOn(events, u).length]).toEqual([x, hit ? 1 : 0]);
+    }
+  });
+
+  it('two zombies at the same x: the lower id is hit', () => {
+    const m = fresh();
+    const first = spawnUnit(m.state, BALANCE, 'brainEater', 3, 5.3);
+    const second = spawnUnit(m.state, BALANCE, 'brainEater', 3, 5.3);
+    launch(m, pea(3, 5));
+    const events: SimEvent[] = [];
+
+    tickProjectiles(m.state, m.balance, events);
+
+    expect(eventsOf(events, 'projectileHit').map((e) => e.targetId)).toEqual([first.id]);
+    expect([first.hp, second.hp]).toEqual([380, 400]);
+  });
+});
+
 describe('the Skeleton Warrior shield', () => {
   it('takes 0 from the first pea, 20 from the second, and blocks again 120 ticks after the first block', () => {
     const m = fresh();
-    spawnUnit(m.state, BALANCE, 'peashooter', 0, 0.5);
-    spawnUnit(m.state, BALANCE, 'walnutBomb', 0, 4.5); // holds the Skeleton in place
     const skel = spawnUnit(m.state, BALANCE, 'skeletonWarrior', 0, 5);
+    /** One pea just in front of it, so it lands on this step, whatever the pea speed. */
+    const peaNow = (): SimEvent[] => {
+      launch(m, pea(0, skel.x - 0.1));
+      return m.step();
+    };
 
-    const first = stepUntil(m, (e) => hitsOn(e, skel).length > 0);
+    const first = peaNow();
     const blockedOn = m.state.tick; // the tick count after the blocking step
     expect(hitsOn(first, skel)).toEqual([
-      expect.objectContaining({ x: 5, targetBase: null, blocked: true }),
+      expect.objectContaining({ x: skel.x, targetBase: null, blocked: true }),
     ]);
-    expect(eventsOf(first, 'unitDamaged').filter((e) => e.unitId === skel.id)).toEqual([]);
+    expect(eventsOf(first, 'unitDamaged')).toEqual([]);
     expect(skel.hp).toBe(700);
     expect(skel.abilityTimer).toBe(seconds(4));
 
-    const second = stepUntil(m, (e) => hitsOn(e, skel).length > 0);
+    const second = peaNow();
     expect(hitsOn(second, skel)).toEqual([expect.objectContaining({ blocked: false })]);
     expect(eventsOf(second, 'unitDamaged')).toEqual([
       { type: 'unitDamaged', unitId: skel.id, amount: 20, hp: 680 },
     ]);
-    expect(m.state.tick).toBeLessThan(blockedOn + 119);
 
-    // Two more Peashooters right in front of it, timed to hit 119 and 120 ticks after the block.
-    const early = spawnUnit(m.state, BALANCE, 'peashooter', 0, 4.7);
-    const onTime = spawnUnit(m.state, BALANCE, 'peashooter', 0, 4.9);
-    // A pea fired on a step hits on the next one; a timer of k fires k steps from now.
-    early.shotTimer = blockedOn + 118 - m.state.tick;
-    onTime.shotTimer = blockedOn + 119 - m.state.tick;
+    while (m.state.tick < blockedOn + 118) m.step();
+    const at119 = peaNow();
+    expect(m.state.tick - blockedOn).toBe(119);
+    expect(hitsOn(at119, skel)).toEqual([expect.objectContaining({ blocked: false })]);
+    expect(skel.hp).toBe(660);
 
-    const outcomes: Array<[number, boolean]> = [];
-    while (m.state.tick < blockedOn + 120) {
-      const events = m.step();
-      for (const hit of hitsOn(events, skel)) outcomes.push([m.state.tick - blockedOn, hit.blocked]);
-    }
-    expect(outcomes.filter(([after]) => after >= 119)).toEqual([[119, false], [120, true]]);
-    expect(outcomes.every(([after, blocked]) => blocked === (after === 120))).toBe(true);
+    const at120 = peaNow();
+    expect(hitsOn(at120, skel)).toEqual([expect.objectContaining({ blocked: true })]);
+    expect(skel.hp).toBe(660);
     expect(skel.abilityTimer).toBe(seconds(4));
   });
 });
@@ -314,30 +373,48 @@ describe('melee', () => {
 
   it('a zombie at the base deals 40 per second to the plant base', () => {
     const m = fresh();
-    const z = spawnUnit(m.state, BALANCE, 'brainEater', 4, 0.3);
-    let biteDamage = 0;
-    let brainDamage = 0;
-    const bitesOn: number[] = [];
+    const z = spawnUnit(m.state, BALANCE, 'brainEater', 4, 0.3); // at the base: blocked from its first step
+    const baseHits: Array<[number, Extract<SimEvent, { type: 'baseDamaged' }>]> = [];
+    const throwsOn: number[] = [];
 
-    for (let n = 1; n <= 300; n++) {
+    for (let n = 1; n <= 300; n++) { // 10 seconds from the moment it is first blocked
       const events = m.step();
-      events.forEach((e, i) => {
-        if (e.type === 'unitAttacked' && e.attack === 'melee') {
-          expect(e).toEqual({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
-          const hurt = events[i + 1];
-          expect(hurt).toEqual(expect.objectContaining({ type: 'baseDamaged', faction: 'plants', amount: 40, lane: 4 }));
-          biteDamage += 40;
-          bitesOn.push(n);
-        }
-        if (e.type === 'projectileHit' && e.targetBase === 'plants') brainDamage += 15;
-      });
+      expect(z.blocked).toBe(true);
+      for (const hit of eventsOf(events, 'baseDamaged')) baseHits.push([n, hit]);
+      for (const shot of eventsOf(events, 'projectileSpawned')) if (shot.ownerId === z.id) throwsOn.push(n);
     }
 
-    expect(bitesOn).toEqual([30, 60, 90, 120, 150, 180, 210, 240, 270, 300]);
-    expect(biteDamage).toBe(400); // 40 a second for 10 seconds
-    // The base is within its brain range too, so brains land on top of the bites.
-    expect(m.state.baseHp.plants).toBe(3000 - biteDamage - brainDamage);
-    expect(z.x).toBe(0.3);
+    expect(baseHits).toEqual([30, 60, 90, 120, 150, 180, 210, 240, 270, 300].map((n, i) => [
+      n, { type: 'baseDamaged', faction: 'plants', amount: 40, hp: 3000 - 40 * (i + 1), lane: 4 },
+    ]));
+    expect(m.state.baseHp.plants).toBe(2600);
+    // The base is within its brain range, but a blocked zombie only bites.
+    expect(throwsOn).toEqual([]);
+  });
+
+  it('a blocked zombie holds its shot: a Brain Eater throws on the approach, then only bites', () => {
+    const m = fresh();
+    const walnut = spawnUnit(m.state, BALANCE, 'walnutBomb', 2, 2.5);
+    const z = spawnUnit(m.state, BALANCE, 'brainEater', 2, 5.5); // the Walnut Bomb is within its 3.5 range
+    let thrownWalking = 0;
+    let thrownBlocked = 0;
+    let bites = 0;
+
+    for (let n = 0; n < 600; n++) {
+      const events = m.step();
+      const throws = eventsOf(events, 'projectileSpawned').filter((e) => e.ownerId === z.id).length;
+      // `blocked` was set in this step's movement stage, before anyone attacked.
+      if (z.blocked) thrownBlocked += throws;
+      else thrownWalking += throws;
+      bites += eventsOf(events, 'unitAttacked').filter((e) => e.unitId === z.id && e.attack === 'melee').length;
+    }
+
+    expect(thrownWalking).toBeGreaterThan(0);
+    expect(z.blocked).toBe(true);
+    expect(bites).toBeGreaterThan(0);
+    expect(thrownBlocked).toBe(0);
+    expect(z.shotTimer).toBe(0); // ready, and held
+    expect(walnut.hp).toBeGreaterThan(0);
   });
 });
 
@@ -405,6 +482,21 @@ describe('deaths and bounties', () => {
     expect(friend.hp).toBe(200); // a blast hurts only the other side
     // The dead are removed; everyone else keeps their order.
     expect(m.state.units.map((u) => u.id)).toEqual([friend.id, sameLane.id, nextLane.id, diagonal.id, twoAway.id]);
+  });
+
+  it('counts a unit whose hp is not a number as dead, and leaves the unit list alone when nobody falls', () => {
+    const m = fresh();
+    const broken = spawnUnit(m.state, BALANCE, 'brainEater', 0, 5);
+    const fine = spawnUnit(m.state, BALANCE, 'brainEater', 1, 5);
+    const list = m.state.units;
+    resolveDeaths(m.state, BALANCE, []);
+    expect(m.state.units).toBe(list); // nobody down: the very same array
+
+    broken.hp = NaN;
+    const events: SimEvent[] = [];
+    resolveDeaths(m.state, BALANCE, events);
+    expect(eventsOf(events, 'unitDied')).toEqual([expect.objectContaining({ unitId: broken.id, cause: 'damage' })]);
+    expect(m.state.units).toEqual([fine]);
   });
 
   it("a level-2 Walnut Bomb's blast deals 300", () => {

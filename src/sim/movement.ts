@@ -10,7 +10,8 @@ import type { SimState } from './types';
  * within its melee reach, or while it stands at the plant base (x <= BASE_STOP_X). The test uses
  * where it stands when the stage starts: a blocked zombie stays put, any other walks
  * speed / 30 tiles left, never past BASE_STOP_X. One that walks into reach is blocked from the
- * next tick. Shooting plays no part here: a zombie throws while it walks.
+ * next tick. Shooting plays no part here: a zombie throws while it walks, and `tickAttacks`
+ * reads `blocked` to keep a blocked zombie to its bite.
  */
 export function tickMovement(s: SimState, b: Balance): void {
   for (const z of s.units) {
