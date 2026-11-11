@@ -410,6 +410,61 @@ Behaviour: `think` is called every tick and acts only every 60 (easy), 30 (mediu
 
 ---
 
+### Task 6a: The plant base defends itself
+
+> Added 2026-11-11 during execution, after Task 6's first matches. Runs after Task 6's first commit and before Task 6's fix round, which switches the defence on and re-tunes.
+
+**Why:** the first computer-vs-computer runs showed a hole in the rules. Plants only shoot to the right, so a zombie that reaches the plant base can never be hit again and bites it for the rest of the match. One early leak decided most matches. The fix: the base strikes zombies that are biting it.
+
+**Files:**
+- Modify: `src/sim/types.ts`, `src/sim/hash.ts`, `src/data/balance.ts`, `src/sim/economy.ts`, `src/sim/combat.ts`, `src/sim/match.ts`
+- Test: `tests/sim/baseDefense.test.ts` (new), and updates to `tests/sim/step-order.test.ts`, `tests/sim/hash.test.ts`, `tests/sim/determinism.test.ts`, `tests/sim/helpers.ts`, `tests/data/balance.test.ts`
+
+**Interfaces:**
+- Consumes: `Match`, `spawnUnit`, `damageUnit`, `seconds`, `cloneBalance`, `BASE_STOP_X`, `LANES`, `isStanding`.
+- Produces:
+
+```ts
+// src/data/balance.ts — added to Balance
+baseDefense: { damage: number; interval: number };   // seconds; damage 0 switches it off
+// src/sim/types.ts — added to SimState
+baseDefenseTimers: number[];                          // one per lane, ticks until the base can strike there again
+// src/sim/types.ts — added to SimEvent
+| { type: 'baseStruck'; lane: number; targetId: number }   // the plant base hit a zombie that was biting it
+// src/sim/combat.ts
+export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): void;
+```
+
+Shipped values in `BALANCE`: `baseDefense: { damage: 0, interval: 1 }`. The mechanism ships switched off so every existing test and the computer players keep their current behaviour; the next step turns it on while re-tuning. Tests in this task use `cloneBalance(BALANCE)` with `baseDefense.damage = 60`.
+
+Rules:
+
+- `baseDefenseTimers` has `LANES` entries, all 0 at the start of a match. `tickEconomy` counts each down by 1 per tick, never below 0, in the same place as the other timers (still the only place timers count down).
+- `Match.step` calls `tickBaseDefense` after `tickAttacks` and before `tickProjectiles`.
+- `tickBaseDefense`, for lanes 0 to 4 in order: if that lane's timer is 0 and `baseDefense.damage > 0`, find the zombie in that lane with the lowest id that is standing (hp above 0), has `blocked` true and `x <= BASE_STOP_X`. If there is one: emit `baseStruck`, call `damageUnit` for `baseDefense.damage` (armour applies as for any damage), and set the lane's timer to `seconds(baseDefense.interval)`. If there is none, the timer stays 0.
+- A zombie killed this way is removed by `resolveDeaths` like any other death: cause `'damage'`, bounty to the plants.
+- The zombie base has no such defence.
+- `hashState` covers `baseDefenseTimers` (length-prefixed, in lane order) and `snapshotState`/`restoreState` round-trip it. A snapshot made before this field existed has no timers: `restoreState` fills in zeros.
+
+- [ ] **Step 1:** Write `tests/sim/baseDefense.test.ts` (all with a cloned balance, damage 60, interval 1, unless stated):
+  - a Very Fast Walker (180 hp) placed at the base with `spawnUnit` and left alone is struck for 60 on the first step it is blocked by the base, again 30 ticks later and again 30 ticks after that, and dies on the third strike with `unitDied` cause `'damage'`; the plants receive its bounty once; exactly three `baseStruck` events name it
+  - the plant base only loses what the walker bit before it died (sum of `baseDamaged` amounts equals the base's lost health, and no `baseDamaged` follows its death)
+  - two zombies at the base in one lane: only the lower id is struck until it dies; the next strike, one interval after the previous one, lands on the other
+  - zombies at the base in lanes 1 and 3 are both struck on the same step, lane 1's event first
+  - a zombie blocked by a plant (not at the base) is never struck; it is struck only once it has eaten through and reached the base
+  - a zombie still walking (not yet at `BASE_STOP_X`) is never struck
+  - with `damage: 0` (the shipped value) 600 steps with a zombie at the base emit no `baseStruck` and the timers stay 0
+  - a zombie with `armor` 10 loses 50 per strike
+  - a lane's timer reads `seconds(1)` right after a strike and counts down by 1 per step to 0
+  - `baseStruck` comes after that zombie's own `unitAttacked` on the same step (the base strikes after units attack)
+- [ ] **Step 2:** Update `tests/sim/step-order.test.ts` to expect `tickBaseDefense` between `tickAttacks` and `tickProjectiles`; `tests/sim/hash.test.ts`: changing `baseDefenseTimers[2]` changes the hash, the round trip keeps it, a snapshot without the field restores to five zeros, and the golden checksum is recomputed (say in the report how you cross-checked it); `tests/sim/determinism.test.ts`: the invariant checker also requires every `baseDefenseTimers` entry to be a whole number from 0 to `seconds(interval)` and the array to have `LANES` entries, and the rich sweep runs with the defence on (damage 60) so the fuzz exercises it, with `baseStruck` added to the coverage guard; `tests/data/balance.test.ts`: `baseDefense.damage >= 0` and `interval` at least one tick.
+- [ ] **Step 3:** Run `npm test`. Expected: the new and updated tests fail.
+- [ ] **Step 4:** Implement.
+- [ ] **Step 5:** Run `npm test && npm run typecheck`. Expected: every test passes, including `tests/ai/**` untouched (the shipped value is 0, so nothing about computer-player matches changes; if an `ai` test fails, the mechanism is leaking into the switched-off case — fix that, do not edit `src/ai` or `tests/ai`).
+- [ ] **Step 6:** Commit: `feat(sim): the plant base strikes zombies that reach it (switched off by default)`.
+
+---
+
 ### Task 7: Renderer, camera, game loop and the lawn
 
 **Files:**

@@ -139,6 +139,12 @@ the fair band any other way, and then move only in steps of 25.
   a tile, ignores shields), piercing shot (passes through several), none.
 - A unit attacks the nearest enemy ahead of it in its lane within range. A zombie in
   range of the plant base attacks the base.
+- The plant base fights back. A zombie that has reached the base and is biting it is
+  struck by the base on a timer, one zombie per lane at a time. A zombie that slips
+  down an empty lane therefore costs some base health and then dies, instead of biting
+  for the rest of the match. (Added 2026-11-11: the first computer-vs-computer runs
+  showed that plants, which only shoot towards the zombies, could never hit a zombie
+  that had got past them, so one early leak decided most matches.)
 - Plants hit the zombie base with shots, as in the old game. Every plant whose shot
   reaches the whole lane (Peashooter, Kernel-pult, Mango-pult) keeps firing when its
   lane holds no zombie, and those shots land on the zombie base at a reduced damage
