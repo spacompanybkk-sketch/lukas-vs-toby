@@ -21,9 +21,15 @@ island, soft shadows, saturated colour. Nothing frightening, no gore.
 - Chunky: head is 40–50% of total height. Limbs short. Hands and feet are one box each.
 - Zombies slouch (torso pitched 10° forward), arms held out in front.
 - Plants have a base (leaves or pot), a stem, and an expressive head.
-- Eyes: black 2×2 voxel squares, one voxel deep, each with a single white glint voxel
-  in the top corner nearest the light. Plants look determined and friendly. Zombies
-  look silly: one eye bigger than the other, a tooth or tongue showing.
+- Eyes: black, 2 wide by 3 tall on a vertical face (they come out square through the
+  lawn camera, which foreshortens a vertical face to 0.62 of its height), standing half
+  a voxel proud of the surface, each with a single white glint voxel in the top corner
+  nearest the light. Plants look determined and friendly. Zombies look silly: one eye
+  bigger than the other, a tooth or tongue showing.
+- Faces turn to the player. The body faces along its lane, but the head is turned about
+  14° towards the camera and tipped back about 6°, so the mouth and the near eye show
+  from the lawn camera. The Peashooter (`src/render/models/plants/peashooter.ts`) is the
+  reference for how a unit is built and how its five levels escalate.
 - Blink: eye height collapses to 10% for 100 ms every 2–5 s, offset per unit.
 
 ## 3. Colour
