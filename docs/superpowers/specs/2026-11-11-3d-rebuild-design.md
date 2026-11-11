@@ -212,8 +212,9 @@ Damage is a fixed amount, not a kill. The two are tuned separately.
 | Versus, two computers | Online challenge, as today, through Firebase. |
 
 Versus rules: standard unit strength (shop upgrades never apply), all ten units each,
-a rematch button that swaps sides, an optional head start for one boy (10, 20 or 30%
-more income), and a brothers' scoreboard that both computers see.
+a rematch button that swaps sides, a head start for one boy (10 to 50% more income in
+steps of 10; on for Toby by default, see section 18), and a brothers' scoreboard that
+both computers see.
 
 ## 8. Campaigns
 
@@ -431,8 +432,19 @@ replay clip are welcome later and must not be designed out.
 
 None of these blocks phases 1 or 2.
 
-1. How old are Lukas and Toby? It sets the default difficulty and how the levels are
-   tuned (phase 3 onward). Until answered, tuning assumes roughly 7 to 11.
+1. How old are Lukas and Toby? **Answered 2026-11-11: Lukas is 8, Toby is almost 5.**
+   What follows from it:
+   - Toby cannot be expected to read. Every screen must be usable from pictures, colour
+     and sound alone; words are a bonus for Lukas.
+   - Adventure starts on Normal for Lukas and on Easy for Toby.
+   - The beginner stand-in player models Toby and the average one models Lukas. Toby's
+     campaign on Easy must be winnable by the beginner at least 70% of the time through
+     its first two worlds.
+   - In Versus, a head start for Toby is on by default. Phase 3 measures the beginner
+     against the average player at head starts of 0 to 50% in steps of 10 and makes the
+     default the smallest one that gives the beginner at least 40% of the wins. Either
+     boy can change it or turn it off before a match.
+   - On one keyboard Toby keeps the simplest controls (up, down, left, right, Enter).
 2. What is the second computer for two-computer Versus? A slower machine needs the low
    graphics setting tested there, and a way to reach the game before it is deployed
    (phase 5).
