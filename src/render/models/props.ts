@@ -1,4 +1,5 @@
 import { Color, Group, Mesh, MeshStandardMaterial, type BufferGeometry, type Object3D } from 'three';
+import type { ProjectileKind } from '../../sim/types';
 import { glowMaterial } from '../fx/glow';
 import { MATTE_PLASTIC } from '../look';
 import { PALETTE } from '../palette';
@@ -10,8 +11,8 @@ import { BoxBatch, hash2, paint, shade } from '../world/boxes';
 
 export { GRAVESTONE_HEIGHT, makeGravestone } from '../world/props';
 
-/** What the simulation fires (`ProjectileKind` in the simulation's types). */
-export type ProjectileKind = 'pea' | 'brain';
+/** What the simulation fires: the simulation's own type. */
+export type { ProjectileKind };
 export type TokenKind = 'sun' | 'brain';
 
 /** Edge of a projectile, in tiles (art bible section 6: at least 0.2). */

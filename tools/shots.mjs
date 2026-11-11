@@ -242,6 +242,48 @@ const SCENARIOS = [
   },
   // The same in the side-by-side layout, as `?scene=fx` opens.
   { name: 'fx-states', url: '/?scene=fx&t=0.15' },
+  // A Medium bot against a Medium bot through the battle view, frozen early, mid-match and busy.
+  { name: 'battle-early', url: '/?scene=battle-demo&seed=7&t=25' },
+  { name: 'battle-mid', url: '/?scene=battle-demo&seed=7&t=80' },
+  { name: 'battle-busy', url: '/?scene=battle-demo&seed=7&t=150' },
+  // Every unit's bar at 40% health, so the bars and level pips of the busy frame can be judged.
+  {
+    name: 'battle-bars',
+    url: '/?scene=battle-demo&seed=7&t=150',
+    steps: async (page) => {
+      await page.evaluate(() => {
+        const battle = window.__lvt.battle;
+        for (const u of battle.match.state.units) {
+          const v = battle.view.unit(u.id);
+          if (v) v.hp = v.maxHp * 0.4;
+        }
+        battle.redraw();
+      });
+      await nextFrames(page, 3);
+    },
+  },
+  // Motion, judged from stills: four frames 0.1 s apart from the next Peashooter shot and the
+  // next zombie bite after t = 60, the camera closed in on the one acting.
+  ...['shot', 'bite'].map((kind) => ({
+    name: `battle-motion-${kind}`,
+    url: '/?scene=battle-demo&seed=7&t=60',
+    frames: [0, 0.1, 0.2, 0.3].map((t, i) => ({
+      suffix: `f${i}`,
+      run: async (page) => {
+        await page.evaluate(
+          ([k, first]) => {
+            const battle = window.__lvt.battle;
+            if (first) {
+              const at = battle.until(k);
+              if (at) battle.focus(at.lane, at.x);
+            } else battle.advance(0.1);
+          },
+          [kind, i === 0],
+        );
+        await nextFrames(page, 3);
+      },
+    })),
+  })),
 ];
 
 /**

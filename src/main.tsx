@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { installDebug, markReady } from './app/debug';
 import * as gallery from './render/gallery';
+import * as battleDemo from './scenes/battleDemo';
 import * as boot from './scenes/boot';
 import * as fx from './scenes/fx';
 import * as lawn from './scenes/lawn';
@@ -23,6 +24,7 @@ const SCENES = new Map<string, SceneModule>([
   ['lawn', lawn],
   ['gallery', gallery],
   ['fx', fx],
+  ['battle-demo', battleDemo],
 ]);
 
 installDebug();
