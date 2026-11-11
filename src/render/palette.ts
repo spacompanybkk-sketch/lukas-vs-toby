@@ -99,8 +99,8 @@ const colours = {
   // The Desert Zombie: sand, and the bandages it is wrapped in.
   sand: '#E2C68A',
   sandDark: '#BC9C5E',
-  bandage: '#EEE4C6',
-  bandageDark: '#C9B88F',
+  bandage: '#E6D7AE',
+  bandageDark: '#BFA977',
   // The Cowboy's hat, vest and belt.
   hatBrown: '#8E5B32',
   hatBrownDark: '#633D1E',

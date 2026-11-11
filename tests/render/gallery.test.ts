@@ -286,7 +286,8 @@ describe('gallery scene', () => {
     const body = [{ name: 'body', pivot: [0, 0, 0] as [number, number, number], boxes: [{ at: [-1, 0, -1] as [number, number, number], size: [2, 2, 2] as [number, number, number], color: 'leaf' }] }];
     registerModel({ key: 'test-slow', trim: [], parts: body, clips: { idle, shoot: slow } });
     registerModel({ key: 'test-still', trim: [], parts: body, clips: { idle } });
-    const { gallery } = open('scene=gallery&level=1&clip=shoot');
+    // Named, so that they share a page however many models the registry holds.
+    const { gallery } = open('scene=gallery&models=peashooter,test-slow,test-still&level=1&clip=shoot');
     const byKey = (key: string): ModelInstance => gallery.instances.find((instance) => instance.def.key === key) as ModelInstance;
     frames(40); // 0.67 s
     expect(byKey('peashooter').clip).toBe('idle'); // its 0.4 s shot is over

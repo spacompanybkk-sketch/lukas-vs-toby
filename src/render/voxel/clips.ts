@@ -463,8 +463,9 @@ export function zombieBite(opts: { jaw?: string; duration?: number; parts?: Part
       (pose[p.armR] as PartPose).rz = DEG * (-35 * back + 22 * lunge);
       if (opts.jaw) {
         const jaw = pose[opts.jaw] as PartPose;
-        // Open with the wind-up, shut hard on the strike, a little open as it recovers.
-        jaw.rz = DEG * 30 * back;
+        // Wide open with the wind-up, snapped shut on the strike (a jaw that hangs open at
+        // rest closes then), back to rest as it recovers.
+        jaw.rz = DEG * (30 * back - 18 * lunge);
       }
     },
   };

@@ -4,6 +4,9 @@ import { peashooter } from './plants/peashooter';
 import { sunflower } from './plants/sunflower';
 import { walnutBomb } from './plants/walnutBomb';
 import { brainEater } from './zombies/brainEater';
+import { desertZombie } from './zombies/desertZombie';
+import { hotTopic } from './zombies/hotTopic';
+import { skeletonArcher } from './zombies/skeletonArcher';
 import { skeletonWarrior } from './zombies/skeletonWarrior';
 import { veryFastWalker } from './zombies/veryFastWalker';
 
@@ -45,4 +48,4 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
   }
 }
 
-for (const def of [peashooter, sunflower, walnutBomb, brainEater, veryFastWalker, skeletonWarrior]) registerModel(def);
+for (const def of [peashooter, sunflower, walnutBomb, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic]) registerModel(def);

@@ -234,11 +234,17 @@ const STEPS: Record<string, number> = {
   brainEater: 0.8,
   veryFastWalker: 0.45,
   skeletonWarrior: 0.9,
+  desertZombie: 0.75,
+  skeletonArcher: 0.85,
+  hotTopic: 0.6,
 };
 /** Parts the clips and the game ask for by name. */
 const PROPS: [string, string][] = [
   ['skeletonWarrior', 'shield'],
   ['brainEater', 'brain'],
+  ['skeletonArcher', 'bow'],
+  ['desertZombie', 'sand'],
+  ['hotTopic', 'jaw'],
 ];
 
 describe('the zombies', () => {
@@ -256,5 +262,11 @@ describe('the zombies', () => {
 
   it('walk at the pace of their role', () => {
     for (const [key, step] of Object.entries(STEPS)) expect(getModelDef(key).clips.walk?.duration, key).toBeCloseTo(step);
+  });
+
+  it('Hot Topic bites fast, snapping its hanging jaw shut', () => {
+    const bite = getModelDef('hotTopic').clips.melee;
+    expect(bite?.duration).toBeCloseTo(0.3);
+    expect(bite?.parts).toContain('jaw');
   });
 });
