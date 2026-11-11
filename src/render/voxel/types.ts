@@ -45,6 +45,11 @@ export interface PartDef {
    * behind. By default a part is shaded against itself alone.
    */
   shadedBy?: string[];
+  /**
+   * Built hidden, for the view to show when it wants (`ModelInstance.showPart`): damage that
+   * appears below half health, say. Its children are hidden with it.
+   */
+  hidden?: boolean;
   /** Later boxes paint over earlier ones where their faces lie in the same plane. */
   boxes: Box[];
 }

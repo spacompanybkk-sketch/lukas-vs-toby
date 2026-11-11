@@ -73,6 +73,8 @@ const colours = {
   levelGoldDark: '#F0A21E',
   // A paler pea, for a lip that has to stand out from a pea-green head.
   peaLight: '#B5EF8A',
+  // A paler petal, for the Sunflower's petal tips: the trim that turns to metal and crystal.
+  petalLight: '#FFDC5A',
   eye: '#1A1A22',
   eyeGlint: '#FFFFFF',
 

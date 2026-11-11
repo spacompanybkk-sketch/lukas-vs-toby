@@ -4,7 +4,7 @@ import { getModelDef, hasModel, modelKeys, prewarmModels, registerModel } from '
 import { peashooter } from '../../src/render/models/plants/peashooter';
 import { BLOOM_THRESHOLD } from '../../src/render/look';
 import { VOXEL, buildParts, disposeModels, modelColors, modelStats, muzzleOf } from '../../src/render/voxel/build';
-import { cheerJump, hitRecoil, idleBob, shootSnap, spawnRise, wilt } from '../../src/render/voxel/clips';
+import { breathe, cheerJump, hitRecoil, hitWobble, idleBob, shootSnap, spawnRise, sunPulse, swellBlast, wilt } from '../../src/render/voxel/clips';
 import { LEVEL_SCALE, PALETTE, levelMaterial } from '../../src/render/voxel/palette';
 import { ModelInstance } from '../../src/render/voxel/rig';
 import type { Box, Clip, ModelDef, PartDef, PartPose, Pose } from '../../src/render/voxel/types';
@@ -268,6 +268,27 @@ describe('buildParts', () => {
     const aura = buildParts(peashooter, 5).getObjectByName('aura');
     expect(aura).toBeInstanceOf(Group);
     expect(aura?.children).toHaveLength(0);
+  });
+
+  it('builds a hidden part hidden, for the view to show when it wants', () => {
+    const def: ModelDef = {
+      key: 'test-hidden-part',
+      trim: [],
+      parts: [
+        { name: 'shell', pivot: [0, 0, 0], boxes: [{ at: [-2, 0, -2], size: [4, 4, 4], color: 'walnut' }] },
+        { name: 'cracks', parent: 'shell', pivot: [0, 0, 0], hidden: true, boxes: [{ at: [2, 1, 0], size: [0.5, 2, 1], color: 'walnutDark' }] },
+      ],
+      clips: {},
+    };
+    expect(buildParts(def, 1).getObjectByName('cracks')?.visible).toBe(false);
+    expect(buildParts(def, 1).getObjectByName('shell')?.visible).toBe(true);
+    const instance = new ModelInstance(def, 1);
+    instance.showPart('cracks', true);
+    expect(instance.root.getObjectByName('cracks')?.visible).toBe(true);
+    // It stays shown through a change of level.
+    const next = instance.setLevel(2);
+    expect(next.root.getObjectByName('cracks')?.visible).toBe(true);
+    expect(() => next.showPart('nope', true)).toThrow(/nope/);
   });
 
   it('turns a part about its pivot, carrying its children with it', () => {
@@ -636,6 +657,75 @@ describe('clip builders', () => {
     }
     expect(height).toBeGreaterThan(2);
     expect(squash).toBeLessThan(0.95);
+  });
+
+  it('sunPulse pays out in half a second: the head nods and swells, the petals flare, all back at rest', () => {
+    const pulse = sunPulse('head', 'leafA');
+    expect(pulse.duration).toBe(0.5);
+    expect(pulse.loop).toBe(false);
+    expect(pulse.parts).toEqual(['head', 'leafA']);
+    expect(sunPulse('head').parts).toEqual(['head']);
+    expectSamePose(sampled(pulse, 0, names), restPose(names));
+    expectSamePose(sampled(pulse, 0.5, names), restPose(names));
+    const peak = sampled(pulse, 0.15, names);
+    // A nod forward: the top of a +X facing head goes towards +X, a negative turn about Z.
+    expect((peak.head as PartPose).rz).toBeLessThan(-0.15);
+    expect((peak.head as PartPose).s).toBeGreaterThan(1.1);
+    // The petals spread in the plane of the face (Y and Z), not towards the camera.
+    expect((peak.leafA as PartPose).sy).toBeGreaterThan(1.2);
+    expect((peak.leafA as PartPose).sz).toBeCloseTo((peak.leafA as PartPose).sy, 9);
+    expect((peak.leafA as PartPose).sx).toBe(1);
+  });
+
+  it('breathe heaves the body in and out on a seamless loop and flutters the loose parts', () => {
+    const idle = breathe({ body: 'body', head: 'head', sway: ['leafA'] });
+    expect(idle.loop).toBe(true);
+    expect(idle.duration).toBe(1.6);
+    expect(idle.parts).toEqual(['body', 'head', 'leafA']);
+    expectSamePose(sampled(idle, 0, names), sampled(idle, idle.duration, names));
+    let widest = 1;
+    let narrowest = 1;
+    let lift = 0;
+    for (let t = 0; t < 1.6; t += 0.01) {
+      const pose = sampled(idle, t, names);
+      widest = Math.max(widest, (pose.body as PartPose).sx);
+      narrowest = Math.min(narrowest, (pose.body as PartPose).sx);
+      lift = Math.max(lift, (pose.head as PartPose).py);
+    }
+    // Heavy: a good deal more than the half-voxel bob of idleBob.
+    expect(widest - narrowest).toBeGreaterThan(0.06);
+    expect(lift).toBeGreaterThan(0.3);
+  });
+
+  it('hitWobble knocks the body back two voxels, then rocks it to rest', () => {
+    const hit = hitWobble('body', -1);
+    expect(hit.loop).toBe(false);
+    expect(hit.parts).toEqual(['body']);
+    expect((sampled(hit, 0.08, names).body as PartPose).px).toBeCloseTo(-2, 6);
+    expectSamePose(sampled(hit, 0, names), restPose(names));
+    expectSamePose(sampled(hit, hit.duration, names), restPose(names));
+    // It rocks both ways on the way back.
+    let forward = 0;
+    let back = 0;
+    for (let t = 0.08; t < hit.duration; t += 0.005) {
+      const rz = (sampled(hit, t, names).body as PartPose).rz;
+      forward = Math.min(forward, rz);
+      back = Math.max(back, rz);
+    }
+    expect(back).toBeGreaterThan(0.05);
+    expect(forward).toBeLessThan(-0.03);
+  });
+
+  it('swellBlast swells the body to 1.3 over 0.2 s and holds it there for the blast', () => {
+    const die = swellBlast('body');
+    expect(die.duration).toBe(0.2);
+    expect(die.loop).toBe(false);
+    expect(die.parts).toEqual(['body']);
+    expectSamePose(sampled(die, 0, names), restPose(names));
+    expect((sampled(die, 0.2, names).body as PartPose).s).toBeCloseTo(1.3, 6);
+    expect((sampled(die, 9, names).body as PartPose).s).toBeCloseTo(1.3, 6);
+    // It starts slowly and speeds up, like pressure building.
+    expect((sampled(die, 0.1, names).body as PartPose).s).toBeLessThan(1.15);
   });
 
   it('clamp time outside a one-shot clip instead of extrapolating', () => {

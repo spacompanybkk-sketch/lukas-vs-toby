@@ -51,17 +51,55 @@ const SCENARIOS = [
   // Three-quarter views from the front and from behind.
   { name: 'gallery-peashooter-front', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=20&yaw=38' },
   { name: 'gallery-peashooter-back', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=24&yaw=-142' },
+  // Each level as it would sit on a card: 88 x 112 pixels.
+  portraits('gallery-portraits', 'peashooter'),
+  // The three plants of the first level, side by side at the lawn angle.
+  { name: 'gallery-plants', url: '/?scene=gallery&models=peashooter,sunflower,walnutBomb&t=0.4' },
+  { name: 'gallery-sunflower', url: '/?scene=gallery&model=sunflower&t=0.4' },
+  { name: 'gallery-sunflower-front', url: '/?scene=gallery&model=sunflower&t=0.4&pitch=20&yaw=38' },
+  { name: 'gallery-sunflower-back', url: '/?scene=gallery&model=sunflower&t=0.4&pitch=24&yaw=-142' },
   {
-    // Each level as it would sit on a card: 88 x 112 pixels.
-    name: 'gallery-portraits',
-    url: portraitUrl(1),
+    // Paying out: the nod and the flare at their fullest, and on the way back.
+    name: 'gallery-sunflower-pulse',
+    url: '/?scene=gallery&model=sunflower&clip=shoot&t=0',
+    frames: [0.15, 0.3].map((t) => ({ suffix: t.toFixed(2), run: (page) => pose(page, 'shoot', t) })),
+  },
+  portraits('gallery-portraits-sunflower', 'sunflower'),
+  { name: 'gallery-walnutBomb', url: '/?scene=gallery&model=walnutBomb&t=0.4' },
+  { name: 'gallery-walnutBomb-front', url: '/?scene=gallery&model=walnutBomb&t=0.4&pitch=20&yaw=38' },
+  { name: 'gallery-walnutBomb-back', url: '/?scene=gallery&model=walnutBomb&t=0.4&pitch=24&yaw=-142' },
+  {
+    // Breathing in, swelling before the blast, and cracked.
+    name: 'gallery-walnutBomb-moves',
+    url: '/?scene=gallery&model=walnutBomb&t=0',
+    frames: [
+      { suffix: 'breath-in', run: (page) => pose(page, 'idle', 0.4) },
+      { suffix: 'breath-out', run: (page) => pose(page, 'idle', 1.2) },
+      { suffix: 'swell', run: (page) => pose(page, 'die', 0.2) },
+      {
+        suffix: 'cracked',
+        run: async (page) => {
+          await page.evaluate(() => window.__lvt.gallery.instances.forEach((instance) => instance.showPart('cracks', true)));
+          await pose(page, 'idle', 0.4);
+        },
+      },
+    ],
+  },
+  portraits('gallery-portraits-walnutBomb', 'walnutBomb'),
+];
+
+/** A card portrait of each level of `model`, saved as `<name>-L1.png` to `-L5.png`. */
+function portraits(name, model) {
+  return {
+    name,
+    url: portraitUrl(1, model),
     viewport: { width: 88, height: 112 },
     frames: [1, 2, 3, 4, 5].map((level) => ({
       suffix: `L${level}`,
-      run: (page) => (level === 1 ? Promise.resolve() : open(page, portraitUrl(level))),
+      run: (page) => (level === 1 ? Promise.resolve() : open(page, portraitUrl(level, model))),
     })),
-  },
-];
+  };
+}
 
 const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const OUT_DIR = path.join(ROOT, 'artifacts', 'shots');
@@ -226,8 +264,8 @@ async function highlight(page, tile, lane) {
   await nextFrames(page, 3);
 }
 
-function portraitUrl(level) {
-  return `/?scene=gallery&model=peashooter&level=${level}&portrait=1&pitch=20&yaw=32&t=0.4`;
+function portraitUrl(level, model = 'peashooter') {
+  return `/?scene=gallery&model=${model}&level=${level}&portrait=1&pitch=20&yaw=32&t=0.4`;
 }
 
 /** Loads a scene and waits until it has drawn and its fonts are in. */

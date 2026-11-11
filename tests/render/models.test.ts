@@ -10,6 +10,41 @@ import type { ModelDef, PartPose, Pose } from '../../src/render/voxel/types';
 // covered the moment it is registered.
 
 const LEVELS = [1, 2, 3, 4, 5];
+/** Every unit plays these; the game asks for them whatever the unit is. */
+const REQUIRED_CLIPS = ['idle', 'hit', 'spawn', 'die', 'cheer'] as const;
+/** The models in `plants/`: they face +X, towards the zombies. */
+const PLANT_KEYS = new Set(
+  Object.values(import.meta.glob<Record<string, unknown>>('../../src/render/models/plants/*.ts', { eager: true }))
+    .flatMap((module) => Object.values(module))
+    .map((value) => (value as Partial<ModelDef>).key)
+    .filter((key): key is string => typeof key === 'string'),
+);
+
+describe('the registry', () => {
+  it('has the three plants of the first level', () => {
+    expect(modelKeys()).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
+    expect(PLANT_KEYS).toEqual(new Set(['peashooter', 'sunflower', 'walnutBomb']));
+  });
+});
+
+describe('Walnut Bomb', () => {
+  it('carries its damage in a part named cracks, hidden at rest and shown when the view asks', () => {
+    const def = getModelDef('walnutBomb');
+    const cracks = def.parts.find((part) => part.name === 'cracks');
+    expect(cracks?.boxes.length).toBeGreaterThan(0);
+    for (const level of LEVELS) {
+      const instance = new ModelInstance(def, level);
+      const part = instance.root.getObjectByName('cracks') as Object3D;
+      expect(part.children.some((child) => child instanceof Mesh), `level ${level}`).toBe(true);
+      expect(part.visible, `level ${level}`).toBe(false);
+      instance.showPart('cracks', true);
+      expect(part.visible).toBe(true);
+      instance.showPart('cracks', false);
+      expect(part.visible).toBe(false);
+      instance.dispose();
+    }
+  });
+});
 /** Art bible section 1: what a level-1 unit fits, in voxels, unless the model names its own. */
 const UNIT_ENVELOPE: [number, number, number] = [12, 16, 10];
 
@@ -113,6 +148,29 @@ describe.each(modelKeys())('model %s', (key) => {
       }
     }
     expect(def.clips.idle?.loop).toBe(true);
+  });
+
+  it('has the clips every unit needs', () => {
+    for (const name of REQUIRED_CLIPS) expect(def.clips[name], name).toBeDefined();
+  });
+
+  it('keeps its business end forward, if it is a plant: the muzzle, or else the head, at x >= 0', () => {
+    if (!PLANT_KEYS.has(key)) return;
+    const still = new ModelInstance({ ...def, key: `${def.key}-forward`, clips: {} }, 1);
+    still.root.updateMatrixWorld(true);
+    let x: number;
+    if (def.muzzle) {
+      x = still.muzzleWorld(new Vector3()).x;
+    } else {
+      const head = still.root.getObjectByName('head');
+      expect(head, 'a plant without a muzzle names its head part "head"').toBeDefined();
+      // The head's own boxes, where they stand at rest.
+      const box = new Box3();
+      for (const child of (head as Object3D).children) if (child instanceof Mesh) box.expandByObject(child, true);
+      x = box.getCenter(new Vector3()).x;
+    }
+    expect(x / VOXEL).toBeGreaterThanOrEqual(-1e-6);
+    still.dispose();
   });
 
   it('has eyes, with something to blink at every level', () => {

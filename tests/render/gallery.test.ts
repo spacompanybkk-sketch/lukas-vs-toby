@@ -235,14 +235,18 @@ describe('gallery scene', () => {
       expect(instance.root.position.x % 1).toBeCloseTo(0.5, 9);
       expect(instance.root.position.z % 1).toBeCloseTo(0.5, 9);
     }
-    // Tiles are narrow: each model gets only its level, and the name stands once beside the row.
+    // Tiles are narrow: each model gets only its level, and its name stands once beside its row.
     const levels = [...ui.querySelectorAll('[data-label="level"]')] as HTMLElement[];
     expect(levels).toHaveLength(gallery.instances.length);
     for (const tag of levels) expect(tag.textContent?.length).toBeLessThanOrEqual(2);
-    expect(ui.querySelectorAll('[data-label="name"]')).toHaveLength(1);
-    // Under neighbouring tiles they sit a tile's width apart on screen.
+    const models = new Set(gallery.instances.map((instance) => instance.def.key)).size;
+    expect(ui.querySelectorAll('[data-label="name"]')).toHaveLength(models);
+    // Under neighbouring tiles of a row (five levels to a row) they sit a tile's width apart on screen.
     const left = (tag: HTMLElement): number => Number(/translate\((-?\d+)px/.exec(tag.style.transform)?.[1]);
-    for (let i = 1; i < levels.length; i++) expect(left(levels[i] as HTMLElement) - left(levels[i - 1] as HTMLElement)).toBeGreaterThan(40);
+    for (let i = 1; i < levels.length; i++) {
+      if (i % 5 === 0) continue;
+      expect(left(levels[i] as HTMLElement) - left(levels[i - 1] as HTMLElement)).toBeGreaterThan(40);
+    }
   });
 
   it('replays die on a unit built afresh each time, since a dead unit plays nothing more', () => {

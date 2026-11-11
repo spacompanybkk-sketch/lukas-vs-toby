@@ -21,6 +21,7 @@ import { Sky } from './world/Sky';
 //   ?scene=gallery                 every model, five levels to a row, at about lawn size
 //   &page=<n>                      the overview holds ten models; this shows the next ten
 //   &model=<key>                   one model's row, larger
+//   &models=<key,key,…>            only these models, laid out as the overview
 //   &level=<1-5>                   only that level
 //   &clip=<name>&t=<seconds>       every model frozen at that time of that clip
 //   &clip=<name>                   every model playing that clip (one-shots repeat)
@@ -185,7 +186,8 @@ function number(params: URLSearchParams, name: string): number | null {
 export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () => void {
   const only = params.get('model');
   const crowd = Math.max(0, Math.floor(number(params, 'crowd') ?? 0));
-  const paged = galleryPage(modelKeys(), number(params, 'page') ?? 1);
+  const listed = params.get('models')?.split(',').filter((key) => key !== '').map((key) => getModelDef(key).key);
+  const paged = galleryPage(listed ?? modelKeys(), number(params, 'page') ?? 1);
   // One model, or a crowd drawn from all of them, or one page of the overview.
   const keys = only ? [getModelDef(only).key] : crowd > 0 ? modelKeys() : paged.keys;
   const level = number(params, 'level');

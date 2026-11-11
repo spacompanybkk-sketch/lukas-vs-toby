@@ -312,6 +312,16 @@ export class ModelInstance {
   }
 
   /**
+   * Shows or hides a part and everything on it: damage cracks below half health, say. A
+   * part the model builds hidden (`PartDef.hidden`) starts hidden. Survives `setLevel`.
+   */
+  showPart(name: string, shown: boolean): void {
+    const joint = this.joints.find((j) => j.object.name === name);
+    if (!joint) throw new Error(`Model "${this.def.key}" has no part "${name}" to show or hide`);
+    joint.object.visible = shown;
+  }
+
+  /**
    * The same unit at another level: a new instance that takes this one's place under the
    * same parent, with the same transform, clip, clip time and flash. This instance is
    * disposed, and anything else that was hung on its `root` goes with it: hang health bars
@@ -342,6 +352,7 @@ export class ModelInstance {
     // Both were built from the same definition, so their parts line up one to one.
     for (let i = 0; i < this.joints.length; i++) {
       copyPose((next.joints[i] as Joint).from, (this.joints[i] as Joint).from);
+      (next.joints[i] as Joint).object.visible = (this.joints[i] as Joint).object.visible;
     }
     next.apply();
     next.setFlash(this.flash);

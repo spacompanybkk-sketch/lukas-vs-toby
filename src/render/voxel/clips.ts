@@ -205,3 +205,124 @@ export function cheerJump(body: string): Clip {
     },
   };
 }
+
+/** A spring back to rest after a peak: 1 at u = 0, 0 at u = 1, swinging a little past 0 once. */
+const springBack = (u: number): number => (1 - u) * (1 - u) * Math.cos(u * 1.5 * Math.PI);
+
+/**
+ * A sunflower paying out, 0.5 s: over 150 ms the `head` nods forward 12 degrees and swells
+ * to 1.12 while the `petals` (if named) flare to 1.3 times their spread in the plane of the
+ * face; then all spring back to rest. Frozen at 0.15 s it is at its fullest.
+ */
+export function sunPulse(head: string, petals?: string): Clip {
+  const rise = 0.15;
+  const duration = 0.5;
+  return {
+    duration,
+    loop: false,
+    parts: named(head, petals),
+    sample(t, pose) {
+      const time = clamp(t, 0, duration);
+      const k = time <= rise ? easeOutCubic(time / rise) : springBack((time - rise) / (duration - rise));
+      const top = pose[head];
+      if (top) {
+        top.rz = -12 * DEG * k;
+        top.s = 1 + 0.12 * k;
+      }
+      const ring = petals === undefined ? undefined : pose[petals];
+      if (ring) ring.sy = ring.sz = 1 + 0.3 * k;
+    },
+  };
+}
+
+/**
+ * Heavy breathing, a 1.6 s loop: `body` heaves, wider and taller on the breath in (a slow
+ * draw, a quicker sigh out), `head` lifts with it, and each part in `sway` flutters as in
+ * `idleBob`.
+ */
+export function breathe(parts: { body: string; head?: string; sway?: string[] }): Clip {
+  const { body, head } = parts;
+  const sway = parts.sway ?? [];
+  const duration = 1.6;
+  return {
+    duration,
+    loop: true,
+    parts: named(body, head, ...sway),
+    sample(t, pose) {
+      const beat = (t / duration) * TAU;
+      // 0 breathed out, 1 breathed in; the second harmonic makes the draw slow and the sigh quick.
+      const breath = 0.5 + 0.43 * Math.sin(beat) + 0.12 * Math.sin(2 * beat - 0.6);
+      const trunk = pose[body];
+      if (trunk) {
+        trunk.sx = trunk.sz = 1 + 0.07 * breath;
+        trunk.sy = 1 + 0.05 * breath;
+      }
+      const top = head === undefined ? undefined : pose[head];
+      if (top) {
+        top.py = 0.6 * breath;
+        top.rz = 2 * DEG * Math.sin(beat - 0.5);
+      }
+      for (let i = 0; i < sway.length; i++) {
+        const loose = pose[sway[i] as string];
+        if (!loose) continue;
+        loose.rz = 6 * DEG * Math.sin(2 * beat + i * 2.4);
+        loose.rx = 4 * DEG * Math.sin(3 * beat + i * 1.7 + 0.6);
+      }
+    },
+  };
+}
+
+/**
+ * A hit on something heavy, 0.3 s: `body` is knocked two voxels towards `direction` within
+ * 80 ms, as `hitRecoil`, and comes back rocking to and fro before it settles.
+ */
+export function hitWobble(body: string, direction: 1 | -1): Clip {
+  const knock = 0.08;
+  const duration = 0.3;
+  return {
+    duration,
+    loop: false,
+    parts: named(body),
+    sample(t, pose) {
+      const trunk = pose[body];
+      if (!trunk) return;
+      const time = clamp(t, 0, duration);
+      if (time <= knock) {
+        const k = easeOutCubic(time / knock);
+        trunk.px = direction * 2 * k;
+        trunk.rz = -direction * 7 * DEG * k;
+        trunk.sy = 1 - 0.06 * k;
+        return;
+      }
+      const u = (time - knock) / (duration - knock);
+      const fade = (1 - u) * (1 - u);
+      trunk.px = direction * 2 * (1 - easeInOutCubic(u));
+      // Two and a half swings, dying away.
+      trunk.rz = -direction * 7 * DEG * fade * Math.cos(u * 5 * Math.PI);
+      trunk.sy = 1 - 0.06 * fade * Math.cos(u * 4 * Math.PI);
+    },
+  };
+}
+
+/**
+ * The fuse burns down, 0.2 s: `body` swells to 1.3 times its size, slowly and then fast,
+ * trembling as it goes, and holds there. The blast itself is an effect.
+ */
+export function swellBlast(body: string): Clip {
+  const duration = 0.2;
+  return {
+    duration,
+    loop: false,
+    parts: named(body),
+    sample(t, pose) {
+      const trunk = pose[body];
+      if (!trunk) return;
+      const u = clamp(t / duration, 0, 1);
+      trunk.s = 1 + 0.3 * easeInQuad(u);
+      // A shiver that grows with the pressure and is still at the very end.
+      const shiver = Math.sin(u * 9 * Math.PI) * u * (1 - u);
+      trunk.px = 1.2 * shiver;
+      trunk.sy = 1 + 0.06 * shiver;
+    },
+  };
+}

@@ -16,6 +16,7 @@ type Vec3 = [number, number, number];
 
 interface BuiltPart {
   name: string;
+  hidden: boolean;
   /** Index of the parent in the built list, or −1 for a part that hangs from the model itself. */
   parent: number;
   /** Rest position (tiles, in the parent's space) and rest turn (radians). */
@@ -188,7 +189,7 @@ function build(def: ModelDef, level: number): Built {
     });
 
     shapes.push({ def: part, solids, shadedBy: [], toModel, fromModel: toModel.clone().invert() });
-    builtParts.push({ name: part.name, parent, position, rotation, meshes: [] });
+    builtParts.push({ name: part.name, hidden: part.hidden === true, parent, position, rotation, meshes: [] });
   }
   for (const shape of shapes) {
     shape.shadedBy = (shape.def.shadedBy ?? []).map((name) => shapes.find((other) => other.def.name === name) as Shape);
@@ -247,6 +248,7 @@ export function buildParts(def: ModelDef, level: number): Group {
     group.name = part.name;
     group.position.set(part.position[0], part.position[1], part.position[2]);
     group.rotation.set(part.rotation[0], part.rotation[1], part.rotation[2]);
+    group.visible = !part.hidden;
     for (const piece of part.meshes) {
       const mesh = new Mesh(piece.geometry, sharedMaterial(piece.material));
       mesh.name = `${part.name}:${piece.material}`;
