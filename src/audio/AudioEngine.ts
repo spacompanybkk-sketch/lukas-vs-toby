@@ -13,8 +13,8 @@
  * case a browser never fires `ended`, so a long match cannot pile up nodes.
  */
 import { INSTRUMENT_PAN, playNote } from './instruments';
-import { BAR_SECONDS, barNotes, easeIntensity, instrumentFor } from './music';
-import type { NoteEvent, Theme } from './music';
+import { BAR_SECONDS, barNotes, easeIntensity, instrumentFor, topLayer } from './music';
+import type { Layer, NoteEvent, Theme } from './music';
 import { SFX } from './sfx';
 import type { SfxName } from './sfx';
 import { Voice, holdAt, makeNoise, rampTo } from './synth';
@@ -42,6 +42,10 @@ const TIMER_MS = 100;
 const MIN_AHEAD = 0.25;
 const FIRST_BAR_DELAY = 0.1;
 const SWITCH_FADE = 0.6;
+/** `unlock` stops waiting for `resume()` after this long; a later gesture tries again. */
+const RESUME_TIMEOUT_MS = 300;
+/** Musical effects stay at their written pitch unless a pitch is given, so they are in tune. */
+const IN_TUNE: ReadonlySet<SfxName> = new Set<SfxName>(['win', 'lose', 'suddenDeath']);
 
 /** When the voices are all taken, a new effect may only push out one of equal or lower rank. */
 const PRIORITY: Record<SfxName, number> = {
@@ -58,6 +62,8 @@ interface Playback {
   nextBar: number;
   nextBarStart: number;
   queue: NoteEvent[];
+  /** The highest layer playing in the last queued bar, for the gates' hysteresis. */
+  top: Layer;
   voices: Set<Voice>;
   lastTick: number;
   timer: ReturnType<typeof setInterval>;
@@ -85,6 +91,30 @@ function clamp(v: number, lo: number, hi: number): number {
 /** Slider position to gain: squared, so the slider feels even to the ear. */
 function loudness(slider: number): number {
   return slider * slider;
+}
+
+/**
+ * Lets audio play with the iPad's silent switch on (Safari 16.4+), as a game expects. Never throws.
+ */
+function preferPlaybackSession(): void {
+  try {
+    const session = (globalThis.navigator as { audioSession?: { type: string } } | undefined)?.audioSession;
+    if (session && session.type !== 'playback') session.type = 'playback';
+  } catch {
+    // an older or locked-down browser: the silent switch then mutes us, nothing worse
+  }
+}
+
+/** Resolves when `promise` settles or after `ms`, whichever is first; never rejects. */
+function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    const done = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    promise.then(done, done);
+  });
 }
 
 function report(err: unknown): void {
@@ -125,17 +155,20 @@ export class AudioEngine {
    * app) resumes it. Never throws; if the browser refuses, audio stays off until the next try.
    */
   async unlock(): Promise<void> {
+    preferPlaybackSession();
     const ctx = this.ensureContext();
     if (ctx === null) return;
     if (!isRunning(ctx)) {
       this.primeInGesture(ctx);
+      let resumed: Promise<void>;
       try {
-        await ctx.resume();
+        resumed = ctx.resume();
       } catch {
         return;
       }
+      await settleWithin(resumed, RESUME_TIMEOUT_MS); // a refusal or a hang both just leave it locked
     }
-    if (!isRunning(ctx) || this.ready) return;
+    if (this.ctx !== ctx || !isRunning(ctx) || this.ready) return;
     this.ready = true;
     if (this.wantedTheme !== null) this.beginMusic(this.wantedTheme);
   }
@@ -159,7 +192,10 @@ export class AudioEngine {
     rampTo(graph.master.gain, muted ? 0 : MASTER_LEVEL, ctx.currentTime, MUTE_RAMP);
   }
 
-  /** Plays an effect. Does nothing until unlocked, while muted, or within its repeat limit. */
+  /**
+   * Plays an effect. Does nothing until unlocked, while muted, or within its repeat limit. The
+   * pitch varies by ±6% unless given; win, lose and suddenDeath default to their written pitch.
+   */
   play(name: SfxName, opts: PlayOptions = {}): void {
     const ctx = this.ctx;
     const graph = this.graph;
@@ -173,10 +209,9 @@ export class AudioEngine {
     if (last !== undefined && now - last < (COOLDOWN[name] ?? REPEAT_GAP)) return;
     const priority = PRIORITY[name];
     if (!this.makeRoom(priority, now)) return;
-    this.lastPlayed.set(name, now);
     const pitch = opts.pitch !== undefined && opts.pitch > 0 && Number.isFinite(opts.pitch)
       ? opts.pitch
-      : 1 + (Math.random() * 2 - 1) * PITCH_SPREAD;
+      : IN_TUNE.has(name) ? 1 : 1 + (Math.random() * 2 - 1) * PITCH_SPREAD;
     const pan = opts.pan !== undefined && Number.isFinite(opts.pan) ? clamp(opts.pan, -1, 1) : 0;
     let voice: Voice | null = null;
     try {
@@ -187,6 +222,7 @@ export class AudioEngine {
       report(err);
       return;
     }
+    this.lastPlayed.set(name, now); // only once it really plays
     const entry: SfxVoice = { voice, priority, start: now };
     const v = voice;
     this.sfxVoices.push(entry);
@@ -200,8 +236,8 @@ export class AudioEngine {
 
   /**
    * Starts a theme from its first bar (the same theme already playing carries on; another one
-   * crossfades). Asked before the unlock, it starts at the unlock. Each theme starts calm:
-   * intensity 0 until `setIntensity` says otherwise.
+   * crossfades). Asked before the unlock, it starts at the unlock. It starts straight at the
+   * latest `setIntensity` target, even one given before the unlock or before this call.
    */
   startMusic(theme: 'menu' | 'backyard'): void {
     this.wantedTheme = theme;
@@ -237,6 +273,7 @@ export class AudioEngine {
   // -------------------------------------------------------------------------------------------
 
   private ensureContext(): AudioContext | null {
+    if (this.ctx !== null && this.ctx.state === 'closed') this.forgetContext();
     if (this.ctx !== null) return this.ctx;
     let ctx: AudioContext;
     try {
@@ -253,6 +290,23 @@ export class AudioEngine {
     }
     this.ctx = ctx;
     return ctx;
+  }
+
+  /** The context was closed under us: drop it and everything on it; the next unlock starts afresh. */
+  private forgetContext(): void {
+    const pb = this.playback;
+    if (pb !== null) {
+      clearInterval(pb.timer);
+      this.playback = null;
+      this.wantedTheme = pb.theme; // played again once a new context is unlocked
+    }
+    for (const v of this.live) v.dispose();
+    this.live.clear();
+    this.sfxVoices.length = 0;
+    this.lastPlayed.clear();
+    this.ctx = null;
+    this.graph = null;
+    this.ready = false;
   }
 
   private buildGraph(ctx: AudioContext): Graph {
@@ -339,14 +393,14 @@ export class AudioEngine {
     try {
       const now = ctx.currentTime;
       if (this.playback !== null) this.endMusic(SWITCH_FADE, now);
-      this.intensity = { from: 0, to: 0, at: now };
+      this.intensity = { from: this.intensity.to, to: this.intensity.to, at: now };
       const group = ctx.createGain();
       group.gain.value = 0;
       group.gain.setValueAtTime(0, now);
       group.gain.linearRampToValueAtTime(1, now + FIRST_BAR_DELAY);
       group.connect(graph.music);
       const pb: Playback = {
-        theme, group, nextBar: 0, nextBarStart: now + FIRST_BAR_DELAY, queue: [], voices: new Set(), lastTick: now,
+        theme, group, nextBar: 0, nextBarStart: now + FIRST_BAR_DELAY, queue: [], top: 0, voices: new Set(), lastTick: now,
         timer: setInterval(() => this.tick(pb), TIMER_MS),
       };
       this.playback = pb;
@@ -377,7 +431,9 @@ export class AudioEngine {
         pb.nextBarStart += skip * BAR_SECONDS;
       }
       while (pb.nextBarStart < now + ahead) {
-        pb.queue.push(...barNotes(pb.theme, pb.nextBar, pb.nextBarStart, this.intensityAt(pb.nextBarStart)));
+        const intensity = this.intensityAt(pb.nextBarStart);
+        pb.top = topLayer(pb.theme, intensity, pb.top);
+        pb.queue.push(...barNotes(pb.theme, pb.nextBar, pb.nextBarStart, intensity, pb.top));
         pb.nextBar += 1;
         pb.nextBarStart += BAR_SECONDS;
       }

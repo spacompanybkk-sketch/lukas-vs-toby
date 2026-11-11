@@ -79,9 +79,32 @@ describe('music scheduler', () => {
     engine.stopMusic(0.1);
   });
 
-  it('catches up after a late timer without bunching notes or playing the past', async () => {
+  it('catches up after a late timer without doubling, bunching or playing the past', async () => {
+    /** Sources per (bar of the loop, start within the bar in ms) for an engine started at `origin`. */
+    const perSlot = (sources: Iterable<FakeSource>, origin: number): Map<string, number> => {
+      const slots = new Map<string, number>();
+      for (const s of sources) {
+        const sinceStart = s.startTime! - origin;
+        const bar = Math.floor(sinceStart / BAR_SECONDS + 1e-9);
+        const key = `${bar % 8}:${Math.round((sinceStart - bar * BAR_SECONDS) * 1000)}`;
+        slots.set(key, (slots.get(key) ?? 0) + 1);
+      }
+      return slots;
+    };
+
+    // reference: the same music with the timer never late
+    const ref = await setup();
+    const refMade = track(ref.fake);
+    const refOrigin = ref.fake.currentTime + 0.1;
+    ref.engine.startMusic('backyard');
+    ref.engine.setIntensity(1);
+    run(ref.fake, 20);
+    ref.engine.stopMusic(0.1);
+    const reference = perSlot(refMade.keys(), refOrigin);
+
     const { engine, fake } = await setup();
     const created = track(fake);
+    const origin = fake.currentTime + 0.1;
     engine.startMusic('backyard');
     engine.setIntensity(1);
     run(fake, 3);
@@ -91,23 +114,59 @@ describe('music scheduler', () => {
     const wokeAt = fake.currentTime;
     const sizeBefore = created.size;
     vi.advanceTimersByTime(100);
-    const late = [...created].slice(sizeBefore).map(([s]) => s);
+    const late = [...created.keys()].slice(sizeBefore);
     expect(late.length).toBeGreaterThan(0);
     for (const s of late) expect(s.startTime!).toBeGreaterThanOrEqual(wokeAt);
-    // drums and notes keep their spacing: no more starts in any 30 ms than a normal bar has
-    const starts = [...new Set(late.map((s) => Math.round(s.startTime! * 1000)))].sort((a, b) => a - b);
-    expect(starts.length).toBeGreaterThan(2);
-    for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(30);
 
-    // with the timer now firing once a second, the music still has no gaps longer than a beat
-    const sizeSlow = created.size;
+    // then the timer fires only once a second for a while
     for (let i = 0; i < 6; i++) {
       fake.advance(1);
       vi.advanceTimersByTime(1000);
     }
-    const slow = [...created].slice(sizeSlow).map(([s]) => s.startTime!).sort((a, b) => a - b);
-    for (let i = 1; i < slow.length; i++) expect(slow[i]! - slow[i - 1]!).toBeLessThan(0.6);
+    const afterWake = [...created.keys()].slice(sizeBefore);
+    // every note lands where the loop puts it, at most once: per slot never more than the reference
+    for (const [slot, count] of perSlot(afterWake, origin)) {
+      expect(reference.has(slot), slot).toBe(true);
+      expect(count, slot).toBeLessThanOrEqual(reference.get(slot)!);
+    }
+    // and the music has no gap longer than a beat
+    const starts = afterWake.map((s) => s.startTime!).sort((a, b) => a - b);
+    for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeLessThan(0.6);
     engine.stopMusic(0.1);
+  });
+
+  it('keeps the melody playing when the intensity dips just under 0.35', async () => {
+    const window = async (first: number): Promise<number> => {
+      const { engine, fake } = await setup();
+      engine.setIntensity(first);
+      engine.startMusic('backyard');
+      run(fake, 2 * BAR_SECONDS);
+      engine.setIntensity(0.32);
+      run(fake, 3);
+      const before = fake.sources().length;
+      run(fake, 2 * BAR_SECONDS);
+      engine.stopMusic(0.1);
+      return fake.sources().length - before;
+    };
+    const wasPlaying = await window(0.4);
+    const neverOn = await window(0.32);
+    expect(wasPlaying).toBeGreaterThan(neverOn);
+  });
+
+  it('keeps an intensity set before the unlock or before startMusic', async () => {
+    const fake = new FakeAudioContext();
+    const engine = new AudioEngine(() => fake as unknown as AudioContext);
+    engine.setIntensity(1);
+    await engine.unlock();
+    const calm = await setup();
+    calm.engine.startMusic('backyard');
+    engine.startMusic('backyard');
+    run(fake, BAR_SECONDS);
+    run(calm.fake, BAR_SECONDS);
+    // full layers from the first bar, against bass and pad alone
+    expect(fake.sources().length).toBeGreaterThan(calm.fake.sources().length * 1.5);
+    engine.stopMusic(0.1);
+    calm.engine.stopMusic(0.1);
   });
 
   it('stopMusic fades out and leaves nothing sounding or scheduled', async () => {
@@ -159,7 +218,7 @@ describe('a ten-minute match', () => {
   it('leaks no nodes and never steps a gain', async () => {
     const errors = vi.spyOn(console, 'error');
     const { engine, fake, graph } = await setup();
-    const names = [...SFX_NAMES, 'baseStrike'] as SfxName[];
+    const names: SfxName[] = SFX_NAMES;
     engine.startMusic('backyard');
     let maxVoices = 0;
     for (let step = 0; step < 6000; step++) {

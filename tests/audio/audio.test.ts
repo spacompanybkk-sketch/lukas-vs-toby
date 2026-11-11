@@ -3,7 +3,8 @@ import { AudioEngine } from '../../src/audio/AudioEngine';
 import type { SfxName } from '../../src/audio/AudioEngine';
 import { battleIntensity, panFor, playEventSounds } from '../../src/audio/bindings';
 import {
-  BAR_SECONDS, LAYER_THRESHOLDS, barNotes, easeIntensity, instrumentFor, scheduleBar, stingNotes,
+  BAR_SECONDS, LAYER_OFF_THRESHOLDS, LAYER_THRESHOLDS, barNotes, easeIntensity, instrumentFor, scheduleBar,
+  stingNotes, topLayer,
 } from '../../src/audio/music';
 import type { NoteEvent } from '../../src/audio/music';
 import { SFX_NAMES } from '../../src/audio/sfx';
@@ -118,6 +119,73 @@ describe('AudioEngine.unlock', () => {
     const { engine } = engineWith({ resume: 'ignore' });
     await engine.unlock();
     expect(engine.unlocked).toBe(false);
+  });
+
+  it('does not hang when resume() never settles, and a later gesture retries', async () => {
+    const { engine, fake } = engineWith({ resume: 'hang' });
+    const began = Date.now();
+    await engine.unlock();
+    expect(Date.now() - began).toBeLessThan(2000);
+    expect(engine.unlocked).toBe(false);
+
+    fake.resumeMode = 'run';
+    await engine.unlock();
+    expect(fake.resumeCalls).toBe(2);
+    expect(engine.unlocked).toBe(true);
+  });
+
+  it('makes a fresh context on the next unlock when the old one was closed', async () => {
+    vi.useFakeTimers();
+    const fakes = [new FakeAudioContext(), new FakeAudioContext()];
+    let made = 0;
+    const engine = new AudioEngine(() => fakes[made++] as unknown as AudioContext);
+    await engine.unlock();
+    engine.startMusic('menu');
+    fakes[0]!.state = 'closed';
+    engine.play('pea');
+    await engine.unlock();
+    expect(made).toBe(2);
+    expect(engine.unlocked).toBe(true);
+    const fresh = fakes[1]!;
+    expect(fresh.sources().some((s) => s.kind === 'oscillator')).toBe(true); // the menu music came back
+    fresh.advance(0.1);
+    const before = fresh.sources().length;
+    engine.play('pea');
+    expect(fresh.sources().length).toBeGreaterThan(before);
+    engine.stopMusic(0.1);
+  });
+
+  it('sets the iPad audio session to playback so the silent switch does not mute the game', async () => {
+    const session = { type: 'auto' };
+    vi.stubGlobal('navigator', { audioSession: session });
+    try {
+      const { engine } = engineWith();
+      await engine.unlock();
+      expect(session.type).toBe('playback');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('never throws when the audio session refuses, or there is no navigator', async () => {
+    const session = {};
+    Object.defineProperty(session, 'type', { get: () => 'auto', set: () => { throw new Error('nope'); } });
+    vi.stubGlobal('navigator', { audioSession: session });
+    try {
+      const { engine } = engineWith();
+      await expect(engine.unlock()).resolves.toBeUndefined();
+      expect(engine.unlocked).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    vi.stubGlobal('navigator', undefined);
+    try {
+      const { engine } = engineWith();
+      await engine.unlock();
+      expect(engine.unlocked).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('starts a silent buffer inside the gesture (iPad Safari) and cleans it up', async () => {
@@ -247,6 +315,42 @@ describe('AudioEngine.play', () => {
     expect(firstFrequency(from)).toBeCloseTo(plain * 2, 6);
   });
 
+  it('keeps win, lose and suddenDeath at their written pitch unless one is given', async () => {
+    const { engine, fake } = await unlockedEngine();
+    const firstFrequency = (from: number): number => {
+      const osc = fake.nodes.slice(from).find((n): n is FakeOscillator => n instanceof FakeOscillator)!;
+      return osc.frequency.events[0]!.value;
+    };
+    for (const name of ['win', 'lose', 'suddenDeath'] as const) {
+      fake.advance(0.3);
+      let from = fake.nodes.length;
+      engine.play(name, { pitch: 1 });
+      const written = firstFrequency(from);
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      fake.advance(0.3);
+      from = fake.nodes.length;
+      engine.play(name);
+      expect(firstFrequency(from), name).toBeCloseTo(written, 9);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('a failed effect does not use up its repeat slot', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { engine, fake } = await unlockedEngine();
+    const original = fake.createOscillator.bind(fake);
+    fake.createOscillator = () => {
+      throw new Error('boom');
+    };
+    engine.play('pea');
+    expect(errors).toHaveBeenCalled();
+    expect(engine.voiceCount).toBe(0);
+    fake.createOscillator = original;
+    const before = fake.sources().length;
+    engine.play('pea'); // same instant: would be blocked had the failure counted
+    expect(fake.sources().length).toBeGreaterThan(before);
+  });
+
   it('pans an effect when asked', async () => {
     const { engine, fake } = await unlockedEngine();
     engine.play('pea', { pan: -0.6 });
@@ -259,7 +363,8 @@ describe('AudioEngine.play', () => {
     const { engine, fake } = await unlockedEngine();
     fake.advance(1); // let the unlock blip end
     const graphNodes = fake.nodes.length;
-    for (const name of [...SFX_NAMES, 'baseStrike'] as SfxName[]) {
+    expect(SFX_NAMES).toContain('baseStrike');
+    for (const name of SFX_NAMES) {
       const before = fake.sources().length;
       engine.play(name, { pan: 0.3 });
       expect(fake.sources().length, name).toBeGreaterThan(before);
@@ -314,6 +419,27 @@ describe('AudioEngine buses', () => {
 
     engine.setMuted(false);
     expect(master.gain.finalValue).toBe(level);
+    expect(fake.allProblems()).toEqual([]);
+  });
+
+  it('uses cancelAndHoldAtTime where the browser has it, without jumps', async () => {
+    vi.useFakeTimers();
+    const { engine, fake } = engineWith({ cancelAndHold: true });
+    await engine.unlock();
+    engine.startMusic('backyard');
+    engine.play('collapse');
+    fake.advance(0.01);
+    for (let i = 0; i < 30; i++) {
+      engine.play('collapse'); // past 24 this steals voices
+      fake.advance(0.05);
+    }
+    engine.setVolume('music', 0.3);
+    engine.setMuted(true);
+    fake.advance(0.01);
+    engine.setMuted(false);
+    engine.stopMusic(0.5);
+    expect(fake.holdCalls).toBeGreaterThan(3);
+    expect(fake.masterGain().gain.finalValue).toBeGreaterThan(0);
     expect(fake.allProblems()).toEqual([]);
   });
 
@@ -403,6 +529,21 @@ describe('music', () => {
     expect(layers(0.69)).toEqual([0, 1]);
     expect(layers(0.7)).toEqual([0, 1, 2]);
     expect(layers(1)).toEqual([0, 1, 2]);
+  });
+
+  it('turns layers off only below 0.30 and 0.65, so they do not flicker', () => {
+    expect(LAYER_OFF_THRESHOLDS).toEqual([0, 0.3, 0.65]);
+    expect(topLayer('backyard', 0.33)).toBe(0);
+    expect(topLayer('backyard', 0.33, 0)).toBe(0);
+    expect(topLayer('backyard', 0.33, 1)).toBe(1);
+    expect(topLayer('backyard', 0.3, 1)).toBe(1);
+    expect(topLayer('backyard', 0.29, 1)).toBe(0);
+    expect(topLayer('backyard', 0.68, 1)).toBe(1);
+    expect(topLayer('backyard', 0.68, 2)).toBe(2);
+    expect(topLayer('backyard', 0.64, 2)).toBe(1);
+    expect(topLayer('backyard', 0.2, 2)).toBe(0);
+    const layers = [...new Set(barNotes('backyard', 0, 0, 0.66, 2).map((e) => e.layer))].sort();
+    expect(layers).toEqual([0, 1, 2]);
   });
 
   it('the menu always has its tune', () => {
@@ -540,12 +681,20 @@ describe('playEventSounds', () => {
       { type: 'explosion', lane: 2, x: 10, radius: 1.5, sourceKey: 'walnutBomb' },
       { type: 'unitAttacked', unitId: 2, attack: 'melee', targetId: 1, targetBase: null },
       { type: 'baseDamaged', faction: 'zombies', amount: 5, hp: 100, lane: 3 },
-      { type: 'baseDamaged', faction: 'plants', amount: 5, hp: 100, lane: null },
     ], 'plants');
     expect(calls[0]![1]?.pan).toBeCloseTo(0.6);
     expect(calls[1]![1]?.pan ?? 0).toBe(0);
     expect(calls[2]![1]?.pan).toBeCloseTo(0.6);
-    expect(calls[3]![1]?.pan ?? 0).toBe(0);
+  });
+
+  it('the sudden-death drain plays no baseHit; the suddenDeath sting marks it', () => {
+    const { audio, calls } = recorder();
+    playEventSounds(audio, [
+      { type: 'suddenDeath' },
+      { type: 'baseDamaged', faction: 'plants', amount: 5, hp: 100, lane: null },
+      { type: 'baseDamaged', faction: 'zombies', amount: 5, hp: 100, lane: null },
+    ], 'plants');
+    expect(names(calls)).toEqual(['suddenDeath']);
   });
 
   it('a higher merge level sparkles higher', () => {

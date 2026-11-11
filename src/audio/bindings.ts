@@ -52,10 +52,9 @@ export function playEventSounds(audio: AudioEngine, events: readonly SimEvent[],
         audio.play('explode', at(e.x));
         break;
       case 'baseDamaged':
-        // a hit in a lane is heard at that base. Sudden death drains both bases every step: centred
-        // and at half volume, since it repeats for as long as sudden death lasts. The engine plays
-        // baseHit at most once per 0.25 s.
-        audio.play('baseHit', e.lane === null ? { volume: 0.5 } : at(e.faction === 'plants' ? 0 : LAWN_WIDTH));
+        // A hit in a lane is heard at that base (the engine plays baseHit at most once per 0.25 s).
+        // Sudden death's drain (lane null, every step) is silent: the suddenDeath sting marks it.
+        if (e.lane !== null) audio.play('baseHit', at(e.faction === 'plants' ? 0 : LAWN_WIDTH));
         break;
       case 'baseStruck':
         audio.play('baseStrike', at(0));

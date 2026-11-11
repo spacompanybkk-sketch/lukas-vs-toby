@@ -32,6 +32,8 @@ export class FakeParam {
   constructor(private readonly ctx: FakeAudioContext, readonly name: string, value: number) {
     this.initial = value;
     ctx.params.push(this);
+    // Chrome and Safari have cancelAndHoldAtTime, Firefox does not: the fake can be either
+    if (!ctx.cancelAndHold) Object.defineProperty(this, 'cancelAndHoldAtTime', { value: undefined });
   }
 
   get value(): number {
@@ -106,6 +108,18 @@ export class FakeParam {
     for (let i = this.events.length - 1; i >= 0; i--) {
       if (this.events[i]!.time >= time) this.events.splice(i, 1);
     }
+    return this;
+  }
+
+  /** Cancels events from `time` on and holds the value the parameter has at that moment. */
+  cancelAndHoldAtTime(time: number): this {
+    checkTime(`${this.name}.cancelAndHoldAtTime`, time);
+    this.ctx.holdCalls += 1;
+    const held = this.valueAt(time);
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      if (this.events[i]!.time >= time) this.events.splice(i, 1);
+    }
+    this.insert({ kind: 'set', value: held, time });
     return this;
   }
 
@@ -250,8 +264,13 @@ export class FakeCompressor extends FakeNode {
 export interface FakeOptions {
   /** The state a new context starts in; browsers start one made before a gesture 'suspended'. */
   state?: 'suspended' | 'running' | 'interrupted';
-  /** What `resume()` does: start running, reject (the browser refused), or resolve and stay suspended. */
-  resume?: 'run' | 'reject' | 'ignore';
+  /**
+   * What `resume()` does: start running, reject (the browser refused), resolve and stay
+   * suspended, or never settle at all (seen in Safari outside a gesture).
+   */
+  resume?: 'run' | 'reject' | 'ignore' | 'hang';
+  /** Whether parameters have `cancelAndHoldAtTime` (Chrome, Safari) or not (Firefox). */
+  cancelAndHold?: boolean;
 }
 
 export class FakeAudioContext {
@@ -259,8 +278,10 @@ export class FakeAudioContext {
   readonly sampleRate = 48000;
   /** 'interrupted' is Safari's state after a phone call, Siri or another app took the audio. */
   state: 'suspended' | 'running' | 'interrupted' | 'closed';
-  resumeMode: 'run' | 'reject' | 'ignore';
+  resumeMode: 'run' | 'reject' | 'ignore' | 'hang';
   resumeCalls = 0;
+  readonly cancelAndHold: boolean;
+  holdCalls = 0;
   readonly nodes: FakeNode[] = [];
   readonly params: FakeParam[] = [];
   readonly problems: string[] = [];
@@ -271,11 +292,13 @@ export class FakeAudioContext {
   constructor(opts: FakeOptions = {}) {
     this.state = opts.state ?? 'suspended';
     this.resumeMode = opts.resume ?? 'run';
+    this.cancelAndHold = opts.cancelAndHold ?? false;
     this.destination = new FakeNode(this, 'destination');
   }
 
   resume(): Promise<void> {
     this.resumeCalls += 1;
+    if (this.resumeMode === 'hang') return new Promise<void>(() => undefined);
     if (this.resumeMode === 'reject') return Promise.reject(new Error('NotAllowedError: resume refused'));
     if (this.resumeMode === 'run') this.state = 'running';
     return Promise.resolve();

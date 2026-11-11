@@ -185,9 +185,15 @@ function sting(kind: 'win' | 'lose'): Recipe {
   };
 }
 
-/** A base falls: a long low rumble (1.6 s, the length of the collapse), a crack, falling debris. */
+/**
+ * A base falls: a long low rumble (1.6 s, the length of the collapse), a crack, falling debris,
+ * and a crumbling layer in the mids (1.2 kHz sliding to 350 Hz) so laptop and iPad speakers,
+ * which give little below 200 Hz, still hear it come down.
+ */
 function collapse(v: Voice, t: number, p: number): void {
   noise(v, { at: t, attack: 0.05, peak: 0.5, hold: 0.5, decay: 1.2, filter: 'lowpass', freq: 260, to: 90, glide: 1.6 });
+  noise(v, { at: t, attack: 0.03, peak: 0.24, hold: 0.3, decay: 1.2, filter: 'bandpass', freq: 1200, to: 350, glide: 1.5, q: 0.9 });
+  tone(v, { type: 'sawtooth', freq: 300 * p, to: 140 * p, glide: 0.9, at: t, attack: 0.01, peak: 0.08, hold: 0.2, decay: 0.8, lowpass: 1200 });
   tone(v, { type: 'sine', freq: 70 * p, to: 32 * p, glide: 1.4, at: t, attack: 0.02, peak: 0.45, decay: 1.4 });
   tone(v, { type: 'triangle', freq: 140 * p, to: 60 * p, glide: 1.2, at: t, attack: 0.02, peak: 0.2, decay: 1.2, lowpass: 300 });
   noise(v, { at: t, peak: 0.4, decay: 0.12, filter: 'bandpass', freq: 900, q: 1 });

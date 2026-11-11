@@ -24,6 +24,8 @@ export const BAR_SECONDS = 4 * BEAT_SECONDS;
 export const LOOP_BARS = 8;
 /** The intensity from which each layer plays. */
 export const LAYER_THRESHOLDS: readonly [number, number, number] = [0, 0.35, 0.7];
+/** A layer that is playing stops only below this, so it does not flicker on and off bar to bar. */
+export const LAYER_OFF_THRESHOLDS: readonly [number, number, number] = [0, 0.3, 0.65];
 /** `setIntensity` moves the music's intensity to the new value over this many seconds. */
 export const INTENSITY_EASE_SECONDS = 2;
 /** The intensity a theme never drops below: the menu always has its tune. */
@@ -259,11 +261,31 @@ function layerLevel(layer: Layer, intensity: number): number {
   return 0.8 + 0.2 * clamp01((intensity - from) / span);
 }
 
-/** The notes of a bar that play at this intensity, their velocities shaped by it. */
-export function barNotes(theme: Theme, barIndex: number, barStart: number, intensity: number): NoteEvent[] {
-  const level = Math.max(THEME_FLOOR[theme], Number.isFinite(intensity) ? clamp01(intensity) : 0);
+/** The intensity a theme actually plays at: never below its floor. */
+function themeLevel(theme: Theme, intensity: number): number {
+  return Math.max(THEME_FLOOR[theme], Number.isFinite(intensity) ? clamp01(intensity) : 0);
+}
+
+/**
+ * The highest layer that plays at this intensity. With `previous` (the last bar's) a layer comes
+ * on at 0.35 / 0.7 but goes off only below 0.30 / 0.65; without it the plain thresholds apply.
+ */
+export function topLayer(theme: Theme, intensity: number, previous?: Layer): Layer {
+  const level = themeLevel(theme, intensity);
+  const plays = (layer: 1 | 2): boolean =>
+    level >= LAYER_THRESHOLDS[layer] || (previous !== undefined && previous >= layer && level >= LAYER_OFF_THRESHOLDS[layer]);
+  return plays(2) ? 2 : plays(1) ? 1 : 0;
+}
+
+/**
+ * The notes of a bar that play at this intensity, their velocities shaped by it. `top` is the
+ * highest layer to play (default: from the intensity alone, see `topLayer`).
+ */
+export function barNotes(theme: Theme, barIndex: number, barStart: number, intensity: number, top?: Layer): NoteEvent[] {
+  const level = themeLevel(theme, intensity);
+  const highest = top ?? topLayer(theme, intensity);
   return scheduleBar(theme, barIndex, barStart)
-    .filter((n) => level >= LAYER_THRESHOLDS[n.layer])
+    .filter((n) => n.layer <= highest)
     .map((n) => ({ ...n, velocity: n.velocity * layerLevel(n.layer, level) }));
 }
 
