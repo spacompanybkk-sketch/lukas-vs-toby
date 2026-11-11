@@ -14,16 +14,20 @@ import { bothSides, lv, round, span } from './kit';
 // Every level adds something the lawn camera can see, on top or out to the side:
 //
 //   2  a bigger mango with a bigger leaf, more leaves on the bush
-//   3  iron bands on the beam, an iron cap on the hub and an iron rim on the cup
+//   3  an iron counterweight under the beam's back end; iron bands on the beam, an iron cap on the hub
+//      and an iron rim on the cup
 //   4  the mango glows from inside under a crystal shell; a crystal cup
-//   5  a gold beam, hub and cup; gold leaf on the mango; warm lights in the eyes
+//   5  a gold beam, hub and cup; a little gold crown on the mango; warm lights in the eyes
 
 const MOUTH = '#1F4A14';
 const TOOTH = '#F4FBE6';
-/** The arm's lean back from upright at rest: it lies nearly flat, 6 degrees up at the back. */
-const REST = 84;
+/**
+ * The arm's lean back from upright at rest: 20 degrees up at the back, so the beam's back end
+ * and its cup stand up out of the bush's outline and it reads as a lever from the lawn.
+ */
+const REST = 70;
 /** The floor of the cup, and so the bottom of the mango (from FLOOR + 0.5). */
-const FLOOR = 10.5;
+const FLOOR = 10;
 
 /**
  * A mango in the cup, centred at x = -3.5: a stepped oval `2 rx` long, `2 rz` wide and `h`
@@ -57,7 +61,7 @@ function cup(floor: string, wall: string): Box[] {
 
 /** The beam and its hub. */
 function beam(wood: string, hub: string): Box[] {
-  return [span(-5, 1.5, 9.5, 10.5, -1, 1, wood), span(0.5, 2.5, 9, 11, -1.25, 1.25, hub)];
+  return [span(-5, 1.5, 9, 10, -1, 1, wood), span(0.5, 2.5, 8.5, 10.5, -1.25, 1.25, hub)];
 }
 
 export const mangoPult: ModelDef = {
@@ -65,7 +69,7 @@ export const mangoPult: ModelDef = {
   trim: [],
   eyes: ['eyes'],
   // Where a mango leaves: the cup at the moment the beam lets go, 15 degrees past upright.
-  muzzle: [5.5, 13.5, 0],
+  muzzle: [5.5, 13, 0],
   parts: [
     {
       name: 'root',
@@ -79,9 +83,9 @@ export const mangoPult: ModelDef = {
       pivot: [0, 1, 0],
       boxes: [
         ...round(0, 0, [[5, 3], [4, 4]], 1, 4.5, 'leafDark'),
-        span(-1, 1, 1, 2, 4, 5, 'leaf'),
-        span(4, 5.5, 1, 2, -1, 1, 'leaf'),
-        span(-4.5, -3.5, 1, 2, 3, 4.5, 'leaf'),
+        // Little mangoes ripening on the bush, warm spots against the green.
+        span(1, 2, 2.5, 4, 3.5, 4.5, 'mango'),
+        span(-2.5, -1.5, 2, 3.5, 3.5, 4.5, 'mangoDark'),
         ...lv(2, 5, [span(1.5, 2.5, 1, 2.5, 4, 5, 'leafLight'), span(-3, -2, 1, 2.5, 4, 5, 'leafLight')]),
       ],
     },
@@ -90,30 +94,30 @@ export const mangoPult: ModelDef = {
       name: 'head',
       parent: 'body',
       pivot: [0, 4.5, 0],
-      rot: [0, -18, 6],
+      rot: [0, -30, 14],
       shadedBy: ['eyes'],
       boxes: [
-        ...round(0, 0, [[4, 3], [3, 4]], 4.5, 9, 'leaf'),
+        // Half a voxel short at the back, so the turned, tipped head stays in its tile.
+        span(-3.5, 4, 4.5, 9, -3, 3, 'leaf'),
+        span(-2.5, 3, 4.5, 9, -3.5, 3.5, 'leaf'),
         ...round(0, 0, [[3, 2], [2, 3]], 9, 10, 'leaf'),
         // Leafy texture, flush, on the sides the camera sees: dark creases and pale tips.
-        span(-2, -1, 5, 7, 3.5, 4, 'leafDark'),
-        span(0, 1, 7, 8.5, 3.5, 4, 'leafDark'),
-        span(-1, 0, 8, 9, 3.5, 4, 'leafLight'),
-        span(1, 2, 5.5, 6.5, 3.5, 4, 'leafLight'),
-        span(-2, -1, 9.5, 10, 1, 2, 'leafLight'),
-        span(0, 1, 9.5, 10, -2, -1, 'leafDark'),
+        span(-2, -1, 5, 7, 3, 3.5, 'leafDark'),
+        span(1, 2, 5.5, 6.5, 3, 3.5, 'leafLight'),
         // Tufts sticking up from the crown round the beam, more of them from level 2.
         span(0, 2, 10, 11, 1.5, 3, 'leafLight'),
         span(-2.5, -1, 10, 11, 1.5, 2.5, 'leaf'),
         span(-1, 1, 10, 10.5, -2.5, -1.5, 'leaf'),
         ...lv(2, 5, [span(2.5, 3.5, 10, 11.5, 1, 2, 'leafLight'), span(-3, -2, 10, 11.5, -3, -1.5, 'leafLight'), span(-0.5, 0.5, 10, 12, 2.5, 3.5, 'leafLight')]),
-        // The face, on a paler plate: a smug half-smile with a tooth.
-        span(3.5, 4, 5, 9, -2.5, 2.5, 'leafLight'),
+        // The face, on a pale plate (a light flesh colour, not leaf green, so the face stands
+        // out from the bush and the grass): a smug half-smile with a tooth.
+        span(3.5, 4, 5, 9, -2.5, 2.5, 'avocadoFlesh'),
         span(3.5, 4, 5.5, 6.5, -1.5, 1.5, MOUTH),
         span(3.5, 4, 6.5, 7, 1, 2, MOUTH),
         span(3.75, 4, 6, 6.5, 0, 1, TOOTH),
-        // Heavy brows, low in the middle.
-        ...bothSides([span(3, 4.5, 9, 9.5, 0.5, 1.5, 'leafDark'), span(3, 4.5, 9.5, 10, 1.5, 2.5, 'leafDark')]),
+        // Brows.
+        // (Small, so that from above the brows do not cover the face.)
+        ...bothSides([span(3.5, 4.5, 9, 9.5, 0.5, 2, 'stem')]),
       ],
     },
     {
@@ -122,10 +126,11 @@ export const mangoPult: ModelDef = {
       pivot: [4.25, 7.5, 0],
       shadedBy: ['head'],
       boxes: [
-        ...bothSides([span(4, 4.5, 6, 9, 0.5, 2.5, 'eye')]),
+        // A voxel and a half wide, so the pale plate shows round and between them.
+        ...bothSides([span(4, 4.5, 6.5, 9, 0.5, 2, 'eye')]),
         span(4, 4.5, 8, 9, 0.5, 1.5, 'eyeGlint'),
-        span(4, 4.5, 8, 9, -2.5, -1.5, 'eyeGlint'),
-        ...lv(5, 5, bothSides([span(4, 4.5, 6.5, 7.5, 1.5, 2.5, 'fireLight', { emissive: 3 })])),
+        span(4, 4.5, 8, 9, -2, -1, 'eyeGlint'),
+        ...lv(5, 5, bothSides([span(4, 4.5, 6.5, 7.5, 1, 2, 'fireLight', { emissive: 3 })])),
       ],
     },
     {
@@ -133,7 +138,7 @@ export const mangoPult: ModelDef = {
       // 6 degrees up at the back at rest.
       name: 'arm',
       parent: 'body',
-      pivot: [1.5, 10, 0],
+      pivot: [1.5, 9.5, 0],
       rot: [0, 0, -(90 - REST)],
       boxes: [
         ...lv(1, 4, beam('bark', 'barkDark')),
@@ -142,18 +147,30 @@ export const mangoPult: ModelDef = {
         ...lv(3, 3, cup('barkDark', 'levelIron')),
         ...lv(4, 4, cup('barkDark', 'levelCrystal')),
         ...lv(5, 5, cup('levelGoldDark', 'levelGold')),
-        ...lv(1, 1, mango(2.5, 2, 3.5, 'mango', 'leaf')),
+        ...lv(1, 1, mango(2.5, 2, 3, 'mango', 'leaf')),
         ...lv(2, 3, mango(3, 2.5, 4.5, 'mango', 'leaf')),
         ...lv(4, 4, mango(3, 2.5, 4.5, 'mango', 'leaf', { emissive: 1.6 })),
         ...lv(5, 5, mango(3, 2.5, 4.5, 'mango', 'levelGold')),
         // Level 2 up: a second, bigger leaf on the mango.
-        ...lv(2, 5, [span(-6, -4, 15.5, 16, -1.5, -0.5, 'leafLight')]),
+        ...lv(2, 5, [span(-6, -4, 15, 15.5, -1.5, -0.5, 'leafLight')]),
         // Level 3: iron bands round the beam and a cap on the hub.
-        ...lv(3, 4, [span(-1, 0, 9.25, 10.75, -1.25, 1.25, 'levelIron'), span(0.25, 2.75, 11, 11.5, -1, 1, 'levelIronDark')]),
+        ...lv(3, 4, [span(-1, 0, 8.5, 10.5, -1.5, 1.5, 'levelIron'), span(0.5, 2.5, 10.5, 11, -1, 1, 'levelIronDark')]),
         // Level 4: a crystal shell over the top of the mango.
-        ...lv(4, 4, [span(-5, -2, 15.5, 16, -1.5, 1.5, 'levelCrystal'), span(-4.5, -2.5, 16, 16.5, -1, 1, 'levelCrystal')]),
-        // Level 5: a gold cap on the hub.
-        ...lv(5, 5, [span(0.25, 2.75, 11, 11.5, -1, 1, 'levelGold'), span(-1, 0, 9.25, 10.75, -1.25, 1.25, 'levelGoldDark')]),
+        ...lv(4, 4, [span(-5, -2, 15, 15.5, -1.5, 1.5, 'levelCrystal'), span(-4.5, -2.5, 15.5, 16, -1, 1, 'levelCrystal')]),
+        // Level 5: a gold cap on the hub, and a little gold crown on the mango.
+        ...lv(5, 5, [span(0.5, 2.5, 10.5, 11, -1, 1, 'levelGold'), span(-1, 0, 8.5, 10.5, -1.5, 1.5, 'levelGoldDark')]),
+        ...lv(5, 5, [
+          span(-5, -2, 15.5, 16, -1.5, 1.5, 'levelGold'),
+          span(-5, -4, 16, 17, -1.5, -0.5, 'levelGold'),
+          span(-5, -4, 16, 17, 0.5, 1.5, 'levelGold'),
+          span(-3, -2, 16, 17, -0.5, 0.5, 'levelGold'),
+        ]),
+        // Level 3 up: an iron counterweight hung under the back end of the beam, behind the
+        // cup, where the lawn camera sees it: the beam reads as a lever.
+        ...lv(3, 5, [
+          span(-6.5, -5, 8.5, 10, -1.5, 1.5, 'levelIron'),
+          span(-6, -5.5, 10, 10.5, -0.5, 0.5, 'levelIronDark'),
+        ]),
       ],
     },
   ],
