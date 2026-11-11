@@ -5,7 +5,7 @@ import { PHASE1_CARDS } from '../../src/data/units';
 import { hashState, snapshotState } from '../../src/sim/hash';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command } from '../../src/sim/types';
-import { eventsOf, merge, place, remove } from './helpers';
+import { classicConfig, eventsOf, merge, place, remove } from './helpers';
 
 // The stages run for real in this file (the stage-order test, which mocks them, is step-order.test.ts).
 
@@ -13,8 +13,8 @@ describe('defaultConfig', () => {
   it('takes energy and base health from the balance table, both sides alike', () => {
     expect(defaultConfig(5)).toEqual({
       seed: 5,
-      startEnergy: { plants: 200, zombies: 200 },
-      baseHp: { plants: 3000, zombies: 3000 },
+      startEnergy: { plants: 50, zombies: 50 },
+      baseHp: { plants: 6000, zombies: 6000 },
       cards: PHASE1_CARDS,
       incomeMultiplier: { plants: 1, zombies: 1 },
       suddenDeath: true,
@@ -43,11 +43,11 @@ describe('new Match', () => {
     expect(m.state).toEqual({
       tick: 0, rng: 42, nextId: 1, units: [], projectiles: [],
       players: {
-        plants: { energy: 200, carry: 0, recharge: {} },
-        zombies: { energy: 200, carry: 0, recharge: {} },
+        plants: { energy: 50, carry: 0, recharge: {} },
+        zombies: { energy: 50, carry: 0, recharge: {} },
       },
-      baseHp: { plants: 3000, zombies: 3000 },
-      baseMaxHp: { plants: 3000, zombies: 3000 },
+      baseHp: { plants: 6000, zombies: 6000 },
+      baseMaxHp: { plants: 6000, zombies: 6000 },
       suddenDeath: false, winner: null,
       config: defaultConfig(42),
     });
@@ -69,7 +69,7 @@ describe('new Match', () => {
   });
 
   it('uses the balance it is given', () => {
-    const b: Balance = { ...BALANCE, trickle: { plants: 6, zombies: 0 } };
+    const b: Balance = { ...BALANCE, startEnergy: 200, trickle: { plants: 6, zombies: 0 } };
     const m = new Match(defaultConfig(1, b), b);
     expect(m.balance).toBe(b);
     for (let i = 0; i < 30; i++) m.step();
@@ -80,7 +80,7 @@ describe('new Match', () => {
 
 describe('step', () => {
   it('adds one to the tick per step, with or without commands, rejected or not', () => {
-    const m = new Match(defaultConfig(1));
+    const m = new Match(classicConfig(1));
     m.step();
     m.step([]);
     m.step([place('plants', 'peashooter', 0, 0)]);
@@ -96,7 +96,7 @@ describe('step', () => {
   });
 
   it('returns a fresh events array every step', () => {
-    const m = new Match(defaultConfig(1));
+    const m = new Match(classicConfig(1));
     const first = m.step([place('plants', 'peashooter', 0, 0)]);
     const second = m.step();
     expect(first).toHaveLength(1);
@@ -104,7 +104,7 @@ describe('step', () => {
   });
 
   it('carries out a place, a merge and a remove in one step, in the order given', () => {
-    const m = new Match(defaultConfig(1)); // 200 energy each
+    const m = new Match(classicConfig(1)); // 200 energy each
     const pea = spawnUnit(m.state, BALANCE, 'peashooter', 0, 0.5);
     const sun = spawnUnit(m.state, BALANCE, 'sunflower', 1, 0.5);
     const cmds: Command[] = [
@@ -143,7 +143,7 @@ describe('hash, snapshot and restore', () => {
   }
 
   it('delegate to hashState and snapshotState', () => {
-    const m = new Match(defaultConfig(11));
+    const m = new Match(classicConfig(11));
     play(m, 0, 20);
     expect(m.hash()).toBe(hashState(m.state));
     expect(m.snapshot()).toBe(snapshotState(m.state));
@@ -157,7 +157,7 @@ describe('hash, snapshot and restore', () => {
   });
 
   it('restore gives the same state, and then the same future', () => {
-    const a = new Match(defaultConfig(11));
+    const a = new Match(classicConfig(11));
     play(a, 0, 50);
     const b = Match.restore(a.snapshot());
     expect(b.hash()).toBe(a.hash());
@@ -172,7 +172,7 @@ describe('hash, snapshot and restore', () => {
   });
 
   it('restore shares nothing with the match it came from', () => {
-    const a = new Match(defaultConfig(11));
+    const a = new Match(classicConfig(11));
     play(a, 0, 10);
     const before = a.hash();
     const b = Match.restore(a.snapshot());
@@ -189,8 +189,8 @@ describe('hash, snapshot and restore', () => {
   });
 
   it('is reproducible: the same seed and commands give the same hash', () => {
-    const a = new Match(defaultConfig(21));
-    const b = new Match(defaultConfig(21));
+    const a = new Match(classicConfig(21));
+    const b = new Match(classicConfig(21));
     play(a, 0, 400);
     play(b, 0, 400);
     expect(a.hash()).toBe(b.hash());

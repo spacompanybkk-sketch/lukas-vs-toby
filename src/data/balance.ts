@@ -86,14 +86,14 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       shield: { interval: 4 },
     },
   },
-  trickle: { plants: 2, zombies: 5 },
+  trickle: { plants: 2, zombies: 1.8 },
   bountyShare: { plants: 0.2, zombies: 0.5 },
   baseShotFactor: 0.5,
   hitRadius: 0.35,
   levelScale: [0, 1, 2, 3, 4, 5],
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
-  startEnergy: 200,
-  baseHp: 3000,
+  startEnergy: 50,
+  baseHp: 6000,
 });
 
 /** Seconds to whole ticks. */

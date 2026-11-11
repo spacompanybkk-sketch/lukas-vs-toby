@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultConfig, Match } from '../../src/sim/match';
+import { Match } from '../../src/sim/match';
 import type { SimState } from '../../src/sim/types';
-import { place } from './helpers';
+import { classicConfig, place } from './helpers';
 
 /**
  * This file alone replaces the stage functions with recorders, to pin the order of `Match.step`
@@ -35,7 +35,7 @@ beforeEach(() => {
 
 describe('step order', () => {
   it('runs commands, economy, movement, attacks, projectiles, deaths, endgame, then the tick', () => {
-    const m = new Match(defaultConfig(1));
+    const m = new Match(classicConfig(1));
     m.step([place('plants', 'peashooter', 0, 0)]);
     expect(log).toEqual([
       'economy tick=0 units=1', // the command already ran
@@ -49,7 +49,7 @@ describe('step order', () => {
   });
 
   it('runs the whole sequence once per step, with or without commands, and adds one to the tick', () => {
-    const m = new Match(defaultConfig(1));
+    const m = new Match(classicConfig(1));
     m.step();
     m.step([]);
     m.step([place('plants', 'peashooter', 0, 0)]);

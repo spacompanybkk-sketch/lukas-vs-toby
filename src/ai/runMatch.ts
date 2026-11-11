@@ -1,0 +1,45 @@
+import { BALANCE } from '../data/balance';
+import type { Balance } from '../data/balance';
+import { Match, defaultConfig } from '../sim/match';
+import type { Command, Faction, MatchConfig } from '../sim/types';
+import { createBasicBot } from './basicBot';
+import type { Bot, Skill } from './bot';
+
+export interface MatchResult {
+  winner: Faction | 'draw';
+  /** Steps played: the tick the match ended on, plus one. */
+  ticks: number;
+  baseHp: Record<Faction, number>;
+}
+
+/** 8:00, the latest a match with sudden death can last. */
+export const MAX_MATCH_TICKS = 14_400;
+
+/**
+ * Plays a whole match between bots without drawing anything. Every tick each bot is asked for
+ * its commands, plants' bots first, then zombies', and they go to the match in that order in one
+ * `step`. Stops when a base falls or after `maxTicks` steps; a match still going then is a draw.
+ */
+export function runMatch(
+  config: MatchConfig, bots: readonly Bot[], maxTicks: number = MAX_MATCH_TICKS, balance: Balance = BALANCE,
+): MatchResult {
+  const match = new Match(config, balance);
+  const ordered = [...bots.filter((b) => b.faction === 'plants'), ...bots.filter((b) => b.faction === 'zombies')];
+  while (match.state.winner === null && match.state.tick < maxTicks) {
+    const commands: Command[] = [];
+    for (const bot of ordered) commands.push(...bot.think(match));
+    match.step(commands);
+  }
+  return { winner: match.state.winner ?? 'draw', ticks: match.state.tick, baseHp: { ...match.state.baseHp } };
+}
+
+/**
+ * The standard bot-against-bot match the tests and the smoke tool play: the default setup for
+ * `seed`, and a basic bot on each side at the given skill, both seeded with `seed`.
+ */
+export function runBotMatch(
+  seed: number, skills: Record<Faction, Skill>, maxTicks: number = MAX_MATCH_TICKS, balance: Balance = BALANCE,
+): MatchResult {
+  const bots = [createBasicBot('plants', skills.plants, seed), createBasicBot('zombies', skills.zombies, seed)];
+  return runMatch(defaultConfig(seed, balance), bots, maxTicks, balance);
+}

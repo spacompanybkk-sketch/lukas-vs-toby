@@ -1,4 +1,17 @@
-import type { Command, Faction, SimEvent, UnitKey } from '../../src/sim/types';
+import { defaultConfig } from '../../src/sim/match';
+import type { Command, Faction, MatchConfig, SimEvent, UnitKey } from '../../src/sim/types';
+
+/**
+ * The default setup with the energy and base health these tests were written for, 200 and 3000 a
+ * side, so a test of the rules keeps testing them whatever the tuner does to the shipped starting
+ * values in `BALANCE`.
+ */
+export function classicConfig(seed: number): MatchConfig {
+  const config = defaultConfig(seed);
+  config.startEnergy = { plants: 200, zombies: 200 };
+  config.baseHp = { plants: 3000, zombies: 3000 };
+  return config;
+}
 
 export type PlaceCommand = Extract<Command, { type: 'place' }>;
 export type MergeCommand = Extract<Command, { type: 'merge' }>;

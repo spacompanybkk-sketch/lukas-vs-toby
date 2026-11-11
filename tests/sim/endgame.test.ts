@@ -6,13 +6,19 @@ import type { Command, CommandRejection, Projectile, SimEvent } from '../../src/
 import { BASE_STOP_X } from '../../src/sim/types';
 import { eventsOf, merge, place, remove } from './helpers';
 
-/** Income off, plenty of energy, sudden death as given. */
+/**
+ * Income off, plenty of energy, sudden death as given, and bases of 3000 in both the config and
+ * the balance table (the sudden-death drain is a share of the table's `baseHp`), which the drain
+ * figures below are worked out for.
+ */
 function fresh(suddenDeath = true): Match {
-  const config = defaultConfig(5);
+  const balance = cloneBalance(BALANCE);
+  balance.baseHp = 3000;
+  const config = defaultConfig(5, balance);
   config.startEnergy = { plants: 1000, zombies: 1000 };
   config.incomeMultiplier = { plants: 0, zombies: 0 };
   config.suddenDeath = suddenDeath;
-  return new Match(config);
+  return new Match(config, balance);
 }
 
 /** A Brain Eater standing at the plant base whose bite is ready during the next step. */
@@ -228,14 +234,15 @@ describe('sudden death', () => {
   });
 
   it('with suddenDeath: false an idle match is still running at tick 14,400', () => {
-    const m = new Match({ ...defaultConfig(3), suddenDeath: false });
+    const config = { ...defaultConfig(3), suddenDeath: false };
+    const m = new Match(config);
     let sudden = 0;
     while (m.state.tick < 14_400) sudden += eventsOf(m.step(), 'suddenDeath').length;
     expect(m.state.tick).toBe(14_400);
     expect(sudden).toBe(0);
     expect(m.state.suddenDeath).toBe(false);
     expect(m.state.winner).toBeNull();
-    expect(m.state.baseHp).toEqual({ plants: 3000, zombies: 3000 });
+    expect(m.state.baseHp).toEqual(config.baseHp);
   });
 });
 

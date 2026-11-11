@@ -4,10 +4,11 @@ import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command, CommandRejection, SimEvent, UnitKey } from '../../src/sim/types';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
-import { eventsOf, place } from './helpers';
+import { classicConfig, eventsOf, place } from './helpers';
 
+/** 200 energy a side. */
 function fresh(): Match {
-  return new Match(defaultConfig(7));
+  return new Match(classicConfig(7));
 }
 
 describe('placing a plant', () => {
@@ -273,7 +274,7 @@ describe('rejections', () => {
     const events = m.step([cmd]); // and stepping does not throw
     expect(eventsOf(events, 'commandRejected')).toEqual([{ type: 'commandRejected', command: cmd, reason: 'not-in-hand' }]);
     expect(m.state.units).toHaveLength(0);
-    expect(m.state.players.plants.energy).toBe(200);
+    expect(m.state.players.plants.energy).toBe(b.startEnergy);
     expect(m.check(place('plants', 'sunflower', 2, 3))).toBeNull(); // the other cards are unaffected
   });
 

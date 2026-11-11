@@ -8,18 +8,17 @@ import { BASE_STOP_X, COLS, LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from '../../src/
 import type {
   Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, UnitKey,
 } from '../../src/sim/types';
-import { eventsOf, merge, remove } from './helpers';
+import { classicConfig, eventsOf, merge, remove } from './helpers';
 
 /**
  * Review Focus 5: crowded and simultaneous moments, and determinism.
  *
- * Two sweeps of seeds each play 3,000 steps of random commands: 50 seeds on a rich setup that
- * keeps the lawn crowded, and 20 on the plain default configuration. After every step the state
- * is checked (`findProblem`); then each seed is played again from scratch, and once more from a
- * snapshot, and the checksums must agree.
+ * Two sweeps of seeds play random commands: 50 seeds on a rich setup that keeps the lawn crowded,
+ * for 3,000 steps each, and 20 on the plain default configuration, for 4,000. After every step
+ * the state is checked (`findProblem`); then each seed is played again from scratch, and once
+ * more from a snapshot, and the checksums must agree.
  */
 
-const STEPS = 3000;
 /** The brief's budget for this whole file; a fuzz test that runs past it fails. */
 const BUDGET_MS = 20_000;
 
@@ -251,7 +250,9 @@ function richSetup(seed: number): { config: MatchConfig; balance: Balance } {
 interface Sweep {
   name: string;
   seeds: readonly number[];
-  /** Steps after which the checksum is taken and compared with the replay. Ascending. */
+  /** Steps each seed plays. */
+  steps: number;
+  /** Steps after which the checksum is taken and compared with the replay. Ascending, ending at `steps`. */
   checkpoints: readonly number[];
   /** The step after which the snapshot is taken that the restored run continues from. */
   snapshotAt: number;
@@ -263,6 +264,7 @@ interface Sweep {
 const RICH: Sweep = {
   name: 'rich setup',
   seeds: Array.from({ length: 50 }, (_, i) => i + 1),
+  steps: 3000,
   checkpoints: [500, 1000, 2000, 3000],
   snapshotAt: 1500,
   liveAtSnapshot: (seed) => seed % 5 !== 0, // the sturdy-base seeds; the others may end sooner
@@ -270,13 +272,15 @@ const RICH: Sweep = {
 };
 
 /**
- * The plain default configuration. Random plants lose these matches early, so the snapshot and
- * the extra checkpoints (300, 600, 900) fall where every seed is still playing.
+ * The plain default configuration. Random commands end these matches after roughly 3,200 to 3,700
+ * steps, so the sweep plays 4,000 to see them end; the snapshot and the extra checkpoints (300,
+ * 600, 900) fall where every seed is still playing.
  */
 const PLAIN: Sweep = {
   name: 'default config',
   seeds: Array.from({ length: 20 }, (_, i) => i + 1),
-  checkpoints: [300, 500, 600, 900, 1000, 2000, 3000],
+  steps: 4000,
+  checkpoints: [300, 500, 600, 900, 1000, 2000, 3000, 4000],
   snapshotAt: 600,
   liveAtSnapshot: () => true,
   setup: (seed) => ({ config: defaultConfig(seed), balance: BALANCE }),
@@ -341,7 +345,7 @@ function fuzzRun(sweep: Sweep, seed: number): FuzzRun {
   let liveAtSnapshot = false;
   let endedAtStep: number | null = null;
   let problem: string | null = null;
-  play(first, seed, STEPS, (step, events) => {
+  play(first, seed, sweep.steps, (step, events) => {
     tallyEvents(tally, events);
     if (endedAtStep === null && first.state.winner !== null) endedAtStep = step;
     if (problem === null) {
@@ -358,13 +362,13 @@ function fuzzRun(sweep: Sweep, seed: number): FuzzRun {
   // Second run: the same seed from scratch.
   const replay = new Match(config, balance);
   const replayHashes: number[] = [];
-  play(replay, seed, STEPS, (step) => {
+  play(replay, seed, sweep.steps, (step) => {
     if (sweep.checkpoints.includes(step)) replayHashes.push(replay.hash());
   });
 
   // Third run: from the snapshot to the last step.
   const restored = Match.restore(snapshot, balance);
-  play(restored, seed, STEPS - sweep.snapshotAt);
+  play(restored, seed, sweep.steps - sweep.snapshotAt);
 
   const run: FuzzRun = {
     problem, hashes, replayHashes, restoredHash: restored.hash(), liveAtSnapshot, endedAtStep, tally,
@@ -386,7 +390,7 @@ function list(steps: readonly number[]): string {
 
 /** The brief's three determinism checks, for one sweep. */
 function describeSweep(sweep: Sweep): void {
-  describe(`fuzz, ${sweep.name}: ${sweep.seeds.length} seeds × ${num(STEPS)} steps of random commands`, () => {
+  describe(`fuzz, ${sweep.name}: ${sweep.seeds.length} seeds × ${num(sweep.steps)} steps of random commands`, () => {
     it('keeps every invariant after every step', () => {
       const problems = sweep.seeds.map((seed) => fuzzRun(sweep, seed).problem).filter((p) => p !== null);
       expect(problems).toEqual([]); // a list, so a failure prints each seed's problem in full
@@ -400,7 +404,7 @@ function describeSweep(sweep: Sweep): void {
       }
     }, BUDGET_MS);
 
-    it(`gives the same hash at tick ${num(STEPS)} after a snapshot at tick ${num(sweep.snapshotAt)} and Match.restore`, () => {
+    it(`gives the same hash at tick ${num(sweep.steps)} after a snapshot at tick ${num(sweep.snapshotAt)} and Match.restore`, () => {
       for (const seed of sweep.seeds) {
         const run = fuzzRun(sweep, seed);
         if (sweep.liveAtSnapshot(seed)) {
@@ -493,7 +497,7 @@ describe('crowded moments', () => {
   });
 
   it("a level-2 Walnut Bomb's blast fells all 30 walkers in one step, and a merge aimed at one of them next step finds nothing", () => {
-    const m = new Match(defaultConfig(9));
+    const m = new Match(classicConfig(9)); // enough energy for the merge
     const nut = spawnUnit(m.state, BALANCE, 'walnutBomb', 2, 3.5);
     checkedStep(m, [merge('plants', 'walnutBomb', nut.id)]);
     expect(nut).toMatchObject({ level: 2, hp: 2400, maxHp: 2400, spent: 150 });

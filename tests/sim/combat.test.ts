@@ -8,11 +8,12 @@ import { eventsOf } from './helpers';
 
 /**
  * Units are set with `spawnUnit`. Income is switched off so energy only moves through bounties,
- * and the start energy is large so nothing ever waits for it.
+ * the start energy is large so nothing ever waits for it, and each base has 3000 health.
  */
 function fresh(balance: Balance = BALANCE): Match {
   const config = defaultConfig(1, balance);
   config.startEnergy = { plants: 9999, zombies: 9999 };
+  config.baseHp = { plants: 3000, zombies: 3000 };
   config.incomeMultiplier = { plants: 0, zombies: 0 };
   return new Match(config, balance);
 }
