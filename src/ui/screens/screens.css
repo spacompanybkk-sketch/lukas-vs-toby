@@ -1,0 +1,228 @@
+/* Title, side pick, settings, unsupported and rotate screens. Tokens live in ../theme.css. */
+
+/* Until the 3D bot battle plays behind the menus, they sit on banded pixel sky over grass and
+ * soil. When the title scene draws behind, set --menu-backdrop: var(--menu-dim). */
+:root {
+  --menu-backdrop:
+    linear-gradient(to bottom,
+      var(--c-sky) 0 24%, #7ad3ff 24% 40%, #a3e2ff 40% 54%, var(--c-sky-hi) 54% 68%,
+      var(--c-grass) 68% 72%, var(--c-grass-lo) 72% 76%, var(--c-soil) 76% 90%, var(--c-soil-lo) 90% 100%);
+}
+.layer--menu { background: var(--menu-backdrop); }
+
+/* ---- Title ---- */
+.title {
+  grid-template-rows: 1fr auto 1fr;
+  gap: clamp(16px, 4vh, 48px);
+}
+.logo {
+  align-self: end;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-weight: 400;
+  line-height: 0.95;
+  text-align: center;
+}
+.logo__line {
+  font-size: var(--fs-huge);
+  animation: px-drop 640ms steps(8, end) both;
+}
+.logo__line--plants { color: var(--c-leaf-hi); }
+.logo__line--zombies { color: var(--c-purple-hi); animation-delay: 220ms; }
+.logo__vs {
+  font-size: calc(var(--fs-huge) * 0.45);
+  color: var(--c-sun);
+  margin: 0.1em 0;
+  animation: px-pop 240ms steps(4, end) 140ms both;
+}
+.title__play {
+  min-width: clamp(220px, 28vw, 380px);
+  --ico-size: 1.1em;
+  animation: px-pop var(--t-pop) steps(4, end) 520ms both, px-breathe 1400ms steps(2, jump-none) 900ms infinite;
+}
+.title__gear {
+  position: absolute;
+  top: var(--gutter-top);
+  right: var(--gutter-x);
+}
+@keyframes px-breathe { 0% { scale: 1; } 100% { scale: 1.04; } }
+
+/* ---- Side pick ---- */
+.sidepick__back { position: absolute; top: var(--gutter-top); left: var(--gutter-x); }
+.sidepick__body { width: 100%; }
+.sidepick__sides {
+  display: flex;
+  justify-content: center;
+  gap: clamp(16px, 4vw, 64px);
+}
+.boy {
+  --lip: calc(var(--px-lip) + 2px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: clamp(200px, min(30vw, 40vh), 380px);
+  padding: calc(var(--px-bev) + 10px);
+  margin-bottom: var(--lip);
+  touch-action: manipulation;
+  transition: transform 100ms steps(2, end), filter 100ms steps(2, end);
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.boy.side-zombies { animation-delay: 80ms; }
+.boy__art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--side-accent);
+  box-shadow: inset calc(var(--px-bev) * -1) calc(var(--px-bev) * -1) 0 0 var(--side-accent-lo), 0 0 0 var(--px-line) var(--ink);
+}
+.boy__art img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.boy__placeholder { font-size: calc(var(--fs-huge) * 1.4); color: var(--white); line-height: 1; }
+.boy__name { font-size: var(--fs-big); line-height: 1; margin-top: 6px; }
+.side-plants .boy__name { color: var(--c-leaf-hi); }
+.side-zombies .boy__name { color: var(--c-purple-hi); }
+.boy__team {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  --ico-size: 1.3em;
+}
+.boy:active { --lip: 2px; transform: translateY(var(--px-lip)); filter: brightness(var(--press-dim)); }
+.boy.is-selected {
+  transform: translateY(-10px);
+  outline: calc(var(--px-line) + 2px) solid var(--c-sun);
+  outline-offset: calc(var(--px-line) + 3px);
+}
+.boy.is-other { filter: grayscale(0.6) brightness(0.75); }
+@media (hover: hover) {
+  .boy:not(.is-selected):hover { transform: translateY(-4px); }
+}
+.skill { --ico-size: 0.9em; }
+.skill__stars { display: inline-flex; gap: 1px; }
+.sidepick__start { min-width: clamp(220px, 26vw, 360px); }
+.sidepick__start[aria-disabled='true'] { filter: grayscale(0.9) brightness(0.75); }
+.sidepick__start.is-ready { animation: px-pop 200ms steps(3, end), px-breathe 1200ms steps(2, jump-none) 200ms infinite; }
+
+/* On short landscape screens (iPad 4:3 in Safari with bars, small laptops) tighten the column */
+@media (max-height: 760px) {
+  .boy { width: clamp(180px, min(28vw, 36vh), 320px); }
+  .sidepick__body { gap: 12px; }
+}
+
+/* ---- Settings ---- */
+.settings { width: clamp(320px, 54vw, 660px); align-items: stretch; }
+.settings__head { display: flex; align-items: center; justify-content: space-between; }
+.settings__title { --ico-size: calc(var(--btn-h) * 0.8); }
+.settings__row { display: flex; align-items: center; gap: clamp(10px, 1.6vw, 20px); }
+.settings__slider.is-dim { opacity: 0.5; }
+.settings__icon {
+  display: grid;
+  place-items: center;
+  width: var(--btn-h);
+  height: var(--btn-h);
+  flex: none;
+  --ico-size: 62%;
+}
+.settings__slider input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: var(--btn-h); /* the whole row height is the touch target */
+  margin: 0;
+  background: transparent;
+  touch-action: none;
+  cursor: pointer;
+}
+.settings__slider input[type='range']::-webkit-slider-runnable-track {
+  height: clamp(16px, 2.6vh, 26px);
+  background: linear-gradient(90deg, var(--c-leaf) 0 var(--pct), var(--c-cream-lo) var(--pct) 100%);
+  box-shadow: 0 0 0 var(--px-line) var(--ink), inset 0 4px 0 rgba(26, 16, 8, 0.25);
+}
+.settings__slider input[type='range']::-moz-range-track {
+  height: clamp(16px, 2.6vh, 26px);
+  background: linear-gradient(90deg, var(--c-leaf) 0 var(--pct), var(--c-cream-lo) var(--pct) 100%);
+  box-shadow: 0 0 0 var(--px-line) var(--ink);
+}
+.settings__slider input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(36px, 5vh, 48px);
+  height: clamp(44px, 6.4vh, 60px);
+  margin-top: calc((clamp(16px, 2.6vh, 26px) - clamp(44px, 6.4vh, 60px)) / 2);
+  background: var(--c-wood);
+  border: 0;
+  border-radius: 0;
+  box-shadow:
+    inset 4px 4px 0 var(--c-wood-hi), inset -4px -4px 0 var(--c-wood-lo),
+    0 calc(var(--px-line) * -1) 0 0 var(--ink), 0 var(--px-line) 0 0 var(--ink),
+    calc(var(--px-line) * -1) 0 0 0 var(--ink), var(--px-line) 0 0 0 var(--ink);
+}
+.settings__slider input[type='range']::-moz-range-thumb {
+  width: clamp(36px, 5vh, 48px);
+  height: clamp(44px, 6.4vh, 60px);
+  background: var(--c-wood);
+  border: var(--px-line) solid var(--ink);
+  border-radius: 0;
+}
+.settings__mute { width: var(--btn-h); padding: 0 0 var(--px-bev); --ico-size: 58%; flex: none; }
+.settings__quality { display: flex; flex: 1; gap: clamp(8px, 1vw, 14px); }
+.settings__q { flex: 1; flex-direction: column; gap: 4px; padding-inline: 8px; font-size: var(--fs-body); }
+.pips { display: inline-flex; gap: 3px; align-items: flex-end; }
+.pip { width: 8px; height: 8px; background: rgba(26, 16, 8, 0.35); }
+.pip:nth-child(2) { height: 12px; }
+.pip:nth-child(3) { height: 16px; }
+.pip.is-on { background: var(--white); box-shadow: 0 0 0 2px var(--ink); }
+
+/* ---- Unsupported ---- */
+.unsupported { max-width: min(92vw, 600px); text-align: center; }
+.unsupported__mark {
+  display: grid;
+  place-items: center;
+  width: calc(var(--btn-big-h) * 1.1);
+  height: calc(var(--btn-big-h) * 1.1);
+  background: var(--c-sun);
+  box-shadow: 0 0 0 var(--px-line) var(--ink), inset -5px -5px 0 var(--c-sun-lo);
+  font-size: var(--fs-huge);
+  color: var(--white);
+}
+.unsupported__text { margin: 0; font-size: var(--fs-btn); font-weight: 600; line-height: 1.25; color: var(--c-bone); }
+
+/* ---- Turn your device ---- */
+.rotate {
+  z-index: 100;
+  background: #1b1209;
+}
+.rotate__pic {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 5vw, 40px);
+}
+.rotate__tablet {
+  --lip: 0px;
+  display: grid;
+  place-items: center;
+  width: clamp(90px, 26vw, 160px);
+  height: clamp(130px, 37vw, 230px);
+  padding: 12px 10px 22px;
+  animation: rotate-turn 2400ms steps(1, end) infinite;
+}
+.rotate__screen {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--c-sky) 0 55%, var(--c-grass) 55% 70%, var(--c-soil) 70% 100%);
+  box-shadow: 0 0 0 var(--px-line) var(--ink);
+}
+.rotate__arrow { --ico-size: clamp(56px, 16vw, 96px); }
+@keyframes rotate-turn {
+  0%, 30% { transform: rotate(0deg); }
+  40% { transform: rotate(-30deg); }
+  50% { transform: rotate(-60deg); }
+  60%, 100% { transform: rotate(-90deg); }
+}
