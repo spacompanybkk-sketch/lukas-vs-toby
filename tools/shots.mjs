@@ -22,6 +22,9 @@ import { chromium } from 'playwright';
  *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
  * }[]}
  */
+/** The plants built so far, which the plant lawn shots stand on the lawn. */
+const PLANTS = ['peashooter', 'sunflower', 'walnutBomb'];
+
 /** The ten zombies a player can field, in unlock order. The Bone Minion is raised, not fielded. */
 const ZOMBIES = [
   'brainEater',
@@ -53,6 +56,7 @@ const SCENARIOS = [
   },
   // Every model at about the size it has on the lawn, then the Peashooter's row close up.
   { name: 'gallery', url: '/?scene=gallery&t=0.4' },
+  { name: 'gallery-page2', url: '/?scene=gallery&t=0.4&page=2' },
   { name: 'gallery-peashooter', url: '/?scene=gallery&model=peashooter&t=0.4' },
   {
     // Lean back, release, snap, settle.
@@ -61,9 +65,9 @@ const SCENARIOS = [
     frames: [0.06, 0.12, 0.16, 0.3].map((t) => ({ suffix: t.toFixed(2), run: (page) => pose(page, 'shoot', t) })),
   },
   // On the real lawn, under the game's own camera.
-  { name: 'gallery-lawn', url: '/?scene=gallery&stage=lawn&t=0.4' },
+  { name: 'gallery-lawn', url: `/?scene=gallery&stage=lawn&models=${PLANTS.join(',')}&t=0.4` },
   // The same without labels, which otherwise sit over the faces of the nearest lane.
-  { name: 'gallery-lawn-clean', url: '/?scene=gallery&stage=lawn&t=0.4&labels=0' },
+  { name: 'gallery-lawn-clean', url: `/?scene=gallery&stage=lawn&models=${PLANTS.join(',')}&t=0.4&labels=0` },
   // Three-quarter views from the front and from behind.
   { name: 'gallery-peashooter-front', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=20&yaw=38' },
   { name: 'gallery-peashooter-back', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=24&yaw=-142' },
