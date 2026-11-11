@@ -186,3 +186,95 @@ describe('CameraRig motion', () => {
     }
   });
 });
+
+describe('CameraRig.frameSubject', () => {
+  /** A row of models on pads: wide, low and shallow. */
+  const ROW = { x: [1.9, 8.1], y: [0, 1.7], z: [1.85, 3.15] } as const;
+  const VIEWS: [string, { pitchDeg?: number; yawDeg?: number }][] = [
+    ['the lawn angle', {}],
+    ['a three-quarter view from the front', { pitchDeg: 20, yawDeg: 38 }],
+    ['a view from behind', { pitchDeg: 24, yawDeg: -142 }],
+    ['a level side view', { pitchDeg: 4, yawDeg: 0 }],
+  ];
+
+  function corners(camera: PerspectiveCamera): Vector3[] {
+    const out: Vector3[] = [];
+    for (const x of ROW.x) for (const y of ROW.y) for (const z of ROW.z) out.push(new Vector3(x, y, z).project(camera));
+    return out;
+  }
+
+  it.each(VIEWS)('fits a box inside the margins it is given, as close as it can: %s', (_name, view) => {
+    for (const [, aspect] of ASPECTS) {
+      const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+      const rig = new CameraRig(camera);
+      rig.frameLawn(aspect);
+      rig.frameSubject(ROW, { ...view, side: 0.04, top: 0.06, bottom: 0.12 });
+      const ndc = corners(camera);
+      const xs = ndc.map((p) => p.x);
+      const ys = ndc.map((p) => p.y);
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(-0.92);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(0.92);
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(-0.76);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(0.88);
+      for (const p of ndc) {
+        expect(p.z).toBeGreaterThan(-1);
+        expect(p.z).toBeLessThan(1);
+      }
+      // It touches the margins on one axis or the other, and sits in the middle of the room
+      // left on the other (near enough: corners at different depths do not mirror exactly).
+      const touchesSides = Math.max(...xs) > 0.91 && Math.min(...xs) < -0.91;
+      const touchesTopAndBottom = Math.max(...ys) > 0.87 && Math.min(...ys) < -0.75;
+      expect(touchesSides || touchesTopAndBottom).toBe(true);
+      expect(Math.abs(Math.max(...xs) + Math.min(...xs))).toBeLessThan(0.15);
+      expect(camera.fov).toBe(30);
+    }
+  });
+
+  it('looks from the angle it is given', () => {
+    const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+    const rig = new CameraRig(camera);
+    rig.frameLawn(16 / 10);
+    rig.frameSubject(ROW, { pitchDeg: 20, yawDeg: 38 });
+    const forward = camera.getWorldDirection(new Vector3());
+    expect(MathUtils.radToDeg(Math.asin(-forward.y))).toBeCloseTo(20, 6);
+    // Swung towards +X: it stands on the +X side of the box and looks back towards −X.
+    expect(MathUtils.radToDeg(Math.atan2(-forward.x, -forward.z))).toBeCloseTo(38, 6);
+    expect(camera.position.x).toBeGreaterThan(5);
+  });
+
+  it('keeps the subject through a resize and through time, and gives the lawn back exactly', () => {
+    const { camera, rig } = framed(16 / 10);
+    const lawn = camera.position.clone();
+    const lawnQuat = camera.quaternion.clone();
+
+    rig.frameSubject(ROW);
+    const row = camera.position.clone();
+    expect(row.distanceTo(lawn)).toBeGreaterThan(3);
+    // What the renderer does when the window changes shape.
+    rig.frameLawn(4 / 3);
+    expect(camera.position.distanceTo(lawn)).toBeGreaterThan(3);
+    rig.frameLawn(16 / 10);
+    settle(rig, 1);
+    expect(camera.position.distanceTo(row)).toBeLessThan(1e-9);
+
+    rig.frameSubject(null);
+    expect(camera.position.toArray()).toEqual(lawn.toArray());
+    expect(camera.quaternion.toArray()).toEqual(lawnQuat.toArray());
+  });
+
+  it('leaves the lawn shot exactly where it has always been', () => {
+    // Recorded before `frameSubject` existed: the lawn must not move by a hair.
+    const recorded: [number, [number, number, number]][] = [
+      [4 / 3, [5, 18.90769985574885, 17.543591538176678]],
+      [16 / 10, [5, 16.282705676859795, 15.34135023278505]],
+      [16 / 9, [5, 14.97020858741526, 14.240229580089235]],
+      [21 / 9, [5, 13.210447115293118, 12.763876057970451]],
+      [1, [5, 24.157688213526963, 21.94807414895994]],
+    ];
+    for (const [aspect, position] of recorded) {
+      const { camera } = framed(aspect);
+      expect(camera.position.toArray()).toEqual(position);
+      expect(camera.quaternion.toArray()).toEqual([-0.4383711467890774, 0, 0, 0.898794046299167]);
+    }
+  });
+});

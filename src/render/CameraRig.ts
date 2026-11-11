@@ -3,19 +3,57 @@ import { LAWN_COLS, LAWN_LANES, PLANT_BASE_X, ZOMBIE_BASE_X } from './coords';
 import type { Faction } from './types';
 
 const FOV_DEG = 30;
-const PITCH = MathUtils.degToRad(52);
 
-/** What must stay on screen: the lawn, both bases and the tallest thing standing on them. */
-const FRAME_BOX = { x: [-1.9, 11.9], y: [0, 2.4], z: [-0.3, 5.3] } as const;
+/** A box in world space that a shot must keep on screen. */
+export interface FrameBox {
+  readonly x: readonly [number, number];
+  readonly y: readonly [number, number];
+  readonly z: readonly [number, number];
+}
+
+/** How a box is looked at. Anything left out is as for the lawn. */
+export interface FrameView {
+  /** Degrees the camera is tipped down (default 52). */
+  pitchDeg?: number;
+  /** Degrees the camera is swung round the box towards +X (default 0, straight on). */
+  yawDeg?: number;
+  /** Shares of the screen kept clear at each side, at the top and at the bottom. */
+  side?: number;
+  top?: number;
+  bottom?: number;
+}
+
+/** What is being framed: the box, the angles (radians) and the free part of the screen (NDC). */
+interface Subject {
+  box: FrameBox;
+  pitch: number;
+  yaw: number;
+  freeX: number;
+  freeTop: number;
+  freeBottom: number;
+}
+
 /**
- * The part of the screen the HUD leaves free, in NDC: 3% side margins, the top 9% is the
- * top bar and the bottom 22% the card tray. Pulled in by a hair so rounding never puts a
- * corner outside.
+ * Pulled in by a hair so rounding never puts a corner outside the free part of the screen.
  */
 const HAIR = 1e-6;
-const FREE_X = 1 - 2 * 0.03 - HAIR;
-const FREE_TOP = 1 - 2 * 0.09 - HAIR;
-const FREE_BOTTOM = 1 - 2 * 0.22 - HAIR;
+const free = (share: number): number => 1 - 2 * share - HAIR;
+
+/**
+ * The lawn shot (art bible section 4): pitched 52° down, no yaw. What must stay on screen
+ * is the lawn, both bases and the tallest thing standing on them. The HUD leaves 3% side
+ * margins; the top 9% is the top bar and the bottom 22% the card tray.
+ */
+const LAWN: Subject = {
+  box: { x: [-1.9, 11.9], y: [0, 2.4], z: [-0.3, 5.3] },
+  pitch: MathUtils.degToRad(52),
+  yaw: 0,
+  freeX: free(0.03),
+  freeTop: free(0.09),
+  freeBottom: free(0.22),
+};
+/** Below this pitch the view never meets the ground near the box, so the camera orbits the box itself. */
+const MIN_GROUND_PITCH = MathUtils.degToRad(12);
 
 /** A camera placement: orbiting `pivot` at `distance`, turned by `yaw` and tipped down by `pitch`. */
 interface Orbit {
@@ -39,9 +77,11 @@ const scratch = new Vector3();
 export class CameraRig {
   private readonly camera: PerspectiveCamera;
 
+  /** What `frameLawn` frames: the lawn, unless `frameSubject` named something else. */
+  private subject: Subject = LAWN;
   /** The framed shot every motion starts from and returns to. */
-  private readonly home: Orbit = { pivot: new Vector3(), yaw: 0, pitch: PITCH, distance: 30 };
-  private readonly pose: Orbit = { pivot: new Vector3(), yaw: 0, pitch: PITCH, distance: 30 };
+  private readonly home: Orbit = { pivot: new Vector3(), yaw: 0, pitch: LAWN.pitch, distance: 30 };
+  private readonly pose: Orbit = { pivot: new Vector3(), yaw: 0, pitch: LAWN.pitch, distance: 30 };
 
   private parallaxTarget = { x: 0, y: 0 };
   private parallax = { x: 0, y: 0 };
@@ -70,6 +110,7 @@ export class CameraRig {
   /**
    * Sets the camera for a window of this aspect ratio: field of view 30°, pitched 52° down,
    * no yaw, as close as it can be with the whole frame box inside the HUD-free rectangle.
+   * (After `frameSubject` it frames that subject instead, at its own angles.)
    */
   frameLawn(aspect: number): void {
     const camera = this.camera;
@@ -77,63 +118,100 @@ export class CameraRig {
     camera.aspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
     camera.updateProjectionMatrix();
 
+    const { box, pitch, yaw, freeX, freeTop, freeBottom } = this.subject;
     const tanY = Math.tan(MathUtils.degToRad(FOV_DEG) / 2);
     const tanX = tanY * camera.aspect;
-    // Camera axes at this pitch: right is +X, `up` and `fwd` lie in the YZ plane.
-    const upY = Math.cos(PITCH);
-    const upZ = -Math.sin(PITCH);
-    const fwdY = -Math.sin(PITCH);
-    const fwdZ = -Math.cos(PITCH);
+    // Camera axes at this pitch and yaw. With no yaw, right is +X and `up` and `fwd` lie in
+    // the YZ plane.
+    const sinYaw = Math.sin(yaw);
+    const cosYaw = Math.cos(yaw);
+    const sinPitch = Math.sin(pitch);
+    const cosPitch = Math.cos(pitch);
+    const rightX = cosYaw;
+    const rightZ = -sinYaw;
+    const upX = -sinPitch * sinYaw;
+    const upY = cosPitch;
+    const upZ = -sinPitch * cosYaw;
+    const fwdX = -cosPitch * sinYaw;
+    const fwdY = -sinPitch;
+    const fwdZ = -cosPitch * cosYaw;
 
-    // Work relative to the box centre: the camera sits at centre − fwd·D + up·s. A corner
-    // then has view x = a, view y = b − s and depth d + D, so every screen-edge limit is
-    // linear in D and s.
-    const cx = (FRAME_BOX.x[0] + FRAME_BOX.x[1]) / 2;
-    const cy = (FRAME_BOX.y[0] + FRAME_BOX.y[1]) / 2;
-    const cz = (FRAME_BOX.z[0] + FRAME_BOX.z[1]) / 2;
+    // Work relative to the box centre: the camera sits at centre − fwd·D + up·s + right·r.
+    // A corner then has view x = a − r, view y = b − s and depth d + D, so every
+    // screen-edge limit is linear in D, s and r.
+    const cx = (box.x[0] + box.x[1]) / 2;
+    const cy = (box.y[0] + box.y[1]) / 2;
+    const cz = (box.z[0] + box.z[1]) / 2;
     const corners: { a: number; b: number; d: number }[] = [];
-    for (const x of FRAME_BOX.x) {
-      for (const y of FRAME_BOX.y) {
-        for (const z of FRAME_BOX.z) {
+    for (const x of box.x) {
+      for (const y of box.y) {
+        for (const z of box.z) {
           corners.push({
-            a: x - cx,
-            b: (y - cy) * upY + (z - cz) * upZ,
-            d: (y - cy) * fwdY + (z - cz) * fwdZ,
+            a: (x - cx) * rightX + (z - cz) * rightZ,
+            b: (x - cx) * upX + (y - cy) * upY + (z - cz) * upZ,
+            d: (x - cx) * fwdX + (y - cy) * fwdY + (z - cz) * fwdZ,
           });
         }
       }
     }
 
-    // Smallest D that fits the sides …
+    // Smallest D that leaves some r with every corner between the side margins, and some s
+    // with every corner between the top bar and the tray.
     let distance = 0;
-    for (const c of corners) distance = Math.max(distance, Math.abs(c.a) / (FREE_X * tanX) - c.d);
-    // … and that leaves some s with every corner between the top bar and the tray.
     for (const hi of corners) {
       for (const lo of corners) {
-        const need =
-          (hi.b - lo.b - FREE_TOP * tanY * hi.d - FREE_BOTTOM * tanY * lo.d) / ((FREE_TOP + FREE_BOTTOM) * tanY);
-        distance = Math.max(distance, need);
+        distance = Math.max(
+          distance,
+          (hi.a - lo.a) / (2 * (freeX * tanX)) - (hi.d + lo.d) / 2,
+          (hi.b - lo.b - freeTop * tanY * hi.d - freeBottom * tanY * lo.d) / ((freeTop + freeBottom) * tanY),
+        );
       }
     }
-    // Centre the box in whatever vertical room is left.
+    // Centre the box in whatever room is left, across and up.
+    let rMin = -Infinity;
+    let rMax = Infinity;
     let sMin = -Infinity;
     let sMax = Infinity;
     for (const c of corners) {
-      sMin = Math.max(sMin, c.b - FREE_TOP * tanY * (c.d + distance));
-      sMax = Math.min(sMax, c.b + FREE_BOTTOM * tanY * (c.d + distance));
+      rMin = Math.max(rMin, c.a - freeX * tanX * (c.d + distance));
+      rMax = Math.min(rMax, c.a + freeX * tanX * (c.d + distance));
+      sMin = Math.max(sMin, c.b - freeTop * tanY * (c.d + distance));
+      sMax = Math.min(sMax, c.b + freeBottom * tanY * (c.d + distance));
     }
+    const r = (rMin + rMax) / 2;
     const s = (sMin + sMax) / 2;
 
+    const eyeX = cx - fwdX * distance + upX * s + rightX * r;
     const eyeY = cy - fwdY * distance + upY * s;
-    const eyeZ = cz - fwdZ * distance + upZ * s;
-    // Store the shot as an orbit around the point on the ground the camera looks at.
-    const reach = eyeY / Math.sin(PITCH);
-    this.home.pivot.set(cx, 0, eyeZ + fwdZ * reach);
-    this.home.yaw = 0;
-    this.home.pitch = PITCH;
+    const eyeZ = cz - fwdZ * distance + upZ * s + rightZ * r;
+    // Store the shot as an orbit around the point on the ground the camera looks at (or,
+    // for a view too level to meet the ground nearby, the point level with the box centre).
+    const grounded = pitch >= MIN_GROUND_PITCH && eyeY > 0;
+    const reach = grounded ? eyeY / sinPitch : distance;
+    this.home.pivot.set(eyeX + fwdX * reach, grounded ? 0 : eyeY + fwdY * reach, eyeZ + fwdZ * reach);
+    this.home.yaw = yaw;
+    this.home.pitch = pitch;
     this.home.distance = reach;
 
     this.apply();
+  }
+
+  /**
+   * Frames `box` instead of the lawn, from now on and through every resize; `null` goes back
+   * to the lawn. For scenes that show something other than a match, such as the model gallery.
+   */
+  frameSubject(box: FrameBox | null, view: FrameView = {}): void {
+    this.subject = box
+      ? {
+          box,
+          pitch: view.pitchDeg === undefined ? LAWN.pitch : MathUtils.degToRad(MathUtils.clamp(view.pitchDeg, -89, 89)),
+          yaw: MathUtils.degToRad(view.yawDeg ?? 0),
+          freeX: free(view.side ?? 0.03),
+          freeTop: free(view.top ?? 0.09),
+          freeBottom: free(view.bottom ?? 0.22),
+        }
+      : LAWN;
+    this.frameLawn(this.camera.aspect);
   }
 
   /** Mouse position across the window, −1..1 on each axis; the camera leans a little towards it. */

@@ -2,7 +2,8 @@
 //
 // Opens each scenario in Playwright's bundled Chromium (at 1440x900 unless the scenario
 // sets its own viewport), waits for `window.__lvt.ready`, and saves
-// artifacts/shots/<scenario>.png. Exits non-zero on any page error or if the 3D canvas
+// artifacts/shots/<scenario>.png, or one artifacts/shots/<scenario>-<suffix>.png per frame
+// for a scenario that lists `frames`. Exits non-zero on any page error or if the 3D canvas
 // came out as one flat colour.
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -18,6 +19,7 @@ import { chromium } from 'playwright';
  *   url: string,
  *   viewport?: { width: number, height: number },
  *   steps?: (page: import('playwright').Page) => Promise<void>,
+ *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
  * }[]}
  */
 const SCENARIOS = [
@@ -34,6 +36,30 @@ const SCENARIOS = [
     name: 'lawn-highlight-bad',
     url: '/?scene=lawn&t=3',
     steps: (page) => highlight(page, [1, 6, 'bad'], [0, 'bad']),
+  },
+  // Every model at about the size it has on the lawn, then the Peashooter's row close up.
+  { name: 'gallery', url: '/?scene=gallery&t=0.4' },
+  { name: 'gallery-peashooter', url: '/?scene=gallery&model=peashooter&t=0.4' },
+  {
+    // Lean back, release, snap, settle.
+    name: 'gallery-peashooter-shoot',
+    url: '/?scene=gallery&model=peashooter&clip=shoot&t=0',
+    frames: [0.06, 0.12, 0.16, 0.3].map((t) => ({ suffix: t.toFixed(2), run: (page) => pose(page, 'shoot', t) })),
+  },
+  // On the real lawn, under the game's own camera.
+  { name: 'gallery-lawn', url: '/?scene=gallery&stage=lawn&t=0.4' },
+  // Three-quarter views from the front and from behind.
+  { name: 'gallery-peashooter-front', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=20&yaw=38' },
+  { name: 'gallery-peashooter-back', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=24&yaw=-142' },
+  {
+    // Each level as it would sit on a card: 88 x 112 pixels.
+    name: 'gallery-portraits',
+    url: portraitUrl(1),
+    viewport: { width: 88, height: 112 },
+    frames: [1, 2, 3, 4, 5].map((level) => ({
+      suffix: `L${level}`,
+      run: (page) => (level === 1 ? Promise.resolve() : open(page, portraitUrl(level))),
+    })),
   },
 ];
 
@@ -200,6 +226,27 @@ async function highlight(page, tile, lane) {
   await nextFrames(page, 3);
 }
 
+function portraitUrl(level) {
+  return `/?scene=gallery&model=peashooter&level=${level}&portrait=1&pitch=20&yaw=32&t=0.4`;
+}
+
+/** Loads a scene and waits until it has drawn and its fonts are in. */
+async function open(page, url) {
+  await page.goto(ORIGIN + url, { waitUntil: 'load' });
+  await page
+    .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
+    .catch((error) => {
+      throw new Error(`__lvt.ready did not resolve within ${READY_TIMEOUT_MS} ms (${String(error.message).split('\n')[0]})`);
+    });
+  await page.evaluate(() => document.fonts.ready);
+}
+
+/** Freezes every model in the gallery at `seconds` into `clip`, then waits for it to be drawn. */
+async function pose(page, clip, seconds) {
+  await page.evaluate(([c, t]) => window.__lvt.gallery.pose(c, t), [clip, seconds]);
+  await nextFrames(page, 3);
+}
+
 /** Resolves after the page has drawn `count` more animation frames. */
 function nextFrames(page, count) {
   return page.evaluate(
@@ -220,27 +267,23 @@ async function shoot(scenario) {
     if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
   });
   try {
-    await page.goto(ORIGIN + scenario.url, { waitUntil: 'load' });
-    await page
-      .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
-      .catch((error) => {
-        throw new Error(`__lvt.ready did not resolve within ${READY_TIMEOUT_MS} ms (${String(error.message).split('\n')[0]})`);
-      });
-    await page.evaluate(() => document.fonts.ready);
+    await open(page, scenario.url);
     await scenario.steps?.(page);
 
-    // Judge the 3D canvas on its own: hide the UI layer so text cannot mask a blank canvas.
-    const hideUi = await page.addStyleTag({ content: '#ui { visibility: hidden !important; }' });
-    const { share, colours } = await dominantShare(page, await page.screenshot({ type: 'png' }));
-    await hideUi.evaluate((el) => el.remove());
-    if (share > FLAT_THRESHOLD) problems.push(`canvas is one flat colour (${(share * 100).toFixed(2)}% of pixels)`);
-
     await mkdir(OUT_DIR, { recursive: true });
-    const file = path.join(OUT_DIR, `${scenario.name}.png`);
-    await writeFile(file, await page.screenshot({ type: 'png' }));
-    console.log(
-      `[${scenario.name}] ${path.relative(ROOT, file)} (${colours} colours, ${(share * 100).toFixed(1)}% dominant)`,
-    );
+    for (const frame of scenario.frames ?? [{ suffix: '', run: async () => {} }]) {
+      await frame.run(page);
+
+      // Judge the 3D canvas on its own: hide the UI layer so text cannot mask a blank canvas.
+      const hideUi = await page.addStyleTag({ content: '#ui { visibility: hidden !important; }' });
+      const { share, colours } = await dominantShare(page, await page.screenshot({ type: 'png' }));
+      await hideUi.evaluate((el) => el.remove());
+      if (share > FLAT_THRESHOLD) problems.push(`canvas is one flat colour (${(share * 100).toFixed(2)}% of pixels)`);
+
+      const file = path.join(OUT_DIR, `${scenario.name}${frame.suffix ? `-${frame.suffix}` : ''}.png`);
+      await writeFile(file, await page.screenshot({ type: 'png' }));
+      console.log(`[${scenario.name}] ${path.relative(ROOT, file)} (${colours} colours, ${(share * 100).toFixed(1)}% dominant)`);
+    }
   } catch (error) {
     problems.push(error instanceof Error ? error.message : String(error));
   } finally {

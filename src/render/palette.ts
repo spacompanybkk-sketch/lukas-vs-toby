@@ -45,6 +45,14 @@ const colours = {
   levelIron: '#AEB7C2',
   levelCrystal: '#7DE8FF',
   levelGold: '#FFC83D',
+  // Their shadow tones, for trim that wants two.
+  levelIronDark: '#6E7A8C',
+  levelCrystalDeep: '#3FC6F2',
+  levelGoldDark: '#F0A21E',
+
+  // Faces (art bible section 2): black eyes, each with one white glint.
+  eye: '#1A1A22',
+  eyeGlint: '#FFFFFF',
 
   // Effects
   hitSpark: '#FFF4B0',
