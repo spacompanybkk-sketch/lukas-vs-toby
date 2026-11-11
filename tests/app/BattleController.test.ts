@@ -24,14 +24,54 @@ describe('BattleController placing', () => {
 
   it('refuses an occupied tile, counts the denial, keeps energy', () => {
     const c = make();
-    c.select('peashooter');
+    c.select('sunflower');
     c.click({ lane: 2, col: 3 }, null);
     c.step();
+    c.select('peashooter'); // a different type than the plant on the tile
     const before = energy(c);
     const denied = c.hud.denied.value;
     expect(c.click({ lane: 2, col: 3 }, null)).toBe('occupied');
     expect(c.hud.denied.value).toBe(denied + 1);
     expect(energy(c)).toBe(before);
+  });
+
+  it('tapping a tile that holds the same type merges, with no unitId', () => {
+    const c = make();
+    c.select('sunflower');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const plant = playerUnits(c)[0];
+    for (let i = 0; i < seconds(6); i++) c.step();
+    c.match.state.players.plants.energy = 900;
+    expect(c.hover({ lane: 2, col: 3 }, null)).toMatchObject({ ok: true, mergeTargetId: plant?.id });
+    expect(c.click({ lane: 2, col: 3 }, null)).toBeNull();
+    c.step();
+    expect(plant?.level).toBe(2);
+  });
+
+  it('a merge at max level is refused and counts as denied', () => {
+    const c = make();
+    c.select('sunflower');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const plant = playerUnits(c)[0];
+    if (plant === undefined) throw new Error('no plant');
+    plant.level = 5;
+    for (let i = 0; i < seconds(6); i++) c.step();
+    c.match.state.players.plants.energy = 900;
+    const denied = c.hud.denied.value;
+    expect(c.click({ lane: 2, col: 3 }, null)).toBe('max-level');
+    expect(c.hud.denied.value).toBe(denied + 1);
+  });
+
+  it('ignores a unitId on another lane and uses the tile', () => {
+    const c = make();
+    c.select('sunflower');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const plant = playerUnits(c)[0];
+    c.select('peashooter');
+    expect(c.hover({ lane: 0, col: 5 }, plant?.id ?? null)).toMatchObject({ lane: 0, col: 5, ok: true, mergeTargetId: null });
   });
 
   it('places exactly one unit for 100 clicks in one tick', () => {
@@ -84,13 +124,17 @@ describe('BattleController placing', () => {
 describe('BattleController pause and result', () => {
   it('while paused, clicks and hotkeys other than space do nothing and step advances nothing', () => {
     const c = make();
+    c.select('peashooter');
     c.hotkey(' ');
     expect(c.hud.paused.value).toBe(true);
-    c.hotkey('1');
-    expect(c.hud.selected.value).toBeNull();
-    c.select('peashooter');
+    c.hotkey('Escape');
+    c.hotkey('2');
+    c.select(null);
+    c.toggleShovel();
+    expect(c.hud.selected.value).toBe('peashooter');
+    expect(c.hud.shovel.value).toBe(false);
     const denied = c.hud.denied.value;
-    c.click({ lane: 0, col: 0 }, null);
+    expect(c.click({ lane: 0, col: 0 }, null)).toBe('ignored');
     expect(c.hud.denied.value).toBe(denied);
     const tick = c.match.state.tick;
     expect(c.step()).toEqual([]);
@@ -109,7 +153,9 @@ describe('BattleController pause and result', () => {
     c.step();
     expect(c.hud.result.value).toEqual({ winner: 'plants', playerWon: true });
     c.select('peashooter');
-    c.click({ lane: 0, col: 0 }, null);
+    const denied = c.hud.denied.value;
+    expect(c.click({ lane: 0, col: 0 }, null)).toBe('match-over');
+    expect(c.hud.denied.value).toBe(denied);
     expect(c.step()).toEqual([]);
     expect(playerUnits(c)).toHaveLength(0);
     expect(c.hud.result.value).toEqual({ winner: 'plants', playerWon: true });
@@ -131,6 +177,38 @@ describe('BattleController merge, shovel, hotkeys, hover', () => {
     const events = c.step();
     expect(events.some((e) => e.type === 'unitMerged' && e.unitId === target?.id)).toBe(true);
     expect(target?.level).toBe(2);
+  });
+
+  it('a zombie player merges by unitId', () => {
+    const c = make('zombies');
+    c.select('brainEater');
+    c.click({ lane: 1, col: 5 }, null);
+    c.step();
+    const z = playerUnits(c)[0];
+    for (let i = 0; i < seconds(6); i++) c.step();
+    c.match.state.players.zombies.energy = 900;
+    expect(c.click({ lane: z?.lane ?? 1, col: 5 }, z?.id ?? null)).toBeNull();
+    c.step();
+    expect(z?.level).toBe(2);
+  });
+
+  it('an unknown hotkey does nothing', () => {
+    const c = make();
+    c.select('peashooter');
+    c.hotkey('x');
+    c.hotkey('9');
+    expect(c.hud.selected.value).toBe('peashooter');
+  });
+
+  it('the shovel falls back to the plant on the tile when the picked unit is not the player\'s', () => {
+    const c = make();
+    c.select('sunflower');
+    c.click({ lane: 0, col: 0 }, null);
+    c.step();
+    c.toggleShovel();
+    expect(c.click({ lane: 0, col: 0 }, 99999)).toBeNull();
+    c.step();
+    expect(playerUnits(c)).toHaveLength(0);
   });
 
   it('hotkey 2 selects the second card, Escape clears', () => {
@@ -201,5 +279,29 @@ describe('BattleController hud', () => {
     for (let i = 0; i < 30; i++) c.step();
     expect(c.hud.seconds.value).toBe(Math.floor(c.match.state.tick / 30));
     expect(c.hud.energy.value).toBe(energy(c));
+  });
+});
+
+describe('BattleController determinism and bot', () => {
+  const run = (seed: number): number => {
+    const c = make('plants', seed);
+    c.select('sunflower');
+    for (let i = 0; i < 600; i++) {
+      if (i % 90 === 0) c.click({ lane: (i / 90) % 5, col: 1 }, null);
+      c.step();
+    }
+    return c.match.hash();
+  };
+  it('same seed and inputs give the same hash; another seed differs', () => {
+    expect(run(7)).toBe(run(7));
+    expect(run(8)).not.toBe(run(7));
+  });
+  it('a Medium bot acts within 300 steps', () => {
+    const c = new BattleController({ playerFaction: 'plants', skill: 'medium', seed: 3 });
+    let acted = false;
+    for (let i = 0; i < 300 && !acted; i++) {
+      acted = c.step().some((e) => e.type === 'unitSpawned' && e.faction === 'zombies');
+    }
+    expect(acted).toBe(true);
   });
 });

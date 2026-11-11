@@ -7,7 +7,7 @@ import type { Balance } from '../data/balance';
 import { UNIT_INFO } from '../data/units';
 import { Match, defaultConfig } from '../sim/match';
 import { isStanding, statsFor } from '../sim/lookup';
-import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
+import { TICKS_PER_SECOND } from '../sim/types';
 import type { Command, CommandRejection, Faction, SimEvent, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 
@@ -89,12 +89,14 @@ export class BattleController {
   }
 
   select(unit: UnitKey | null): void {
+    if (this.hud.paused.peek() || this.over()) return;
     if (unit !== null && !this.match.state.config.cards[this.playerFaction].includes(unit)) return;
     this.hud.selected.value = unit;
     if (unit !== null) this.hud.shovel.value = false;
   }
 
   toggleShovel(): void {
+    if (this.hud.paused.peek() || this.over()) return;
     if (this.playerFaction !== 'plants') return;
     const on = !this.hud.shovel.peek();
     this.hud.shovel.value = on;
@@ -115,15 +117,13 @@ export class BattleController {
   }
 
   /**
-   * Acts on a tap or click. Null means accepted (queued for the next tick). While paused or
-   * after the match is decided nothing happens: a decided match answers 'match-over', a pause
-   * answers null without queuing anything. A second accepted click within one tick is dropped
-   * silently (also null).
+   * Acts on a tap or click. Null means accepted (queued for the next tick). After the match is
+   * decided it answers 'match-over'. While paused, or for a second click within one tick, it
+   * answers 'ignored'. Neither of those counts as a denial; real refusals do.
    */
-  click(tile: Tile | null, unitId: number | null): CommandRejection | null {
+  click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
-    if (this.hud.paused.peek()) return null;
-    if (this.queued !== null) return null;
+    if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
     const target = this.resolveTile(tile, unitId);
     const cmd = this.buildClickCommand(target);
     if (cmd === 'no-selection') return this.deny('not-in-hand');
@@ -165,16 +165,18 @@ export class BattleController {
   }
 
   /**
-   * The tile and (if any) the unit a pointer is over; a unit alone gives its own tile. A tile
-   * alone never implies a unit, so tapping an occupied tile places (and is refused) rather than merges.
+   * The tile and the player's own unit under the pointer, if any. A `unitId` counts only when it
+   * is the player's own unit on the tile's lane (a zombie walking over a plant does not); a unit
+   * alone gives its own tile. Otherwise a plants player's own plant standing on the tile is used,
+   * so a bare tap on a tile works by touch. Zombies stack, so they are found only by `unitId`.
    */
   private resolveTile(tile: Tile | null, unitId: number | null): { tile: Tile; unit: Unit | null } | null {
-    const byId = unitId === null ? undefined : this.match.state.units.find((u) => u.id === unitId && isStanding(u));
-    if (tile === null) {
-      return byId === undefined ? null : { tile: { lane: byId.lane, col: Math.floor(byId.x) }, unit: byId };
-    }
-    if (byId !== undefined) return { tile, unit: byId };
-    return { tile, unit: null };
+    const named = unitId === null ? undefined : this.match.state.units.find((u) => u.id === unitId && isStanding(u));
+    const own = named !== undefined && named.faction === this.playerFaction && (tile === null || named.lane === tile.lane)
+      ? named : undefined;
+    if (tile === null) return own === undefined ? null : { tile: { lane: own.lane, col: Math.floor(own.x) }, unit: own };
+    if (own !== undefined) return { tile, unit: own };
+    return { tile, unit: this.playerFaction === 'plants' ? this.plantAt(tile) ?? null : null };
   }
 
   private plantAt(tile: Tile): Unit | undefined {
@@ -185,7 +187,7 @@ export class BattleController {
 
   private commandFor(unit: UnitKey, tile: Tile, under: Unit | null): Command {
     const faction = this.playerFaction;
-    if (under !== null && under.faction === faction && under.key === unit && under.level < MAX_LEVEL) {
+    if (under !== null && under.faction === faction && under.key === unit) {
       return { type: 'merge', faction, unit, targetId: under.id };
     }
     return { type: 'place', faction, unit, lane: tile.lane, col: tile.col };
@@ -196,8 +198,7 @@ export class BattleController {
   ): Command | 'no-selection' | 'no-tile' | 'no-target' {
     const faction = this.playerFaction;
     if (this.hud.shovel.peek()) {
-      // A shovel tap may name the tile only: find the player's plant standing there.
-      const u = target?.unit ?? (target === null ? null : this.plantAt(target.tile));
+      const u = target?.unit;
       if (u === null || u === undefined) return 'no-target';
       return { type: 'remove', faction, targetId: u.id };
     }
@@ -219,9 +220,8 @@ export class BattleController {
     const hp = (f: Faction): BaseVM => ({ hp: Math.max(0, s.baseHp[f]), max: s.baseMaxHp[f] });
     const base = { plants: hp('plants'), zombies: hp('zombies') };
     const old = this.hud.base.peek();
-    if (['plants', 'zombies'].some((f) => old[f as Faction].hp !== base[f as Faction].hp || old[f as Faction].max !== base[f as Faction].max)) {
-      this.hud.base.value = base;
-    }
+    const changed = (f: Faction): boolean => old[f].hp !== base[f].hp || old[f].max !== base[f].max;
+    if (changed('plants') || changed('zombies')) this.hud.base.value = base;
 
     const cards: CardVM[] = s.config.cards[this.playerFaction].map((unit, i) => {
       const full = seconds(statsFor(this.match.balance, unit).recharge);
