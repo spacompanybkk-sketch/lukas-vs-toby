@@ -135,18 +135,25 @@ describe.each(modelKeys())('model %s', (key) => {
   it('grows at every level where the lawn camera can see it: taller, longer in front, or wider', () => {
     // Art bible section 3: a level's additions go on top of the head, in front of the face
     // or outside the footprint. Measured before the level's scale is applied.
+    /**
+     * How much further `now` reaches along the lane than `before`. A plant's additions count
+     * in front (+X), as its back is hidden behind its head. The camera sees a zombie from
+     * the side, so its outline counts at either end: in front (−X) or streaming out behind.
+     */
+    const forward = (now: Box3, before: Box3): number =>
+      ZOMBIE_KEYS.has(key) ? Math.max(before.min.x - now.min.x, now.max.x - before.max.x) : now.max.x - before.max.x;
     if (SINGLE_LEVEL_MODELS.has(key)) return;
     for (const level of [2, 3, 4, 5]) {
       const now = bounds(def, level);
       const before = bounds(def, level - 1);
-      const grew = now.max.y > before.max.y + 0.5 * VOXEL || now.max.x > before.max.x + 0.5 * VOXEL || now.max.z > before.max.z + 0.5 * VOXEL;
+      const grew = now.max.y > before.max.y + 0.5 * VOXEL || forward(now, before) > 0.5 * VOXEL || now.max.z > before.max.z + 0.5 * VOXEL;
       const recoloured = modelColors(def, level).filter((color) => !modelColors(def, level - 1).includes(color)).length > 0;
       expect(grew || recoloured, `level ${level}`).toBe(true);
     }
     // Level 2 has no new material to show for itself, so it must change the outline.
     const two = bounds(def, 2);
     const one = bounds(def, 1);
-    expect(two.max.y > one.max.y + 0.5 * VOXEL || two.max.x > one.max.x + 0.5 * VOXEL || two.max.z > one.max.z + 0.5 * VOXEL).toBe(true);
+    expect(two.max.y > one.max.y + 0.5 * VOXEL || forward(two, one) > 0.5 * VOXEL || two.max.z > one.max.z + 0.5 * VOXEL).toBe(true);
   });
 
   it('loops every looping clip without a seam and plays every clip for some time', () => {

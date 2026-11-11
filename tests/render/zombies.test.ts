@@ -240,6 +240,8 @@ const STEPS: Record<string, number> = {
   cowboyZombie: 0.65,
   necromancer: 1.0,
   tridentZombie: 0.9,
+  brainRot: 1.0,
+  boneMinion: 0.5,
 };
 /** Parts the clips and the game ask for by name. */
 const PROPS: [string, string][] = [
@@ -252,6 +254,7 @@ const PROPS: [string, string][] = [
   ['cowboyZombie', 'pistol'],
   ['necromancer', 'staff'],
   ['tridentZombie', 'trident'],
+  ['brainRot', 'glob'],
 ];
 
 describe('the zombies', () => {
@@ -269,6 +272,13 @@ describe('the zombies', () => {
 
   it('walk at the pace of their role', () => {
     for (const [key, step] of Object.entries(STEPS)) expect(getModelDef(key).clips.walk?.duration, key).toBeCloseTo(step);
+  });
+
+  it('the Bone Minion is half a zombie and the same at every level', () => {
+    const def = getModelDef('boneMinion');
+    expect(def.envelope).toEqual([6, 8, 5]);
+    expect(def.parts.flatMap((part) => part.boxes).every((box) => box.minLevel === undefined && box.maxLevel === undefined)).toBe(true);
+    expect(def.trim).toEqual([]);
   });
 
   it('Hot Topic bites fast, snapping its hanging jaw shut', () => {
