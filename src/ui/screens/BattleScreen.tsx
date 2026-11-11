@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
+import type { ReadonlySignal } from '@preact/signals';
 import type { BattleOptions, HudSignals } from '../../app/BattleController';
 import type { Settings } from '../../app/settings';
 import type { Faction, UnitKey } from '../../sim/types';
@@ -24,6 +25,15 @@ export interface BattleSessionLike {
   };
   begin(): void;
   dispose(): void;
+  /**
+   * When given, the result panel waits until this turns true (the end of the match plays out on
+   * the lawn first). Without it the panel shows as soon as `hud.result` is set.
+   */
+  resultReady?: ReadonlySignal<boolean>;
+  /** When given, the READY and FIGHT! banners wait for it (the opening camera move). */
+  intro?: Promise<void>;
+  /** No banners at all: the battle has already begun (a test scene jumping straight in). */
+  skipIntro?: boolean;
 }
 
 /** Builds a session for a battle; throws Error('webgl2-unavailable') when the device cannot draw it. */
@@ -99,7 +109,7 @@ export function BattleScreen(props: BattleScreenProps) {
       </div>
       <IntroBanner session={session} />
       <Overlays
-        ctl={ctl} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
+        ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
         onRestart={onRestart} onQuit={onQuit}
       />
     </div>
@@ -131,7 +141,7 @@ function LiveTray({ ctl, portraits }: { ctl: Controller; portraits: Record<strin
   );
 }
 
-type Phase = 'ready' | 'fight' | 'live';
+type Phase = 'intro' | 'ready' | 'fight' | 'live';
 
 /**
  * READY… then FIGHT!, BANNER_MS each, then `session.begin()`. The countdown holds while the game
@@ -142,11 +152,18 @@ function IntroBanner({ session }: { session: BattleSessionLike }) {
   const hud = session.controller.hud;
   const paused = hud.paused.value;
   const over = hud.result.value !== null;
-  const [phase, setPhase] = useState<Phase>('ready');
+  const [phase, setPhase] = useState<Phase>(() => (session.skipIntro ? 'live' : session.intro ? 'intro' : 'ready'));
   const remaining = useRef(BANNER_MS);
 
   useEffect(() => {
-    if (phase === 'live' || paused) return undefined;
+    if (phase !== 'intro' || session.intro === undefined) return undefined;
+    let gone = false;
+    void session.intro.then(() => { if (!gone) setPhase('ready'); });
+    return () => { gone = true; };
+  }, [phase, session]);
+
+  useEffect(() => {
+    if (phase === 'live' || phase === 'intro' || paused) return undefined;
     const started = Date.now();
     let fired = false;
     const t = setTimeout(() => {
@@ -165,7 +182,7 @@ function IntroBanner({ session }: { session: BattleSessionLike }) {
     };
   }, [phase, paused, session]);
 
-  if (phase === 'live' || over) return null;
+  if (phase === 'live' || phase === 'intro' || over) return null;
   return (
     <div class="battle__banner" data-banner={phase} aria-live="assertive">
       <span key={phase} class={`banner inked banner--${phase}`}>{phase === 'ready' ? 'READY…' : 'FIGHT!'}</span>
@@ -175,6 +192,7 @@ function IntroBanner({ session }: { session: BattleSessionLike }) {
 
 interface OverlaysProps {
   ctl: Controller;
+  resultReady: ReadonlySignal<boolean> | undefined;
   boys: BoyPortraits;
   settings: Settings;
   onSettingsChange(s: Settings): void;
@@ -183,13 +201,15 @@ interface OverlaysProps {
 }
 
 /** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
-function Overlays({ ctl, boys, settings, onSettingsChange, onRestart, onQuit }: OverlaysProps) {
+function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit }: OverlaysProps) {
   const hud = ctl.hud;
   const paused = hud.paused.value;
   const result = hud.result.value;
+  const ready = resultReady === undefined ? true : resultReady.value;
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   if (result !== null) {
+    if (!ready) return null; // the base is still falling
     return (
       <ResultOverlay
         result={result} playerFaction={ctl.playerFaction} seconds={hud.seconds.value} portraits={boys}

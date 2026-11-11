@@ -185,6 +185,21 @@ describe('CameraRig motion', () => {
       expect(camera.position.distanceTo(early)).toBeGreaterThan(0.01);
     }
   });
+
+  it('reset brings a victory orbit, a shake and an intro back to the framed shot', async () => {
+    const { camera, rig } = framed(16 / 10);
+    const home = camera.position.clone();
+    rig.orbitVictory('zombies');
+    rig.shake(1, 2);
+    settle(rig, 1);
+    expect(camera.position.distanceTo(home)).toBeGreaterThan(0.1);
+    const intro = rig.playIntro(5);
+    rig.reset();
+    await expect(intro).resolves.toBeUndefined();
+    expect(camera.position.distanceTo(home)).toBeLessThan(1e-9);
+    settle(rig, 1);
+    expect(camera.position.distanceTo(home)).toBeLessThan(1e-9);
+  });
 });
 
 describe('CameraRig.frameSubject', () => {

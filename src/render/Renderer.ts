@@ -190,6 +190,14 @@ export class Renderer {
     this.composer.render(dtSeconds);
   }
 
+  /**
+   * The WebGL renderer itself, for drawing something else off screen with the same context (the
+   * card portraits). Leave its size, pixel ratio and render target as they were found.
+   */
+  get webgl(): WebGLRenderer {
+    return this.gl;
+  }
+
   /** `low`: no ambient occlusion, no bloom, 1024 shadows. `medium`: bloom, 2048 shadows. `high`: everything. */
   setQuality(q: Quality): void {
     if (q === this.quality) return;

@@ -146,7 +146,7 @@ function boxAround(cells: readonly GalleryCell[]): FrameBox {
  * model happens to reach. A higher level then fills more of its card, because what it has
  * gained stands out past the envelope.
  */
-function envelopeAround(cells: readonly GalleryCell[]): FrameBox {
+export function envelopeAround(cells: readonly GalleryCell[]): FrameBox {
   const box = { x: [Infinity, -Infinity], y: [0, 0], z: [Infinity, -Infinity] } as { x: [number, number]; y: [number, number]; z: [number, number] };
   for (const cell of cells) {
     const [wide, tall, deep] = getModelDef(cell.key).envelope ?? UNIT_ENVELOPE;

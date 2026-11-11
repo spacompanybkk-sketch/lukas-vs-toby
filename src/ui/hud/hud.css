@@ -370,3 +370,14 @@
   font-size: var(--hud-fs);
   color: var(--white);
 }
+
+/* ---- Energy token flying from the lawn to the counter ---- */
+.hud-token {
+  position: fixed;
+  z-index: 5;
+  width: clamp(26px, 4vh, 40px);
+  height: clamp(26px, 4vh, 40px);
+  --ico-size: clamp(26px, 4vh, 40px);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}

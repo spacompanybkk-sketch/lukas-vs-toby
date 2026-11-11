@@ -1,0 +1,285 @@
+// @vitest-environment happy-dom
+import { PerspectiveCamera, Scene } from 'three';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BattleSession } from '../../src/app/BattleSession';
+import type { BattleSessionOptions } from '../../src/app/BattleSession';
+import type { Director, StageLike } from '../../src/app/Stage';
+import { TitleDemo } from '../../src/app/TitleDemo';
+import { AudioEngine } from '../../src/audio/AudioEngine';
+import { CameraRig } from '../../src/render/CameraRig';
+import { Effects } from '../../src/render/fx/Effects';
+import { Particles } from '../../src/render/fx/Particles';
+import { seededRandom } from '../../src/render/world/boxes';
+import { Lawn } from '../../src/render/world/Lawn';
+import type { Faction } from '../../src/sim/types';
+
+const DT = 1 / 60;
+
+/** The stage without WebGL: a real scene, camera, rig, lawn and effects; `show` and `release` as the real one. */
+function fakeStage(): StageLike & { handOvers: number } {
+  const camera = new PerspectiveCamera(30, 1, 2, 200);
+  const rig = new CameraRig(camera);
+  rig.frameLawn(window.innerWidth / window.innerHeight);
+  const particles = new Particles();
+  const stage = {
+    scene: new Scene(), camera, rig, lawn: new Lawn(), particles, fx: new Effects(particles, seededRandom(1)),
+    canvas: document.createElement('canvas'),
+    paused: false, timeScale: 1, director: null as Director | null, handOvers: 0,
+    show(d: Director | null) {
+      if (d === stage.director) return;
+      const old = stage.director;
+      stage.director = null;
+      if (old) (old.detach(), stage.handOvers++);
+      stage.director = d;
+    },
+    release(d: Director) {
+      if (stage.director !== d) return;
+      stage.director = null;
+      d.detach();
+      stage.handOvers++;
+    },
+  };
+  stage.scene.add(stage.lawn.group, particles.object, stage.fx.group);
+  document.body.appendChild(stage.canvas); // the input listens on the document
+  return stage;
+}
+
+const sessions: BattleSession[] = [];
+
+function make(stage: StageLike, side: Faction = 'plants', extra: BattleSessionOptions = {}) {
+  const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+  const play = vi.spyOn(audio, 'play');
+  const session = new BattleSession(stage, audio, { playerFaction: side, skill: 'easy', seed: 7 }, {
+    introSeconds: 0, input: { isOverLawn: () => true }, ...extra,
+  });
+  sessions.push(session);
+  return { session, audio, play };
+}
+
+/** The stage's loop, by hand: `seconds` of frames with a step every other frame. */
+function run(stage: StageLike, seconds: number): void {
+  for (let i = 0; i < Math.round(seconds / DT); i++) {
+    const d = stage.director;
+    if (i % 2 === 0) d?.step();
+    d?.frame(0.5, DT, stage.paused ? 0 : DT * stage.timeScale);
+    stage.fx.update(DT, stage.camera);
+    stage.rig.update(DT);
+  }
+}
+
+function tap(stage: StageLike, x: number, y: number, kind = 'mouse'): void {
+  const init = { bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: kind, button: 0, isPrimary: true };
+  stage.canvas.dispatchEvent(new PointerEvent('pointerdown', init));
+  stage.canvas.dispatchEvent(new PointerEvent('pointerup', init));
+}
+
+function unitsInScene(stage: StageLike): number {
+  let n = 0;
+  stage.scene.traverse((o) => { if (o.name.startsWith('unit-') && o.parent) n++; });
+  return n;
+}
+
+afterEach(() => {
+  for (const s of sessions.splice(0)) s.dispose();
+  document.body.replaceChildren();
+});
+
+describe('BattleSession', () => {
+  it('takes the stage from the title demo when made', () => {
+    const stage = fakeStage();
+    const demo = new TitleDemo(stage);
+    demo.show();
+    expect(stage.director).toBe(demo);
+    const { session } = make(stage);
+    expect(stage.director).toBe(session);
+    expect(demo.current).toBeNull(); // the demo's view and match are gone
+  });
+
+  it('does not step the match before begin(); after it, steps and draws the units', () => {
+    const stage = fakeStage();
+    const { session } = make(stage, 'zombies');
+    run(stage, 1);
+    expect(session.controller.match.state.tick).toBe(0);
+    session.begin();
+    run(stage, 2);
+    expect(session.controller.match.state.tick).toBe(60);
+  });
+
+  it('round-trips a tile through tileToClient and pick', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    for (const [lane, col] of [[0, 0], [2, 3], [4, 9]] as const) {
+      const at = session.tileToClient(lane, col);
+      expect(session.pick(at.x, at.y).tile).toEqual({ lane, col });
+    }
+  });
+
+  it('as plants: select a card, tap a tile, and the plant stands there after the step', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    session.controller.select('peashooter');
+    const at = session.tileToClient(2, 3);
+    tap(stage, at.x, at.y);
+    run(stage, 0.1);
+    const plants = session.controller.match.state.units.filter((u) => u.faction === 'plants');
+    expect(plants).toHaveLength(1);
+    expect(plants[0]).toMatchObject({ key: 'peashooter', lane: 2 });
+    expect(Math.floor(plants[0]!.x)).toBe(3);
+    expect(unitsInScene(stage)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a refused tap plays the deny sound and shakes the tray (denied goes up)', () => {
+    const stage = fakeStage();
+    const { session, play } = make(stage);
+    session.begin();
+    session.controller.select('peashooter');
+    const at = session.tileToClient(2, 3);
+    tap(stage, at.x, at.y);
+    run(stage, 0.1);
+    tap(stage, at.x, at.y, 'touch'); // the same tile again: occupied
+    expect(session.controller.hud.denied.value).toBe(1);
+    expect(play).toHaveBeenCalledWith('deny');
+  });
+
+  it('as zombies: a tap anywhere in a lane sends the zombie down that lane', () => {
+    const stage = fakeStage();
+    const { session } = make(stage, 'zombies');
+    session.begin();
+    session.controller.select('brainEater');
+    const at = session.tileToClient(4, 2);
+    tap(stage, at.x, at.y, 'touch');
+    run(stage, 0.1);
+    const zombies = session.controller.match.state.units.filter((u) => u.faction === 'zombies');
+    expect(zombies).toHaveLength(1);
+    expect(zombies[0]!.lane).toBe(4);
+  });
+
+  it('as zombies: a tap just past the lawn\'s right end still names the lane', () => {
+    const stage = fakeStage();
+    const { session } = make(stage, 'zombies');
+    const at = session.tileToClient(1, 9);
+    const right = session.tileToClient(1, 10);
+    expect(session.pick((at.x + right.x) / 2 + (right.x - at.x) / 2, at.y).tile).toEqual({ lane: 1, col: 9 });
+  });
+
+  it('ignores the lawn before begin()', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.controller.select('peashooter');
+    const at = session.tileToClient(2, 3);
+    tap(stage, at.x, at.y);
+    session.begin();
+    run(stage, 0.1);
+    expect(session.controller.match.state.units.filter((u) => u.faction === 'plants')).toHaveLength(0);
+  });
+
+  it('fastForward steps the match without drawing, the view keeping up', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.fastForward(900);
+    expect(session.controller.match.state.tick).toBe(900);
+    expect(session.view.unitCount).toBe(session.controller.match.state.units.length);
+  });
+
+  it('a hit-stop from the view stops game time for a moment', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.view.onFeel({ hitStop: 0.08, shake: 0.5 });
+    session.frame(0, DT, DT);
+    expect(stage.timeScale).toBe(0);
+    run(stage, 0.2);
+    expect(stage.timeScale).toBe(1);
+  });
+
+  it('pausing pauses the stage loop', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    session.controller.setPaused(true);
+    session.frame(0, DT, DT);
+    expect(stage.paused).toBe(true);
+    const tick = session.controller.match.state.tick;
+    run(stage, 0.5);
+    expect(session.controller.match.state.tick).toBe(tick);
+  });
+
+  it('at the end: the result waits for the base to fall, then shows with the win sting', async () => {
+    const stage = fakeStage();
+    const { session, play } = make(stage);
+    session.begin();
+    session.fastForward(60);
+    session.damageBase('zombies', 1e9);
+    session.fastForward(1);
+    expect(session.controller.hud.result.value).toMatchObject({ winner: 'plants', playerWon: true });
+    expect(session.resultReady.value).toBe(false);
+    expect(session.live).toBe(false);
+    expect(play).toHaveBeenCalledWith('collapse');
+    for (let i = 0; i < 8 && !session.resultReady.value; i++) {
+      run(stage, 1);
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    expect(session.resultReady.value).toBe(true);
+    expect(play).toHaveBeenCalledWith('win');
+  });
+
+  it('a loss plays the lose sting', async () => {
+    const stage = fakeStage();
+    const { session, play } = make(stage);
+    session.begin();
+    session.damageBase('plants', 1e9);
+    session.fastForward(1);
+    for (let i = 0; i < 8 && !session.resultReady.value; i++) {
+      run(stage, 1);
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    expect(session.controller.hud.result.value).toMatchObject({ winner: 'zombies', playerWon: false });
+    expect(play).toHaveBeenCalledWith('lose');
+  });
+
+  it('flies a token from where the player earned energy', () => {
+    const stage = fakeStage();
+    const onToken = vi.fn();
+    const { session } = make(stage, 'plants', { onToken });
+    session.begin();
+    session.controller.select('sunflower');
+    const at = session.tileToClient(1, 1);
+    tap(stage, at.x, at.y);
+    session.fastForward(30 * 30);
+    expect(onToken).toHaveBeenCalled();
+    const [from, side] = onToken.mock.calls[0]!;
+    expect(side).toBe('plants');
+    expect(Number.isFinite(from.x) && Number.isFinite(from.y)).toBe(true);
+  });
+
+  it('dispose gives the stage back clean, and a second battle works on the same stage', () => {
+    const stage = fakeStage();
+    const first = make(stage).session;
+    first.fastForward(600);
+    expect(unitsInScene(stage)).toBeGreaterThan(0);
+    first.dispose();
+    expect(stage.director).toBeNull();
+    expect(unitsInScene(stage)).toBe(0);
+    expect(stage.scene.getObjectByName('ghost-peashooter')).toBeUndefined();
+
+    const second = make(stage).session;
+    second.begin();
+    second.controller.select('peashooter');
+    const at = second.tileToClient(3, 2);
+    tap(stage, at.x, at.y);
+    run(stage, 0.1);
+    expect(second.controller.match.state.units.some((u) => u.key === 'peashooter' && u.lane === 3)).toBe(true);
+    // The first battle's input is gone: one tap queued one command in the second battle only.
+    expect(first.controller.match.state.units.some((u) => u.lane === 3 && u.faction === 'plants')).toBe(false);
+  });
+
+  it('dispose is safe twice and after the stage has handed over', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    new TitleDemo(stage).show();
+    expect(() => { session.dispose(); session.dispose(); }).not.toThrow();
+    expect(stage.director).not.toBe(session);
+  });
+});

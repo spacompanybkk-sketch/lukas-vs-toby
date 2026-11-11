@@ -148,6 +148,10 @@ button {
   display: block;
   width: 100%;
   height: 100%;
+  /* The lawn takes every touch itself: no scroll, pinch, double-tap zoom or callout. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  outline: none;
 }
 
 #ui {
@@ -158,7 +162,8 @@ button {
 
 /* ---- Pixel block: notched ink outline, light top-left step, dark bottom-right step ----
  * Set --fill / --hi / --lo (and --lip for raised things) on the element or a palette class. */
-.px {
+.px,
+.btn {
   --fill: var(--c-cream);
   --hi: var(--c-cream-hi);
   --lo: var(--c-cream-lo);

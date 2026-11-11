@@ -154,4 +154,39 @@ describe('BattleScreen', () => {
     act(() => { vi.advanceTimersByTime(10_000); });
     expect(s.begin).not.toHaveBeenCalled();
   });
+
+  it('the banners wait for the opening camera move (session.intro)', async () => {
+    const s = fakeSession();
+    let land: () => void = () => {};
+    s.intro = new Promise<void>((r) => { land = r; });
+    mount(s);
+    expect(root.querySelector('[data-banner]')).toBeNull();
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(s.begin).not.toHaveBeenCalled();
+    await act(async () => { land(); await Promise.resolve(); });
+    expect(need('[data-banner]').getAttribute('data-banner')).toBe('ready');
+    act(() => { vi.advanceTimersByTime(BANNER_MS + 5); });
+    act(() => { vi.advanceTimersByTime(BANNER_MS + 5); });
+    expect(s.begin).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no banners when the session has already begun (skipIntro)', () => {
+    const s = fakeSession();
+    s.skipIntro = true;
+    mount(s);
+    expect(root.querySelector('[data-banner]')).toBeNull();
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(s.begin).not.toHaveBeenCalled();
+  });
+
+  it('the result panel waits for session.resultReady (the base falls first)', () => {
+    const s = fakeSession();
+    const ready = signal(false);
+    s.resultReady = ready;
+    mount(s);
+    act(() => { s.controller.hud.result.value = { winner: 'plants', playerWon: true }; });
+    expect(root.querySelector('[data-screen="result"]')).toBeNull();
+    act(() => { ready.value = true; });
+    expect(need('[data-screen="result"]').textContent).toContain('VICTORY!');
+  });
 });

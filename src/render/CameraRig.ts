@@ -267,6 +267,22 @@ export class CameraRig {
     this.victoryClock = 0;
   }
 
+  /**
+   * Back to the plain framed shot: no victory orbit, shake, punch, parallax or intro (a pending
+   * intro resolves). For a scene that hands the same camera to the next match.
+   */
+  reset(): void {
+    this.finishIntro();
+    this.victory = null;
+    this.victoryClock = 0;
+    this.shakeLeft = 0;
+    this.shakeSeconds = 0;
+    this.punchLeft = 0;
+    this.parallaxTarget.x = this.parallaxTarget.y = 0;
+    this.parallax.x = this.parallax.y = 0;
+    this.apply();
+  }
+
   update(dtSeconds: number): void {
     const dt = dtSeconds > 0 ? Math.min(dtSeconds, 0.25) : 0;
 

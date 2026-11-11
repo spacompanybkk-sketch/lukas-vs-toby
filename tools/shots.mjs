@@ -313,7 +313,87 @@ const SCENARIOS = [
       },
     })),
   })),
+  // ---- The game: menus, HUD, pause and result (Tasks 14 and 15, wired) ----
+  { name: 'title', url: '/', steps: (page) => demoAt(page, 45) },
+  { name: 'portrait', url: '/', viewport: { width: 768, height: 1024 }, steps: (page) => demoAt(page, 20) },
+  {
+    name: 'sidepick',
+    url: '/',
+    steps: async (page) => {
+      await demoAt(page, 45);
+      await page.click('[data-action="play"]');
+      await settleUi(page);
+    },
+  },
+  hud('hud-plants', 'plants', 'peashooter', [2, 4]),
+  hud('hud-zombies', 'zombies', 'brainEater', [2, 6]),
+  { ...hud('hud-ipad', 'plants', 'peashooter', [2, 4]), viewport: { width: 1024, height: 768 } },
+  { ...hud('hud-wide', 'plants', 'peashooter', [2, 4]), viewport: { width: 2560, height: 1080 } },
+  { ...hud('hud-zombies-ipad', 'zombies', 'brainEater', [2, 6]), viewport: { width: 1024, height: 768 } },
+  {
+    name: 'pause',
+    url: '/?scene=battle&side=plants&skill=medium&seed=7',
+    steps: async (page) => {
+      await battleAt(page, 40);
+      await page.click('[data-hud="pause"]');
+      await settleUi(page);
+    },
+  },
+  result('result-win', 'zombies'),
+  result('result-lose', 'plants'),
 ];
+
+/** Waits for the card portraits, then plays the title's demo battle on to `seconds`. */
+async function demoAt(page, seconds) {
+  await page.evaluate(() => window.__lvt.portraits);
+  await page.evaluate((s) => window.__lvt.demo?.advance(Math.round(s * 30)), seconds);
+  await settleUi(page);
+}
+
+/** Waits for the portraits, then fast-forwards the battle to `seconds`. */
+async function battleAt(page, seconds) {
+  await page.evaluate(() => window.__lvt.portraits);
+  await page.evaluate((s) => window.__lvt.fastForward(Math.round(s * 30)), seconds);
+  await nextFrames(page, 10);
+}
+
+/** Lets stepped UI animations (pops, drops) finish. */
+async function settleUi(page) {
+  await page.waitForTimeout(900);
+  await nextFrames(page, 3);
+}
+
+/** A battle 40 s in as `side`, with `card` selected by a real click and the mouse over `tile`, so the ghost shows. */
+function hud(name, side, card, [lane, col]) {
+  return {
+    name,
+    url: `/?scene=battle&side=${side}&skill=medium&seed=7`,
+    steps: async (page) => {
+      await battleAt(page, 40);
+      await page.click(`[data-card="${card}"]`);
+      const at = await page.evaluate(([l, c]) => window.__lvt.tileToClient(l, c), [lane, col]);
+      await page.mouse.move(at.x, at.y, { steps: 4 });
+      await settleUi(page);
+    },
+  };
+}
+
+/** A match decided by knocking `loser`'s base down, after the fall, with the result panel up. */
+function result(name, loser) {
+  return {
+    name,
+    url: '/?scene=battle&side=plants&skill=medium&seed=7',
+    steps: async (page) => {
+      await battleAt(page, 30);
+      await page.evaluate((l) => {
+        window.__lvt.damageBase(l, 1e9);
+        window.__lvt.fastForward(1);
+      }, loser);
+      await page.waitForFunction(() => window.__lvt.session?.resultReady.value === true, null, { timeout: 15_000 });
+      await settleUi(page);
+    },
+  };
+}
 
 /**
  * A card portrait of each of `levels` of `model`, saved as `<name>-L1.png` and so on. Zombies

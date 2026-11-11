@@ -1,5 +1,6 @@
 import { render } from 'preact';
-import { installDebug, markReady } from './app/debug';
+import { installDebug } from './app/debug';
+import { battleOptionsFrom, mountGame } from './app/game';
 import * as gallery from './render/gallery';
 import * as battleDemo from './scenes/battleDemo';
 import * as boot from './scenes/boot';
@@ -30,22 +31,25 @@ const SCENES = new Map<string, SceneModule>([
 installDebug();
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
+const ui = document.getElementById('ui') as HTMLElement;
 const params = new URLSearchParams(location.search);
-const scene = SCENES.get(params.get('scene') ?? '');
+const name = params.get('scene') ?? '';
+const scene = SCENES.get(name);
 
-if (!scene || scene.keepTitle) render(<App />, document.getElementById('ui') as HTMLElement);
+/** Frees everything when the page goes; a page restored from the back/forward cache reloads instead. */
+function tearDownOnLeave(teardown: Teardown): void {
+  window.addEventListener('pagehide', () => teardown(), { once: true });
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) location.reload();
+  });
+}
 
 if (scene) {
+  if (scene.keepTitle) render(<App />, ui);
   void Promise.resolve(scene.mount(canvas, params)).then((teardown) => {
-    if (!teardown) return;
-    window.addEventListener('pagehide', () => teardown(), { once: true });
-    // A page brought back from the back/forward cache would show a scene that has been
-    // torn down; load it afresh instead.
-    window.addEventListener('pageshow', (event) => {
-      if (event.persisted) location.reload();
-    });
+    if (teardown) tearDownOnLeave(teardown);
   });
 } else {
-  // The real app mounts here in later tasks; for now it is just the title.
-  requestAnimationFrame(markReady);
+  // The game: the title (or, with `?scene=battle`, straight into a battle that has begun).
+  tearDownOnLeave(mountGame(canvas, ui, name === 'battle' ? battleOptionsFrom(params) : null));
 }

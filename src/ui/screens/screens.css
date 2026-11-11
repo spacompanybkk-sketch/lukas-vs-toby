@@ -226,3 +226,6 @@
   50% { transform: rotate(-60deg); }
   60%, 100% { transform: rotate(-90deg); }
 }
+
+/* ---- With the 3D stage running, the menus show the demo battle behind a flat dim ---- */
+body.has-stage { --menu-backdrop: var(--menu-dim); }
