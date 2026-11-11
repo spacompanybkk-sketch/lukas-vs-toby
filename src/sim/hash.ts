@@ -74,7 +74,7 @@ export function hashState(s: SimState): number {
   f.num(s.units.length);
   for (const u of s.units) {
     f.num(u.id); f.str(u.key); f.str(u.faction); f.num(u.lane); f.num(u.x); f.num(u.level);
-    f.num(u.hp); f.num(u.maxHp); f.num(u.spent);
+    f.num(u.hp); f.num(u.maxHp); f.num(u.spent); f.num(u.armor);
     f.num(u.meleeTimer); f.num(u.shotTimer); f.num(u.abilityTimer);
     f.bool(u.blocked);
   }
@@ -82,7 +82,7 @@ export function hashState(s: SimState): number {
   f.num(s.projectiles.length);
   for (const p of s.projectiles) {
     f.num(p.id); f.str(p.kind); f.str(p.faction); f.num(p.lane); f.num(p.x);
-    f.num(p.speed); f.num(p.damage); f.num(p.ownerId);
+    f.num(p.speed); f.num(p.damage); f.num(p.ownerId); f.num(p.spawnTick);
   }
 
   for (const faction of FACTIONS) {

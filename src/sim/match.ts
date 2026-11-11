@@ -1,10 +1,11 @@
 import { BALANCE, seconds } from '../data/balance';
-import type { Balance, UnitStats } from '../data/balance';
+import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
 import { resolveDeaths, tickAttacks, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { restoreState, hashState, snapshotState } from './hash';
+import { statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
@@ -36,12 +37,6 @@ function cloneConfig(c: MatchConfig): MatchConfig {
   };
 }
 
-function statsFor(b: Balance, key: UnitKey): UnitStats {
-  const stats = b.units[key];
-  if (!stats) throw new Error(`The balance table has no numbers for "${key}"`);
-  return stats;
-}
-
 /**
  * Creates a level-1 unit and adds it to the state. It checks no placement rule and charges
  * nobody: `Match.place` does both of those first, and tests use this to set a scene.
@@ -53,7 +48,7 @@ export function spawnUnit(
   const info = UNIT_INFO[key];
   const unit: Unit = {
     id: s.nextId, key, faction: info.faction, lane, x, level: 1,
-    hp: stats.hp, maxHp: stats.hp, spent: info.price,
+    hp: stats.hp, maxHp: stats.hp, spent: info.price, armor: stats.armor,
     meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
     shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
     abilityTimer: stats.sun ? seconds(stats.sun.interval) : 0, // a shield is ready from the start

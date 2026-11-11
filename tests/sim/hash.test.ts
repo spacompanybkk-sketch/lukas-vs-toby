@@ -4,9 +4,9 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 769 bytes).
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 793 bytes).
  */
-const GOLDEN_HASH = 3495671101;
+const GOLDEN_HASH = 1810640202;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -17,15 +17,15 @@ function makeState(): SimState {
     units: [
       {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
-        hp: 80, maxHp: 120, spent: 150, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, blocked: false,
+        hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, blocked: false,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
-        hp: 90, maxHp: 100, spent: 100, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, blocked: true,
+        hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, blocked: true,
       },
     ],
     projectiles: [
-      { id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1 },
+      { id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1, spawnTick: 118 },
     ],
     players: {
       plants: { energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 } },
@@ -89,6 +89,7 @@ describe('hashState', () => {
     ['a unit level', (s) => { unit(s, 0).level = 3; }],
     ['a unit maxHp', (s) => { unit(s, 0).maxHp += 1; }],
     ['a unit spent', (s) => { unit(s, 0).spent += 1; }],
+    ['a unit armor', (s) => { unit(s, 1).armor += 1; }],
     ['a unit meleeTimer', (s) => { unit(s, 0).meleeTimer += 1; }],
     ['a unit shotTimer', (s) => { unit(s, 0).shotTimer += 1; }],
     ['a unit abilityTimer', (s) => { unit(s, 0).abilityTimer += 1; }],
@@ -96,6 +97,7 @@ describe('hashState', () => {
     ['a projectile damage', (s) => { s.projectiles[0]!.damage += 1; }],
     ['a projectile kind', (s) => { s.projectiles[0]!.kind = 'brain'; }],
     ['a projectile owner', (s) => { s.projectiles[0]!.ownerId = 3; }],
+    ['a projectile spawnTick', (s) => { s.projectiles[0]!.spawnTick += 1; }],
     ['a player carry', (s) => { s.players.zombies.carry += 1; }],
     ['a card recharge value', (s) => { s.players.plants.recharge.peashooter = 59; }],
     ['a recharge of 0 versus absent', (s) => { delete s.players.plants.recharge.sunflower; }],

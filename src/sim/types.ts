@@ -19,6 +19,7 @@ export type ProjectileKind = 'pea' | 'brain';
 export interface Unit {
   id: number; key: UnitKey; faction: Faction; lane: number; x: number; level: number;
   hp: number; maxHp: number; spent: number;
+  armor: number; // taken off every hit it takes; a hit always lands at least 1
   meleeTimer: number; shotTimer: number; abilityTimer: number; // ticks until ready
   blocked: boolean; // zombie halted by a plant or the base
 }
@@ -26,6 +27,7 @@ export interface Unit {
 export interface Projectile {
   id: number; kind: ProjectileKind; faction: Faction; lane: number; x: number;
   speed: number; damage: number; ownerId: number; // speed in tiles per tick
+  spawnTick: number; // the tick it was fired on; it first moves on the next tick
 }
 
 export interface PlayerState {

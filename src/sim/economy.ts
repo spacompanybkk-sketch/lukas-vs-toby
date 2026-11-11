@@ -1,5 +1,6 @@
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
+import { levelScale } from './lookup';
 import { TICKS_PER_SECOND } from './types';
 import type { Faction, SimEvent, SimState, Unit, UnitKey } from './types';
 
@@ -49,9 +50,7 @@ function paySunflowers(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
     const sun = b.units[u.key]?.sun;
     if (!sun || u.abilityTimer > 0) continue;
-    const scale = b.levelScale[u.level];
-    if (scale === undefined) throw new RangeError(`No levelScale entry for level ${u.level}`);
-    const amount = Math.round(sun.amount * scale); // keeps energy whole if a tuned table is fractional
+    const amount = Math.round(sun.amount * levelScale(b, u.level)); // keeps energy whole if a tuned table is fractional
     s.players[u.faction].energy += amount;
     u.abilityTimer = seconds(sun.interval);
     events.push({

@@ -81,10 +81,12 @@ describe('placing a zombie', () => {
       const events = m.step([cmd]);
       const u = m.state.units[0];
       expect(u).toMatchObject({
-        key: 'brainEater', faction: 'zombies', lane: 4, x: 9.5, level: 1,
+        key: 'brainEater', faction: 'zombies', lane: 4, level: 1,
         hp: 400, maxHp: 400, spent: 100, blocked: false,
       });
       expect(ZOMBIE_SPAWN_X).toBe(9.5);
+      // Movement runs after commands, so it has already taken its first step from the edge.
+      expect(u?.x).toBeCloseTo(9.5 - 0.35 / 30, 12);
       expect(m.state.players.zombies.energy).toBe(100);
       expect(eventsOf(events, 'unitSpawned')).toEqual([
         { type: 'unitSpawned', unitId: 1, key: 'brainEater', faction: 'zombies', lane: 4, x: 9.5 },
@@ -108,7 +110,7 @@ describe('spawnUnit', () => {
     expect(m.state.units).toEqual([u]);
     expect(u).toEqual({
       id: 1, key: 'skeletonWarrior', faction: 'zombies', lane: 3, x: 5.5, level: 1,
-      hp: 700, maxHp: 700, spent: 125,
+      hp: 700, maxHp: 700, spent: 125, armor: 0,
       meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, blocked: false, // its shield is ready at once
     });
     expect(m.state.nextId).toBe(2);
