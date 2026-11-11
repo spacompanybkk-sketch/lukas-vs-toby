@@ -1,8 +1,6 @@
 import { Euler, MathUtils, Vector3, type PerspectiveCamera } from 'three';
 import { LAWN_COLS, LAWN_LANES, PLANT_BASE_X, ZOMBIE_BASE_X } from './coords';
-
-/** The same union as `Faction` in src/sim/types.ts; swap for that import once both exist in one checkout. */
-type Faction = 'plants' | 'zombies';
+import type { Faction } from './types';
 
 const FOV_DEG = 30;
 const PITCH = MathUtils.degToRad(52);

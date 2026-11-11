@@ -7,6 +7,8 @@ import { Vector3, type Camera } from 'three';
 /** Lawn size in tiles. The simulation's own constants are not imported here on purpose. */
 export const LAWN_COLS = 10;
 export const LAWN_LANES = 5;
+/** The graveyard strip, where plants cannot stand, starts at this column. */
+export const GRAVE_FROM_COL = 8;
 
 /** World x range each base stands on, just off the two ends of the lawn. */
 export const PLANT_BASE_X: [number, number] = [-1.7, -0.1];

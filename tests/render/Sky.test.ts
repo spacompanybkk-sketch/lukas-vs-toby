@@ -45,6 +45,24 @@ describe('Sky', () => {
     }
   });
 
+  it('frees every geometry and material it made when disposed', () => {
+    const sky = new Sky();
+    const freed = new Set<object>();
+    const made = new Set<object>();
+    sky.group.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      for (const resource of [object.geometry, object.material]) {
+        made.add(resource);
+        resource.addEventListener('dispose', () => freed.add(resource));
+      }
+    });
+    // Seven geometries (dome and six clouds) and the two materials they share.
+    expect(made.size).toBe(9);
+
+    sky.dispose();
+    expect(freed.size).toBe(made.size);
+  });
+
   it('shows the same sky at the same time', () => {
     const a = new Sky();
     const b = new Sky();

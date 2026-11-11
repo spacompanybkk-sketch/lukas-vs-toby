@@ -3,15 +3,16 @@ import { GameLoop, type LoopHost } from '../../src/game/GameLoop';
 
 /** A host that records what the loop asks of it. */
 function recorder() {
-  const log = { steps: 0, frames: 0, alphas: [] as number[], dts: [] as number[] };
+  const log = { steps: 0, frames: 0, alphas: [] as number[], dts: [] as number[], gameDts: [] as number[] };
   const host: LoopHost = {
     step() {
       log.steps++;
     },
-    frame(alpha, dtSeconds) {
+    frame(alpha, realDt, gameDt) {
       log.frames++;
       log.alphas.push(alpha);
-      log.dts.push(dtSeconds);
+      log.dts.push(realDt);
+      log.gameDts.push(gameDt);
     },
   };
   return { log, loop: new GameLoop(host) };
@@ -117,6 +118,66 @@ describe('GameLoop', () => {
       expect(alpha).toBeGreaterThanOrEqual(0);
       expect(alpha).toBeLessThan(1);
     }
+  });
+
+  it('gives each frame real time and game time: the same at normal speed', () => {
+    const { log, loop } = recorder();
+    loop.advance(0);
+    loop.advance(16);
+    loop.advance(48);
+    expect(log.dts).toEqual([0, 0.016, 0.032]);
+    expect(log.gameDts).toEqual([0, 0.016, 0.032]);
+  });
+
+  it('scales game time, not real time, by timeScale', () => {
+    const { log, loop } = recorder();
+    loop.advance(0);
+    loop.timeScale = 0.25;
+    loop.advance(100);
+    expect(log.dts[1]).toBeCloseTo(0.1, 12);
+    expect(log.gameDts[1]).toBeCloseTo(0.025, 12);
+
+    // A hit-stop: the camera still gets its time, the world gets none.
+    loop.timeScale = 0;
+    loop.advance(150);
+    expect(log.dts[2]).toBeCloseTo(0.05, 12);
+    expect(log.gameDts[2]).toBe(0);
+
+    // The long-gap clamp applies before the scale.
+    loop.timeScale = 2;
+    loop.advance(5150);
+    expect(log.dts[3]).toBeCloseTo(0.25, 12);
+    expect(log.gameDts[3]).toBeCloseTo(0.5, 12);
+  });
+
+  it('gives no game time while paused, but real time still passes', () => {
+    const { log, loop } = recorder();
+    loop.advance(0);
+    loop.paused = true;
+    loop.advance(40);
+    loop.advance(80);
+    expect(log.dts.slice(1)).toEqual([0.04, 0.04]);
+    expect(log.gameDts.slice(1)).toEqual([0, 0]);
+    loop.paused = false;
+    loop.advance(120);
+    expect(log.gameDts[3]).toBeCloseTo(0.04, 12);
+  });
+
+  it('never hands out negative or non-finite time, whatever timeScale is set to', () => {
+    const { log, loop } = recorder();
+    loop.advance(0);
+    let t = 0;
+    for (const scale of [-1, Number.NaN, Number.POSITIVE_INFINITY, 1]) {
+      loop.timeScale = scale;
+      t += 20;
+      loop.advance(t);
+    }
+    for (const dt of [...log.dts, ...log.gameDts]) {
+      expect(Number.isFinite(dt)).toBe(true);
+      expect(dt).toBeGreaterThanOrEqual(0);
+    }
+    expect(log.gameDts.slice(1, 4)).toEqual([0, 0, 0]);
+    expect(log.gameDts[4]).toBeCloseTo(0.02, 12);
   });
 
   it('ignores a clock that runs backwards', () => {

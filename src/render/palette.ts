@@ -1,0 +1,101 @@
+// Every colour the game draws with, by name. The first groups are the tables of art bible
+// section 3 (and section 7 for the outline), word for word; the last group is the extra
+// world and light colours the lawn, sky and renderer need, each a relative of one above.
+
+const colours = {
+  // Plants
+  leaf: '#58C13B',
+  leafDark: '#3E9A2E',
+  leafLight: '#8BE05A',
+  stem: '#2F7D32',
+  pea: '#7ED957',
+  petal: '#FFC928',
+  petalDark: '#F59F0B',
+  sunflowerFace: '#8A5A2B',
+  walnut: '#A8703A',
+  walnutDark: '#7B4A22',
+  walnutLight: '#C98F55',
+  terracotta: '#C8643C',
+
+  // Zombies
+  skin: '#9ACD8A',
+  skinDark: '#6FA364',
+  clothPurple: '#7B4BD6',
+  clothDark: '#4B2A8F',
+  bone: '#EDE6D3',
+  boneShadow: '#C9BFA5',
+  brainPink: '#FF8FB1',
+  iron: '#9AA4B1',
+  rust: '#B5533C',
+  speedRed: '#E2553F',
+
+  // World
+  grassLight: '#7FD14B',
+  grassDark: '#6BBE3F',
+  soil: '#8B5A2B',
+  soilDark: '#6B4423',
+  islandRock: '#7A6A5A',
+  graveLight: '#5B4B7A',
+  graveDark: '#4A3C66',
+  skyTop: '#5EC8FF',
+  skyHorizon: '#CFF3FF',
+  cloud: '#FFFFFF',
+
+  // Level materials
+  levelIron: '#AEB7C2',
+  levelCrystal: '#7DE8FF',
+  levelGold: '#FFC83D',
+
+  // Effects
+  hitSpark: '#FFF4B0',
+  fire: '#FF7A1A',
+  fireLight: '#FFD23F',
+  poison: '#9BE23B',
+  heal: '#7CFFB2',
+  stunStars: '#FFE45C',
+  sun: '#FFD54A',
+  brains: '#FF8FB1',
+
+  // Interface
+  outline: '#2A1B0E',
+
+  // Lights (art bible section 4)
+  sunLight: '#FFF1D6',
+  fillSky: '#BFE8FF',
+  fillGround: '#6BBE3F',
+  bounceLight: '#DCEBFF',
+
+  // Extra world colours: ground that is neither tile nor prop, and what stands on it.
+  rimGrass: '#5DB53C',
+  rimGrave: '#473B65',
+  graveSoil: '#51405A',
+  graveRock: '#625A70',
+  stone: '#8E89A6',
+  stoneDark: '#6C6787',
+  deadBark: '#5A4960',
+  deadBarkLight: '#73607A',
+  crystal: '#C9A6FF',
+  crystalGlow: '#A070FF',
+  // Sky and clouds, as they should appear on screen.
+  skyHaze: '#9AD8FA',
+  skyDeep: '#4DB9F6',
+  skyBackdrop: '#8FD8FF',
+  cloudSide: '#BBDCF5',
+  cloudUnder: '#A6D2F4',
+  cloudFar: '#8FD6FF',
+  // Placement highlights. The zombies' purple is pushed brighter than their cloth so it
+  // holds up as a thin wash over green grass. The warning red is deeper than speed red and
+  // has almost no green in it, which is what keeps it red through the filmic curve.
+  lanePurple: '#A35CFF',
+  denyRed: '#BF2525',
+  // Shadowed corners go towards this dusky blue rather than black.
+  occlusion: '#1E2B4A',
+} as const;
+
+export type PaletteName = keyof typeof colours;
+
+/**
+ * Colour by name, as `#RRGGBB`. The names above are typed, so `PALETTE.leaf` is a string;
+ * looking up an arbitrary string gives `string | undefined`.
+ */
+export const PALETTE: Record<PaletteName, string> & Record<string, string> = colours;

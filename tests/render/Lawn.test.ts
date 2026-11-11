@@ -1,5 +1,6 @@
-import { Box3, Color, InstancedMesh, Matrix4, Mesh, Vector3 } from 'three';
+import { Box3, Color, InstancedMesh, Matrix4, Mesh, Vector3, type ShaderMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
+import { PALETTE } from '../../src/render/palette';
 import { Lawn } from '../../src/render/world/Lawn';
 
 const lawn = new Lawn();
@@ -165,6 +166,92 @@ describe('Lawn', () => {
 
     fresh.highlightLane(null, 'ok');
     expect(mark.visible).toBe(false);
+  });
+
+  /** What a mark is currently drawn with. */
+  function markLook(name: string, from: Lawn): { fill: string; line: Color; fillOpacity: number; stripes: number } {
+    const uniforms = (mesh(name, from).material as ShaderMaterial).uniforms;
+    return {
+      fill: `#${(uniforms.uFill?.value as Color).getHexString().toUpperCase()}`,
+      line: uniforms.uLine?.value as Color,
+      fillOpacity: uniforms.uFillOpacity?.value as number,
+      stripes: uniforms.uStripes?.value as number,
+    };
+  }
+
+  it('fills a good tile at 30% in Sun yellow for the plants, which is the default for tiles', () => {
+    const fresh = new Lawn();
+    fresh.highlightTile(2, 3, 'ok');
+    expect(markLook('tile-mark', fresh)).toMatchObject({ fill: PALETTE.sun, fillOpacity: 0.3, stripes: 0 });
+    fresh.highlightTile(2, 3, 'ok', 'plants');
+    expect(markLook('tile-mark', fresh).fill).toBe(PALETTE.sun);
+    // A white outline, a touch brighter than paper so it glows faintly.
+    const line = markLook('tile-mark', fresh).line;
+    expect(line.r).toBe(line.g);
+    expect(line.g).toBe(line.b);
+    expect(line.r).toBeGreaterThanOrEqual(1);
+  });
+
+  it('fills a good lane at 30% in purple for the zombies, which is the default for lanes', () => {
+    const fresh = new Lawn();
+    fresh.highlightLane(1, 'ok');
+    expect(markLook('lane-mark', fresh)).toMatchObject({ fill: PALETTE.lanePurple, fillOpacity: 0.3, stripes: 0 });
+    fresh.highlightLane(1, 'ok', 'zombies');
+    expect(markLook('lane-mark', fresh).fill).toBe(PALETTE.lanePurple);
+  });
+
+  it('lets either side ask for a tile or a lane in its own colour', () => {
+    const fresh = new Lawn();
+    fresh.highlightTile(0, 9, 'ok', 'zombies');
+    expect(markLook('tile-mark', fresh)).toMatchObject({ fill: PALETTE.lanePurple, fillOpacity: 0.3 });
+    fresh.highlightLane(4, 'ok', 'plants');
+    expect(markLook('lane-mark', fresh)).toMatchObject({ fill: PALETTE.sun, fillOpacity: 0.3 });
+  });
+
+  it('draws a forbidden spot as red stripes with no fill, whichever side asks', () => {
+    const fresh = new Lawn();
+    for (const side of ['plants', 'zombies'] as const) {
+      fresh.highlightTile(1, 6, 'bad', side);
+      fresh.highlightLane(0, 'bad', side);
+      for (const name of ['tile-mark', 'lane-mark']) {
+        const look = markLook(name, fresh);
+        expect(look).toMatchObject({ fill: PALETTE.denyRed, fillOpacity: 0, stripes: 1 });
+        // A red outline: plenty of red and next to no green or blue.
+        expect(look.line.r).toBeGreaterThan(look.line.g * 10);
+        expect(look.line.r).toBeGreaterThan(look.line.b * 10);
+      }
+    }
+    // Going back to a good spot takes the stripes off again.
+    fresh.highlightTile(1, 6, 'ok');
+    expect(markLook('tile-mark', fresh)).toMatchObject({ fillOpacity: 0.3, stripes: 0 });
+  });
+
+  it('keeps the highlight pulse within 0 and 1 at any time', () => {
+    const fresh = new Lawn();
+    fresh.highlightTile(2, 2, 'ok');
+    for (let t = 0; t < 20; t += 0.137) {
+      fresh.update(t);
+      const pulse = (mesh('tile-mark', fresh).material as ShaderMaterial).uniforms.uPulse?.value as number;
+      expect(pulse).toBeGreaterThanOrEqual(0);
+      expect(pulse).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('frees every geometry and material it made when disposed', () => {
+    const fresh = new Lawn();
+    const freed = new Set<object>();
+    const made = new Set<object>();
+    fresh.group.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      for (const resource of [object.geometry, object.material]) {
+        made.add(resource);
+        resource.addEventListener('dispose', () => freed.add(resource));
+      }
+    });
+    expect(made.size).toBeGreaterThan(10);
+
+    fresh.dispose();
+    expect(freed.size).toBe(made.size);
   });
 
   it('ignores highlights that are off the lawn instead of drawing them somewhere odd', () => {

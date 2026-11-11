@@ -4,10 +4,13 @@ export interface LoopHost {
   step(): void;
   /**
    * Draw. `alpha` in [0, 1) is how far the picture is between the last two steps.
-   * `dtSeconds` is real time since the previous frame (a long gap counts as 0.25 s) and is
-   * not scaled by `timeScale`: multiply by it for motion that should follow game time.
+   *
+   * `realDt` is the seconds since the previous frame (a long gap counts as 0.25): use it
+   * for the camera and anything else that keeps moving through a hit-stop or a pause.
+   * `gameDt` is `realDt × timeScale`, and 0 while paused: use it for animations, particles
+   * and whatever else belongs to the world.
    */
-  frame(alpha: number, dtSeconds: number): void;
+  frame(alpha: number, realDt: number, gameDt: number): void;
 }
 
 export const STEPS_PER_SECOND = 30;
@@ -57,14 +60,17 @@ export class GameLoop {
     // NaN or a clock running backwards counts as no time at all.
     const gapMs = elapsed > 0 ? Math.min(elapsed, MAX_GAP_MS) : 0;
 
+    const realDt = gapMs / 1000;
+
     if (this.paused) {
       this.owed = 0;
-      this.host.frame(0, gapMs / 1000);
+      this.host.frame(0, realDt, 0);
       return;
     }
 
+    // A scale that is negative or not a number at all stops game time rather than breaking it.
+    const scale = Number.isFinite(this.timeScale) && this.timeScale > 0 ? this.timeScale : 0;
     // Counting in steps rather than milliseconds keeps 100 ms at exactly 3 steps.
-    const scale = this.timeScale > 0 ? this.timeScale : 0;
     this.owed += (gapMs * scale * STEPS_PER_SECOND) / 1000;
 
     let steps = 0;
@@ -75,6 +81,6 @@ export class GameLoop {
     }
     if (this.owed >= 1) this.owed = 0;
 
-    this.host.frame(this.owed, gapMs / 1000);
+    this.host.frame(this.owed, realDt, realDt * scale);
   }
 }

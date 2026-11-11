@@ -1,11 +1,7 @@
 import { BackSide, Color, Group, Mesh, ShaderMaterial, SphereGeometry } from 'three';
-import { DISPLAY_TO_SCENE_GLSL, SUN_TRAVEL } from '../Renderer';
+import { DISPLAY_TO_SCENE_GLSL, SUN_TRAVEL } from '../look';
+import { PALETTE } from '../palette';
 import { BoxBatch, seededRandom } from './boxes';
-
-// Art bible, World colours.
-const SKY_TOP = '#5EC8FF';
-const SKY_HORIZON = '#CFF3FF';
-const CLOUD = '#FFFFFF';
 
 const DOME_VERTEX = /* glsl */ `
   varying vec3 vWorld;
@@ -176,11 +172,11 @@ export class Sky {
         vertexShader: DOME_VERTEX,
         fragmentShader: DOME_FRAGMENT,
         uniforms: {
-          uTop: { value: new Color(SKY_TOP) },
-          uHorizon: { value: new Color(SKY_HORIZON) },
+          uTop: { value: new Color(PALETTE.skyTop) },
+          uHorizon: { value: new Color(PALETTE.skyHorizon) },
           // Between the two, for the part of the lower sky the camera sees most.
-          uHaze: { value: new Color('#9AD8FA') },
-          uDeep: { value: new Color('#4DB9F6') },
+          uHaze: { value: new Color(PALETTE.skyHaze) },
+          uDeep: { value: new Color(PALETTE.skyDeep) },
         },
         side: BackSide,
         depthWrite: false,
@@ -198,10 +194,10 @@ export class Sky {
       fragmentShader: CLOUD_FRAGMENT,
       uniforms: {
         uToSun: { value: SUN_TRAVEL.clone().negate() },
-        uLit: { value: new Color(CLOUD) },
-        uSide: { value: new Color('#BBDCF5') },
-        uUnder: { value: new Color('#A6D2F4') },
-        uFar: { value: new Color('#8FD6FF') },
+        uLit: { value: new Color(PALETTE.cloud) },
+        uSide: { value: new Color(PALETTE.cloudSide) },
+        uUnder: { value: new Color(PALETTE.cloudUnder) },
+        uFar: { value: new Color(PALETTE.cloudFar) },
       },
     });
     for (const spec of CLOUDS) {
@@ -211,6 +207,17 @@ export class Sky {
       this.clouds.push({ mesh, spec });
     }
     this.update(0);
+  }
+
+  /** Frees every geometry and material the sky made. Take `group` out of the scene first. */
+  dispose(): void {
+    const materials = new Set<ShaderMaterial>();
+    this.group.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      object.geometry.dispose();
+      materials.add(object.material as ShaderMaterial);
+    });
+    for (const material of materials) material.dispose();
   }
 
   update(timeSeconds: number): void {
