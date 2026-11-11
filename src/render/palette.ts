@@ -120,6 +120,11 @@ const colours = {
   mouthDark: '#3B1530',
   brainDark: '#E2668F',
   tooth: '#FFF7E3',
+  // Pale face plates behind the eyes, one per skin, so black eyes read on a shaded face.
+  skinLight: '#CDEDBE',
+  skinFlushLight: '#E2E8B4',
+  seaBlueLight: '#B4CEDC',
+  sickSkinLight: '#E0E8AE',
   // Plain plastic armour, before level 3 turns it to real metal.
   armour: '#8E95A3',
   armourDark: '#676E7C',

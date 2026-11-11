@@ -1,6 +1,6 @@
 import { zombieBite } from '../../voxel/clips';
 import type { Box, ModelDef } from '../../voxel/types';
-import { bipedModel, mirrorZ } from './biped';
+import { bipedModel, headTurn, mirrorZ } from './biped';
 
 // Bone Minion. Faces −X. The little skeleton a Necromancer raises: half the size of a
 // zombie, a big skull with the Necromancer's purple glow in its sockets, a scrap of purple
@@ -49,8 +49,10 @@ export const boneMinion: ModelDef = {
     legR: mirrorZ(legL),
     hips: [{ at: [-0.5, 2, -1], size: [1, 0.5, 2], color: 'bone' }],
     joints: { torso: [0, 2.5, 0], head: [0, 4.5, 0], armL: [-0.25, 3.75, 1.75], armR: [-0.25, 3.75, -1.75], legL: [0, 2, 0.75], legR: [0, 2, -0.75] },
-    // Half a zombie: 6 wide, 8 tall, 5 deep.
+    // Half a zombie: 6 wide, 8 tall, 5 deep. Its big skull turns a little less than a zombie's
+    // head, or the back of it swings out of that envelope.
     envelope: [6, 8, 5],
+    headRot: headTurn(10, 32),
     walk: { legs: 30, arms: 20, bob: 0.5, roll: 6 },
     extra: [
       {
@@ -58,12 +60,13 @@ export const boneMinion: ModelDef = {
         parent: 'head',
         pivot: [-1.75, 6.25, 0],
         boxes: [
-          // The Necromancer's purple light in the sockets, the near one bigger.
-          { at: [-2, 5.5, 0], size: [0.5, 1.5, 1.5], color: 'socket' },
-          { at: [-1.5, 5.5, 1.5], size: [1, 1.5, 0.5], color: 'socket' },
-          { at: [-2, 6, 0.5], size: [0.5, 0.5, 0.5], color: 'crystalGlow', emissive: 2.5 },
-          { at: [-2, 5.5, -1.5], size: [0.5, 1, 1], color: 'socket' },
-          { at: [-2, 6, -1], size: [0.5, 0.5, 0.5], color: 'crystalGlow', emissive: 2.5 },
+          // The Necromancer's purple light in two sockets with bone between, the near one bigger.
+          { at: [-2, 5.5, 0.25], size: [0.5, 1.5, 1.25], color: 'socket' },
+          { at: [-2, 6.5, 0.25], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
+          { at: [-2, 5.75, 0.75], size: [0.5, 0.5, 0.5], color: 'crystalGlow', emissive: 2.5 },
+          { at: [-2, 5.75, -1.5], size: [0.5, 1, 1], color: 'socket' },
+          { at: [-2, 6.25, -1.5], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
+          { at: [-2, 5.75, -1], size: [0.5, 0.5, 0.5], color: 'crystalGlow', emissive: 2.5 },
         ],
       },
     ],

@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Desert Zombie, the control. Faces −X. A mummy wrapped in bandages, arms held out straight
 // and stiff, green skin showing through a gap round the eyes (one big, one small), loose
@@ -37,7 +37,7 @@ const head: Box[] = [
   { at: [-4.5, 9.5, -2.5], size: [0.5, 0.5, 5], color: 'bandageDark' },
   { at: [-4, 9.5, 2.5], size: [5, 0.5, 0.5], color: 'bandageDark' },
   // The gap the eyes look out of: green skin across the face and round to the camera's side.
-  { at: [-4.5, 10.5, -2.5], size: [0.5, 2.5, 5], color: 'skin' },
+  facePlate(-4.5, 10, 13.5, -2.5, 2.5, 'skinLight'),
   { at: [-3, 10.5, 2.5], size: [1.5, 2.5, 0.5], color: 'skin' },
   // A slit of a mouth with a tooth, under the wraps.
   { at: [-4.5, 8.5, -1.5], size: [0.5, 1, 3], color: 'mouthDark' },
@@ -45,10 +45,10 @@ const head: Box[] = [
 
   // Level 1: a little sand-coloured headdress, a cap and two short lappets.
   ...atLevels(1, 1, [
-    { at: [-4.5, 13.5, -3], size: [6.5, 1, 6], color: 'sand' },
+    { at: [-4.5, 13.5, -3], size: [6, 1, 6], color: 'sand' },
     { at: [-4, 14.5, -2.5], size: [5, 0.5, 5], color: 'sand' },
-    { at: [-4.5, 14, -3], size: [6.5, 0.5, 0.5], color: 'clothPurple' },
-    { at: [-4.5, 14, 2.5], size: [6.5, 0.5, 0.5], color: 'clothPurple' },
+    { at: [-4.5, 14, -3], size: [6, 0.5, 0.5], color: 'clothPurple' },
+    { at: [-4.5, 14, 2.5], size: [6, 0.5, 0.5], color: 'clothPurple' },
     { at: [-2.5, 10, 3], size: [2, 3.5, 0.5], color: 'sand' },
     { at: [-2.5, 11, 3], size: [2, 0.5, 0.5], color: 'clothPurple' },
     { at: [-2.5, 10, -3.5], size: [2, 3.5, 0.5], color: 'sand' },
@@ -123,13 +123,7 @@ export const desertZombie = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-4.75, 11.75, 0],
-      boxes: [
-        { at: [-5, 10.5, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-4.5, 10.5, 2.5], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-5, 12, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 11, -2], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-5, 11.5, -2], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-      ],
+      boxes: zombieEyes({ face: -4.5, y: 10.5, near: [2.5, 2.5], far: [2, 2], farLift: 0.25 }),
     },
     {
       // A loose bandage end trailing from the back of the head, longer from level 2.

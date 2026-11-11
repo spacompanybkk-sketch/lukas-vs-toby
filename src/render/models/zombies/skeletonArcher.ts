@@ -1,6 +1,6 @@
 import { bowDraw, zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, mirrorZ, zombieEyes } from './biped';
 
 // Skeleton Archer, the sniper. Faces −X. A thin bone skeleton, no armour, in a peaked
 // leather cap with a purple feather, a quiver of purple-fletched arrows on its back and a
@@ -77,14 +77,8 @@ export const skeletonArcher = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-4.25, 12, 0],
-      boxes: [
-        { at: [-4.5, 10.5, 0.5], size: [0.5, 3, 2.5], color: 'socket' },
-        { at: [-4, 10.5, 2.5], size: [1.5, 3, 1], color: 'socket' },
-        { at: [-4.5, 12, 1], size: [0.5, 1, 1], color: 'eyeRed', emissive: 2.5 },
-        { at: [-3.5, 12, 3], size: [1, 1, 0.5], color: 'eyeRed', emissive: 2.5 },
-        { at: [-4.5, 11, -2.5], size: [0.5, 2, 2], color: 'socket' },
-        { at: [-4.5, 11.5, -2], size: [0.5, 1, 1], color: 'eyeRed', emissive: 2.5 },
-      ],
+      // Two sockets with bone between, the near one bigger, each with a red light and a glint.
+      boxes: zombieEyes({ face: -4, y: 10.5, near: [2.5, 3], far: [2, 2.5], color: 'socket', light: { color: 'eyeRed', emissive: 2.5 } }),
     },
     {
       // A purple feather in the cap, sweeping back; much longer from level 2.

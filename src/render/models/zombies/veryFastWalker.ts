@@ -1,6 +1,6 @@
 import { zombieBite, zombieWalk } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Very Fast Walker, the rush. Faces −X. Skinny and long-legged, leaning 25° into a sprint
 // with its arms bent and pumping, a red-flushed face, a red sweatband whose tails stream out
@@ -20,10 +20,12 @@ const head: Box[] = [
   { at: [-2.5, 9, -3], size: [5, 5, 6], color: 'skinFlush' },
   { at: [-2.5, 8.5, -2.5], size: [5, 0.5, 5], color: 'skinFlushDark' },
   { at: [-2.5, 14, -2.5], size: [5, 0.5, 5], color: 'skinFlush' },
+  // A pale plate behind the eyes, under the band.
+  facePlate(-3, 10, 12.5, -2.5, 2.5, 'skinFlushLight'),
   // Red cheeks, a mouth open as it pants, and its tongue flapping out of the camera's side.
   { at: [-3.5, 9.5, -2.5], size: [0.5, 1, 1.5], color: 'speedRed' },
-  { at: [-3, 9.5, -1.5], size: [0.5, 1.5, 2.5], color: 'mouthDark' },
-  { at: [-3.5, 10.5, -1], size: [0.5, 0.5, 1], color: 'tooth' },
+  { at: [-3, 9, -1.5], size: [0.5, 1.5, 2.5], color: 'mouthDark' },
+  { at: [-3.5, 10, -1], size: [0.5, 0.5, 1], color: 'tooth' },
   { at: [-3.5, 9, 0.5], size: [1, 1, 3], color: 'brainPink' },
   { at: [-2.5, 8.5, 3], size: [1.5, 1, 1], color: 'brainPink' },
   // The sweatband round the forehead, a voxel proud.
@@ -119,14 +121,8 @@ export const veryFastWalker = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-3.25, 11, 0],
-      boxes: [
-        // The near eye big and wrapping round to the camera's side, the far one squinting small.
-        { at: [-3.5, 10, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-3, 10, 2.5], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-3.5, 11.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-3.5, 10.5, -2.5], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-3.5, 11, -2.5], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-      ],
+      // The near eye big and goggling, the far one squinting small.
+      boxes: zombieEyes({ face: -3, y: 10, near: [2.5, 2.5], far: [2, 1.5], farLift: 0.5 }),
     },
     {
       // The sweatband's tails, streaming back off the knot behind the head.

@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Hot Topic, the snowball. Faces −X. A round, greedy zombie, mostly belly and mouth: the
 // jaw hangs open on a hinge to show big square teeth top and bottom, a pink tongue and a
@@ -32,6 +32,8 @@ const head: Box[] = [
   { at: [-4, 9.5, -2.5], size: [0.5, 1, 1.5], color: 'tooth' },
   { at: [-4, 9.5, -0.5], size: [0.5, 1, 1.5], color: 'tooth' },
   { at: [-4, 9.5, 1.5], size: [0.5, 1, 1.5], color: 'tooth' },
+  // A pale plate behind the eyes.
+  facePlate(-3.5, 10.5, 14, -3, 3, 'skinLight'),
   // Rosy cheeks.
   { at: [-3.5, 11, 2.5], size: [0.5, 1, 0.5], color: 'brainPink' },
   // Hot-headed: a tuft of flame-red hair, flickering higher from level 2 (hats from 3).
@@ -124,14 +126,7 @@ export const hotTopic = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-3.75, 12.5, 0],
-      boxes: [
-        { at: [-4, 11, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-3.5, 11, 3], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-4, 12.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-4, 12, -2.5], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-4, 12.5, -2.5], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-        { at: [-4, 11.5, 1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-      ],
+      boxes: zombieEyes({ face: -3.5, y: 11, near: [2.5, 3], far: [2, 2], farLift: 0.75, light: { color: 'fireLight', emissive: 3, minLevel: 5 } }),
     },
     {
       // The lower jaw, hinged at the back of the mouth and hanging open at rest.

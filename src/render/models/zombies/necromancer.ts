@@ -1,6 +1,6 @@
 import { staffRaise, zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Necromancer, the support. Faces −X. A short wizard in a dark purple robe down to its
 // boots, a hood that rises to a crooked point, a long white beard and bushy brows, and a
@@ -16,11 +16,13 @@ const head: Box[] = [
   // The face, peeking out of the hood.
   { at: [-3.5, 8, -2], size: [4.5, 4, 4], color: 'skin' },
   { at: [-3.5, 8.5, -2], size: [0.5, 0.5, 4], color: 'skinDark' },
+  // A pale plate behind the eyes, lit against the hood's shadow.
+  facePlate(-3.5, 9, 11.5, -2, 2, 'skinLight'),
   // Bushy white brows, the near one raised.
   { at: [-4, 11.5, 0], size: [0.5, 0.5, 2], color: 'bone' },
   { at: [-4, 11, -2], size: [0.5, 0.5, 1.5], color: 'bone' },
   // The hood round it, its edging, and the crooked point.
-  { at: [-3, 8, -3], size: [5.5, 5, 6], color: 'robePurple' },
+  { at: [-3, 8, -3], size: [5, 5, 6], color: 'robePurple' },
   { at: [-3.5, 12, -3], size: [0.5, 1, 6], color: 'robeTrim' },
   { at: [-3.5, 8, 2], size: [0.5, 4, 1], color: 'robeTrim' },
   { at: [-3.5, 8, -3], size: [0.5, 4, 1], color: 'robeTrim' },
@@ -72,12 +74,7 @@ export const necromancer = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-3.75, 10.25, 0],
-      boxes: [
-        { at: [-4, 9, 0], size: [0.5, 2.5, 2], color: 'eye' },
-        { at: [-4, 10.5, 0], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-4, 9.5, -1.5], size: [0.5, 1.5, 1], color: 'eye' },
-        { at: [-4, 10.5, -1.5], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
-      ],
+      boxes: zombieEyes({ face: -3.5, y: 9, near: [2, 2.5], far: [1.5, 2], farLift: 0, centre: -0.25 }),
     },
     {
       // A long white beard, swinging as it walks.

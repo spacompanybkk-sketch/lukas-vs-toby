@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Brain Eater, the basic zombie. Faces −X. Green skin, a torn purple shirt, slate trousers
 // and old brown shoes; one big eye and one small, a tooth and a tongue; a pink brain held
@@ -18,6 +18,8 @@ const head: Box[] = [
   { at: [-4, 8.5, -3], size: [5, 5.5, 6], color: 'skin' },
   { at: [-4, 8, -2.5], size: [5, 0.5, 5], color: 'skinDark' },
   { at: [-4, 14, -2.5], size: [5, 0.5, 5], color: 'skin' },
+  // A pale plate behind the eyes, so they read as two eyes and not one dark band.
+  facePlate(-4.5, 10, 13.5, -2.5, 2.5, 'skinLight'),
   // A wide crooked mouth, a tooth hanging from it, and a tongue lolling out over the chin.
   { at: [-4.5, 9, -2], size: [0.5, 1, 3.5], color: 'mouthDark' },
   { at: [-5, 9, -0.5], size: [0.5, 1, 1], color: 'tooth' },
@@ -116,17 +118,9 @@ export const brainEater = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-4.75, 11.5, 0],
-      boxes: [
-        // The big eye on the camera's side, wrapping round the corner of the head so that it
-        // shows from the lawn; the small one beyond. Each has a glint at the top, sunward.
-        { at: [-5, 10, 0.5], size: [0.5, 3, 3], color: 'eye' },
-        { at: [-4.5, 10, 2.5], size: [1.5, 3, 1], color: 'eye' },
-        { at: [-5, 12, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 10.5, -2.5], size: [0.5, 2, 2], color: 'eye' },
-        { at: [-5, 11.5, -2.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 10.5, 1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-        { at: [-5, 10.5, -1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-      ],
+      // The big eye on the camera's side and the small one beyond, apart, each with a glint
+      // at the top, sunward; alight at level 5.
+      boxes: zombieEyes({ face: -4.5, y: 10, near: [2.5, 3], far: [2, 2], light: { color: 'fireLight', emissive: 3, minLevel: 5 } }),
     },
     {
       // The brain it throws, held up in the right hand.

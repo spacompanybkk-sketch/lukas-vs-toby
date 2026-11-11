@@ -1,6 +1,6 @@
 import { shieldRaise, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, mirrorZ, zombieEyes } from './biped';
 
 // Skeleton Warrior, the tank. Faces −X. A bone skeleton in a grey breastplate and a purple
 // sash, red lights glowing in its sockets (one bigger than the other), a sword held upright
@@ -107,15 +107,8 @@ export const skeletonWarrior = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-4.25, 12, 0],
-      boxes: [
-        // Dark sockets, the big one wrapping round to the camera's side, each with a red light.
-        { at: [-4.5, 10.5, 0.5], size: [0.5, 3, 2.5], color: 'socket' },
-        { at: [-4, 10.5, 2.5], size: [1.5, 3, 1], color: 'socket' },
-        { at: [-4.5, 11.5, 1], size: [0.5, 1, 1], color: 'eyeRed', emissive: 2.5 },
-        { at: [-3.5, 11.5, 3], size: [1, 1, 0.5], color: 'eyeRed', emissive: 2.5 },
-        { at: [-4.5, 11, -2.5], size: [0.5, 2, 2], color: 'socket' },
-        { at: [-4.5, 11.5, -2], size: [0.5, 1, 1], color: 'eyeRed', emissive: 2.5 },
-      ],
+      // Two dark sockets with bone between, the near one bigger, each with a red light and a glint.
+      boxes: zombieEyes({ face: -4, y: 10.5, near: [2.5, 3], far: [2, 2.5], color: 'socket', light: { color: 'eyeRed', emissive: 2.5 } }),
     },
     {
       // The shield on the left forearm, its face to the camera. Round at levels 1 and 2 (a

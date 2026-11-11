@@ -1,6 +1,6 @@
 import { lassoThrow, pistolPop, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Cowboy Zombie, the disabler. Faces −X. A wide-brimmed cowboy hat, a red bandana, a brown
 // vest over a purple shirt, a belt with a buckle, jeans and heeled boots; a coil of lasso
@@ -23,6 +23,8 @@ const head: Box[] = [
   { at: [-4.5, 8.5, -2.5], size: [6, 5, 5], color: 'skin' },
   { at: [-4, 8.5, -3], size: [5, 5, 6], color: 'skin' },
   { at: [-4, 8, -2.5], size: [5, 0.5, 5], color: 'skinDark' },
+  // A pale plate behind the eyes, in the brim's shade.
+  facePlate(-4.5, 10, 13.5, -2.5, 2.5, 'skinLight'),
   // A lopsided grin with one tooth, and stubble.
   { at: [-4.5, 9, -2], size: [0.5, 1, 3], color: 'mouthDark' },
   { at: [-5, 9.5, -0.5], size: [0.5, 0.5, 1], color: 'tooth' },
@@ -30,9 +32,9 @@ const head: Box[] = [
 
   // Level 1: the hat, a brim curled up at the sides and a creased crown with a dark band.
   ...atLevels(1, 1, [
-    { at: [-5, 13.5, -3], size: [7, 0.5, 6.5], color: 'hatBrown' },
-    { at: [-5, 14, 3], size: [7, 0.5, 0.5], color: 'hatBrown' },
-    { at: [-5, 14, -3], size: [7, 0.5, 0.5], color: 'hatBrown' },
+    { at: [-5, 13.5, -3], size: [6.5, 0.5, 6.5], color: 'hatBrown' },
+    { at: [-5, 14, 3], size: [6.5, 0.5, 0.5], color: 'hatBrown' },
+    { at: [-5, 14, -3], size: [6.5, 0.5, 0.5], color: 'hatBrown' },
     { at: [-3.5, 14, -2], size: [4, 1.5, 4.5], color: 'hatBrown' },
     { at: [-3.5, 14, -2], size: [4, 0.5, 4.5], color: 'hatBrownDark' },
   ]),
@@ -118,14 +120,8 @@ export const cowboyZombie = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-4.75, 11.25, 0],
-      boxes: [
-        // A big wide eye and a squinting one, under the brim.
-        { at: [-5, 10, 0.5], size: [0.5, 3, 2.5], color: 'eye' },
-        { at: [-4.5, 10, 2.5], size: [1.5, 3, 1], color: 'eye' },
-        { at: [-5, 12, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 11, -2.5], size: [0.5, 1, 2], color: 'eye' },
-        { at: [-5, 11.5, -2.5], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
-      ],
+      // A big wide eye and a squinting one, under the brim.
+      boxes: zombieEyes({ face: -4.5, y: 10, near: [2.5, 3], far: [2, 1.5], farLift: 1 }),
     },
     {
       // A coil of rope on the left hip, facing the camera: two loops.

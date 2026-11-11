@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Brain Rot, the area denial. Faces −X. A slumped, sallow zombie in a stained purple-grey
 // sweater, arms dangling, drooping eyes (one big, one small) and a drip of green drool. The
@@ -19,6 +19,8 @@ const head: Box[] = [
   { at: [-3, 8.5, -3], size: [5, 4.5, 6], color: 'sickSkin' },
   { at: [-3, 8, -2.5], size: [5, 0.5, 5], color: 'sickSkinDark' },
   { at: [-3.5, 12.5, -2.5], size: [6, 0.5, 5], color: 'sickSkinDark' },
+  // A pale plate behind the eyes.
+  facePlate(-3.5, 10, 12.5, -2.5, 2.5, 'sickSkinLight'),
   // A sagging mouth with a drip of green drool, and dark bags under the eyes.
   { at: [-3.5, 9, -1.5], size: [0.5, 1, 3], color: 'mouthDark' },
   { at: [-4, 8, 0], size: [0.5, 1.5, 1], color: 'toxicGreen' },
@@ -118,12 +120,8 @@ export const brainRot = bipedModel({
       pivot: [-3.75, 11, 0],
       boxes: [
         // Droopy: the big eye half shut under a heavy lid, the small one lower.
-        { at: [-4, 10, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-3.5, 10, 2.5], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-4, 11.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
+        ...zombieEyes({ face: -3.5, y: 10, near: [2.5, 2.5], far: [2, 1.5], farLift: 0 }),
         { at: [-4, 12, 0.5], size: [0.5, 0.5, 2.5], color: 'sickSkinDark' },
-        { at: [-4, 10, -2.5], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-4, 11, -2.5], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
       ],
     },
     {
