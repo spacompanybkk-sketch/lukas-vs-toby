@@ -77,8 +77,12 @@ Level materials (applied to a model's trim colour slots and added parts)
 |-------|-----------|
 | 2 | Same colours, more parts |
 | 3 | Iron `#AEB7C2`, metalness 0.6, roughness 0.4 |
-| 4 | Crystal `#7DE8FF`, emissive 0.6 |
-| 5 | Gold `#FFC83D`, metalness 0.8, warm emissive 0.15, golden aura motes |
+| 4 | Crystal `#7DE8FF`, glowing: emissive intensity 1.5 or more so it blooms |
+| 5 | Gold `#FFC83D`, metalness 0.8, warm emissive 0.15 (a sheen, not a glow), golden aura motes |
+
+Anything meant to glow (crystal, fuse tips, eyes, fire, tokens) needs an emissive
+intensity of 1.5 or more: bloom starts at scene luminance 1.2, and a lit surface with
+emissive 0.6 reaches only about 0.8.
 
 Effects
 
@@ -98,9 +102,14 @@ Each side stays inside its colour family so a lane reads at a glance.
 
 - Surfaces: matte toy plastic. Vertex-coloured standard material, roughness 0.85,
   metalness 0, except level materials above.
-- Sun: one warm directional light `#FFF1D6` from the upper left front, soft shadows
-  (2048 map). Shadows fall to the right and slightly towards the camera.
+- Sun: one warm directional light `#FFF1D6` from the upper left, slightly behind the
+  lawn (light travels along (0.5, −1, 0.22)), soft shadows (2048 map). Shadows fall to
+  the right and slightly towards the camera, so they land on ground the player can see.
 - Fill: hemisphere light, sky `#BFE8FF`, ground `#6BBE3F`.
+- Bounce: a shadowless directional light from in front and slightly below, `#DCEBFF`,
+  so camera-facing sides are not flat or green-tinted.
+- These three lights live in `Renderer` (`sun`, `fill`, `bounce`). Every scene uses
+  them as they are; models and effects never add lights of their own.
 - Screen-space ambient occlusion, subtle. Bloom only on emissive parts and effects.
   Light vignette. Anti-aliased. Filmic tone mapping, sRGB output.
 - Camera: perspective, 30° field of view, pitched about 52° down, straight on (no yaw),
