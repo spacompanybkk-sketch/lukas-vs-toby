@@ -110,9 +110,36 @@ export class CameraRig {
   /**
    * Sets the camera for a window of this aspect ratio: field of view 30°, pitched 52° down,
    * no yaw, as close as it can be with the whole frame box inside the HUD-free rectangle.
-   * (After `frameSubject` it frames that subject instead, at its own angles.)
+   * The renderer calls this on every resize. A scene that has named another subject with
+   * `frameSubject` keeps that subject: it is re-fitted to the new shape instead.
    */
   frameLawn(aspect: number): void {
+    this.fitSubject(aspect);
+  }
+
+  /**
+   * Frames `box` instead of the lawn, from now on and through every resize; `null` goes back
+   * to the lawn. For scenes that show something other than a match, such as the model gallery.
+   */
+  frameSubject(box: FrameBox | null, view: FrameView = {}): void {
+    this.subject = box
+      ? {
+          box,
+          pitch: view.pitchDeg === undefined ? LAWN.pitch : MathUtils.degToRad(MathUtils.clamp(view.pitchDeg, -89, 89)),
+          yaw: MathUtils.degToRad(view.yawDeg ?? 0),
+          freeX: free(view.side ?? 0.03),
+          freeTop: free(view.top ?? 0.09),
+          freeBottom: free(view.bottom ?? 0.22),
+        }
+      : LAWN;
+    this.fitSubject(this.camera.aspect);
+  }
+
+  /**
+   * Places the camera, for a window of this aspect ratio, as close as it can be with the
+   * current subject's box inside the part of the screen left free, at the subject's angles.
+   */
+  private fitSubject(aspect: number): void {
     const camera = this.camera;
     camera.fov = FOV_DEG;
     camera.aspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
@@ -194,24 +221,6 @@ export class CameraRig {
     this.home.distance = reach;
 
     this.apply();
-  }
-
-  /**
-   * Frames `box` instead of the lawn, from now on and through every resize; `null` goes back
-   * to the lawn. For scenes that show something other than a match, such as the model gallery.
-   */
-  frameSubject(box: FrameBox | null, view: FrameView = {}): void {
-    this.subject = box
-      ? {
-          box,
-          pitch: view.pitchDeg === undefined ? LAWN.pitch : MathUtils.degToRad(MathUtils.clamp(view.pitchDeg, -89, 89)),
-          yaw: MathUtils.degToRad(view.yawDeg ?? 0),
-          freeX: free(view.side ?? 0.03),
-          freeTop: free(view.top ?? 0.09),
-          freeBottom: free(view.bottom ?? 0.22),
-        }
-      : LAWN;
-    this.frameLawn(this.camera.aspect);
   }
 
   /** Mouse position across the window, −1..1 on each axis; the camera leans a little towards it. */

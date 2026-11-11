@@ -2,7 +2,8 @@ import type { Clip } from './types';
 
 // Clip builders shared by all models (art bible section 5). A model picks the builders it
 // needs and tells each which of its parts to move. Every clip writes offsets from the rest
-// pose, touches only the parts it was given, and makes no objects while sampling.
+// pose, touches only the parts it was given, lists those parts in `parts` so that a model
+// can be checked against them, and makes no objects while sampling.
 //
 // Turns about Z are what the lawn camera sees as leaning: for a model that faces +X a
 // positive turn tips its top backwards. Builders that lean take `facing` (1 for +X, the
@@ -10,6 +11,9 @@ import type { Clip } from './types';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
+
+/** The part names a clip was given, for `Clip.parts`: the model is checked against them when it is built. */
+const named = (...names: (string | undefined)[]): string[] => names.filter((name): name is string => name !== undefined);
 
 const clamp = (value: number, min: number, max: number): number => (value < min ? min : value > max ? max : value);
 const easeInQuad = (u: number): number => u * u;
@@ -29,6 +33,7 @@ export function idleBob(parts: { body: string; head?: string; sway?: string[] })
   return {
     duration,
     loop: true,
+    parts: named(body, head, ...sway),
     sample(t, pose) {
       const beat = (t / duration) * TAU;
       const trunk = pose[body];
@@ -64,6 +69,7 @@ export function shootSnap(parts: { body: string; head: string }, facing: 1 | -1 
   return {
     duration,
     loop: false,
+    parts: named(body, head),
     sample(t, pose) {
       const time = clamp(t, 0, duration);
       // 1 is fully wound back, −1 fully thrown forward, 0 at rest.
@@ -108,6 +114,7 @@ export function hitRecoil(body: string, direction: 1 | -1): Clip {
   return {
     duration,
     loop: false,
+    parts: named(body),
     sample(t, pose) {
       const trunk = pose[body];
       if (!trunk) return;
@@ -131,6 +138,7 @@ export function spawnRise(body: string): Clip {
   return {
     duration,
     loop: false,
+    parts: named(body),
     sample(t, pose) {
       const trunk = pose[body];
       if (!trunk) return;
@@ -155,6 +163,7 @@ export function wilt(parts: { body: string; head?: string }, facing: 1 | -1 = 1)
   return {
     duration,
     loop: false,
+    parts: named(body, head),
     sample(t, pose) {
       const u = easeInQuad(clamp(t / duration, 0, 1));
       const trunk = pose[body];
@@ -182,6 +191,7 @@ export function cheerJump(body: string): Clip {
   return {
     duration,
     loop: true,
+    parts: named(body),
     sample(t, pose) {
       const trunk = pose[body];
       if (!trunk) return;

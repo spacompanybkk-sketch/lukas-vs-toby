@@ -1,4 +1,5 @@
 import { Euler, Group, MathUtils, Matrix4, Mesh, type BufferGeometry } from 'three';
+import { getModelDef } from '../models/registry';
 import { disposeMaterials, glowKey, sharedMaterial, type MaterialKey } from './materials';
 import { findSharedSurface, meshPart, type Shape, type Solid } from './mesh';
 import { LEVEL_MATERIALS, LEVEL_SCALE, MAX_LEVEL, PALETTE, levelMaterial, type LevelMaterial } from './palette';
@@ -60,7 +61,7 @@ function paintOf(def: ModelDef, box: Box, level: number, where: string): { hex: 
   const upgrade = levelMaterial(level);
   if (trim >= 0 && upgrade !== 'none') ref = LEVEL_MATERIALS[upgrade].tones[Math.min(trim, 1)] as string;
   const hex = toHex(def, ref, where);
-  if (box.emissive && box.emissive > 0) return { hex, material: glowKey(hex, box.emissive) };
+  if (box.emissive && box.emissive > 0) return { hex, material: glowKey(box.emissive) };
   return { hex, material: TONE_OWNER.get(ref) ?? 'plain' };
 }
 
@@ -77,13 +78,44 @@ function ordered(def: ModelDef): PartDef[] {
   for (const eye of def.eyes ?? []) {
     if (!byName.has(eye)) throw new Error(`Model "${def.key}": eyes names "${eye}", which is not a part`);
   }
+  if (def.muzzle && !Array.isArray(def.muzzle) && !byName.has(def.muzzle.part)) {
+    throw new Error(`Model "${def.key}": the muzzle is on "${def.muzzle.part}", which is not a part`);
+  }
+  for (const [name, clip] of Object.entries(def.clips)) {
+    for (const moved of clip.parts ?? []) {
+      if (!byName.has(moved)) {
+        throw new Error(`Model "${def.key}": clip "${name}" moves "${moved}", which is not a part (a misspelt name?)`);
+      }
+    }
+  }
+  if (def.trim.length > 2) {
+    throw new Error(
+      `Model "${def.key}": trim lists ${def.trim.length} colours, but takes at most two (a main tone and a shadow tone)`,
+    );
+  }
   def.trim.forEach((ref) => toHex(def, ref, 'trim'));
+  const wholeLevel = (value: number | undefined): boolean =>
+    value === undefined || (Number.isInteger(value) && value >= 1 && value <= MAX_LEVEL);
   for (const part of def.parts) {
+    for (const other of part.shadedBy ?? []) {
+      if (!byName.has(other) || other === part.name) {
+        throw new Error(`Model "${def.key}": part "${part.name}" is shaded by "${other}", which is not another part`);
+      }
+    }
     part.boxes.forEach((box, i) => {
       const where = `part "${part.name}" box ${i}`;
       toHex(def, box.color, where);
       if (!(box.size[0] > 0 && box.size[1] > 0 && box.size[2] > 0)) {
         throw new Error(`Model "${def.key}", ${where}: size must be positive on every axis`);
+      }
+      if (!wholeLevel(box.minLevel)) {
+        throw new Error(`Model "${def.key}", ${where}: minLevel must be a whole level from 1 to ${MAX_LEVEL}, not ${box.minLevel}`);
+      }
+      if (!wholeLevel(box.maxLevel)) {
+        throw new Error(`Model "${def.key}", ${where}: maxLevel must be a whole level from 1 to ${MAX_LEVEL}, not ${box.maxLevel}`);
+      }
+      if ((box.minLevel ?? 1) > (box.maxLevel ?? MAX_LEVEL)) {
+        throw new Error(`Model "${def.key}", ${where}: minLevel ${box.minLevel} is above maxLevel ${box.maxLevel}, so the box never shows`);
       }
     });
   }
@@ -138,6 +170,7 @@ function build(def: ModelDef, level: number): Built {
       if (!activeAt(box, level)) return;
       const { hex, material } = paintOf(def, box, level, `part "${part.name}" box ${i}`);
       solids.push({
+        box: i,
         min: [box.at[0], box.at[1], box.at[2]],
         max: [box.at[0] + box.size[0], box.at[1] + box.size[1], box.at[2] + box.size[2]],
         hex,
@@ -147,23 +180,26 @@ function build(def: ModelDef, level: number): Built {
       volume.set(number, (volume.get(number) ?? 0) + box.size[0] * box.size[1] * box.size[2]);
     });
 
-    shapes.push({ def: part, solids, toModel, fromModel: toModel.clone().invert() });
+    shapes.push({ def: part, solids, shadedBy: [], toModel, fromModel: toModel.clone().invert() });
     builtParts.push({ name: part.name, parent, position, rotation, meshes: [] });
+  }
+  for (const shape of shapes) {
+    shape.shadedBy = (shape.def.shadedBy ?? []).map((name) => shapes.find((other) => other.def.name === name) as Shape);
   }
 
   const clash = findSharedSurface(shapes);
   if (clash) {
     throw new Error(
-      `Model "${def.key}": a ${clash.one.hex} box of part "${clash.a.def.name}" and a ${clash.other.hex} box of part ` +
-        `"${clash.b.def.name}" share a surface and would flicker. Move one of them a fraction of a voxel, ` +
-        `or make them touch face to face instead of overlapping.`,
+      `Model "${def.key}": box ${clash.one.box} of part "${clash.a.def.name}" (${clash.one.hex}) and box ${clash.other.box} ` +
+        `of part "${clash.b.def.name}" (${clash.other.hex}) share a surface at level ${level} and would flicker. Move one ` +
+        `of them a fraction of a voxel, or make them touch face to face instead of overlapping.`,
     );
   }
 
   let meshes = 0;
   let triangles = 0;
   shapes.forEach((shape, i) => {
-    for (const [material, batch] of meshPart(shapes, shape, VOXEL)) {
+    for (const [material, batch] of meshPart(shape, VOXEL)) {
       if (batch.quadCount === 0) continue;
       (builtParts[i] as BuiltPart).meshes.push({ material, geometry: batch.build() });
       meshes++;
@@ -231,6 +267,20 @@ export function modelColors(def: ModelDef, level: number): number[] {
 export function modelStats(def: ModelDef, level: number): { meshes: number; triangles: number } {
   const { meshes, triangles } = builtFor(def, level);
   return { meshes, triangles };
+}
+
+/**
+ * Builds the named models at the given levels (all five unless told otherwise) and makes
+ * their materials, so that the first unit of each to appear, or a merge in the middle of a
+ * match, has nothing left to build. Call it while a level loads.
+ */
+export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]): void {
+  for (const key of keys) {
+    const def = getModelDef(key);
+    for (const level of levels) {
+      for (const part of builtFor(def, level).parts) for (const piece of part.meshes) sharedMaterial(piece.material);
+    }
+  }
 }
 
 /**

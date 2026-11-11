@@ -37,7 +37,8 @@ vi.mock('postprocessing', async (importOriginal) => {
   return { ...actual, EffectComposer: FakeEffectComposer };
 });
 
-const { galleryLayout, mount } = await import('../../src/render/gallery');
+const { PAGE_SIZE, galleryLayout, galleryPage, mount } = await import('../../src/render/gallery');
+const { registerModel } = await import('../../src/render/models/registry');
 const { VOXEL } = await import('../../src/render/voxel/build');
 
 interface GalleryDebug {
@@ -112,6 +113,25 @@ describe('galleryLayout', () => {
     expect(box.y[1]).toBeGreaterThan(1.5);
   });
 
+  it('turns the overview into pages of ten, so every row stays inside the sun shadow', () => {
+    const keys = Array.from({ length: 23 }, (_, i) => `m${i}`);
+    expect(PAGE_SIZE).toBe(10);
+    expect(galleryPage(keys, 1)).toEqual({ keys: keys.slice(0, 10), page: 1, pages: 3 });
+    expect(galleryPage(keys, 3)).toEqual({ keys: keys.slice(20), page: 3, pages: 3 });
+    // A page that does not exist is the nearest one that does.
+    expect(galleryPage(keys, 9).page).toBe(3);
+    expect(galleryPage(keys, 0).page).toBe(1);
+    expect(galleryPage(keys, NaN).page).toBe(1);
+    expect(galleryPage([], 1)).toEqual({ keys: [], page: 1, pages: 1 });
+    // A full page, pads included, lies inside the renderer's shadow box (x −3.4..13.4, z −2.2..7).
+    for (const cell of galleryLayout(galleryPage(keys, 1).keys, [1, 2, 3, 4, 5]).cells) {
+      expect(cell.x - 0.55).toBeGreaterThan(-3.4);
+      expect(cell.x + 0.55).toBeLessThan(13.4);
+      expect(cell.z - 0.55).toBeGreaterThan(-2.2);
+      expect(cell.z + 0.55).toBeLessThan(7);
+    }
+  });
+
   it('gives each model its own row of levels, two models side by side, inside the sun shadow', () => {
     const { cells } = galleryLayout(['a', 'b', 'c'], [1, 2, 3, 4, 5]);
     expect(cells).toHaveLength(15);
@@ -140,13 +160,9 @@ describe('gallery scene', () => {
       expect(instance.root.parent).toBe(renderer.scene);
       expect(instance.root.position.y).toBe(0);
     }
-    expect([...ui.querySelectorAll('[data-gallery] > div')].map((tag) => tag.textContent)).toEqual([
-      'peashooter · L1',
-      'peashooter · L2',
-      'peashooter · L3',
-      'peashooter · L4',
-      'peashooter · L5',
-    ]);
+    // The level under each, and the model's name once for the row.
+    expect([...ui.querySelectorAll('[data-label="level"]')].map((tag) => tag.textContent)).toEqual(['L1', 'L2', 'L3', 'L4', 'L5']);
+    expect([...ui.querySelectorAll('[data-label="name"]')].map((tag) => tag.textContent)).toEqual(['peashooter']);
     expect(renderer.scene.getObjectByName('pads')).toBeInstanceOf(Mesh);
     expect(renderer.scene.getObjectByName('lawn')).toBeUndefined();
     expect(gallery.stats.map((entry) => entry.level)).toEqual([1, 2, 3, 4, 5]);
@@ -219,7 +235,40 @@ describe('gallery scene', () => {
       expect(instance.root.position.x % 1).toBeCloseTo(0.5, 9);
       expect(instance.root.position.z % 1).toBeCloseTo(0.5, 9);
     }
-    expect(ui.querySelectorAll('[data-gallery] > div')).toHaveLength(gallery.instances.length);
+    // Tiles are narrow: each model gets only its level, and the name stands once beside the row.
+    const levels = [...ui.querySelectorAll('[data-label="level"]')] as HTMLElement[];
+    expect(levels).toHaveLength(gallery.instances.length);
+    for (const tag of levels) expect(tag.textContent?.length).toBeLessThanOrEqual(2);
+    expect(ui.querySelectorAll('[data-label="name"]')).toHaveLength(1);
+    // Under neighbouring tiles they sit a tile's width apart on screen.
+    const left = (tag: HTMLElement): number => Number(/translate\((-?\d+)px/.exec(tag.style.transform)?.[1]);
+    for (let i = 1; i < levels.length; i++) expect(left(levels[i] as HTMLElement) - left(levels[i - 1] as HTMLElement)).toBeGreaterThan(40);
+  });
+
+  it('holds the last pose of a one-shot when frozen at its end', () => {
+    const { gallery } = open('scene=gallery&model=peashooter&level=1&clip=hit&t=0.2');
+    frames(20);
+    expect((gallery.instances[0] as ModelInstance).clip).toBe('hit');
+    gallery.pose('shoot', 0.4);
+    frames(20);
+    expect((gallery.instances[0] as ModelInstance).clip).toBe('shoot');
+  });
+
+  it('repeats a watched one-shot on each model\'s own clip, and leaves alone a model without it', () => {
+    const slow = { duration: 1.5, loop: false, parts: ['body'], sample() {} };
+    const idle = { duration: 1, loop: true, parts: ['body'], sample() {} };
+    const body = [{ name: 'body', pivot: [0, 0, 0] as [number, number, number], boxes: [{ at: [-1, 0, -1] as [number, number, number], size: [2, 2, 2] as [number, number, number], color: 'leaf' }] }];
+    registerModel({ key: 'test-slow', trim: [], parts: body, clips: { idle, shoot: slow } });
+    registerModel({ key: 'test-still', trim: [], parts: body, clips: { idle } });
+    const { gallery } = open('scene=gallery&level=1&clip=shoot');
+    const byKey = (key: string): ModelInstance => gallery.instances.find((instance) => instance.def.key === key) as ModelInstance;
+    frames(40); // 0.67 s
+    expect(byKey('peashooter').clip).toBe('idle'); // its 0.4 s shot is over
+    expect(byKey('test-slow').clip).toBe('shoot'); // this one's lasts 1.5 s
+    expect(byKey('test-still').clip).toBe('idle');
+    frames(40); // 1.33 s: the Peashooter has fired again, the slow one is still on its first
+    expect(byKey('peashooter').clip).toBe('shoot');
+    expect(byKey('test-slow').clip).toBe('shoot');
   });
 
   it('fills the lawn with a crowd, to see what a full battle costs', () => {
@@ -239,20 +288,35 @@ describe('gallery scene', () => {
     // No two stand on exactly the same spot, and every level is among them.
     expect(spots.size).toBe(150);
     expect(new Set(gallery.instances.map((instance) => instance.level)).size).toBe(5);
-    expect(gallery.stats.reduce((sum, entry) => sum + entry.meshes, 0)).toBeGreaterThan(150 * 5);
+    expect(gallery.stats.reduce((sum, entry) => sum + entry.meshes, 0)).toBeGreaterThan(150 * 3);
   });
 
-  it('frames a portrait tightly, with no pads and no labels', () => {
+  it('frames a portrait on the unit envelope, with no pads, labels or clouds', () => {
     const wide = open('scene=gallery&model=peashooter&level=1&pitch=20&yaw=32').renderer.camera.position.clone();
     teardown?.();
     const { renderer, ui, gallery } = open('scene=gallery&model=peashooter&level=1&pitch=20&yaw=32&portrait=1');
     expect(renderer.scene.getObjectByName('pads')).toBeUndefined();
     expect(ui.querySelectorAll('[data-gallery] > div')).toHaveLength(0);
+    const clouds: boolean[] = [];
+    renderer.scene.traverse((object) => {
+      if (object.name === 'cloud') clouds.push(object.visible);
+    });
+    expect(clouds.length).toBeGreaterThan(0);
+    expect(clouds.every((visible) => !visible)).toBe(true);
+    expect(renderer.scene.getObjectByName('sky-dome')?.visible).toBe(true);
     const model = gallery.instances[0] as ModelInstance;
-    expect(renderer.camera.position.distanceTo(model.root.position)).toBeLessThan(wide.distanceTo(model.root.position));
+    const near = renderer.camera.position.distanceTo(model.root.position);
+    expect(near).toBeLessThan(wide.distanceTo(model.root.position));
     // Swung round to the front (+X) and looking down only a little.
     expect(renderer.camera.position.x).toBeGreaterThan(model.root.position.x + 1);
     expect(renderer.camera.position.y).toBeLessThan(renderer.camera.position.z);
+
+    // The frame is the envelope at the level's size, whatever the model has grown: level 5
+    // is seen from 1.34 times as far, so its body is as big in its card and its crown is extra.
+    teardown?.();
+    const five = open('scene=gallery&model=peashooter&level=5&pitch=20&yaw=32&portrait=1');
+    const far = five.renderer.camera.position.distanceTo((five.gallery.instances[0] as ModelInstance).root.position);
+    expect(far / near).toBeCloseTo(1.34, 1);
   });
 
   it('flashes the models white when asked', () => {

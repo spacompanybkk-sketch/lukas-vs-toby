@@ -25,17 +25,19 @@ export interface LevelMaterialDef {
   tones: readonly [PaletteName, PaletteName];
   metalness: number;
   roughness: number;
-  /** Emissive intensity. 1.5 or more blooms. */
+  /** Emissive intensity, in the main tone. 1.5 or more blooms. */
   emissive: number;
-  /** The colour it glows in, where that is not the main tone. */
-  glow?: PaletteName;
+  /**
+   * Whether the glow is multiplied by each surface's own baked colour, so that faces and
+   * creases still read through it (art bible section 3). Without it the glow is even.
+   */
+  shadedGlow: boolean;
 }
 
 export const LEVEL_MATERIALS: Record<Exclude<LevelMaterial, 'none'>, LevelMaterialDef> = {
-  iron: { tones: ['levelIron', 'levelIronDark'], metalness: 0.6, roughness: 0.4, emissive: 0 },
-  // Glows: bright enough to cross the bloom threshold. It glows in its deeper tone: the
-  // main one is so pale that at this strength it would come out white rather than cyan.
-  crystal: { tones: ['levelCrystal', 'levelCrystalDeep'], metalness: 0, roughness: 0.25, emissive: 2, glow: 'levelCrystalDeep' },
-  // A warm sheen, not a glow.
-  gold: { tones: ['levelGold', 'levelGoldDark'], metalness: 0.8, roughness: 0.35, emissive: 0.15 },
+  iron: { tones: ['levelIron', 'levelIronDark'], metalness: 0.6, roughness: 0.4, emissive: 0, shadedGlow: false },
+  // Glows: bright enough to cross the bloom threshold, and keeps its shading while it does.
+  crystal: { tones: ['levelCrystal', 'levelCrystalDeep'], metalness: 0, roughness: 0.25, emissive: 2, shadedGlow: true },
+  // A warm, even sheen, not a glow.
+  gold: { tones: ['levelGold', 'levelGoldDark'], metalness: 0.8, roughness: 0.35, emissive: 0.15, shadedGlow: false },
 };

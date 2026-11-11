@@ -1,6 +1,6 @@
 import { Color, Matrix4, Vector3 } from 'three';
 import { BoxBatch } from '../world/boxes';
-import type { MaterialKey } from './materials';
+import { hasShadedGlow, type MaterialKey } from './materials';
 import type { PartDef } from './types';
 
 // From boxes to a shaded surface. Faces are cut into voxel-sized cells so that the creases
@@ -13,6 +13,8 @@ type Vec3 = [number, number, number];
 
 /** A box as it is at one level: gated, recoloured and sorted into a material. In voxels. */
 export interface Solid {
+  /** Its place in the part's list of boxes, for naming it in an error. */
+  box: number;
   min: Vec3;
   max: Vec3;
   hex: string;
@@ -23,6 +25,8 @@ export interface Solid {
 export interface Shape {
   def: PartDef;
   solids: Solid[];
+  /** The other parts whose boxes darken this one's creases (`PartDef.shadedBy`). */
+  shadedBy: Shape[];
   /** Rest pose: part space (authored voxels minus the pivot) to model space, and back. */
   toModel: Matrix4;
   fromModel: Matrix4;
@@ -31,13 +35,20 @@ export interface Shape {
 // ---- Shading baked into the vertex colours ------------------------------------------------
 
 /**
- * HSL lightness added to faces that look up, sideways and down. Plastic needs only a hint;
- * metal is painted in three clear tones, the way a toy's gold is, so it reads as metal even
- * where there is nothing bright for it to reflect.
+ * How faces that look up, sideways and down are toned, as [top, side, underside].
+ *
+ * Plastic and metal are lit by the scene, so their tones are a nudge to the paint: HSL
+ * lightness added. Plastic needs only a hint; metal is painted in three clear tones, the
+ * way a toy's gold is, so it reads as metal even where there is nothing bright for it to
+ * reflect.
+ *
+ * A glowing surface makes its own light, which is multiplied by its paint (see
+ * materials.ts), so its tones are that multiplier: they are all the shading it has.
  */
 const FACE_TONES = {
   plastic: [0.025, 0, -0.07],
   metal: [0.05, -0.05, -0.16],
+  glow: [1, 0.66, 0.42],
 } as const;
 /** Brightness of a vertex with 0 to 3 of its neighbouring cells filled: the crease shading. */
 const CREASE = [1, 0.86, 0.74, 0.62] as const;
@@ -49,13 +60,14 @@ const shadeCache = new Map<string, Color>();
 /** The vertex colour of `solid` on a face along `axis` looking `sign`, with `crease` neighbours filled. */
 function shaded(solid: Solid, axis: number, sign: number, crease: number): Color {
   const facing = axis === 1 ? sign : 0;
-  const metal = solid.material === 'iron' || solid.material === 'gold';
-  const key = `${solid.hex}${metal ? 'm' : 'p'}${facing}${crease}`;
+  const kind = hasShadedGlow(solid.material) ? 'glow' : solid.material === 'plain' ? 'plastic' : 'metal';
+  const key = `${solid.hex}${kind}${facing}${crease}`;
   let color = shadeCache.get(key);
   if (!color) {
-    const tones = metal ? FACE_TONES.metal : FACE_TONES.plastic;
+    const tone = FACE_TONES[kind][1 - facing] as number;
     color = new Color(solid.hex);
-    color.offsetHSL(0, 0, tones[1 - facing] as number);
+    if (kind === 'glow') color.multiplyScalar(tone);
+    else color.offsetHSL(0, 0, tone);
     color.multiplyScalar(CREASE[crease] as number);
     shadeCache.set(key, color);
   }
@@ -106,12 +118,14 @@ function cuts(solid: Solid, axis: number, solids: readonly Solid[]): number[] {
 const probe = new Vector3();
 const corner: Vec3 = [0, 0, 0];
 
-/** Whether a point in `shape`'s authored space is inside any box of the model at rest. */
-function filled(shapes: readonly Shape[], shape: Shape, x: number, y: number, z: number): boolean {
+/**
+ * Whether a point in `shape`'s authored space is inside a box that shades it: one of its
+ * own, or one of a part it rests against, where that part stands in the rest pose.
+ */
+function filled(shape: Shape, x: number, y: number, z: number): boolean {
   for (const solid of shape.solids) if (contains(solid, x, y, z)) return true;
   const [px, py, pz] = shape.def.pivot;
-  for (const other of shapes) {
-    if (other === shape || other.solids.length === 0) continue;
+  for (const other of shape.shadedBy) {
     probe.set(x - px, y - py, z - pz).applyMatrix4(shape.toModel).applyMatrix4(other.fromModel);
     const [ox, oy, oz] = other.def.pivot;
     for (const solid of other.solids) if (contains(solid, probe.x + ox, probe.y + oy, probe.z + oz)) return true;
@@ -121,10 +135,9 @@ function filled(shapes: readonly Shape[], shape: Shape, x: number, y: number, z:
 
 /**
  * The surface of one part, as one batch of quads per material. Vertices are relative to the
- * part's pivot and multiplied by `scale` (the size of a voxel). `shapes` is the whole model:
- * its other parts darken the creases where they rest against this one.
+ * part's pivot and multiplied by `scale` (the size of a voxel).
  */
-export function meshPart(shapes: readonly Shape[], shape: Shape, scale: number): Map<MaterialKey, BoxBatch> {
+export function meshPart(shape: Shape, scale: number): Map<MaterialKey, BoxBatch> {
   const batches = new Map<MaterialKey, BoxBatch>();
   const { solids } = shape;
   const [px, py, pz] = shape.def.pivot;
@@ -138,7 +151,7 @@ export function meshPart(shapes: readonly Shape[], shape: Shape, scale: number):
     corner[a] = c;
     corner[u] = cu;
     corner[v] = cv;
-    return filled(shapes, shape, corner[0], corner[1], corner[2]);
+    return filled(shape, corner[0], corner[1], corner[2]);
   };
 
   solids.forEach((solid, index) => {
@@ -211,12 +224,44 @@ export function meshPart(shapes: readonly Shape[], shape: Shape, scale: number):
 }
 
 const relative = new Matrix4();
+const spot = new Vector3();
+
+/**
+ * Whether an axis-aligned rectangle and a turned one overlap by more than a hair: no axis
+ * of either separates them. `turned` lists the second rectangle's corners in order.
+ */
+function rectanglesOverlap(minU: number, maxU: number, minV: number, maxV: number, turned: readonly [number, number][]): boolean {
+  const straight: [number, number][] = [[minU, minV], [maxU, minV], [maxU, maxV], [minU, maxV]];
+  const [p0, p1, , p3] = turned as [[number, number], [number, number], [number, number], [number, number]];
+  const axes: [number, number][] = [[1, 0], [0, 1], [p1[0] - p0[0], p1[1] - p0[1]], [p3[0] - p0[0], p3[1] - p0[1]]];
+  for (const [ax, ay] of axes) {
+    const length = Math.hypot(ax, ay);
+    if (length < EDGE) continue;
+    const along = (points: readonly [number, number][]): [number, number] => {
+      let low = Infinity;
+      let high = -Infinity;
+      for (const [x, y] of points) {
+        const d = (x * ax + y * ay) / length;
+        low = Math.min(low, d);
+        high = Math.max(high, d);
+      }
+      return [low, high];
+    };
+    const [a0, a1] = along(straight);
+    const [b0, b1] = along(turned);
+    if (Math.min(a1, b1) - Math.max(a0, b0) <= EDGE) return false;
+  }
+  return true;
+}
 
 /**
  * Two parts are two meshes, and where a face of one lies exactly on a face of the other,
  * looking the same way, the two flicker. Within one part the mesher sorts that out; between
- * parts it cannot, because parts move. Returns the first such pair of boxes, or null. Only
- * parts that are not turned relative to each other can line up like that.
+ * parts it cannot, because parts move. Returns the first such pair of boxes, or null.
+ *
+ * Faces can only line up like that along an axis the two parts share at rest: all three if
+ * neither is turned relative to the other, one if a part is turned about that axis alone
+ * (two leaves at the same height, one of them swung round the stem).
  */
 export function findSharedSurface(shapes: readonly Shape[]): { a: Shape; one: Solid; b: Shape; other: Solid } | null {
   for (let i = 0; i < shapes.length; i++) {
@@ -224,27 +269,47 @@ export function findSharedSurface(shapes: readonly Shape[]): { a: Shape; one: So
       const a = shapes[i] as Shape;
       const b = shapes[j] as Shape;
       if (a.solids.length === 0 || b.solids.length === 0) continue;
-      // Where b's part space lands in a's part space, at rest.
+      // Carries b's part space into a's part space, at rest.
       const e = relative.multiplyMatrices(a.fromModel, b.toModel).elements;
-      const turned =
-        Math.abs((e[0] as number) - 1) > 1e-6 || Math.abs((e[5] as number) - 1) > 1e-6 || Math.abs((e[10] as number) - 1) > 1e-6;
-      if (turned) continue;
-      // Shift from b's authored voxels to a's: zero unless a part between them is turned.
-      const shift = [0, 1, 2].map((k) => (e[12 + k] as number) + (a.def.pivot[k] as number) - (b.def.pivot[k] as number));
-      for (const one of a.solids) {
+      /** A point of b, given in b's authored voxels, in a's authored voxels. */
+      const inA = (x: number, y: number, z: number): Vector3 =>
+        spot
+          .set(x - b.def.pivot[0], y - b.def.pivot[1], z - b.def.pivot[2])
+          .applyMatrix4(relative)
+          .set(spot.x + a.def.pivot[0], spot.y + a.def.pivot[1], spot.z + a.def.pivot[2]);
+
+      for (let axis = 0; axis < 3; axis++) {
+        // The parts share this axis only if b's turn leaves it where it was.
+        if (Math.abs((e[axis * 5] as number) - 1) > 1e-6) continue;
+        const u = (axis + 1) % 3;
+        const v = (axis + 2) % 3;
         for (const other of b.solids) {
-          const lo = (k: number): number => (other.min[k] as number) + (shift[k] as number);
-          const hi = (k: number): number => (other.max[k] as number) + (shift[k] as number);
-          for (let axis = 0; axis < 3; axis++) {
-            const u = (axis + 1) % 3;
-            const v = (axis + 2) % 3;
-            const overlaps =
-              Math.min(one.max[u] as number, hi(u)) - Math.max(one.min[u] as number, lo(u)) > EDGE &&
-              Math.min(one.max[v] as number, hi(v)) - Math.max(one.min[v] as number, lo(v)) > EDGE;
-            if (!overlaps) continue;
-            const sameFace =
-              Math.abs((one.max[axis] as number) - hi(axis)) <= EDGE || Math.abs((one.min[axis] as number) - lo(axis)) <= EDGE;
-            if (sameFace) return { a, one, b, other };
+          const at = (cu: number, cv: number, c: number): Vector3 => {
+            const point: [number, number, number] = [0, 0, 0];
+            point[axis] = c;
+            point[u] = cu;
+            point[v] = cv;
+            return inA(point[0], point[1], point[2]);
+          };
+          const low = at(other.min[u] as number, other.min[v] as number, other.min[axis] as number).getComponent(axis);
+          const high = at(other.min[u] as number, other.min[v] as number, other.max[axis] as number).getComponent(axis);
+          const corners = (
+            [
+              [other.min[u], other.min[v]],
+              [other.max[u], other.min[v]],
+              [other.max[u], other.max[v]],
+              [other.min[u], other.max[v]],
+            ] as [number, number][]
+          ).map(([cu, cv]): [number, number] => {
+            const p = at(cu, cv, other.min[axis] as number);
+            return [p.getComponent(u), p.getComponent(v)];
+          });
+          for (const one of a.solids) {
+            const sameFace = Math.abs((one.max[axis] as number) - high) <= EDGE || Math.abs((one.min[axis] as number) - low) <= EDGE;
+            if (!sameFace) continue;
+            if (rectanglesOverlap(one.min[u] as number, one.max[u] as number, one.min[v] as number, one.max[v] as number, corners)) {
+              return { a, one, b, other };
+            }
           }
         }
       }

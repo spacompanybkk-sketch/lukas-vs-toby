@@ -1,6 +1,6 @@
 // Every colour the game draws with, by name. The first groups are the tables of art bible
-// section 3 (and section 7 for the outline), word for word; the last group is the extra
-// world and light colours the lawn, sky and renderer need, each a relative of one above.
+// section 3 (and section 7 for the outline), word for word; the groups after the lights are
+// the extra colours the models, lawn, sky and renderer need, each a relative of one above.
 
 const colours = {
   // Plants
@@ -45,14 +45,6 @@ const colours = {
   levelIron: '#AEB7C2',
   levelCrystal: '#7DE8FF',
   levelGold: '#FFC83D',
-  // Their shadow tones, for trim that wants two.
-  levelIronDark: '#6E7A8C',
-  levelCrystalDeep: '#3FC6F2',
-  levelGoldDark: '#F0A21E',
-
-  // Faces (art bible section 2): black eyes, each with one white glint.
-  eye: '#1A1A22',
-  eyeGlint: '#FFFFFF',
 
   // Effects
   hitSpark: '#FFF4B0',
@@ -72,6 +64,17 @@ const colours = {
   fillSky: '#BFE8FF',
   fillGround: '#6BBE3F',
   bounceLight: '#DCEBFF',
+
+  // Extra model colours. The level materials' shadow tones, for trim that wants two and
+  // for added parts; and the black of an eye and the white of its glint, which the art
+  // bible names without a number.
+  levelIronDark: '#6E7A8C',
+  levelCrystalDeep: '#3FC6F2',
+  levelGoldDark: '#F0A21E',
+  // A paler pea, for a lip that has to stand out from a pea-green head.
+  peaLight: '#B5EF8A',
+  eye: '#1A1A22',
+  eyeGlint: '#FFFFFF',
 
   // Extra world colours: ground that is neither tile nor prop, and what stands on it.
   rimGrass: '#5DB53C',

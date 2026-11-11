@@ -1,5 +1,6 @@
-import { Color, Group, Mesh, type MeshStandardMaterial, type Object3D, type Vector3 } from 'three';
+import { Color, Euler, Group, Mesh, Quaternion, type MeshStandardMaterial, type Object3D, type Vector3 } from 'three';
 import { VOXEL, buildParts } from './build';
+import { ownCopy } from './materials';
 import type { Clip, ClipName, ModelDef, PartPose, Pose } from './types';
 
 /** Seconds over which one clip gives way to the next. */
@@ -41,9 +42,8 @@ interface Joint {
   restX: number;
   restY: number;
   restZ: number;
-  restRx: number;
-  restRy: number;
-  restRz: number;
+  /** How the part is turned at rest. A clip's turn is applied in the frame this leaves. */
+  rest: Quaternion;
   /** What the playing clip asks for. */
   target: PartPose;
   /** The pose when the last cross-fade began. */
@@ -60,6 +60,9 @@ interface FlashCopy {
   /** The shared material's own glow (emissive × intensity), which the flash builds on. */
   glow: Color;
 }
+
+const turn = new Euler();
+const offset = new Quaternion();
 
 let made = 0;
 
@@ -83,17 +86,26 @@ export class ModelInstance {
   private readonly sharedMaterials: MeshStandardMaterial[] = [];
   private flashCopies: FlashCopy[] | null = null;
   private flash = 0;
+  /** The object the muzzle rides on, and the muzzle in that object's own space (tiles). */
+  private readonly muzzleOn: Object3D;
+  private readonly muzzleX: number;
+  private readonly muzzleY: number;
+  private readonly muzzleZ: number;
 
   /** What is playing, and how far in. */
   private current: ClipName | null = null;
   private time = 0;
   private speed = 1;
+  /** True while a one-shot is under way: from `play` until it ends or another replaces it. */
+  private busy = false;
   private onDone: (() => void) | null = null;
   /** The looping clip a one-shot returns to. It keeps time while the one-shot plays. */
   private loop: ClipName | null = null;
   private loopTime = 0;
   private loopSpeed = 1;
   private fadeLeft = 0;
+  /** Set when `die` starts. Nothing plays after that. */
+  private dead = false;
 
   private seed: number;
   private blinkIn: number;
@@ -115,9 +127,7 @@ export class ModelInstance {
         restX: object.position.x,
         restY: object.position.y,
         restZ: object.position.z,
-        restRx: object.rotation.x,
-        restRy: object.rotation.y,
-        restRz: object.rotation.z,
+        rest: object.quaternion.clone(),
         target: atRest(),
         from: atRest(),
         shown: atRest(),
@@ -131,6 +141,17 @@ export class ModelInstance {
       this.meshes.push(object);
       this.sharedMaterials.push(object.material as MeshStandardMaterial);
     });
+
+    // A muzzle on a part is kept relative to that part's pivot; a bare point, or none (the
+    // model's feet), is kept relative to the model.
+    const muzzle = def.muzzle;
+    const rides = muzzle && !Array.isArray(muzzle) ? def.parts.find((part) => part.name === muzzle.part) : undefined;
+    const at = muzzle ? (Array.isArray(muzzle) ? muzzle : muzzle.at) : [0, 0, 0];
+    const pivot = rides ? rides.pivot : [0, 0, 0];
+    this.muzzleOn = rides ? (this.model.getObjectByName(rides.name) as Object3D) : this.model;
+    this.muzzleX = ((at[0] as number) - (pivot[0] as number)) * VOXEL;
+    this.muzzleY = ((at[1] as number) - (pivot[1] as number)) * VOXEL;
+    this.muzzleZ = ((at[2] as number) - (pivot[2] as number)) * VOXEL;
 
     // Each unit gets its own timing, so a row of them does not move as one.
     this.seed = Math.imul(++made, 0x9e3779b1) >>> 0;
@@ -148,49 +169,63 @@ export class ModelInstance {
   }
 
   /**
-   * Plays a clip, cross-fading from whatever is on screen. A looping clip plays until
-   * replaced, and asking for the one already playing does not restart it. Any other clip
-   * plays once, calls `onDone` at its end and gives way to the last looping clip; `die`
-   * alone stays on its last frame. `onDone` is not called for a clip that is cut short by
-   * another. A model without the clip carries on as it was and `onDone` is called at once.
+   * Plays a clip, cross-fading from whatever is on screen.
+   *
+   * A looping clip is what the unit does between one-shots. It plays until another looping
+   * clip replaces it, and asking for the one already playing does not restart it. Asked for
+   * while a one-shot is under way, it does not cut the one-shot short: it only changes what
+   * the one-shot returns to.
+   *
+   * Any other clip is a one-shot: it plays once and gives way to the looping clip. `onDone`
+   * is called exactly once, when the one-shot ends or when another one-shot replaces it,
+   * whichever comes first.
+   *
+   * `die` is the last clip a unit plays. It stays on its final frame, and once it has
+   * started every later `play` is ignored, callback and all.
+   *
+   * A model without the clip carries on as it was and `onDone` is called at once.
    */
   play(clip: ClipName, opts?: { speed?: number; onDone?: () => void }): void {
+    if (this.dead) return;
     const next = this.def.clips[clip];
     if (!next) {
       opts?.onDone?.();
       return;
     }
     const speed = opts?.speed !== undefined && opts.speed > 0 ? opts.speed : 1;
+
     if (next.loop) {
-      if (this.loop === clip) {
-        this.loopSpeed = speed;
-        if (this.current === clip) {
-          this.speed = speed;
-          return;
-        }
-      } else {
+      if (this.loop !== clip) {
         this.loop = clip;
         this.loopTime = 0;
-        this.loopSpeed = speed;
       }
-      this.startFade();
-      this.current = clip;
-      this.time = this.loopTime;
+      this.loopSpeed = speed;
+      if (this.busy) return;
+      if (this.current !== clip) {
+        this.startFade();
+        this.current = clip;
+        this.time = this.loopTime;
+      }
       this.speed = speed;
-      this.onDone = null;
       return;
     }
+
+    const interrupted = this.onDone;
     this.startFade();
     this.current = clip;
     this.time = 0;
     this.speed = speed;
+    this.busy = true;
     this.onDone = opts?.onDone ?? null;
+    if (clip === 'die') this.dead = true;
+    // Last, so that a callback which plays something finds the instance settled.
+    interrupted?.();
   }
 
   /**
    * Jumps the playing clip to `seconds`, with no cross-fade and the eyes open, and poses the
    * model there. For stills: the gallery and card portraits. Follow it with `update(0)` to
-   * hold the pose.
+   * hold the pose; a one-shot sought to its very end holds its last pose until time moves.
    */
   seek(seconds: number): void {
     const clip = this.current ? this.def.clips[this.current] : undefined;
@@ -214,7 +249,7 @@ export class ModelInstance {
     const clip = this.current ? this.def.clips[this.current] : undefined;
     if (clip?.loop) {
       this.time = this.loopTime;
-    } else if (clip) {
+    } else if (clip && this.busy && dt > 0) {
       this.time += dt * this.speed;
       if (this.time >= clip.duration) this.finish(clip);
     }
@@ -250,7 +285,7 @@ export class ModelInstance {
       const copies: FlashCopy[] = [];
       for (const shared of new Set(sharedMaterials)) {
         const glow = new Color().copy(shared.emissive).multiplyScalar(shared.emissiveIntensity);
-        const own = shared.clone();
+        const own = ownCopy(shared);
         own.name = `${shared.name} (flash)`;
         own.emissiveIntensity = 1;
         copies.push({ shared, own, glow });
@@ -279,7 +314,9 @@ export class ModelInstance {
   /**
    * The same unit at another level: a new instance that takes this one's place under the
    * same parent, with the same transform, clip, clip time and flash. This instance is
-   * disposed. Asking for the level it already has returns the instance itself.
+   * disposed, and anything else that was hung on its `root` goes with it: hang health bars
+   * and the like on a wrapper of your own. Asking for the level it already has returns the
+   * instance itself.
    */
   setLevel(level: number): ModelInstance {
     if (level === this.level) return this;
@@ -292,11 +329,13 @@ export class ModelInstance {
     next.current = this.current;
     next.time = this.time;
     next.speed = this.speed;
+    next.busy = this.busy;
     next.onDone = this.onDone;
     next.loop = this.loop;
     next.loopTime = this.loopTime;
     next.loopSpeed = this.loopSpeed;
     next.fadeLeft = this.fadeLeft;
+    next.dead = this.dead;
     next.seed = this.seed;
     next.blinkIn = this.blinkIn;
     next.blinkLeft = this.blinkLeft;
@@ -313,13 +352,14 @@ export class ModelInstance {
     return next;
   }
 
-  /** World position of the muzzle at rest (it does not follow the animation), or of the model's feet if it has none. */
+  /**
+   * World position of the muzzle. A muzzle given on a part follows that part as it is posed
+   * right now: the turn of the head, the lean of the shot. A muzzle given as a bare point
+   * stays put on the model; a model with none answers with its feet.
+   */
   muzzleWorld(out: Vector3): Vector3 {
-    const muzzle = this.def.muzzle;
-    this.model.updateWorldMatrix(true, false);
-    if (muzzle) out.set(muzzle[0] * VOXEL, muzzle[1] * VOXEL, muzzle[2] * VOXEL);
-    else out.set(0, 0, 0);
-    return out.applyMatrix4(this.model.matrixWorld);
+    this.muzzleOn.updateWorldMatrix(true, false);
+    return out.set(this.muzzleX, this.muzzleY, this.muzzleZ).applyMatrix4(this.muzzleOn.matrixWorld);
   }
 
   /**
@@ -340,7 +380,8 @@ export class ModelInstance {
   private finish(clip: Clip): void {
     const done = this.onDone;
     this.onDone = null;
-    if (this.current === 'die' || !this.loop) {
+    this.busy = false;
+    if (this.dead || !this.loop) {
       // Nothing to go back to: stay on the last frame.
       this.time = clip.duration;
     } else {
@@ -391,7 +432,10 @@ export class ModelInstance {
         joint.restY + shown.py * VOXEL,
         joint.restZ + shown.pz * VOXEL,
       );
-      object.rotation.set(joint.restRx + shown.rx, joint.restRy + shown.ry, joint.restRz + shown.rz);
+      // The clip's turn happens in the part's own rest frame: a torso that rests leaning
+      // forward rolls about its own leaning axis, not about its parent's.
+      if (shown.rx === 0 && shown.ry === 0 && shown.rz === 0) object.quaternion.copy(joint.rest);
+      else object.quaternion.multiplyQuaternions(joint.rest, offset.setFromEuler(turn.set(shown.rx, shown.ry, shown.rz)));
       object.scale.set(shown.s * shown.sx, shown.s * shown.sy * (joint.blinks ? lid : 1), shown.s * shown.sz);
     }
   }

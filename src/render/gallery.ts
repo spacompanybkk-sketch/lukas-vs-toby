@@ -1,4 +1,4 @@
-import { Box3, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import { installDebug, markReady } from '../app/debug';
 import { GameLoop } from '../game/GameLoop';
 import type { FrameBox } from './CameraRig';
@@ -7,8 +7,8 @@ import { MATTE_PLASTIC } from './look';
 import { getModelDef, modelKeys } from './models/registry';
 import { PALETTE } from './palette';
 import { Renderer, type Quality } from './Renderer';
-import { disposeModels, modelStats } from './voxel/build';
-import { MAX_LEVEL } from './voxel/palette';
+import { VOXEL, disposeModels, modelStats } from './voxel/build';
+import { LEVEL_SCALE, MAX_LEVEL } from './voxel/palette';
 import { ModelInstance } from './voxel/rig';
 import type { ClipName } from './voxel/types';
 import { BoxBatch } from './world/boxes';
@@ -19,6 +19,7 @@ import { Sky } from './world/Sky';
 // for judging characters by eye and for the screenshot tool.
 //
 //   ?scene=gallery                 every model, five levels to a row, at about lawn size
+//   &page=<n>                      the overview holds ten models; this shows the next ten
 //   &model=<key>                   one model's row, larger
 //   &level=<1-5>                   only that level
 //   &clip=<name>&t=<seconds>       every model frozen at that time of that clip
@@ -29,7 +30,7 @@ import { Sky } from './world/Sky';
 //   &crowd=<n>                     n units on the lawn, to see what a full battle costs
 //   &flash=<0-1>                   white flash amount
 //   &labels=0                      no labels
-//   &portrait=1                    no pads or labels, framed tightly: a card portrait
+//   &portrait=1                    no pads, labels or clouds, framed on the unit's envelope: a card portrait
 //   &quality=low|medium|high
 
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
@@ -46,6 +47,13 @@ const CENTRE_Z = 2.5;
 /** The overview never frames less than this, so a lone model still shows at about lawn size. */
 const OVERVIEW_WIDTH = 2 * MAX_LEVEL * CELL + GROUP_GAP;
 const OVERVIEW_DEPTH = 3 * ROW;
+/**
+ * Models in one overview. Five rows of two are as many as stand inside the box the sun's
+ * shadow map covers; more go on further pages.
+ */
+export const PAGE_SIZE = 10;
+/** The size a level-1 unit fits (art bible section 1), in voxels, unless a model names its own. */
+const UNIT_ENVELOPE: [number, number, number] = [12, 16, 10];
 /** Room above the ground for the tallest model, jumping. */
 const HEADROOM = 1.7;
 /** Seconds between repeats of a one-shot clip that is being watched. */
@@ -60,7 +68,17 @@ export interface GalleryCell {
   z: number;
 }
 
-/** Where each model stands: one row per model (two rows side by side), levels left to right. */
+/** The models on page `page` (from 1) of the overview, and how many pages there are. */
+export function galleryPage(keys: readonly string[], page: number): { keys: string[]; page: number; pages: number } {
+  const pages = Math.max(1, Math.ceil(keys.length / PAGE_SIZE));
+  const shown = Math.min(Math.max(1, Math.floor(page) || 1), pages);
+  return { keys: keys.slice((shown - 1) * PAGE_SIZE, shown * PAGE_SIZE), page: shown, pages };
+}
+
+/**
+ * Where each model stands: one row per model (two rows side by side), levels left to right.
+ * Give it one page of models at most, or the rows run out of the sun's shadow.
+ */
 export function galleryLayout(keys: readonly string[], levels: readonly number[]): { cells: GalleryCell[]; box: FrameBox } {
   const groups = Math.min(GROUPS_PER_ROW, Math.max(1, keys.length));
   const rows = Math.ceil(keys.length / groups);
@@ -110,6 +128,23 @@ function boxAround(cells: readonly GalleryCell[]): FrameBox {
   return { x: [Math.min(...xs) - 0.7, Math.max(...xs) + 0.7], y: [0, HEADROOM], z: [Math.min(...zs) - 0.6, Math.max(...zs) + 0.6] };
 }
 
+/**
+ * The box a card portrait frames: each unit's envelope at its level's size, not what the
+ * model happens to reach. A higher level then fills more of its card, because what it has
+ * gained stands out past the envelope.
+ */
+function envelopeAround(cells: readonly GalleryCell[]): FrameBox {
+  const box = { x: [Infinity, -Infinity], y: [0, 0], z: [Infinity, -Infinity] } as { x: [number, number]; y: [number, number]; z: [number, number] };
+  for (const cell of cells) {
+    const [wide, tall, deep] = getModelDef(cell.key).envelope ?? UNIT_ENVELOPE;
+    const size = VOXEL * (LEVEL_SCALE[cell.level] as number);
+    box.x = [Math.min(box.x[0], cell.x - (wide / 2) * size), Math.max(box.x[1], cell.x + (wide / 2) * size)];
+    box.y = [0, Math.max(box.y[1], tall * size)];
+    box.z = [Math.min(box.z[0], cell.z - (deep / 2) * size), Math.max(box.z[1], cell.z + (deep / 2) * size)];
+  }
+  return box;
+}
+
 /** A grass-topped block of soil under each model. */
 function buildPads(cells: readonly GalleryCell[]): Mesh {
   const batch = new BoxBatch();
@@ -149,10 +184,12 @@ function number(params: URLSearchParams, name: string): number | null {
 /** Mounts the gallery on `canvas`. Returns a function that stops it and frees everything it made. */
 export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () => void {
   const only = params.get('model');
-  const keys = only ? [getModelDef(only).key] : modelKeys();
+  const crowd = Math.max(0, Math.floor(number(params, 'crowd') ?? 0));
+  const paged = galleryPage(modelKeys(), number(params, 'page') ?? 1);
+  // One model, or a crowd drawn from all of them, or one page of the overview.
+  const keys = only ? [getModelDef(only).key] : crowd > 0 ? modelKeys() : paged.keys;
   const level = number(params, 'level');
   const levels = level !== null && level >= 1 && level <= MAX_LEVEL ? [Math.floor(level)] : [1, 2, 3, 4, 5];
-  const crowd = Math.max(0, Math.floor(number(params, 'crowd') ?? 0));
   const onLawn = params.get('stage') === 'lawn' || crowd > 0;
   const portrait = params.get('portrait') === '1';
   const pitch = number(params, 'pitch');
@@ -164,6 +201,8 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   const renderer = new Renderer(canvas, asked && QUALITIES.includes(asked) ? asked : 'high');
   const sky = new Sky();
   renderer.scene.add(sky.group);
+  // A card has plain sky behind the unit.
+  if (portrait) for (const child of sky.group.children) if (child.name === 'cloud') child.visible = false;
 
   // Where everything stands.
   let cells: GalleryCell[];
@@ -204,11 +243,12 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   // What they are doing.
   let clip: ClipName | null = null;
   let frozenAt: number | null = null;
-  let replayIn = 0;
+  /** For each model, seconds until its one-shot is played again. */
+  const replayIn = instances.map(() => 0);
   const pose = (name: string | null, seconds: number | null): void => {
     clip = name !== null && (CLIPS as readonly string[]).includes(name) ? (name as ClipName) : null;
     frozenAt = seconds;
-    replayIn = 0;
+    replayIn.fill(0);
     for (const instance of instances) {
       instance.play(clip ?? 'idle');
       if (frozenAt !== null) instance.seek(frozenAt);
@@ -216,30 +256,33 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   };
   pose(params.get('clip'), number(params, 't'));
 
-  if (portrait) {
-    // Hug the models themselves, as a card portrait would.
-    const bounds = new Box3();
-    for (const instance of instances) {
-      instance.root.updateMatrixWorld(true);
-      bounds.expandByObject(instance.root, true);
-    }
-    renderer.rig.frameSubject(
-      { x: [bounds.min.x, bounds.max.x], y: [bounds.min.y, bounds.max.y], z: [bounds.min.z, bounds.max.z] },
-      { ...view, side: 0.05, top: 0.05, bottom: 0.05 },
-    );
-  }
+  // A card frames the unit's envelope, with room above for what higher levels wear.
+  if (portrait) renderer.rig.frameSubject(envelopeAround(cells), { ...view, side: 0.08, top: 0.16, bottom: 0.05 });
 
-  // Labels, in the UI layer.
+  // Labels, in the UI layer: the level under each model, and each model's name once, at the
+  // left of its row. Short, so that neighbours a tile apart do not overlap.
   const ui = document.getElementById('ui');
   const labels = document.createElement('div');
   labels.dataset.gallery = 'labels';
-  const tags = params.get('labels') === '0' || portrait || crowd > 0 || !ui ? [] : cells.map((cell) => {
+  const tags: { tag: HTMLElement; x: number; z: number; shift: string }[] = [];
+  const label = (text: string, kind: string, x: number, z: number, shift: string): void => {
     const tag = document.createElement('div');
     tag.style.cssText = LABEL_STYLE;
-    tag.textContent = `${cell.key} · L${cell.level}`;
+    tag.dataset.label = kind;
+    tag.textContent = text;
     labels.appendChild(tag);
-    return tag;
-  });
+    tags.push({ tag, x, z, shift });
+  };
+  if (params.get('labels') !== '0' && !portrait && crowd === 0 && ui) {
+    const named = new Set<string>();
+    for (const cell of cells) {
+      label(`L${cell.level}`, 'level', cell.x, cell.z + 0.56, '-50%, 0');
+      if (named.has(cell.key)) continue;
+      named.add(cell.key);
+      label(cell.key, 'name', cell.x - 0.62, cell.z, '-100%, -50%');
+    }
+    if (!only && paged.pages > 1) label(`page ${paged.page} of ${paged.pages}`, 'page', CENTRE_X, CENTRE_Z + OVERVIEW_DEPTH / 2 + 1.2, '-50%, 0');
+  }
   ui?.appendChild(labels);
   const anchor = new Vector3();
   let labelledFor = '';
@@ -251,11 +294,10 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
     const state = `${width}x${height}:${camera.position.x},${camera.position.y},${camera.position.z}`;
     if (state === labelledFor) return;
     labelledFor = state;
-    tags.forEach((tag, i) => {
-      const cell = cells[i] as GalleryCell;
-      const at = worldToClient(anchor.set(cell.x, onLawn ? 0 : -0.2, cell.z + 0.56), camera, { width, height });
-      tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y) + 4}px) translate(-50%, 0)`;
-    });
+    for (const { tag, x, z, shift } of tags) {
+      const at = worldToClient(anchor.set(x, onLawn ? 0 : -0.2, z), camera, { width, height });
+      tag.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y) + 4}px) translate(${shift})`;
+    }
   };
 
   const lvt = installDebug();
@@ -278,15 +320,16 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
       const frozen = frozenAt !== null;
       if (!frozen) {
         time += gameDt;
-        // A one-shot that is being watched starts again after a pause.
-        const playing = clip ? getModelDef((cells[0] as GalleryCell).key).clips[clip] : undefined;
-        if (playing && !playing.loop) {
-          replayIn -= gameDt;
-          if (replayIn <= 0) {
-            replayIn = playing.duration + REPLAY_PAUSE;
-            for (const instance of instances) instance.play(clip as ClipName);
-          }
-        }
+        // A one-shot that is being watched starts again after a pause, each model on its
+        // own clip's time.
+        instances.forEach((instance, i) => {
+          const own = clip ? instance.def.clips[clip] : undefined;
+          if (!own || own.loop) return;
+          replayIn[i] = (replayIn[i] as number) - gameDt;
+          if ((replayIn[i] as number) > 0) return;
+          replayIn[i] = own.duration + REPLAY_PAUSE;
+          instance.play(clip as ClipName);
+        });
       }
       for (const instance of instances) instance.update(frozen ? 0 : gameDt);
       lawn?.update(time);

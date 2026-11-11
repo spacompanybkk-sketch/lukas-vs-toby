@@ -22,7 +22,7 @@ export interface Box {
   emissive?: number;
   /** The box exists from this level (default 1) … */
   minLevel?: number;
-  /** … up to and including this level (default 5). */
+  /** … up to and including this level (default 5). Both are whole levels from 1 to 5. */
   maxLevel?: number;
 }
 
@@ -38,6 +38,13 @@ export interface PartDef {
    * Children turn with it.
    */
   rot?: [number, number, number];
+  /**
+   * Other parts whose boxes also darken this part's creases, where the two rest against each
+   * other. The shading is baked at rest, so name only parts that never move away from this
+   * one (eyes on a head, armour on a chest). A limb that swings would leave its shadow
+   * behind. By default a part is shaded against itself alone.
+   */
+  shadedBy?: string[];
   /** Later boxes paint over earlier ones where their faces lie in the same plane. */
   boxes: Box[];
 }
@@ -72,12 +79,25 @@ export interface Clip {
   /** A looping clip plays until another replaces it; any other plays once. */
   loop: boolean;
   /**
+   * The names of the parts the clip moves. A model whose clip names a part it does not have
+   * is refused when it is built, so a misspelt name cannot pass as a model that stands
+   * still. The shared builders fill this in; a hand-written clip should too.
+   */
+  parts?: string[];
+  /**
    * Writes the pose at `t` seconds into `pose`, which arrives at rest. A clip touches only
    * the parts it moves and skips any the model does not have. It must not keep or create
    * objects: it runs for every unit on every frame.
    */
   sample(t: number, pose: Pose): void;
 }
+
+/**
+ * Where projectiles leave, in voxels, in the same space as the boxes. Given with a part,
+ * the point rides on that part: it follows a turned head and moves with the shot. Given as
+ * a bare point it stays where it is on the model, whatever the parts do.
+ */
+export type Muzzle = [number, number, number] | { part: string; at: [number, number, number] };
 
 export interface ModelDef {
   /** The unit's name in the registry and in `?scene=gallery&model=<key>`. */
@@ -86,13 +106,18 @@ export interface ModelDef {
   parts: PartDef[];
   /**
    * Colours that stand for "trim": at level 3 they become iron, at 4 crystal, at 5 gold.
-   * The first entry takes the material's main tone and the second its shadow tone. Use a
-   * trim colour only where the upgrade should show.
+   * One or two entries: the first takes the material's main tone, the second its shadow
+   * tone. Use a trim colour only where the upgrade should show.
    */
   trim: ColorRef[];
   /** Parts that blink. Give each its pivot at the middle of the eye. */
   eyes?: string[];
-  /** Where projectiles leave, in voxels. */
-  muzzle?: [number, number, number];
+  /** Where projectiles leave. */
+  muzzle?: Muzzle;
+  /**
+   * The size a level-1 model must fit, in voxels: wide (X), tall (Y), deep (Z). Leave it out
+   * for a unit, which gets the art bible's 12 × 16 × 10; a base or a boss names its own.
+   */
+  envelope?: [number, number, number];
   clips: Partial<Record<ClipName, Clip>>;
 }

@@ -17,13 +17,32 @@ import { LEVEL_MATERIALS, PALETTE, type LevelMaterial } from './palette';
 
 /**
  * `plain` is matte toy plastic; `iron`, `crystal` and `gold` are the level materials; a
- * `glow:` key is a box that shines in its own colour at a given emissive intensity.
+ * `glow:` key is for boxes that shine in their own colours at a given emissive intensity.
  */
-export type MaterialKey = 'plain' | Exclude<LevelMaterial, 'none'> | `glow:#${string}:${number}`;
+export type MaterialKey = 'plain' | Exclude<LevelMaterial, 'none'> | `glow:${number}`;
 
-/** The key for a box of colour `hex` (`#RRGGBB`) glowing at emissive intensity `intensity`. */
-export function glowKey(hex: string, intensity: number): MaterialKey {
-  return `glow:#${hex.slice(1).toUpperCase()}:${intensity}`;
+/** The key for boxes glowing at emissive intensity `intensity`. */
+export function glowKey(intensity: number): MaterialKey {
+  return `glow:${intensity}`;
+}
+
+/** Whether a material's glow is multiplied by the surface's own colour (see `shadeGlow`). */
+export function hasShadedGlow(key: MaterialKey): boolean {
+  return key.startsWith('glow:') || (key !== 'plain' && LEVEL_MATERIALS[key as Exclude<LevelMaterial, 'none'>].shadedGlow);
+}
+
+/**
+ * Three.js adds a material's glow as one even colour: it ignores the colours painted on
+ * the vertices, so a glowing part loses its faces and creases and becomes a flat slab.
+ * This multiplies the glow by the vertex colour instead, at the point in the shader where
+ * the glow is added up. Top faces then glow brighter than sides, creases stay dark, and a
+ * box glows in the colour it was painted.
+ */
+function shadeGlow(shader: { fragmentShader: string }): void {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <emissivemap_fragment>',
+    '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= vColor.rgb;',
+  );
 }
 
 /** How bright the reflected studio is on metal. Tuned by eye against the lawn's exposure. */
@@ -90,23 +109,37 @@ function make(key: MaterialKey): MeshStandardMaterial {
       vertexColors: true,
       metalness: def.metalness,
       roughness: def.roughness,
-      emissive: def.emissive > 0 ? PALETTE[def.glow ?? def.tones[0]] : '#000000',
+      emissive: def.emissive > 0 ? PALETTE[def.tones[0]] : '#000000',
       emissiveIntensity: def.emissive > 0 ? def.emissive : 1,
     });
+    if (def.shadedGlow) material.onBeforeCompile = shadeGlow;
     if (def.metalness > 0) {
       material.envMap = studioReflection();
       material.envMapIntensity = REFLECTION_STRENGTH;
     }
     return material;
   }
-  const [, hex, intensity] = key.split(':');
-  return new MeshStandardMaterial({
+  // A glowing box: white light, coloured and shaded by the box's own vertex colours.
+  const material = new MeshStandardMaterial({
     vertexColors: true,
     metalness: 0,
     roughness: 0.6,
-    emissive: hex,
-    emissiveIntensity: Number(intensity),
+    emissive: '#FFFFFF',
+    emissiveIntensity: Number(key.slice('glow:'.length)),
   });
+  material.onBeforeCompile = shadeGlow;
+  return material;
+}
+
+/**
+ * A copy of a shared material for one unit to change (its hit flash). `clone()` leaves the
+ * shader change behind, so it is carried over here; the copy then compiles to the same
+ * program as the original.
+ */
+export function ownCopy(shared: MeshStandardMaterial): MeshStandardMaterial {
+  const own = shared.clone();
+  own.onBeforeCompile = shared.onBeforeCompile;
+  return own;
 }
 
 /** The one material for `key`, made on first use. Shared by every model: never change or dispose it. */

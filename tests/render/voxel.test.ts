@@ -1,12 +1,13 @@
-import { Box3, Color, Group, Mesh, MeshStandardMaterial, Object3D, Scene, Vector3, type BufferGeometry } from 'three';
+import { Box3, Color, Group, Mesh, MeshStandardMaterial, Object3D, Scene, ShaderLib, Vector3, type BufferGeometry } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { getModelDef, hasModel, modelKeys, registerModel } from '../../src/render/models/registry';
 import { peashooter } from '../../src/render/models/plants/peashooter';
-import { VOXEL, buildParts, modelColors, modelStats } from '../../src/render/voxel/build';
+import { VOXEL, buildParts, disposeModels, modelColors, modelStats, prewarmModels } from '../../src/render/voxel/build';
 import { cheerJump, hitRecoil, idleBob, shootSnap, spawnRise, wilt } from '../../src/render/voxel/clips';
 import { LEVEL_SCALE, PALETTE, levelMaterial } from '../../src/render/voxel/palette';
 import { ModelInstance } from '../../src/render/voxel/rig';
-import type { Box, Clip, ClipName, ModelDef, PartPose, Pose } from '../../src/render/voxel/types';
+import type { Box, Clip, ModelDef, PartPose, Pose } from '../../src/render/voxel/types';
+import { BoxBatch } from '../../src/render/world/boxes';
 
 const LEVELS = [1, 2, 3, 4, 5];
 const hex = (name: string): number => parseInt((PALETTE[name] as string).slice(1), 16);
@@ -64,7 +65,8 @@ function biped(clips: ModelDef['clips'] = {}): ModelDef {
     trim: [],
     parts: [
       { name: 'hips', pivot: [0, 6, 0], boxes: [{ at: [-2, 5, -2], size: [4, 2, 4], color: 'clothDark' }] },
-      { name: 'torso', parent: 'hips', pivot: [0, 7, 0], rot: [0, 0, 10], boxes: [{ at: [-2, 7, -2], size: [4, 5, 4], color: 'clothPurple' }] },
+      // A little narrower than the hips: flanks in one plane would flicker where the slouch overlaps them.
+      { name: 'torso', parent: 'hips', pivot: [0, 7, 0], rot: [0, 0, 10], boxes: [{ at: [-2, 7, -1.75], size: [4, 5, 3.5], color: 'clothPurple' }] },
       { name: 'legL', parent: 'hips', pivot: [0, 5, 1], boxes: [{ at: [-1, 0, 0], size: [2, 5, 2], color: 'skin' }] },
       { name: 'legR', parent: 'hips', pivot: [0, 5, -1], boxes: [{ at: [-1, 0, -2], size: [2, 5, 2], color: 'skin' }] },
     ],
@@ -166,12 +168,76 @@ describe('buildParts', () => {
     // Crystal glows hard enough to bloom; gold only has a sheen.
     const crystal = materialsAt(4).find((m) => m.name === 'crystal');
     expect(crystal?.emissiveIntensity).toBeGreaterThanOrEqual(1.5);
-    expect(crystal?.emissive.getHex()).toBe(hex('levelCrystalDeep'));
+    expect(crystal?.emissive.getHex()).toBe(hex('levelCrystal'));
     const gold = materialsAt(5).find((m) => m.metalness === 0.8);
     expect(gold?.emissiveIntensity).toBe(0.15);
     // Level-5 eyes glow.
     const eyes = buildParts(peashooter, 5).getObjectByName((peashooter.eyes as string[])[0] as string) as Object3D;
     expect(meshes(eyes).some((mesh) => (mesh.material as MeshStandardMaterial).emissiveIntensity >= 1.5)).toBe(true);
+  });
+
+  it('makes crystal and glowing boxes glow in their own baked colours, so shading survives the glow', () => {
+    const crystal = meshes(buildParts(peashooter, 4))
+      .map((mesh) => mesh.material as MeshStandardMaterial)
+      .find((material) => material.name === 'crystal') as MeshStandardMaterial;
+    const patch = (material: MeshStandardMaterial): string => {
+      const shader = { fragmentShader: ShaderLib.physical.fragmentShader };
+      (material.onBeforeCompile as unknown as (shader: { fragmentShader: string }) => void)(shader);
+      return shader.fragmentShader;
+    };
+    // The emission is multiplied by the vertex colour, right where three.js adds it up.
+    expect(patch(crystal)).toMatch(/#include <emissivemap_fragment>\s+totalEmissiveRadiance \*= vColor\.rgb;/);
+    expect(patch(crystal)).not.toBe(ShaderLib.physical.fragmentShader);
+    // Such a material must not share a compiled program with one that does not do this.
+    const plain = meshes(buildParts(peashooter, 1)).map((mesh) => mesh.material as MeshStandardMaterial).find((m) => m.name === 'plain');
+    expect(crystal.customProgramCacheKey()).not.toBe(plain?.customProgramCacheKey());
+    expect(patch(plain as MeshStandardMaterial)).toBe(ShaderLib.physical.fragmentShader);
+    // The glowing eyes of level 5 do the same; gold's sheen is left even.
+    const eyes = buildParts(peashooter, 5).getObjectByName('eyes') as Object3D;
+    const glow = meshes(eyes).map((mesh) => mesh.material as MeshStandardMaterial).find((m) => m.emissiveIntensity >= 1.5);
+    expect(patch(glow as MeshStandardMaterial)).toContain('totalEmissiveRadiance *= vColor.rgb;');
+    const gold = meshes(buildParts(peashooter, 5)).map((mesh) => mesh.material as MeshStandardMaterial).find((m) => m.name === 'gold');
+    expect(patch(gold as MeshStandardMaterial)).toBe(ShaderLib.physical.fragmentShader);
+
+    // And the shading is there to survive: a crystal box is lighter on top than on its sides.
+    const def: ModelDef = {
+      key: 'test-crystal-tones',
+      trim: [],
+      parts: [{ name: 'gem', pivot: [0, 0, 0], boxes: [{ at: [-1, 0, -1], size: [2, 2, 2], color: 'levelCrystal' }] }],
+      clips: {},
+    };
+    const geometry = (meshes(buildParts(def, 1))[0] as Mesh).geometry;
+    const normal = geometry.getAttribute('normal');
+    const color = geometry.getAttribute('color');
+    const tone = (nx: number, ny: number): number => {
+      for (let i = 0; i < normal.count; i++) if (normal.getX(i) === nx && normal.getY(i) === ny) return color.getY(i);
+      throw new Error('no such face');
+    };
+    expect(tone(1, 0)).toBeLessThan(tone(0, 1) * 0.85);
+    expect(tone(0, -1)).toBeLessThan(tone(1, 0) * 0.85);
+  });
+
+  it('builds ahead of time when asked, so a merge in mid-match does not stop to build', () => {
+    disposeModels();
+    const built = vi.spyOn(BoxBatch.prototype, 'build');
+    prewarmModels(['peashooter'], [2, 3]);
+    const afterPrewarm = built.mock.calls.length;
+    expect(afterPrewarm).toBeGreaterThan(0);
+    buildParts(peashooter, 2);
+    buildParts(peashooter, 3);
+    expect(built.mock.calls.length).toBe(afterPrewarm);
+    // A level that was not asked for is still built on first use.
+    buildParts(peashooter, 4);
+    expect(built.mock.calls.length).toBeGreaterThan(afterPrewarm);
+    // Without levels it does all five.
+    const before = built.mock.calls.length;
+    prewarmModels(['peashooter']);
+    expect(built.mock.calls.length).toBeGreaterThan(before);
+    const all = built.mock.calls.length;
+    for (const level of LEVELS) buildParts(peashooter, level);
+    expect(built.mock.calls.length).toBe(all);
+    expect(() => prewarmModels(['nope'])).toThrow(/nope/);
+    built.mockRestore();
   });
 
   it('gives level 5, and only level 5, an empty aura group for effects to fill', () => {
@@ -209,6 +275,23 @@ describe('buildParts', () => {
     expect(() => buildParts(broken((d) => (d.eyes = ['nose'])), 1)).toThrow(/nose/);
     expect(() => buildParts(biped(), 0)).toThrow(/level/);
     expect(() => buildParts(biped(), 6)).toThrow(/level/);
+    // A clip that names a part the model does not have: a typo must not pass as a model that stands still.
+    expect(() => buildParts(broken((d) => (d.clips = { idle: idleBob({ body: 'stm' }) })), 1)).toThrow(/idle.*"stm"/);
+    expect(() => buildParts(broken((d) => (d.clips = { idle: idleBob({ body: 'hips', sway: ['legL', 'tail'] }) })), 1)).toThrow(/"tail"/);
+    expect(() => buildParts(broken((d) => (d.clips = { idle: idleBob({ body: 'hips', sway: ['legL'] }) })), 1)).not.toThrow();
+    // Level gates must be whole levels, the right way round.
+    const gate = (levels: Partial<Box>) => broken((d) => Object.assign(d.parts[0]?.boxes[0] as Box, levels));
+    expect(() => buildParts(gate({ minLevel: 0 }), 1)).toThrow(/"hips" box 0.*minLevel/);
+    expect(() => buildParts(gate({ maxLevel: 6 }), 1)).toThrow(/maxLevel/);
+    expect(() => buildParts(gate({ minLevel: 2.5 }), 1)).toThrow(/minLevel/);
+    expect(() => buildParts(gate({ minLevel: 4, maxLevel: 3 }), 1)).toThrow(/minLevel.*maxLevel/);
+    expect(() => buildParts(gate({ minLevel: 3, maxLevel: 3 }), 1)).not.toThrow();
+    // Trim has a main tone and a shadow tone; a third has no material to turn into.
+    expect(() => buildParts(broken((d) => (d.trim = ['skin', 'clothDark', 'clothPurple'])), 1)).toThrow(/trim.*two/);
+    expect(() => buildParts(broken((d) => (d.trim = ['skin', 'clothDark'])), 1)).not.toThrow();
+    // Names that point nowhere.
+    expect(() => buildParts(broken((d) => (d.muzzle = { part: 'gun', at: [0, 0, 0] })), 1)).toThrow(/muzzle.*"gun"/);
+    expect(() => buildParts(broken((d) => ((d.parts[0] as { shadedBy?: string[] }).shadedBy = ['cape'])), 1)).toThrow(/"cape"/);
   });
 
   /** The colours of the quads on the plane `axis` = `at` (voxels) that cover the point (`u`, `v`). */
@@ -282,6 +365,41 @@ describe('buildParts', () => {
     expect(() => buildParts(def(2), 1)).not.toThrow();
   });
 
+  it('shades a part against another part only where the model asks for it', () => {
+    // An arm resting against a body. The body's flank is shaded where the arm lies only if
+    // the body says the arm never leaves it; an arm that swings would leave the patch behind.
+    const def = (shadedBy?: string[]): ModelDef => ({
+      key: `test-shaded-${shadedBy?.join('') ?? 'alone'}`,
+      trim: [],
+      parts: [
+        { name: 'body', pivot: [0, 0, 0], shadedBy, boxes: [{ at: [-2, 0, -2], size: [4, 6, 4], color: 'skin' }] },
+        { name: 'arm', parent: 'body', pivot: [0, 5, 2.5], boxes: [{ at: [-1, 1, 2], size: [2, 4, 1], color: 'skin' }] },
+      ],
+      clips: {},
+    });
+    /** The darkest and lightest green on the body's +Z face. */
+    const flank = (model: ModelDef): { darkest: number; lightest: number } => {
+      const body = buildParts(model, 1).getObjectByName('body') as Object3D;
+      const geometry = (body.children.find((child) => child instanceof Mesh) as Mesh).geometry;
+      const position = geometry.getAttribute('position');
+      const normal = geometry.getAttribute('normal');
+      const color = geometry.getAttribute('color');
+      let darkest = Infinity;
+      let lightest = 0;
+      for (let i = 0; i < position.count; i++) {
+        if (normal.getZ(i) < 0.5) continue;
+        darkest = Math.min(darkest, color.getY(i));
+        lightest = Math.max(lightest, color.getY(i));
+      }
+      return { darkest, lightest };
+    };
+    const alone = flank(def());
+    expect(alone.darkest).toBeCloseTo(alone.lightest, 9);
+    const against = flank(def(['arm']));
+    expect(against.lightest).toBeCloseTo(alone.lightest, 9);
+    expect(against.darkest).toBeLessThan(against.lightest * 0.9);
+  });
+
   it('shades the creases where boxes meet darker than open faces', () => {
     // A small block standing on a big one: the big block's top is darker beside the small one.
     const def: ModelDef = {
@@ -319,16 +437,42 @@ describe('buildParts', () => {
 });
 
 describe('modelColors', () => {
-  it('swaps the trim colour for the level material', () => {
-    const trim = peashooter.trim[0] as string;
-    expect(modelColors(peashooter, 1)).toContain(hex(trim));
-    expect(modelColors(peashooter, 2)).toContain(hex(trim));
-    expect(modelColors(peashooter, 3)).not.toContain(hex(trim));
+  it('swaps the trim colours for the level material', () => {
+    const trim = peashooter.trim.map(hex);
+    // Trim shows at levels 1 and 2 in its own colours …
+    expect(trim.some((color) => modelColors(peashooter, 1).includes(color))).toBe(true);
+    expect(trim.some((color) => modelColors(peashooter, 2).includes(color))).toBe(true);
+    // … and from level 3 none of it is left: it is iron, then crystal, then gold.
+    for (const level of [3, 4, 5]) {
+      for (const color of trim) expect(modelColors(peashooter, level), `level ${level}`).not.toContain(color);
+    }
     expect(modelColors(peashooter, 3)).toContain(hex('levelIron'));
     expect(modelColors(peashooter, 4)).toContain(hex('levelCrystal'));
-    expect(modelColors(peashooter, 5)).not.toContain(hex(trim));
     expect(modelColors(peashooter, 5)).toContain(0xffc83d);
     expect(modelColors(peashooter, 1)).not.toContain(0xffc83d);
+    expect(modelColors(peashooter, 2)).not.toContain(hex('levelIron'));
+  });
+
+  it('gives the second trim colour the level material\'s shadow tone', () => {
+    const def: ModelDef = {
+      key: 'test-two-trims',
+      trim: ['pea', 'stem'],
+      parts: [
+        {
+          name: 'body',
+          pivot: [0, 0, 0],
+          boxes: [
+            { at: [0, 0, 0], size: [2, 2, 2], color: 'pea' },
+            { at: [2, 0, 0], size: [2, 2, 2], color: 'stem' },
+          ],
+        },
+      ],
+      clips: {},
+    };
+    expect(modelColors(def, 2).sort()).toEqual([hex('pea'), hex('stem')].sort());
+    expect(modelColors(def, 3).sort()).toEqual([hex('levelIron'), hex('levelIronDark')].sort());
+    expect(modelColors(def, 4).sort()).toEqual([hex('levelCrystal'), hex('levelCrystalDeep')].sort());
+    expect(modelColors(def, 5).sort()).toEqual([hex('levelGold'), hex('levelGoldDark')].sort());
   });
 
   it('lists each colour once, the commonest first', () => {
@@ -359,6 +503,17 @@ describe('clip builders', () => {
     expect(clips.die?.duration).toBe(0.2);
     expect(clips.cheer?.duration).toBe(0.6);
     expect(Object.entries(clips).filter(([, clip]) => clip.loop).map(([name]) => name)).toEqual(['idle', 'cheer']);
+  });
+
+  it('say which parts they move, so a model can be checked against them', () => {
+    expect(clips.idle?.parts).toEqual(['body', 'head', 'leafA', 'leafB']);
+    expect(idleBob({ body: 'trunk' }).parts).toEqual(['trunk']);
+    expect(clips.shoot?.parts).toEqual(['body', 'head']);
+    expect(clips.hit?.parts).toEqual(['body']);
+    expect(clips.spawn?.parts).toEqual(['body']);
+    expect(clips.die?.parts).toEqual(['body', 'head']);
+    expect(wilt({ body: 'trunk' }).parts).toEqual(['trunk']);
+    expect(clips.cheer?.parts).toEqual(['body']);
   });
 
   it('loop without a seam', () => {
@@ -474,9 +629,11 @@ describe('Peashooter', () => {
     expect(peashooter.clips.idle?.loop).toBe(true);
     expect(peashooter.trim.length).toBeGreaterThan(0);
     expect(peashooter.eyes?.length).toBeGreaterThan(0);
-    // The muzzle is at the front (+X) of the head.
-    expect(peashooter.muzzle?.[0]).toBeGreaterThan(4);
-    expect(peashooter.muzzle?.[1]).toBeGreaterThan(8);
+    // The muzzle rides on the head, at the front (+X) of it.
+    expect(peashooter.muzzle).toMatchObject({ part: 'head' });
+    const at = (peashooter.muzzle as { at: [number, number, number] }).at;
+    expect(at[0]).toBeGreaterThan(4);
+    expect(at[1]).toBeGreaterThan(8);
   });
 
   it('loops every looping clip without a seam, on its real parts', () => {
@@ -566,6 +723,111 @@ describe('ModelInstance', () => {
     run(instance, 0.25);
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(instance.clip).toBe('cheer');
+  });
+
+  it('calls onDone once when another one-shot cuts a one-shot short, and once more for the second', () => {
+    const instance = new ModelInstance(peashooter, 1);
+    const shot = vi.fn();
+    const hit = vi.fn();
+    instance.play('shoot', { onDone: shot });
+    run(instance, 0.1);
+    expect(shot).not.toHaveBeenCalled();
+    instance.play('hit', { onDone: hit });
+    // The shot is over: told so at once, and never again.
+    expect(shot).toHaveBeenCalledTimes(1);
+    expect(hit).not.toHaveBeenCalled();
+    expect(instance.clip).toBe('hit');
+    run(instance, 0.3);
+    expect(hit).toHaveBeenCalledTimes(1);
+    expect(instance.clip).toBe('idle');
+    run(instance, 1);
+    expect(shot).toHaveBeenCalledTimes(1);
+    expect(hit).toHaveBeenCalledTimes(1);
+
+    // The same clip again counts as another one-shot.
+    const first = vi.fn();
+    const second = vi.fn();
+    instance.play('shoot', { onDone: first });
+    run(instance, 0.1);
+    instance.play('shoot', { onDone: second });
+    expect(first).toHaveBeenCalledTimes(1);
+    run(instance, 0.2);
+    expect(second).not.toHaveBeenCalled();
+    run(instance, 0.3);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a one-shot play out when a looping clip is asked for, and returns to that clip', () => {
+    const instance = new ModelInstance(peashooter, 1);
+    const onDone = vi.fn();
+    instance.play('shoot', { onDone });
+    run(instance, 0.1);
+    instance.play('cheer');
+    // Still shooting; nothing was cut short.
+    expect(instance.clip).toBe('shoot');
+    expect(onDone).not.toHaveBeenCalled();
+    run(instance, 0.2);
+    expect(instance.clip).toBe('shoot');
+    run(instance, 0.2);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(instance.clip).toBe('cheer');
+    // Asked back to idle between one-shots, it goes at once.
+    instance.play('idle');
+    expect(instance.clip).toBe('idle');
+  });
+
+  it('ignores every clip once die has started', () => {
+    const instance = new ModelInstance(peashooter, 1);
+    const died = vi.fn();
+    const later = vi.fn();
+    instance.play('die', { onDone: died });
+    run(instance, 0.1);
+    instance.play('shoot', { onDone: later });
+    instance.play('idle');
+    instance.play('walk', { onDone: later });
+    instance.play('die', { onDone: later });
+    expect(instance.clip).toBe('die');
+    expect(died).not.toHaveBeenCalled();
+    run(instance, 0.2);
+    // It died once, on time, and stays down.
+    expect(died).toHaveBeenCalledTimes(1);
+    const drooped = part(instance, 'stem').scale.y;
+    expect(drooped).toBeLessThan(0.8);
+    instance.play('cheer');
+    instance.play('spawn', { onDone: later });
+    run(instance, 1);
+    expect(instance.clip).toBe('die');
+    expect(part(instance, 'stem').scale.y).toBeCloseTo(drooped, 9);
+    expect(later).not.toHaveBeenCalled();
+    expect(died).toHaveBeenCalledTimes(1);
+  });
+
+  it('dies in the middle of another one-shot, ending that one', () => {
+    const instance = new ModelInstance(peashooter, 1);
+    const shot = vi.fn();
+    const died = vi.fn();
+    instance.play('shoot', { onDone: shot });
+    run(instance, 0.1);
+    instance.play('die', { onDone: died });
+    expect(shot).toHaveBeenCalledTimes(1);
+    run(instance, 0.5);
+    expect(died).toHaveBeenCalledTimes(1);
+    expect(shot).toHaveBeenCalledTimes(1);
+    expect(instance.clip).toBe('die');
+  });
+
+  it('holds the last pose of a one-shot it was sought to the end of, until time moves again', () => {
+    const instance = new ModelInstance(peashooter, 1);
+    const onDone = vi.fn();
+    instance.play('hit', { onDone });
+    instance.seek(0.2);
+    for (let i = 0; i < 5; i++) instance.update(0);
+    expect(instance.clip).toBe('hit');
+    expect(onDone).not.toHaveBeenCalled();
+    instance.update(1 / 60);
+    expect(instance.clip).toBe('idle');
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it('does not restart a looping clip that is already playing', () => {
@@ -670,6 +932,38 @@ describe('ModelInstance', () => {
     expect(torso.scale.toArray()).toEqual([2, 1, 2]);
   });
 
+  it('turns a part about its own axes, so a slouched torso rolls about its own spine line', () => {
+    // The torso rests pitched 10 degrees. A clip then rolls it a quarter turn about its own
+    // X axis, which the pitch has tilted: its up axis must end exactly on world Z, and its X
+    // axis must stay where the pitch left it. Adding the angles up instead would roll it
+    // about the hips' X axis and leave it leaning.
+    const roll: Clip = {
+      duration: 1,
+      loop: true,
+      parts: ['torso'],
+      sample(_t, pose) {
+        const torso = pose.torso;
+        if (torso) torso.rx = Math.PI / 2;
+      },
+    };
+    const instance = new ModelInstance(biped({ idle: roll }), 1);
+    instance.seek(0);
+    const torso = part(instance, 'torso');
+    const lean = (10 * Math.PI) / 180;
+    const up = new Vector3(0, 1, 0).applyQuaternion(torso.quaternion);
+    const forward = new Vector3(1, 0, 0).applyQuaternion(torso.quaternion);
+    expect(up.x).toBeCloseTo(0, 9);
+    expect(up.y).toBeCloseTo(0, 9);
+    expect(up.z).toBeCloseTo(1, 9);
+    expect(forward.x).toBeCloseTo(Math.cos(lean), 9);
+    expect(forward.y).toBeCloseTo(Math.sin(lean), 9);
+    expect(forward.z).toBeCloseTo(0, 9);
+    // With no offset from the clip it rests exactly as built.
+    const still = new ModelInstance(biped(), 1);
+    expect(part(still, 'torso').rotation.z).toBeCloseTo(lean, 12);
+    expect(part(still, 'torso').rotation.x).toBeCloseTo(0, 12);
+  });
+
   it('blinks: the eyes close to a tenth of their height for 100 ms every 2 to 5 s', () => {
     const instance = new ModelInstance(peashooter, 1);
     const eye = part(instance, (peashooter.eyes as string[])[0] as string);
@@ -761,6 +1055,16 @@ describe('ModelInstance', () => {
 
     a.setFlash(0);
     expect(meshes(a.root).map((mesh) => mesh.material)).toEqual(shared);
+
+    // A flashing crystal still glows in its baked colours: its copy keeps the shader change.
+    const crystal = new ModelInstance(peashooter, 4);
+    const before = meshes(crystal.root).map((mesh) => mesh.material as MeshStandardMaterial);
+    crystal.setFlash(0.5);
+    meshes(crystal.root).forEach((mesh, i) => {
+      const own = mesh.material as MeshStandardMaterial;
+      expect(own.onBeforeCompile, own.name).toBe(before[i]?.onBeforeCompile);
+      expect(own.customProgramCacheKey(), own.name).toBe(before[i]?.customProgramCacheKey());
+    });
   });
 
   it('frees only what it owns on dispose', () => {
@@ -823,18 +1127,53 @@ describe('ModelInstance', () => {
     expect(old.setLevel(2)).toBe(old);
   });
 
-  it('reports where shots leave, following the root and the level scale', () => {
-    const instance = new ModelInstance(peashooter, 5);
+  it('reports where shots leave: on the head, following its turn, the shot and the level', () => {
     const scene = new Scene();
+    const instance = new ModelInstance(peashooter, 1);
     scene.add(instance.root);
     instance.root.position.set(2.5, 0, 1.5);
-    const [mx, my, mz] = peashooter.muzzle as [number, number, number];
+    instance.play('shoot');
+    instance.seek(0); // the first frame of the shot is the rest pose
     const out = new Vector3();
     expect(instance.muzzleWorld(out)).toBe(out);
-    expect(out.x).toBeCloseTo(2.5 + mx * VOXEL * 1.34, 9);
-    expect(out.y).toBeCloseTo(my * VOXEL * 1.34, 9);
-    expect(out.z).toBeCloseTo(1.5 + mz * VOXEL * 1.34, 9);
-    // A model without a muzzle answers with where it stands.
+    const rest = out.clone();
+    // In front of the plant and up at its mouth; the head is turned to the player, so a little towards +Z.
+    expect(rest.x).toBeGreaterThan(2.5 + 4 * VOXEL);
+    expect(rest.x).toBeLessThan(2.5 + 6.5 * VOXEL);
+    expect(rest.y).toBeGreaterThan(10 * VOXEL);
+    expect(rest.y).toBeLessThan(14 * VOXEL);
+    expect(rest.z).toBeGreaterThan(1.5 + 0.5 * VOXEL);
+    expect(rest.z).toBeLessThan(1.5 + 3 * VOXEL);
+
+    // It moves with the head: back as the plant winds up, forward as it snaps.
+    instance.seek(0.12);
+    expect(instance.muzzleWorld(new Vector3()).x).toBeLessThan(rest.x - VOXEL);
+    instance.seek(0.2);
+    expect(instance.muzzleWorld(new Vector3()).x).toBeGreaterThan(rest.x + VOXEL);
+
+    // It follows the root, and the level's size.
+    instance.seek(0);
+    instance.root.position.x += 1;
+    expect(instance.muzzleWorld(new Vector3()).x).toBeCloseTo(rest.x + 1, 9);
+    const big = new ModelInstance(peashooter, 5);
+    big.play('shoot');
+    big.seek(0);
+    const offset = big.muzzleWorld(new Vector3());
+    expect(offset.x).toBeCloseTo((rest.x - 2.5) * 1.34, 6);
+    expect(offset.y).toBeCloseTo(rest.y * 1.34, 6);
+    expect(offset.z).toBeCloseTo((rest.z - 1.5) * 1.34, 6);
+  });
+
+  it('also takes a muzzle as a plain point on the model, and answers with its feet if it has none', () => {
+    const def = biped();
+    def.key = 'test-muzzle-point';
+    def.muzzle = [3, 5, -1];
+    const gun = new ModelInstance(def, 1);
+    gun.root.position.set(1, 0, 2);
+    const out = gun.muzzleWorld(new Vector3());
+    expect(out.x).toBeCloseTo(1 + 3 * VOXEL, 9);
+    expect(out.y).toBeCloseTo(5 * VOXEL, 9);
+    expect(out.z).toBeCloseTo(2 - VOXEL, 9);
     const plain = new ModelInstance(biped(), 1);
     plain.root.position.set(1, 0, 2);
     expect(plain.muzzleWorld(new Vector3()).toArray()).toEqual([1, 0, 2]);
@@ -867,12 +1206,5 @@ describe('registry', () => {
     expect(hasModel('test-registered')).toBe(true);
     expect(getModelDef('test-registered')).toBe(def);
     expect(modelKeys().indexOf('peashooter')).toBeLessThan(modelKeys().indexOf('test-registered'));
-  });
-});
-
-describe('ClipName', () => {
-  it('covers every motion the art bible lists', () => {
-    const names: ClipName[] = ['idle', 'walk', 'shoot', 'melee', 'hit', 'spawn', 'die', 'cheer'];
-    expect(new Set(names).size).toBe(8);
   });
 });
