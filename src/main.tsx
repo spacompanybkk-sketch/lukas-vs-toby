@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { installDebug, markReady } from './app/debug';
 import * as gallery from './render/gallery';
 import * as boot from './scenes/boot';
+import * as fx from './scenes/fx';
 import * as lawn from './scenes/lawn';
 import { App } from './ui/App';
 import './ui/theme.css';
@@ -21,6 +22,7 @@ const SCENES = new Map<string, SceneModule>([
   ['boot', boot],
   ['lawn', lawn],
   ['gallery', gallery],
+  ['fx', fx],
 ]);
 
 installDebug();

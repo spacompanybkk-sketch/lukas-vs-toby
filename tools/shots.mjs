@@ -4,7 +4,8 @@
 // sets its own viewport), waits for `window.__lvt.ready`, and saves
 // artifacts/shots/<scenario>.png, or one artifacts/shots/<scenario>-<suffix>.png per frame
 // for a scenario that lists `frames`. Exits non-zero on any page error or if the 3D canvas
-// came out as one flat colour.
+// came out as one flat colour. `LVT_PORT=<port>` runs the dev server on another port, for a
+// second checkout whose server must not clash with this one's.
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -88,6 +89,43 @@ const SCENARIOS = [
     ],
   },
   portraits('gallery-portraits-walnutBomb', 'walnutBomb'),
+  // The two bases: three damage states side by side, then each state in place, a close look
+  // at each end, the plants' base swatting, and both falling.
+  {
+    name: 'bases',
+    url: '/?scene=fx&effects=0&t=1',
+    frames: [
+      { suffix: 'states', run: () => Promise.resolve() },
+      { suffix: 'states-low', run: (page) => open(page, '/?scene=fx&effects=0&healths=0.6,0.3,0.1&t=1') },
+      ...[1, 0.6, 0.3, 0.1].map((h) => ({
+        suffix: `game-${h.toFixed(2)}`,
+        run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=${h}&t=1`),
+      })),
+      ...['plants', 'zombies'].flatMap((side) =>
+        [1, 0.6, 0.3, 0.1].map((h) => ({
+          suffix: `${side}-${h.toFixed(2)}`,
+          run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=${h}&focus=${side}&t=1`),
+        })),
+      ),
+      { suffix: 'strike', run: (page) => open(page, '/?scene=fx&layout=game&effects=0&strike=2&focus=plants&t=0.13') },
+      ...[0.5, 1.0, 1.6, 2.4].map((t) => ({
+        suffix: `collapse-${t.toFixed(2)}`,
+        run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=0.1&collapse=both&t=${t}`),
+      })),
+    ],
+  },
+  // Every effect on the lawn, between a hurt plants' base and a badly hurt zombies' base;
+  // t = 0.15 catches the explosion's flash and ring.
+  {
+    name: 'fx',
+    url: '/?scene=fx&layout=game&plants=0.6&zombies=0.3&t=0.15',
+    frames: [0.15, 0.3, 0.6, 1.3].map((t) => ({
+      suffix: t.toFixed(2),
+      run: (page) => (t === 0.15 ? Promise.resolve() : open(page, `/?scene=fx&layout=game&plants=0.6&zombies=0.3&t=${t}`)),
+    })),
+  },
+  // The same in the side-by-side layout, as `?scene=fx` opens.
+  { name: 'fx-states', url: '/?scene=fx&t=0.15' },
 ];
 
 /** A card portrait of each level of `model`, saved as `<name>-L1.png` to `-L5.png`. */
@@ -105,7 +143,8 @@ function portraits(name, model) {
 
 const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const OUT_DIR = path.join(ROOT, 'artifacts', 'shots');
-const PORT = 5273;
+/** The dev server's port: 5273 unless LVT_PORT names another (a second checkout's server keeps its own). */
+const PORT = Number(process.env.LVT_PORT) || 5273;
 const ORIGIN = `http://localhost:${PORT}`;
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 const READY_TIMEOUT_MS = 20_000;
