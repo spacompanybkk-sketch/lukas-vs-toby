@@ -32,12 +32,30 @@ const ZOMBIE_KEYS = new Set(
  */
 const SINGLE_LEVEL_MODELS = new Set(['boneMinion']);
 
+/** The ten plants a player can field, in unlock order (spec section 6.6). */
+const ALL_PLANTS = [
+  'peashooter',
+  'sunflower',
+  'walnutBomb',
+  'potatoMine',
+  'kernelPult',
+  'mangoPult',
+  'avocadoBunker',
+  'torchwood',
+  'cherryBomber',
+  'pumpkinSquash',
+];
+
 describe('the registry', () => {
   it('has the three plants of the first level', () => {
     expect(modelKeys()).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
     expect([...PLANT_KEYS]).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
   });
 
+  it('has all ten plants, each from plants/', () => {
+    expect(modelKeys()).toEqual(expect.arrayContaining(ALL_PLANTS));
+    expect([...PLANT_KEYS].sort()).toEqual([...ALL_PLANTS].sort());
+  });
 });
 
 describe('Walnut Bomb', () => {
@@ -105,6 +123,36 @@ describe('Potato Mine', () => {
 describe('Avocado Bunker', () => {
   it('carries its damage in a part named cracks, hidden at rest and shown when the view asks', () => {
     expectToggledPart('avocadoBunker', 'cracks');
+  });
+});
+
+describe('Pumpkin Squash', () => {
+  it('leaps a tile and comes down squashed at 0.4 s', () => {
+    const def = getModelDef('pumpkinSquash');
+    const melee = def.clips.melee as NonNullable<ModelDef['clips']['melee']>;
+    expect(melee.duration).toBe(0.6);
+    let highest = 0;
+    for (let t = 0; t <= 0.6; t += 0.01) highest = Math.max(highest, (sampled(def, melee, t).body as PartPose).py);
+    expect(highest).toBeGreaterThan(15);
+    const impact = sampled(def, melee, 0.4001).body as PartPose;
+    expect(impact.py).toBeLessThan(0.1);
+    expect(impact.sy).toBeLessThan(0.7);
+  });
+});
+
+describe('Torchwood and Cherry Bomber', () => {
+  it('burn: the torch flickers its flames on a loop, and the fuse swells both cherries over a second', () => {
+    const torch = getModelDef('torchwood');
+    expect(torch.clips.idle?.parts).toEqual(expect.arrayContaining(['flame', 'flameTip']));
+    const flames = torch.parts.filter((p) => p.name.startsWith('flame')).flatMap((p) => p.boxes);
+    for (const level of LEVELS) {
+      const lit = flames.filter((b) => (b.minLevel ?? 1) <= level && level <= (b.maxLevel ?? 5));
+      expect(lit.length, `level ${level}`).toBeGreaterThan(0);
+      for (const box of lit) expect(box.emissive ?? 0, `level ${level}`).toBeGreaterThanOrEqual(1.5);
+    }
+    const cherry = getModelDef('cherryBomber');
+    expect(cherry.clips.shoot?.duration).toBe(1);
+    expect(cherry.clips.shoot?.parts).toEqual(['front', 'back']);
   });
 });
 

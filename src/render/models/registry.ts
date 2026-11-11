@@ -1,10 +1,12 @@
 import { prewarmModel } from '../voxel/build';
 import type { ModelDef } from '../voxel/types';
 import { avocadoBunker } from './plants/avocadoBunker';
+import { cherryBomber } from './plants/cherryBomber';
 import { kernelPult } from './plants/kernelPult';
 import { mangoPult } from './plants/mangoPult';
 import { peashooter } from './plants/peashooter';
 import { potatoMine } from './plants/potatoMine';
+import { pumpkinSquash } from './plants/pumpkinSquash';
 import { sunflower } from './plants/sunflower';
 import { torchwood } from './plants/torchwood';
 import { walnutBomb } from './plants/walnutBomb';
@@ -58,4 +60,4 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
   }
 }
 
-for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion]) registerModel(def);
+for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion]) registerModel(def);

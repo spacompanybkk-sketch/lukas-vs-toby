@@ -8,7 +8,7 @@ import { bothSides, lv, round, span } from './kit';
 //
 // The bush is authored on x = 0, z = 0: a dark leafy skirt from y 1 to 4.5 and the head, a
 // stepped round 8 across, from 4.5 to 11, its front (the face) at x 4. The beam is authored
-// lying flat along -X from its hub at the front of the crown (x 1.5, y 10.5), tilted 6
+// lying flat along -X from its hub at the front of the crown (x 1.5, y 10), tilted 6
 // degrees up at the back; it whips up and over the front to throw.
 //
 // Every level adds something the lawn camera can see, on top or out to the side:
@@ -23,7 +23,7 @@ const TOOTH = '#F4FBE6';
 /** The arm's lean back from upright at rest: it lies nearly flat, 6 degrees up at the back. */
 const REST = 84;
 /** The floor of the cup, and so the bottom of the mango (from FLOOR + 0.5). */
-const FLOOR = 11;
+const FLOOR = 10.5;
 
 /**
  * A mango in the cup, centred at x = -3.5: a stepped oval `2 rx` long, `2 rz` wide and `h`
@@ -57,7 +57,7 @@ function cup(floor: string, wall: string): Box[] {
 
 /** The beam and its hub. */
 function beam(wood: string, hub: string): Box[] {
-  return [span(-5, 1.5, 10, 11, -1, 1, wood), span(0.5, 2.5, 9.5, 11.5, -1.25, 1.25, hub)];
+  return [span(-5, 1.5, 9.5, 10.5, -1, 1, wood), span(0.5, 2.5, 9, 11, -1.25, 1.25, hub)];
 }
 
 export const mangoPult: ModelDef = {
@@ -65,7 +65,7 @@ export const mangoPult: ModelDef = {
   trim: [],
   eyes: ['eyes'],
   // Where a mango leaves: the cup at the moment the beam lets go, 15 degrees past upright.
-  muzzle: [5.5, 14, 0],
+  muzzle: [5.5, 13.5, 0],
   parts: [
     {
       name: 'root',
@@ -133,7 +133,7 @@ export const mangoPult: ModelDef = {
       // 6 degrees up at the back at rest.
       name: 'arm',
       parent: 'body',
-      pivot: [1.5, 10.5, 0],
+      pivot: [1.5, 10, 0],
       rot: [0, 0, -(90 - REST)],
       boxes: [
         ...lv(1, 4, beam('bark', 'barkDark')),
@@ -142,18 +142,18 @@ export const mangoPult: ModelDef = {
         ...lv(3, 3, cup('barkDark', 'levelIron')),
         ...lv(4, 4, cup('barkDark', 'levelCrystal')),
         ...lv(5, 5, cup('levelGoldDark', 'levelGold')),
-        ...lv(1, 1, mango(2, 1.5, 3, 'mango', 'leaf')),
-        ...lv(2, 3, mango(2.5, 2, 4, 'mango', 'leaf')),
-        ...lv(4, 4, mango(2.5, 2, 4, 'mango', 'leaf', { emissive: 1.6 })),
-        ...lv(5, 5, mango(2.5, 2, 4, 'mango', 'levelGold')),
+        ...lv(1, 1, mango(2.5, 2, 3.5, 'mango', 'leaf')),
+        ...lv(2, 3, mango(3, 2.5, 4.5, 'mango', 'leaf')),
+        ...lv(4, 4, mango(3, 2.5, 4.5, 'mango', 'leaf', { emissive: 1.6 })),
+        ...lv(5, 5, mango(3, 2.5, 4.5, 'mango', 'levelGold')),
         // Level 2 up: a second, bigger leaf on the mango.
-        ...lv(2, 5, [span(-5.5, -4, 16, 16.5, -1.5, -0.5, 'leafLight')]),
+        ...lv(2, 5, [span(-6, -4, 15.5, 16, -1.5, -0.5, 'leafLight')]),
         // Level 3: iron bands round the beam and a cap on the hub.
-        ...lv(3, 4, [span(-1, 0, 9.75, 11.25, -1.25, 1.25, 'levelIron'), span(-3.5, -2.5, 9.75, 11, -1.25, 1.25, 'levelIron'), span(0.25, 2.75, 11.5, 12, -1, 1, 'levelIronDark')]),
+        ...lv(3, 4, [span(-1, 0, 9.25, 10.75, -1.25, 1.25, 'levelIron'), span(0.25, 2.75, 11, 11.5, -1, 1, 'levelIronDark')]),
         // Level 4: a crystal shell over the top of the mango.
-        ...lv(4, 4, [span(-5, -2, 16, 16.5, -1.5, 1.5, 'levelCrystal'), span(-4.5, -2.5, 16.5, 17, -1, 1, 'levelCrystal')]),
+        ...lv(4, 4, [span(-5, -2, 15.5, 16, -1.5, 1.5, 'levelCrystal'), span(-4.5, -2.5, 16, 16.5, -1, 1, 'levelCrystal')]),
         // Level 5: a gold cap on the hub.
-        ...lv(5, 5, [span(0.25, 2.75, 11.5, 12, -1, 1, 'levelGold'), span(-1, 0, 9.75, 11.25, -1.25, 1.25, 'levelGoldDark'), span(-3.5, -2.5, 9.75, 11, -1.25, 1.25, 'levelGoldDark')]),
+        ...lv(5, 5, [span(0.25, 2.75, 11, 11.5, -1, 1, 'levelGold'), span(-1, 0, 9.25, 10.75, -1.25, 1.25, 'levelGoldDark')]),
       ],
     },
   ],
