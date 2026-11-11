@@ -101,6 +101,10 @@ export class Particles {
   private used = 0;
   private live = 0;
   private emitted = 0;
+  /** Set when something changed since the last upload, so a frame after the last death still uploads. */
+  private dirty = false;
+  private owner: object | null = null;
+  private warned = false;
 
   constructor(capacity = 2000) {
     this.capacity = capacity;
@@ -142,7 +146,8 @@ export class Particles {
     mesh.count = 0;
     // The cubes go everywhere, so the mesh is never culled as a whole.
     mesh.frustumCulled = false;
-    mesh.castShadow = true;
+    // Hundreds of tumbling cubes in the shadow map cost more than their shadows are worth.
+    mesh.castShadow = false;
     mesh.receiveShadow = false;
     this.mesh = mesh;
     this.object = mesh;
@@ -187,15 +192,30 @@ export class Particles {
     this.colors[i * 3 + 2] = scratch.b;
     this.glow[i] = p.emissive ? GLOW : 0;
     this.live++;
+    this.dirty = true;
     this.write(i);
     (this.mesh.instanceColor as InstancedBufferAttribute).needsUpdate = true;
     this.glowAttribute.needsUpdate = true;
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
-  /** Moves every particle on by `dtSeconds` of game time. */
-  update(dtSeconds: number): void {
-    if (this.used === 0) return;
+  /**
+   * Moves every particle on by `dtSeconds` of game time. Once an `Effects` has taken the pool
+   * (it does when it is made), only that `Effects` moves it, from its own `update`, passing
+   * itself as `by`; a call from anywhere else is ignored (with one warning), so the pool can
+   * never be stepped twice in a frame.
+   */
+  update(dtSeconds: number, by?: object): void {
+    if (this.owner && by !== this.owner) {
+      if (!this.warned) {
+        this.warned = true;
+        console.warn('Particles.update: this pool is moved by its Effects; call Effects.update instead.');
+      }
+      return;
+    }
+    // Nothing alive and nothing just died: the buffers on the GPU are already right.
+    if (this.used === 0 || (this.live === 0 && !this.dirty)) return;
+    this.dirty = false;
     const dt = Math.max(0, dtSeconds);
     for (let i = 0; i < this.used; i++) {
       let life = this.life[i] as number;
@@ -246,6 +266,11 @@ export class Particles {
       this.write(i);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Hands the pool to `owner`, the only caller of `update` from now on. `Effects` does this. */
+  claim(owner: object): void {
+    this.owner = owner;
   }
 
   /** Removes every particle at once (a scene being reset). */

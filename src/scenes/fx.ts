@@ -183,8 +183,8 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
       for (const base of bases) for (const p of base.smokeAnchors()) effects.smoke(p);
     }
     for (const base of bases) base.update(dt, time);
+    // The effects move their particle pool too.
     effects.update(dt, renderer.camera);
-    particles.update(dt);
   };
 
   const frozenAt = params.has('t') ? Math.max(0, number(params, 't', 0)) : null;

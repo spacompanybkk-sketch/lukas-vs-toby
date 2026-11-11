@@ -43,6 +43,8 @@ const SHUDDER_SECONDS = 0.3;
 const FLASH_SECONDS = 0.08;
 const STRIKE_SECONDS = 0.25;
 const COLLAPSE_SECONDS = 1.6;
+/** How long past the fall's own length the clock waits before ending it without `update`. */
+const COLLAPSE_GRACE = 0.75;
 /** Voxel edge for the bulk of each base. */
 const V = 0.125;
 /** Where the base's own frame begins: the strip's back-left corner. */
@@ -296,6 +298,8 @@ const Z = (k: number): number => OZ + k * V;
 
 interface Built {
   builder: Builder;
+  /** Parts that cast no shadow (the tree's leaves and lookout), if any. */
+  high?: Builder;
   /** Where smoke rises at this state, in the base's own frame. */
   smoke: Vector3[];
 }
@@ -400,6 +404,10 @@ function clump(i: number, j: number, k: number, c: Ijk, r: Ijk, seed: number): b
 function plantBase(state: BuildState): Built {
   const b = new Builder();
   const vol = new Volume(V, [OX, 0, OZ]);
+  // The leaves, the lookout and the flowers on them stand high and lean towards the lawn, so
+  // their shadow would fall across the first column: they are built apart and cast none.
+  const high = new Builder();
+  const crown = new Volume(V, [OX, 0, OZ]);
   const smoke: Vector3[] = [];
   const ruins = state === RUINS;
 
@@ -434,14 +442,14 @@ function plantBase(state: BuildState): Built {
     // The lawn side and the top go first.
     for (const [i, j, k] of survivors(canopy, canopyLoss, 31, (c) => c[0] * 0.012 + (c[1] - 10) * 0.02)) {
       const [side, up] = leafTone(i, j, k, state);
-      vol.set(i, j, k, j === 10 ? hex(PALETTE.leafDark) : side, up);
+      crown.set(i, j, k, j === 10 ? hex(PALETTE.leafDark) : side, up);
       if (state <= 1 && hash3(i, j, k, 13) < 0.07) flowerSpots.push([i, j, k]);
     }
     // Branches inside the leaves, which show as the leaves go; and the post the lookout stands on.
     const branch = (cells: Ijk[]): void => {
-      for (const [i, j, k] of cells) vol.set(i, j, k, hex(PALETTE.walnut), hex(PALETTE.walnutLight));
+      for (const [i, j, k] of cells) crown.set(i, j, k, hex(PALETTE.walnut), hex(PALETTE.walnutLight));
     };
-    for (let j = 10; j <= 15; j++) for (let i = 3; i <= 4; i++) for (let k = 15; k <= 17; k++) vol.set(i, j, k, hex(PALETTE.walnutDark));
+    for (let j = 10; j <= 15; j++) for (let i = 3; i <= 4; i++) for (let k = 15; k <= 17; k++) crown.set(i, j, k, hex(PALETTE.walnutDark));
     branch([[5, 11, 20], [6, 11, 21], [7, 12, 21], [8, 12, 22]]);
     branch([[3, 11, 14], [3, 12, 12], [3, 12, 11], [2, 12, 9], [2, 13, 8]]);
     branch([[5, 11, 15], [6, 11, 14], [7, 12, 14], [8, 12, 13]]);
@@ -479,13 +487,14 @@ function plantBase(state: BuildState): Built {
   if (state >= 2 && !ruins) smoke.push(new Vector3(-0.05, 1.05, 2.05));
 
   vol.mesh(b);
+  crown.mesh(high);
 
   // Little yellow and white flowers dotted over the leaves while the tree is well.
   for (const [i, j, k] of flowerSpots) {
-    if (vol.has(i, j + 1, k)) continue;
+    if (vol.has(i, j + 1, k) || crown.has(i, j + 1, k)) continue;
     const white = hash3(i, j, k, 23) < 0.35;
-    b.box(X(i) + 0.035, (j + 1) * V, Z(k) + 0.035, 0.055, 0.025, 0.055, white ? PALETTE.bone : PALETTE.petal);
-    b.box(X(i) + 0.05, (j + 1) * V + 0.025, Z(k) + 0.05, 0.025, 0.012, 0.025, PALETTE.petalDark);
+    high.box(X(i) + 0.035, (j + 1) * V, Z(k) + 0.035, 0.055, 0.025, 0.055, white ? PALETTE.bone : PALETTE.petal);
+    high.box(X(i) + 0.05, (j + 1) * V + 0.025, Z(k) + 0.05, 0.025, 0.012, 0.025, PALETTE.petalDark);
   }
 
   if (!ruins) {
@@ -512,7 +521,7 @@ function plantBase(state: BuildState): Built {
       else crack(b, 'x', face, -0.85 + n * 0.25, 1.2, 5, n + 7, FX.crackWood);
     }
     if (state >= 2) smoke.push(new Vector3(-0.25, 0.8, 1.1));
-    lookout(b, state);
+    lookout(high, state);
   }
 
   palisade(b, state);
@@ -522,7 +531,7 @@ function plantBase(state: BuildState): Built {
   }
   peaPile(b, state);
   rubble(b, state, [FX.plankDark, PALETTE.walnut, PALETTE.leafDark, PALETTE.leaf], 0.5, 51);
-  return { builder: b, smoke };
+  return { builder: b, high, smoke };
 }
 
 /** The lookout on the leaves: a plank deck on a beam, posts and rails. */
@@ -849,6 +858,7 @@ class Debris {
   private readonly q = new Vector3();
   private readonly size = new Vector3();
   private live = false;
+  private shrink = 1;
 
   constructor(
     readonly count: number,
@@ -895,12 +905,15 @@ class Debris {
       this.spin[n] = 0;
     }
     this.live = true;
+    this.shrink = 1;
     this.mesh.visible = true;
     this.write(0);
   }
 
-  update(dt: number, elapsed: number): void {
+  /** Moves the cubes on; `shrink` (1 to 0) scales them all, for fading them away once they have settled. */
+  update(dt: number, elapsed: number, shrink = 1): void {
     if (!this.live) return;
+    this.shrink = shrink;
     const { p, v } = this;
     for (let n = 0; n < this.count; n++) {
       if (elapsed < (this.delay[n] as number)) continue;
@@ -922,10 +935,16 @@ class Debris {
     this.write(elapsed);
   }
 
+  /** Takes every cube away at once. */
+  hide(): void {
+    this.live = false;
+    this.mesh.visible = false;
+  }
+
   private write(elapsed: number): void {
     for (let n = 0; n < this.count; n++) {
       const i = n * 3;
-      const s = Math.max(1e-4, (this.s[n] as number) * (elapsed < (this.delay[n] as number) ? 0 : 1));
+      const s = Math.max(1e-4, (this.s[n] as number) * this.shrink * (elapsed < (this.delay[n] as number) ? 0 : 1));
       this.q.set(this.p[i] as number, this.p[i + 1] as number, this.p[i + 2] as number);
       this.m.makeRotationY(this.spin[n] as number).multiply(turn.makeRotationX((this.spin[n] as number) * 0.7));
       this.m.scale(this.size.set(s, s, s));
@@ -971,14 +990,15 @@ function buildArm(): Mesh {
 /** The flag: green with a yellow pea on it, along +X from its pole; torn, then tattered. */
 function buildFlag(state: 0 | 2 | 3): Mesh {
   const cell = 0.05;
-  const vol = new Volume(cell, [0, -5 * cell, 0]);
-  for (let a = 0; a < 10; a++) {
-    for (let c = 0; c < 5; c++) {
-      if (state === 2 && a >= 7 && c <= 2 && !(a === 7 && c === 2)) continue;
-      if (state === 3 && (a >= 6 || (a === 5 && c !== 3) || (a === 4 && c <= 1))) continue;
-      const dot = a >= 3 && a <= 5 && c >= 1 && c <= 3 && !((a === 3 || a === 5) && (c === 1 || c === 3));
+  const vol = new Volume(cell, [0, -6 * cell, 0]);
+  for (let a = 0; a < 12; a++) {
+    for (let c = 0; c < 6; c++) {
+      if (state === 2 && a >= 8 && c <= 3 && !(a === 8 && c === 3)) continue;
+      if (state === 3 && (a >= 7 || (a === 6 && c !== 4) || (a === 5 && c <= 1))) continue;
+      // A yellow pea in the middle, a stepped disc of eight cells.
+      const dot = a >= 4 && a <= 7 && c >= 1 && c <= 4 && !((a === 4 || a === 7) && (c === 1 || c === 4));
       // A cream edge, so the green flag still reads against green leaves.
-      const edge = c === 4 || c === 0 || a === 9;
+      const edge = c === 5 || c === 0 || a === 11;
       // The cloth steps back and forth a little, as if it were waving.
       const k = a % 6 >= 2 && a % 6 <= 4 ? 1 : 0;
       const color = dot ? PALETTE.petal : edge ? PALETTE.bone : a % 2 ? FX.flag : FX.flagDark;
@@ -992,7 +1012,7 @@ function buildFlag(state: 0 | 2 | 3): Mesh {
   const mesh = new Mesh(geometry);
   mesh.name = 'base-flag';
   mesh.userData.boxes = b.boxes;
-  mesh.castShadow = true;
+  mesh.castShadow = false;
   return mesh;
 }
 
@@ -1022,8 +1042,11 @@ export class BaseView {
   private flashLeft = 0;
   private strikeAt = -1;
   private collapseAt = -1;
-  /** Seconds the debris keeps moving after the fall, to settle. */
-  private settleLeft = 1.5;
+  /** Seconds the debris keeps moving after the fall, to settle, and then takes to shrink away. */
+  private settleLeft = 0.8;
+  private fadeLeft = 1;
+  /** Ends the fall by the clock if `update` stops being called (a paused game, a hidden tab). */
+  private safety: ReturnType<typeof setTimeout> | null = null;
   private collapsed: Promise<void> | null = null;
   private resolveCollapse: (() => void) | null = null;
 
@@ -1041,7 +1064,7 @@ export class BaseView {
     const build = side === 'plants' ? plantBase : cryptBase;
     for (const state of [0, 1, 2, 3] as const) {
       const built = build(state);
-      const group = this.meshes(built.builder, `state-${state}`);
+      const group = this.meshes(built.builder, `state-${state}`, built.high);
       group.visible = state === 0;
       this.body.add(group);
       this.states.push(group);
@@ -1069,7 +1092,7 @@ export class BaseView {
       stick.boxOn(0, POLE - 0.02, 0, 0.05, 0.02, 0.05, PALETTE.petal);
       const stickMesh = new Mesh(stick.solid.build(), this.plastic);
       stickMesh.userData.boxes = stick.boxes;
-      stickMesh.castShadow = true;
+      stickMesh.castShadow = false;
       pole.add(stickMesh);
       const cloth = ([0, 2, 3] as const).map((s) => {
         const mesh = buildFlag(s);
@@ -1130,7 +1153,10 @@ export class BaseView {
     this.poseArm(0);
   }
 
-  /** Breaks the base into debris over 1.6 s of updates. Resolves when it has fallen. */
+  /**
+   * Breaks the base into debris over 1.6 s of updates and resolves when it has fallen. If the
+   * updates stop (a paused game, a hidden tab), a clock ends it 0.75 s after it was due.
+   */
   collapse(): Promise<void> {
     if (this.collapsed) return this.collapsed;
     this.collapsed = new Promise<void>((resolve) => (this.resolveCollapse = resolve));
@@ -1139,6 +1165,7 @@ export class BaseView {
     this.strikeAt = -1;
     if (this.arm) this.arm.visible = false;
     this.debris.start();
+    this.safety = setTimeout(() => this.endCollapse(true), (COLLAPSE_SECONDS + COLLAPSE_GRACE) * 1000);
     return this.collapsed;
   }
 
@@ -1199,20 +1226,43 @@ export class BaseView {
       this.ruins.visible = t > 0.85;
       this.ruins.position.y = -0.5 * (1 - easeOut(clamp01((t - 0.85) / 0.6)));
       this.debris.update(dt, t);
-      if (this.collapseAt >= COLLAPSE_SECONDS) {
-        this.ruins.position.y = 0;
-        this.resolveCollapse?.();
-        this.resolveCollapse = null;
-      }
+      if (this.collapseAt >= COLLAPSE_SECONDS) this.endCollapse(false);
     } else if (this.collapseAt >= COLLAPSE_SECONDS && this.settleLeft > 0) {
-      // The last cubes come to rest; after that nothing moves.
+      // The last cubes come to rest …
       this.settleLeft = Math.max(0, this.settleLeft - dt);
       this.debris.update(dt, COLLAPSE_SECONDS);
+    } else if (this.collapseAt >= COLLAPSE_SECONDS && this.fadeLeft > 0) {
+      // … then shrink away, so none is left lying on the lawn; only the ruins stay.
+      this.fadeLeft = Math.max(0, this.fadeLeft - dt);
+      if (this.fadeLeft > 0) this.debris.update(dt, COLLAPSE_SECONDS, this.fadeLeft);
+      else this.debris.hide();
     }
+  }
+
+  /**
+   * The end of the fall: the ruins in place, the base gone, the promise kept. `snap` is the
+   * clock's safety net firing because `update` stopped: everything jumps to the end at once.
+   */
+  private endCollapse(snap: boolean): void {
+    if (this.safety !== null) clearTimeout(this.safety);
+    this.safety = null;
+    this.collapseAt = COLLAPSE_SECONDS;
+    this.ruins.visible = true;
+    this.ruins.position.y = 0;
+    this.body.visible = false;
+    if (snap) {
+      this.settleLeft = 0;
+      this.fadeLeft = 0;
+      this.debris.hide();
+    }
+    this.resolveCollapse?.();
+    this.resolveCollapse = null;
   }
 
   /** Frees every geometry and material of this base. Take `group` out of the scene first. */
   dispose(): void {
+    if (this.safety !== null) clearTimeout(this.safety);
+    this.safety = null;
     this.group.traverse((object) => {
       if (object instanceof Mesh) object.geometry.dispose();
     });
@@ -1244,7 +1294,7 @@ export class BaseView {
     arm.scale.setScalar(scale * ARM_SCALE);
   }
 
-  private meshes(builder: Builder, name: string): Group {
+  private meshes(builder: Builder, name: string, high?: Builder): Group {
     const group = new Group();
     group.name = name;
     const solid = new Mesh(builder.solid.build(), this.plastic);
@@ -1263,6 +1313,14 @@ export class BaseView {
     }
     // The test of the damage states counts boxes; the glowing ones are in the plain mesh's tally.
     solid.userData.boxes = builder.boxes;
+    if (high && high.boxes > 0) {
+      const raised = new Mesh(high.solid.build(), this.plastic);
+      raised.name = `${name}:high`;
+      raised.castShadow = false;
+      raised.receiveShadow = true;
+      raised.userData.boxes = high.boxes;
+      group.add(raised);
+    }
     return group;
   }
 }

@@ -108,7 +108,7 @@ const SCENARIOS = [
         })),
       ),
       { suffix: 'strike', run: (page) => open(page, '/?scene=fx&layout=game&effects=0&strike=2&focus=plants&t=0.13') },
-      ...[0.5, 1.0, 1.6, 2.4].map((t) => ({
+      ...[0.5, 1.0, 1.6, 2.4, 4.0].map((t) => ({
         suffix: `collapse-${t.toFixed(2)}`,
         run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=0.1&collapse=both&t=${t}`),
       })),

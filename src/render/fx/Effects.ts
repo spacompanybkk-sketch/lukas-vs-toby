@@ -161,7 +161,8 @@ function canvas2d(): { canvas: HTMLCanvasElement; context: CanvasRenderingContex
     canvas.width = TEXT_CANVAS.width;
     canvas.height = TEXT_CANVAS.height;
     const context = canvas.getContext('2d');
-    if (!context || typeof context.fillText !== 'function' || typeof context.getImageData !== 'function') return null;
+    if (!context || typeof context.fillText !== 'function') return null;
+    context.imageSmoothingEnabled = false;
     return { canvas, context };
   } catch {
     return null;
@@ -196,6 +197,7 @@ export class Effects {
 
   constructor(particles: Particles, random: () => number = seededRandom(0x5eed)) {
     this.particles = particles;
+    particles.claim(this);
     this.random = random;
     this.group.name = 'effects';
 
@@ -274,12 +276,12 @@ export class Effects {
 
   /** A small cloud of cubes that swell and drift up. */
   puff(at: Vector3, color: number = C.puff): void {
-    const colors = [color, C.smokeLight, C.smokeLight];
-    for (let i = 0; i < 9; i++) {
+    const colors = [color, C.smokeLight, C.smoke, C.smokeDark];
+    for (let i = 0; i < 10; i++) {
       const angle = this.random() * Math.PI * 2;
       const out = this.between(0.5, 1);
       velocity.set(Math.cos(angle) * out, this.between(0.3, 0.6), Math.sin(angle) * out);
-      this.emit(this.jitter(at, 0.08, 0.1), this.pick(colors), this.between(0.06, 0.11), this.between(0.45, 0.7), -0.4, undefined, false, 1, 0.3);
+      this.emit(this.jitter(at, 0.08, 0.1), this.pick(colors), this.between(0.08, 0.12), this.between(0.4, 0.6), -0.4, undefined, false, 1.6, 0);
     }
   }
 
@@ -310,14 +312,15 @@ export class Effects {
   }
 
   /**
-   * A blast `radius` tiles across: a white-hot core swelling inside a ball of fire, a
-   * shockwave ring along the ground, burning cubes and clods thrown out, and smoke.
+   * A blast `radius` tiles across: a white-hot core that swells out past a ball of embers and
+   * then shrinks to show them, a shockwave ring along the ground, burning cubes and clods
+   * thrown out, and smoke.
    */
   explosion(at: Vector3, radius: number): void {
     const r = Math.max(0.3, radius);
     centre.copy(at).setY(at.y + 0.25 * r);
-    this.flash(centre, this.ball, C.core, 4, 0.09, 0.2, 0.25 * r, 0.5 * r);
-    this.flash(centre, this.shell, C.ember, 1.5, 0.14, 0.26, 0.3 * r, 0.72 * r);
+    this.flash(centre, this.ball, C.core, 2.4, 0.08, 0.22, 0.3 * r, 0.85 * r);
+    this.flash(centre, this.shell, C.ember, 1.5, 0.14, 0.26, 0.3 * r, 0.65 * r);
     this.ring(at, C.fireLight, r);
 
     const hot = [C.fire, C.fireLight, C.ember, C.core];
@@ -325,17 +328,24 @@ export class Effects {
       this.upward(0.2, this.between(2.2, 4.6) * Math.sqrt(r));
       this.emit(this.jitter(centre, 0.15 * r, 0.1), this.pick(hot), this.between(0.05, 0.09), this.between(0.35, 0.7), 8, undefined, true, 0, 1.5);
     }
+    // Fast ones from the edge of the core, so cubes are already flying clear of the flash.
+    for (let i = 0; i < 10; i++) {
+      this.upward(0.15, 1);
+      const start = this.jitter(centre, 0, 0).addScaledVector(velocity, 0.45 * r);
+      velocity.multiplyScalar(this.between(4, 6.5) * Math.sqrt(r));
+      this.emit(start, this.pick(hot), this.between(0.06, 0.1), this.between(0.4, 0.65), 8, undefined, true, 0, 1.5);
+    }
     const clods = [C.soil, C.soilDark, C.stoneDark, C.grassDark];
     for (let i = 0; i < 14; i++) {
       this.upward(0.45, this.between(1.8, 3.6) * Math.sqrt(r));
       this.emit(this.jitter(at, 0.2 * r, 0.05), this.pick(clods), this.between(0.06, 0.11), this.between(1, 1.4), 10, 0.35);
     }
-    const smoke = [C.smokeLight, C.puff, C.smoke];
-    for (let i = 0; i < 10; i++) {
+    const smoke = [C.smokeLight, C.puff, C.smoke, C.smoke, C.smokeDark];
+    for (let i = 0; i < 16; i++) {
       const angle = this.random() * Math.PI * 2;
       const out = this.between(0.3, 0.9) * r;
-      velocity.set(Math.cos(angle) * out, this.between(0.4, 0.9), Math.sin(angle) * out);
-      this.emit(this.jitter(centre, 0.25 * r, 0.15), this.pick(smoke), this.between(0.13, 0.22), this.between(1, 1.6), -0.3, undefined, false, 0.7, 0.25);
+      velocity.set(Math.cos(angle) * out, this.between(0.5, 1), Math.sin(angle) * out);
+      this.emit(this.jitter(centre, 0.25 * r, 0.15), this.pick(smoke), this.between(0.08, 0.14), this.between(0.7, 1.05), -0.4, undefined, false, 1.6, 0);
     }
   }
 
@@ -391,10 +401,10 @@ export class Effects {
 
   /** Smoke from a burning base: a couple of grey cubes that swell as they rise. Call a few times a second. */
   smoke(at: Vector3): void {
-    const colors = [C.smoke, C.smokeLight, C.smokeLight, C.smokeDark];
-    for (let i = 0; i < 2; i++) {
-      velocity.set(this.between(0.05, 0.22), this.between(0.35, 0.55), this.between(-0.08, 0.08));
-      this.emit(this.jitter(at, 0.06, 0.05), this.pick(colors), this.between(0.06, 0.1), this.between(1.2, 1.7), -0.25, undefined, false, 0.7, 0.25);
+    const colors = [C.smoke, C.smokeLight, C.smoke, C.puff, C.smokeDark];
+    for (let i = 0; i < 3; i++) {
+      velocity.set(this.between(0.05, 0.22), this.between(0.4, 0.6), this.between(-0.08, 0.08));
+      this.emit(this.jitter(at, 0.06, 0.05), this.pick(colors), this.between(0.08, 0.12), this.between(0.8, 1.1), -0.3, undefined, false, 1.4, 0);
     }
   }
 
@@ -432,11 +442,6 @@ export class Effects {
     const shown = text.slice(0, 8);
     context.strokeText(shown, width / 2, height / 2 + 1);
     context.fillText(shown, width / 2, height / 2 + 1);
-    // Hard edges: every pixel either shows or does not, so the number is pixel-crisp.
-    const image = context.getImageData(0, 0, width, height);
-    const data = image.data;
-    for (let i = 3; i < data.length; i += 4) data[i] = (data[i] as number) >= 110 ? 255 : 0;
-    context.putImageData(image, 0, 0);
     slot.texture.needsUpdate = true;
     const used = Math.min(width, context.measureText(shown).width + 12);
     slot.texture.repeat.set(used / width, 1);
@@ -450,10 +455,16 @@ export class Effects {
     slot.sprite.position.copy(at);
   }
 
-  /** Moves every flash, ring and floating number on by `dtSeconds` of game time. The particles update on their own. */
+  /**
+   * Moves everything on by `dtSeconds` of game time: the flashes, rings and floating numbers,
+   * and the particle pool given to the constructor. That pool belongs to these effects from
+   * then on: call this once a frame and never `Particles.update` yourself (a direct call is
+   * ignored, so the cubes cannot be moved twice in one frame).
+   */
   update(dtSeconds: number, camera: Camera): void {
     const dt = Math.max(0, dtSeconds);
     this.lastDt = dt;
+    this.particles.update(dt, this);
     for (const slot of this.flashes) {
       if (!slot.active) continue;
       slot.age += dt;

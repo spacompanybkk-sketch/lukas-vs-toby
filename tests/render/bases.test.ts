@@ -1,5 +1,5 @@
 import { Box3, Mesh, type Object3D } from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PLANT_BASE_X, ZOMBIE_BASE_X } from '../../src/render/coords';
 import { BaseView } from '../../src/render/models/bases';
 import { makeGravestone, makeProjectile, makeToken } from '../../src/render/models/props';
@@ -123,6 +123,46 @@ describe.each(SIDES)('the %s base', (side, [x0, x1]) => {
     for (let i = 0; i < 60; i++) base.update(1 / 60, 1 + i / 60);
     await collapsing;
     expect(done).toBe(true);
+  });
+});
+
+describe.each(SIDES)('the %s base, when nothing updates it', (side) => {
+  afterEach(() => vi.useRealTimers());
+
+  it('still falls by the clock: ruins shown, base gone, promise kept', async () => {
+    vi.useFakeTimers();
+    const base = new BaseView(side);
+    let done = false;
+    const collapsing = base.collapse().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(400);
+    await collapsing;
+    expect(done).toBe(true);
+    expect((base.group.getObjectByName('ruins') as Object3D).visible).toBe(true);
+    expect((base.group.getObjectByName('state-0') as Object3D).parent?.visible).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no timer behind when it falls on time or is thrown away', async () => {
+    vi.useFakeTimers();
+    const falling = new BaseView(side);
+    const fell = falling.collapse();
+    for (let i = 0; i < 120; i++) falling.update(1 / 60, i / 60);
+    await fell;
+    expect(vi.getTimerCount()).toBe(0);
+    const dropped = new BaseView(side);
+    void dropped.collapse();
+    dropped.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('shrinks its debris away after it settles, so only the ruins stay', () => {
+    const base = new BaseView(side);
+    void base.collapse();
+    for (let i = 0; i < 60 * 5; i++) base.update(1 / 60, i / 60);
+    expect((base.group.getObjectByName('base-debris') as Object3D).visible).toBe(false);
+    expect((base.group.getObjectByName('ruins') as Object3D).visible).toBe(true);
   });
 });
 

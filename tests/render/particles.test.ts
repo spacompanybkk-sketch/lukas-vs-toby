@@ -1,5 +1,5 @@
 import { InstancedMesh, Object3D, PerspectiveCamera, Vector3 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Effects } from '../../src/render/fx/Effects';
 import { Particles, type ParticleSpec } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
@@ -19,8 +19,9 @@ function spec(overrides: Partial<ParticleSpec> = {}): ParticleSpec {
 function run(particles: Particles, seconds: number, effects?: Effects): void {
   const camera = new PerspectiveCamera();
   for (let t = 0; t < seconds - 1e-9; t += 1 / 60) {
-    effects?.update(1 / 60, camera);
-    particles.update(1 / 60);
+    // Effects move the pool they were given; on its own the pool is moved directly.
+    if (effects) effects.update(1 / 60, camera);
+    else particles.update(1 / 60);
   }
 }
 
@@ -111,6 +112,18 @@ describe('Effects', () => {
     expect(particles.alive).toBeGreaterThan(60);
     run(particles, 3, effects);
     expect(particles.alive).toBe(0);
+  });
+
+  it('moves the particle pool it was given, and a second, direct update in the same frame does nothing', () => {
+    const particles = new Particles();
+    const effects = new Effects(particles, seededRandom(3));
+    particles.emit(spec({ velocity: new Vector3(1, 0, 0), life: 2 }));
+    const camera = new PerspectiveCamera();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    effects.update(0.5, camera);
+    particles.update(0.5);
+    warn.mockRestore();
+    expect(particles.alivePositions()[0]).toBeCloseTo(5.5, 6);
   });
 
   it('is repeatable: the same random gives the same particles in the same places', () => {
