@@ -1,4 +1,5 @@
 import { PLANT_KEYS, ZOMBIE_KEYS } from '../data/units';
+import { LANES } from './types';
 import type { Faction, SimState, UnitKey } from './types';
 
 /**
@@ -103,6 +104,9 @@ export function hashState(s: SimState): number {
   for (const faction of FACTIONS) f.num(s.baseHp[faction]);
   for (const faction of FACTIONS) f.num(s.baseMaxHp[faction]);
 
+  f.num(s.baseDefenseTimers.length);
+  for (const left of s.baseDefenseTimers) f.num(left); // lane order
+
   f.bool(s.suddenDeath);
   if (s.winner === null) {
     f.byte(0);
@@ -131,7 +135,13 @@ export function snapshotState(s: SimState): string {
   return JSON.stringify(s);
 }
 
-/** Rebuilds a state from `snapshotState` output, as fresh objects sharing nothing with any other state. */
+/**
+ * Rebuilds a state from `snapshotState` output, as fresh objects sharing nothing with any other
+ * state. A snapshot made before the plant base had a defence has no `baseDefenseTimers`; it gets
+ * one timer per lane, all at 0, which is what the timers read whenever the defence is off.
+ */
 export function restoreState(json: string): SimState {
-  return JSON.parse(json) as SimState;
+  const s = JSON.parse(json) as SimState;
+  s.baseDefenseTimers ??= new Array<number>(LANES).fill(0);
+  return s;
 }

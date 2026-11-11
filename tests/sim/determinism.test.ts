@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, cloneBalance } from '../../src/data/balance';
+import { BALANCE, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { PHASE1_CARDS, PLANT_KEYS, ZOMBIE_KEYS } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
@@ -8,7 +8,7 @@ import { BASE_STOP_X, COLS, LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from '../../src/
 import type {
   Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, UnitKey,
 } from '../../src/sim/types';
-import { classicConfig, eventsOf, merge, remove } from './helpers';
+import { classicConfig, eventsOf, merge, remove, withBaseDefense } from './helpers';
 
 /**
  * Review Focus 5: crowded and simultaneous moments, and determinism.
@@ -149,13 +149,21 @@ function isLane(n: number): boolean {
  *  - every unit has 0 < hp ≤ maxHp and a lane 0..4, every zombie 0.3 ≤ x ≤ 9.5;
  *  - unit ids are unique;
  *  - every projectile's lane is 0..4, and none is orphaned: it moves, and it has not been in
- *    flight longer than it takes to cross the whole lawn.
+ *    flight longer than it takes to cross the whole lawn;
+ *  - there is one base defence timer per lane, each a whole number from 0 to the balance's
+ *    `seconds(baseDefense.interval)`.
  */
-function findProblem(s: SimState): string | null {
+function findProblem(s: SimState, b: Balance = BALANCE): string | null {
   if (hasNonFinite(s)) return `${pathOfNonFinite(s, 'state')} is not a finite number`;
   for (const f of FACTIONS) {
     const energy = s.players[f].energy;
     if (!(energy >= 0) || !Number.isInteger(energy)) return `${f} energy is ${energy}`;
+  }
+  const timers = s.baseDefenseTimers;
+  if (timers.length !== LANES) return `there are ${timers.length} base defence timers`;
+  const longest = seconds(b.baseDefense.interval);
+  for (const [lane, left] of timers.entries()) {
+    if (!(Number.isInteger(left) && left >= 0 && left <= longest)) return `the base defence timer in lane ${lane} is ${left}`;
   }
   const ids = new Set<number>();
   for (const u of s.units) {
@@ -178,7 +186,7 @@ function findProblem(s: SimState): string | null {
 /** Steps `m` and checks every invariant straight after. */
 function checkedStep(m: Match, commands: readonly Command[] = []): SimEvent[] {
   const events = m.step(commands);
-  const problem = findProblem(m.state);
+  const problem = findProblem(m.state, m.balance);
   if (problem !== null) expect.unreachable(`after the step to tick ${m.state.tick}: ${problem}`);
   return events;
 }
@@ -211,6 +219,11 @@ describe('the invariant check', () => {
     ['a projectile in lane -1', (s) => { s.projectiles[0]!.lane = -1; }],
     ['a projectile that does not move', (s) => { s.projectiles[0]!.speed = 0; }],
     ['a projectile flying for ever', (s) => { s.projectiles[0]!.spawnTick = s.tick - 1000; }],
+    ['a base defence timer below 0', (s) => { s.baseDefenseTimers[1] = -1; }],
+    ['a fractional base defence timer', (s) => { s.baseDefenseTimers[2] = 0.5; }],
+    ['a base defence timer longer than its interval', (s) => { s.baseDefenseTimers[4] = seconds(BALANCE.baseDefense.interval) + 1; }],
+    ['a missing base defence timer', (s) => { s.baseDefenseTimers.pop(); }],
+    ['one base defence timer too many', (s) => { s.baseDefenseTimers.push(0); }],
   ];
 
   it('passes a healthy state', () => {
@@ -229,21 +242,22 @@ describe('the invariant check', () => {
 
 /**
  * The match a seed of the rich sweep plays. Richer than a real match so the lawn gets crowded:
- * more energy and faster income for both sides. Most seeds get sturdy bases so the fight lasts all
- * 3,000 steps; every 5th seed keeps the shipped base health so plenty of matches also end (and
- * then sit still). Seeds 3, 13, 23, … (sturdy ones) play a balance whose sudden death starts
- * after 40 s, so the drain runs for a minute alongside a full lawn.
+ * more energy and faster income for both sides. The plant base's defence is switched on (60 per
+ * strike, once a second per lane) so the fuzz exercises it. Most seeds get sturdy bases so the
+ * fight lasts all 3,000 steps; every 5th seed gets weak ones, 2,000 a side, so plenty of matches
+ * also end (and then sit still): with the base striking back a leak no longer settles a match
+ * quickly, and on the shipped 6,000 none of them ended within 3,000 steps. Seeds 3, 13, 23, …
+ * (sturdy ones) play a balance whose sudden death starts after 40 s, so the drain runs for a
+ * minute alongside a full lawn.
  */
 function richSetup(seed: number): { config: MatchConfig; balance: Balance } {
-  let balance: Balance = BALANCE;
-  if (seed % 10 === 3) {
-    balance = cloneBalance(BALANCE);
-    balance.suddenDeath.startSeconds = 40;
-  }
+  const balance = withBaseDefense(60, 1);
+  if (seed % 10 === 3) balance.suddenDeath.startSeconds = 40;
   const config = defaultConfig(seed, balance);
   config.startEnergy = { plants: 600, zombies: 600 };
   config.incomeMultiplier = { plants: 6, zombies: 1.5 }; // random plants hold a lane less well than random zombies take one
-  if (seed % 5 !== 0) config.baseHp = { plants: 30_000, zombies: 30_000 };
+  const baseHp = seed % 5 === 0 ? 2000 : 30_000;
+  config.baseHp = { plants: baseHp, zombies: baseHp };
   return { config, balance };
 }
 
@@ -349,7 +363,7 @@ function fuzzRun(sweep: Sweep, seed: number): FuzzRun {
     tallyEvents(tally, events);
     if (endedAtStep === null && first.state.winner !== null) endedAtStep = step;
     if (problem === null) {
-      const found = findProblem(first.state);
+      const found = findProblem(first.state, balance);
       if (found !== null) problem = `${sweep.name}, seed ${seed}, step ${step} (tick ${first.state.tick}): ${found}`;
     }
     if (sweep.checkpoints.includes(step)) hashes.push(first.hash());
@@ -429,7 +443,7 @@ describe('fuzz coverage', () => {
     return total;
   }
 
-  it('plays a different match for every seed, and exercises merges to level 5, the shovel, deaths, blasts, endings and every rejection', () => {
+  it('plays a different match for every seed, and exercises merges to level 5, the shovel, deaths, blasts, base strikes, endings and every rejection', () => {
     // Guards against a fuzz that quietly stops testing anything (say, every command rejected).
     for (const sweep of [RICH, PLAIN]) {
       const finals = new Set(sweep.seeds.map((seed) => fuzzRun(sweep, seed).hashes.at(-1)));
@@ -440,7 +454,7 @@ describe('fuzz coverage', () => {
     const expected = [
       'unitSpawned', 'unitMerged', 'unitMerged:level4', 'unitMerged:level5', 'unitAttacked',
       'projectileSpawned', 'projectileHit', 'unitDamaged', 'unitDied:damage', 'unitDied:blast',
-      'unitDied:shovel', 'explosion', 'baseDamaged', 'energyGained', 'suddenDeath', 'matchEnded',
+      'unitDied:shovel', 'explosion', 'baseDamaged', 'baseStruck', 'energyGained', 'suddenDeath', 'matchEnded',
     ];
     // Every reason a step can give; `match-over` never shows as an event, as a finished match's
     // step returns nothing.

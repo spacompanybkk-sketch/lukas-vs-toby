@@ -1,5 +1,17 @@
+import { BALANCE, cloneBalance } from '../../src/data/balance';
+import type { Balance } from '../../src/data/balance';
 import { defaultConfig } from '../../src/sim/match';
 import type { Command, Faction, MatchConfig, SimEvent, UnitKey } from '../../src/sim/types';
+
+/**
+ * A copy of the shipped balance with the plant base's defence switched on: `damage` per strike,
+ * at most one strike per lane every `interval` seconds. The shipped table has it off (damage 0).
+ */
+export function withBaseDefense(damage = 60, interval = 1): Balance {
+  const balance = cloneBalance(BALANCE);
+  balance.baseDefense = { damage, interval };
+  return balance;
+}
 
 /**
  * The default setup with the energy and base health these tests were written for, 200 and 3000 a

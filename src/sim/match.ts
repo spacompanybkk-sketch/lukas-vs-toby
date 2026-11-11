@@ -1,7 +1,7 @@
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
-import { resolveDeaths, tickAttacks, tickProjectiles } from './combat';
+import { resolveDeaths, tickAttacks, tickBaseDefense, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { restoreState, hashState, snapshotState } from './hash';
@@ -78,6 +78,7 @@ export class Match {
         zombies: { energy: own.startEnergy.zombies, carry: 0, recharge: {} },
       },
       baseHp: { ...own.baseHp }, baseMaxHp: { ...own.baseHp },
+      baseDefenseTimers: new Array<number>(LANES).fill(0),
       suddenDeath: false, winner: null,
       config: own,
     };
@@ -120,7 +121,8 @@ export class Match {
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
-   * commands, economy, movement, attacks, projectiles, deaths, endgame, then the tick count.
+   * commands, economy, movement, attacks, the plant base's defence, projectiles, deaths, endgame,
+   * then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
   step(commands: readonly Command[] = []): SimEvent[] {
@@ -154,6 +156,7 @@ export class Match {
     tickEconomy(s, b, events);
     tickMovement(s, b);
     tickAttacks(s, b, events);
+    tickBaseDefense(s, b, events);
     tickProjectiles(s, b, events);
     resolveDeaths(s, b, events);
     tickEndgame(s, b, events);

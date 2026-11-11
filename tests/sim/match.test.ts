@@ -48,6 +48,7 @@ describe('new Match', () => {
       },
       baseHp: { plants: 6000, zombies: 6000 },
       baseMaxHp: { plants: 6000, zombies: 6000 },
+      baseDefenseTimers: [0, 0, 0, 0, 0],
       suddenDeath: false, winner: null,
       config: defaultConfig(42),
     });

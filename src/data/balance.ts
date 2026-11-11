@@ -25,6 +25,11 @@ export interface Balance {
   levelScale: readonly number[]; // index = level
   suddenDeath: { startSeconds: number; baseRate: number; growthPerSecond: number };
   startEnergy: number; baseHp: number;
+  /**
+   * The plant base strikes a zombie biting it: `damage` per strike, at most one strike per lane
+   * every `interval` seconds. Damage 0 switches it off.
+   */
+  baseDefense: { damage: number; interval: number };
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -94,6 +99,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 50,
   baseHp: 6000,
+  baseDefense: { damage: 0, interval: 1 }, // off until the computer players are re-tuned with it on
 });
 
 /** Seconds to whole ticks. */

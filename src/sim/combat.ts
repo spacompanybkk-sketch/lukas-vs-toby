@@ -1,5 +1,5 @@
 /**
- * Fighting: attacks, projectiles, damage, deaths and blasts.
+ * Fighting: attacks, the plant base's defence, projectiles, damage, deaths and blasts.
  *
  * Order: units act in ascending id and projectiles fly in ascending id. Both arrays stay in
  * that order because new entries are appended with ever larger ids (they share `s.nextId`) and
@@ -16,7 +16,7 @@ import { seconds } from '../data/balance';
 import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
 import { payBounty } from './economy';
 import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
-import { BASE_STOP_X, COLS, TICKS_PER_SECOND } from './types';
+import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
 import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
 
 type DeathBlast = NonNullable<UnitStats['deathBlast']>;
@@ -78,6 +78,41 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
   events.push({
     type: 'projectileSpawned', projectileId: p.id, kind: p.kind, faction: p.faction, lane: p.lane, x: p.x, ownerId: u.id,
   });
+}
+
+/**
+ * Step stage 4b, straight after units attack: the plant base strikes zombies that are biting it.
+ * (The zombie base has no such defence.)
+ *
+ * For lanes 0 to 4 in order: if the lane's timer is 0, the base strikes the zombie in that lane
+ * with the lowest id that is standing, `blocked` and at the base (x <= BASE_STOP_X): `baseStruck`,
+ * then `baseDefense.damage` through `damageUnit` (armor applies as for any hit), and the lane's
+ * timer is set to `seconds(baseDefense.interval)`. A lane with nobody to strike keeps its timer at
+ * 0. So a zombie held up by a plant is never struck, nor is one still walking, not even on the
+ * tick it reaches BASE_STOP_X (it walked that tick, so it is not `blocked` yet). A zombie brought
+ * to 0 here is removed by `resolveDeaths` like any other: cause `'damage'`, bounty to the plants.
+ * Damage 0 switches the stage off: it then changes nothing and emits nothing. The timers are only
+ * read and reset here; `tickEconomy` counts them down.
+ */
+export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): void {
+  const { damage, interval } = b.baseDefense;
+  if (!(damage > 0)) return;
+  for (let lane = 0; lane < LANES; lane++) {
+    if (s.baseDefenseTimers[lane] !== 0) continue;
+    const target = biterAtBase(s, lane);
+    if (target === null) continue;
+    events.push({ type: 'baseStruck', lane, targetId: target.id });
+    damageUnit(s, target, damage, events);
+    s.baseDefenseTimers[lane] = seconds(interval);
+  }
+}
+
+/** The lowest-id zombie in `lane` that is biting the plant base: standing, blocked, at BASE_STOP_X. */
+function biterAtBase(s: SimState, lane: number): Unit | null {
+  for (const u of s.units) { // ascending id order, so the first one found has the lowest id
+    if (u.faction === 'zombies' && u.lane === lane && isStanding(u) && u.blocked && u.x <= BASE_STOP_X) return u;
+  }
+  return null;
 }
 
 /**

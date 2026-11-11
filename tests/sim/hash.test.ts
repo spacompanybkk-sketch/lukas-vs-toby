@@ -4,9 +4,11 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 793 bytes).
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 841 bytes). Before the base
+ * defence timers were added it was 1810640202 over 793 bytes; the same separate implementation
+ * reproduces that value without the timers.
  */
-const GOLDEN_HASH = 1810640202;
+const GOLDEN_HASH = 3642874464;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -33,6 +35,7 @@ function makeState(): SimState {
     },
     baseHp: { plants: 500, zombies: 480 },
     baseMaxHp: { plants: 500, zombies: 500 },
+    baseDefenseTimers: [0, 12, 30, 0, 5],
     suddenDeath: false,
     winner: null,
     config: {
@@ -104,6 +107,10 @@ describe('hashState', () => {
     ['a recharge on another card', (s) => { s.players.zombies.recharge.veryFastWalker = 1; }],
     ['baseHp.zombies', (s) => { s.baseHp.zombies -= 1; }],
     ['baseMaxHp', (s) => { s.baseMaxHp.zombies += 1; }],
+    ['baseDefenseTimers[2]', (s) => { s.baseDefenseTimers[2] = 29; }],
+    ['a base defence timer of 0 becoming 1', (s) => { s.baseDefenseTimers[0] = 1; }],
+    ['base defence timers moved to another lane', (s) => { s.baseDefenseTimers = [12, 0, 30, 0, 5]; }],
+    ['the number of base defence timers', (s) => { s.baseDefenseTimers.pop(); }],
     ['suddenDeath', (s) => { s.suddenDeath = true; }],
     ['winner', (s) => { s.winner = 'plants'; }],
     ['winner draw versus plants', (s) => { s.winner = 'draw'; }],
@@ -163,6 +170,29 @@ describe('snapshotState / restoreState', () => {
     expect(unit(restored, 0).x).toBe(0.1 + 0.2);
     expect(restored.projectiles[0]!.x).toBe(1 / 3);
     expect(hashState(restored)).toBe(hashState(s));
+  });
+
+  it('round-trips the base defence timers', () => {
+    const s = makeState();
+    const restored = restoreState(snapshotState(s));
+    expect(restored.baseDefenseTimers).toEqual([0, 12, 30, 0, 5]);
+    expect(restored.baseDefenseTimers).not.toBe(s.baseDefenseTimers);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
+  });
+
+  it('restores a snapshot made before the base defence existed with five timers at 0', () => {
+    const old = JSON.parse(snapshotState(makeState())) as Record<string, unknown>;
+    delete old.baseDefenseTimers;
+    const snapshot = JSON.stringify(old);
+    expect(snapshot).not.toContain('baseDefenseTimers');
+
+    const restored = restoreState(snapshot);
+
+    expect(restored.baseDefenseTimers).toEqual([0, 0, 0, 0, 0]);
+    const expected = makeState();
+    expected.baseDefenseTimers = [0, 0, 0, 0, 0];
+    expect(restored).toEqual(expected);
+    expect(hashState(restored)).toBe(hashState(expected));
   });
 
   it('round-trips a finished match', () => {

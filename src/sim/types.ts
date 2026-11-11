@@ -50,6 +50,7 @@ export interface SimState {
   units: Unit[]; projectiles: Projectile[];
   players: Record<Faction, PlayerState>;
   baseHp: Record<Faction, number>; baseMaxHp: Record<Faction, number>;
+  baseDefenseTimers: number[]; // one per lane, ticks until the plant base can strike there again
   suddenDeath: boolean; winner: Faction | 'draw' | null;
   config: MatchConfig;
 }
@@ -75,6 +76,7 @@ export type SimEvent =
   | { type: 'unitDied'; unitId: number; key: UnitKey; faction: Faction; lane: number; x: number; level: number; cause: 'damage' | 'blast' | 'shovel' }
   | { type: 'explosion'; lane: number; x: number; radius: number; sourceKey: UnitKey }
   | { type: 'baseDamaged'; faction: Faction; amount: number; hp: number; lane: number | null }
+  | { type: 'baseStruck'; lane: number; targetId: number } // the plant base hit a zombie that was biting it
   // unitId = the paying Sunflower, null for bounties
   | { type: 'energyGained'; faction: Faction; amount: number; source: 'sunflower' | 'bounty'; unitId: number | null; lane: number; x: number }
   | { type: 'suddenDeath' }

@@ -130,6 +130,11 @@ describe('BALANCE globals', () => {
     expect(BALANCE.suddenDeath.baseRate).toBeGreaterThan(0);
     expect(BALANCE.suddenDeath.growthPerSecond).toBeGreaterThanOrEqual(0);
   });
+
+  it('has a plant base defence with damage of 0 or more (0 switches it off) and an interval of at least one tick', () => {
+    expect(BALANCE.baseDefense.damage).toBeGreaterThanOrEqual(0);
+    expect(seconds(BALANCE.baseDefense.interval)).toBeGreaterThanOrEqual(1);
+  });
 });
 
 /** Every object and array reachable from `value`, `value` included. */
@@ -148,6 +153,7 @@ describe('BALANCE is frozen', () => {
     expect(all).toContain(BALANCE.units);
     expect(all).toContain(BALANCE.levelScale);
     expect(all).toContain(BALANCE.suddenDeath);
+    expect(all).toContain(BALANCE.baseDefense);
     for (const [, stats] of entries()) expect(all).toContain(stats);
     for (const node of all) expect(Object.isFrozen(node)).toBe(true);
   });

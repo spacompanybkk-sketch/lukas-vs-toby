@@ -11,7 +11,8 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
 
 /**
  * One tick of the economy, in this order:
- * (a) every timer counts down (the only place any timer does);
+ * (a) every timer counts down, never below 0 (the only place any timer does): each unit's attack
+ *     and ability timers, each card's recharge, and the plant base's defence timer in each lane;
  * (b) trickle income is added to each side's carry and paid out in whole energy;
  * (c) every ready Sunflower pays.
  */
@@ -32,6 +33,10 @@ function countDownTimers(s: SimState): void {
     for (const key of Object.keys(recharge) as UnitKey[]) {
       recharge[key] = Math.max(0, (recharge[key] ?? 0) - 1);
     }
+  }
+  const baseDefense = s.baseDefenseTimers;
+  for (let lane = 0; lane < baseDefense.length; lane++) {
+    baseDefense[lane] = Math.max(0, (baseDefense[lane] ?? 0) - 1);
   }
 }
 
