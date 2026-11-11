@@ -86,6 +86,16 @@ Level materials (applied to a model's trim colour slots and added parts)
 | 4 | Crystal `#7DE8FF`, glowing: emissive intensity 1.5 or more so it blooms |
 | 5 | Gold `#FFC83D`, metalness 0.8, warm emissive 0.15 (a sheen, not a glow), golden aura motes |
 
+Every level must be visible from the lawn camera, which looks down from above and
+behind the plants. A level's additions go on top of the head, in front of the face, or
+outside the head's footprint; never only under or behind the head. Each step up must
+change the silhouette a child sees during play, level 1 to level 2 included.
+
+Crystal keeps its shading: its glow is multiplied by the surface's own baked tones, so
+creases and faces still read and a crystal mouth still shows its dark opening. Iron and
+gold reflect a small built-in studio environment so they read as metal; that reflection
+is part of the material, not an extra light.
+
 Anything meant to glow (crystal, fuse tips, eyes, fire, tokens) needs an emissive
 intensity of 1.5 or more: bloom starts at scene luminance 1.2, and a lit surface with
 emissive 0.6 reaches only about 0.8.
