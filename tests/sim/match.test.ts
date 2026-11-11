@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { PHASE1_CARDS } from '../../src/data/units';
 import { hashState, snapshotState } from '../../src/sim/hash';
-import { Match, defaultConfig } from '../../src/sim/match';
-import { place } from './helpers';
+import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
+import type { Command } from '../../src/sim/types';
+import { eventsOf, merge, place, remove } from './helpers';
 
 // The stages run for real in this file (the stage-order test, which mocks them, is step-order.test.ts).
 
@@ -102,12 +103,33 @@ describe('step', () => {
     expect(second).toEqual([]);
   });
 
-  it('throws for a merge or remove that gets past check, so a missing branch cannot pass silently', () => {
-    // Until merge and remove are built `check` refuses them; force it to say yes.
+  it('carries out a place, a merge and a remove in one step, in the order given', () => {
+    const m = new Match(defaultConfig(1)); // 200 energy each
+    const pea = spawnUnit(m.state, BALANCE, 'peashooter', 0, 0.5);
+    const sun = spawnUnit(m.state, BALANCE, 'sunflower', 1, 0.5);
+    const cmds: Command[] = [
+      merge('plants', 'peashooter', pea.id),
+      remove('plants', sun.id),
+      place('plants', 'sunflower', 1, 0), // the tile the shovel just cleared
+    ];
+    for (const cmd of cmds.slice(0, 2)) expect(m.check(cmd)).toBeNull();
+
+    const events = m.step(cmds);
+
+    expect(events.map((e) => e.type)).toEqual(['unitMerged', 'unitDied', 'unitSpawned']);
+    expect(eventsOf(events, 'unitDied')[0]).toMatchObject({ unitId: sun.id, cause: 'shovel' });
+    expect(m.state.units.map((u) => [u.id, u.key, u.level])).toEqual([[pea.id, 'peashooter', 2], [3, 'sunflower', 1]]);
+    expect(m.state.players.plants.energy).toBe(200 - 100 - 50);
+  });
+
+  it('does nothing once the match is over: no events, no tick, no change', () => {
     const m = new Match(defaultConfig(1));
-    vi.spyOn(m, 'check').mockReturnValue(null);
-    expect(() => m.step([{ type: 'merge', faction: 'plants', unit: 'peashooter', targetId: 1 }])).toThrow('not implemented');
-    expect(() => m.step([{ type: 'remove', faction: 'plants', targetId: 1 }])).toThrow('not implemented');
+    m.state.baseHp.zombies = 0;
+    expect(m.step()).toEqual([{ type: 'matchEnded', winner: 'plants' }]);
+    const snapshot = m.snapshot();
+    expect(m.step([place('plants', 'peashooter', 0, 0)])).toEqual([]);
+    expect(m.snapshot()).toBe(snapshot);
+    expect(m.state.tick).toBe(1);
   });
 });
 

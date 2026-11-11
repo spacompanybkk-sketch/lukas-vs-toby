@@ -214,8 +214,10 @@ describe('rejections', () => {
       m.state.players.zombies.energy = 124;
       return place('zombies', 'skeletonWarrior', 2, 0);
     }],
-    ['no-target', 'a merge (not built yet)', () => ({ type: 'merge', faction: 'plants', unit: 'peashooter', targetId: 1 })],
-    ['no-target', 'a remove (not built yet)', () => ({ type: 'remove', faction: 'plants', targetId: 1 })],
+    // Merge and remove have their own tables in merge.test.ts and endgame.test.ts; these two make
+    // sure they share this table's guarantees (nothing spawned, nothing spent).
+    ['no-target', 'a merge aimed at no unit', () => ({ type: 'merge', faction: 'plants', unit: 'peashooter', targetId: 1 })],
+    ['no-target', 'a remove aimed at no unit', () => ({ type: 'remove', faction: 'plants', targetId: 1 })],
   ];
 
   it.each(cases)('%s: %s', (reason, _name, setup) => {
@@ -227,7 +229,11 @@ describe('rejections', () => {
     expect(m.check(cmd)).toBe(reason);
     const events = m.step([cmd]);
 
-    expect(eventsOf(events, 'commandRejected')).toEqual([{ type: 'commandRejected', command: cmd, reason }]);
+    if (reason === 'match-over') {
+      expect(events).toEqual([]); // a finished match ignores commands altogether
+    } else {
+      expect(eventsOf(events, 'commandRejected')).toEqual([{ type: 'commandRejected', command: cmd, reason }]);
+    }
     expect(eventsOf(events, 'unitSpawned')).toEqual([]);
     expect(m.state.units).toHaveLength(units);
     expect(m.state.players.plants.energy).toBe(energy.plants);

@@ -5,14 +5,16 @@ import { resolveDeaths, tickAttacks, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { restoreState, hashState, snapshotState } from './hash';
-import { statsFor } from './lookup';
+import { isStanding, levelScale, statsFor } from './lookup';
 import { tickMovement } from './movement';
-import { LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
+import { LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
-  Command, CommandRejection, MatchConfig, SimEvent, SimState, Unit, UnitKey,
+  Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit, UnitKey,
 } from './types';
 
 type PlaceCommand = Extract<Command, { type: 'place' }>;
+type MergeCommand = Extract<Command, { type: 'merge' }>;
+type RemoveCommand = Extract<Command, { type: 'remove' }>;
 
 /** A fresh match setup: both sides alike, the Phase 1 cards, sudden death on. */
 export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchConfig {
@@ -89,39 +91,42 @@ export class Match {
     return match;
   }
 
-  /** Why a command would be refused right now, or null if it would be carried out. */
+  /**
+   * Why a command would be refused right now, or null if it would be carried out. `step` asks
+   * this same method before carrying out any command, so the two can never disagree.
+   *
+   * Every command: `match-over` once a winner is set.
+   * - place: `wrong-side`, `not-in-hand`, `bad-lane`, `bad-column` and `occupied` (plants only),
+   *   `recharging`, `no-energy`.
+   * - merge: `wrong-side`, `not-in-hand`, `no-target` (no living unit has that id), `not-yours`,
+   *   `wrong-type`, `max-level`, `recharging`, `no-energy`.
+   * - remove: `plants-only`, `no-target`, `not-yours`.
+   */
   check(cmd: Command): CommandRejection | null {
-    const s = this.state;
-    if (s.winner !== null) return 'match-over';
-    // Merge and remove are not built yet.
-    if (cmd.type !== 'place') return 'no-target';
-
-    const info = UNIT_INFO[cmd.unit];
-    if (info.faction !== cmd.faction) return 'wrong-side';
-    // A card with no numbers in the balance table cannot be played, so it is not really in the hand.
-    const inHand = s.config.cards[cmd.faction].includes(cmd.unit) && this.balance.units[cmd.unit] !== undefined;
-    if (!inHand) return 'not-in-hand';
-    if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
-    if (cmd.faction === 'plants') {
-      if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
-      const taken = s.units.some(
-        (u) => u.faction === 'plants' && u.lane === cmd.lane && Math.floor(u.x) === cmd.col,
-      );
-      if (taken) return 'occupied';
+    if (this.state.winner !== null) return 'match-over';
+    switch (cmd.type) {
+      case 'place':
+        return this.checkPlace(cmd);
+      case 'merge':
+        return this.checkMerge(cmd);
+      case 'remove':
+        return this.checkRemove(cmd);
+      default: {
+        const unhandled: never = cmd;
+        throw new Error(`Unhandled command ${JSON.stringify(unhandled)}`);
+      }
     }
-    const player = s.players[cmd.faction];
-    if ((player.recharge[cmd.unit] ?? 0) > 0) return 'recharging';
-    if (player.energy < info.price) return 'no-energy';
-    return null;
   }
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
    * commands, economy, movement, attacks, projectiles, deaths, endgame, then the tick count.
+   * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
   step(commands: readonly Command[] = []): SimEvent[] {
     const s = this.state;
     const b = this.balance;
+    if (s.winner !== null) return [];
     const events: SimEvent[] = [];
 
     for (const cmd of commands) {
@@ -135,9 +140,11 @@ export class Match {
           this.place(cmd, events);
           break;
         case 'merge':
+          this.merge(cmd, events);
+          break;
         case 'remove':
-          // `check` refuses these until they are built; a command that gets here has no branch yet.
-          throw new Error('not implemented');
+          this.remove(cmd, events);
+          break;
         default: {
           const unhandled: never = cmd;
           throw new Error(`Unhandled command ${JSON.stringify(unhandled)}`);
@@ -162,14 +169,106 @@ export class Match {
     return snapshotState(this.state);
   }
 
+  private checkPlace(cmd: PlaceCommand): CommandRejection | null {
+    const card = this.checkCard(cmd.faction, cmd.unit);
+    if (card !== null) return card;
+    if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
+    if (cmd.faction === 'plants') {
+      if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
+      const taken = this.state.units.some(
+        (u) => u.faction === 'plants' && u.lane === cmd.lane && Math.floor(u.x) === cmd.col,
+      );
+      if (taken) return 'occupied';
+    }
+    return this.checkPayment(cmd.faction, cmd.unit);
+  }
+
+  private checkMerge(cmd: MergeCommand): CommandRejection | null {
+    const card = this.checkCard(cmd.faction, cmd.unit);
+    if (card !== null) return card;
+    const target = this.livingUnit(cmd.targetId);
+    if (target === undefined) return 'no-target';
+    if (target.faction !== cmd.faction) return 'not-yours';
+    if (target.key !== cmd.unit) return 'wrong-type';
+    if (target.level >= MAX_LEVEL) return 'max-level';
+    return this.checkPayment(cmd.faction, cmd.unit);
+  }
+
+  private checkRemove(cmd: RemoveCommand): CommandRejection | null {
+    if (cmd.faction !== 'plants') return 'plants-only';
+    const target = this.livingUnit(cmd.targetId);
+    if (target === undefined) return 'no-target';
+    if (target.faction !== cmd.faction) return 'not-yours';
+    return null;
+  }
+
+  /** `wrong-side` and `not-in-hand`: may this side play this card at all? */
+  private checkCard(faction: Faction, unit: UnitKey): CommandRejection | null {
+    if (UNIT_INFO[unit].faction !== faction) return 'wrong-side';
+    // A card with no numbers in the balance table cannot be played, so it is not really in the hand.
+    const inHand = this.state.config.cards[faction].includes(unit) && this.balance.units[unit] !== undefined;
+    return inHand ? null : 'not-in-hand';
+  }
+
+  /** `recharging` and `no-energy`: can this side pay for this card now? */
+  private checkPayment(faction: Faction, unit: UnitKey): CommandRejection | null {
+    const player = this.state.players[faction];
+    if ((player.recharge[unit] ?? 0) > 0) return 'recharging';
+    if (player.energy < UNIT_INFO[unit].price) return 'no-energy';
+    return null;
+  }
+
+  /** The unit with this id if it is on the field and standing (see `isStanding`). */
+  private livingUnit(id: number): Unit | undefined {
+    return this.state.units.find((u) => u.id === id && isStanding(u));
+  }
+
+  /** Pays a card's price and starts its recharge. */
+  private payFor(faction: Faction, unit: UnitKey): void {
+    const player = this.state.players[faction];
+    player.energy -= UNIT_INFO[unit].price;
+    player.recharge[unit] = seconds(statsFor(this.balance, unit).recharge);
+  }
+
   /** Carries out a placement that `check` has passed: pays, starts the card's recharge, spawns. */
   private place(cmd: PlaceCommand, events: SimEvent[]): void {
-    const stats = statsFor(this.balance, cmd.unit);
-    const player = this.state.players[cmd.faction];
-    player.energy -= UNIT_INFO[cmd.unit].price;
-    player.recharge[cmd.unit] = seconds(stats.recharge);
+    this.payFor(cmd.faction, cmd.unit);
     const x = cmd.faction === 'plants' ? cmd.col + 0.5 : ZOMBIE_SPAWN_X;
     spawnUnit(this.state, this.balance, cmd.unit, cmd.lane, x, events);
+  }
+
+  /**
+   * Carries out a merge that `check` has passed: pays and starts the card's recharge, then the
+   * target goes up one level. Its max health becomes `hp × levelScale[level]` from the balance
+   * table and its health keeps its share of the max, rounded, never below 1. `spent` grows by the
+   * price (bounties pay a share of it). Position, timers and everything else stay as they were.
+   */
+  private merge(cmd: MergeCommand, events: SimEvent[]): void {
+    const target = this.livingUnit(cmd.targetId);
+    if (target === undefined) throw new Error(`merge passed check but unit ${cmd.targetId} is gone`);
+    this.payFor(cmd.faction, cmd.unit);
+    const oldHp = target.hp;
+    const oldMaxHp = target.maxHp;
+    target.level += 1;
+    target.maxHp = statsFor(this.balance, target.key).hp * levelScale(this.balance, target.level);
+    target.hp = Math.max(1, Math.round(target.maxHp * oldHp / oldMaxHp));
+    target.spent += UNIT_INFO[cmd.unit].price;
+    events.push({ type: 'unitMerged', unitId: target.id, level: target.level });
+  }
+
+  /**
+   * Carries out a removal that `check` has passed: the plant leaves the field at once with
+   * `unitDied` (cause `'shovel'`). It does not go through `resolveDeaths`, so nobody gets a
+   * bounty, no death blast goes off, and nothing is refunded.
+   */
+  private remove(cmd: RemoveCommand, events: SimEvent[]): void {
+    const s = this.state;
+    const u = this.livingUnit(cmd.targetId);
+    if (u === undefined) throw new Error(`remove passed check but unit ${cmd.targetId} is gone`);
+    s.units.splice(s.units.indexOf(u), 1); // the rest keep their ascending id order
+    events.push({
+      type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level, cause: 'shovel',
+    });
   }
 }
 
