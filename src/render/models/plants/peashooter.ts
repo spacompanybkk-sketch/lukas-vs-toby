@@ -2,8 +2,9 @@ import { cheerJump, hitRecoil, idleBob, shootSnap, spawnRise, wilt } from '../..
 import type { ModelDef } from '../../voxel/types';
 
 // Peashooter. Faces +X. A soil mound and a rosette of leaves, a stem that steps forward as
-// it rises, and a big round head with a tube mouth, an eye on each flank and a leaf sprout
-// behind. `pea` is its trim colour: the lip of the mouth and the collar on the stem.
+// it rises, and a big round head, chin up and turned a little to the player, with a tube
+// mouth, an eye on each flank and a leaf sprout behind. `pea` is its trim colour: the lip
+// of the mouth and the collar on the stem.
 //
 // Levels: 2 adds a second leaf pair, a thicker lip, a collar and a bow of leaves behind the
 // head; 3 an iron helmet with a peak; 4 crystal shards on the helmet, spikes down the back
@@ -16,7 +17,7 @@ export const peashooter: ModelDef = {
   key: 'peashooter',
   trim: ['pea'],
   eyes: ['eyes'],
-  muzzle: [5, 11.5, 1.5],
+  muzzle: [5, 12, 1.5],
   parts: [
     {
       name: 'root',
@@ -79,8 +80,9 @@ export const peashooter: ModelDef = {
       name: 'head',
       parent: 'stem',
       pivot: [-0.5, 8, 0],
-      // Turned a little towards the player, so the mouth and the near eye both show.
-      rot: [0, -14, 0],
+      // Chin up, and turned a little towards the player, so the mouth and the near eye both
+      // show from the lawn camera.
+      rot: [0, -14, 6],
       boxes: [
         // A rounded block: three crossing boxes, darker underneath and lighter on top.
         { at: [-3, 8, -3], size: [5, 1, 6], color: 'leafDark' },
@@ -165,16 +167,16 @@ export const peashooter: ModelDef = {
       ],
     },
     {
-      // A leaf growing from the back of the head, tapering and drooping at its tip.
+      // A leaf growing from the back of the head: a short flag at level 1; from level 2 it
+      // runs on to a drooping tip, with two more leaves spread like a bow.
       name: 'sprout',
       parent: 'head',
       pivot: [-3.5, 14, 0],
       boxes: [
         { at: [-4, 14, -1], size: [1, 2, 2], color: 'stem' },
         { at: [-5, 15, -1], size: [1, 1, 2], color: 'leafDark' },
-        { at: [-6, 15, -0.5], size: [1, 1, 1], color: 'leaf' },
-        { at: [-6, 14, -0.5], size: [1, 1, 1], color: 'leaf' },
-        // Level 2 up: two more leaves, spread like a bow.
+        { at: [-6, 15, -0.5], size: [1, 1, 1], color: 'leaf', minLevel: 2 },
+        { at: [-6, 14, -0.5], size: [1, 1, 1], color: 'leaf', minLevel: 2 },
         { at: [-4.5, 15.5, 1], size: [1.5, 1, 2], color: 'leaf', minLevel: 2 },
         { at: [-4.5, 15.5, -3], size: [1.5, 1, 2], color: 'leaf', minLevel: 2 },
       ],

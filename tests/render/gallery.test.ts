@@ -222,6 +222,26 @@ describe('gallery scene', () => {
     expect(ui.querySelectorAll('[data-gallery] > div')).toHaveLength(gallery.instances.length);
   });
 
+  it('fills the lawn with a crowd, to see what a full battle costs', () => {
+    const { gallery, renderer, ui } = open('scene=gallery&crowd=150');
+    expect(gallery.instances).toHaveLength(150);
+    expect(renderer.scene.getObjectByName('lawn')).toBeDefined();
+    expect(ui.querySelectorAll('[data-gallery] > div')).toHaveLength(0);
+    const spots = new Set<string>();
+    for (const instance of gallery.instances) {
+      const { x, z } = instance.root.position;
+      expect(x).toBeGreaterThan(0);
+      expect(x).toBeLessThan(10);
+      expect(z).toBeGreaterThan(0);
+      expect(z).toBeLessThan(5);
+      spots.add(`${x.toFixed(3)},${z.toFixed(3)}`);
+    }
+    // No two stand on exactly the same spot, and every level is among them.
+    expect(spots.size).toBe(150);
+    expect(new Set(gallery.instances.map((instance) => instance.level)).size).toBe(5);
+    expect(gallery.stats.reduce((sum, entry) => sum + entry.meshes, 0)).toBeGreaterThan(150 * 5);
+  });
+
   it('frames a portrait tightly, with no pads and no labels', () => {
     const wide = open('scene=gallery&model=peashooter&level=1&pitch=20&yaw=32').renderer.camera.position.clone();
     teardown?.();

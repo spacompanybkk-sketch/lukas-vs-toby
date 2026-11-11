@@ -501,10 +501,11 @@ describe('Peashooter', () => {
     const model = buildParts(peashooter, 1);
     model.updateMatrixWorld(true);
     const whole = new Box3().setFromObject(model, true);
-    // The head part without what grows out of it (eyes sit on it; the sprout rises behind).
+    // The head as it was modelled, before it is tipped back and turned: its own boxes,
+    // without the eyes that sit on it and the sprout that rises behind.
     const head = model.getObjectByName('head') as Object3D;
     const box = new Box3();
-    for (const child of head.children) if (child instanceof Mesh) box.expandByObject(child, true);
+    for (const child of head.children) if (child instanceof Mesh) box.union(child.geometry.boundingBox as Box3);
     const share = (box.max.y - box.min.y) / (whole.max.y - whole.min.y);
     expect(share).toBeGreaterThanOrEqual(0.4);
     expect(share).toBeLessThanOrEqual(0.5);

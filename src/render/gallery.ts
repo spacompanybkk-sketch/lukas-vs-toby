@@ -83,6 +83,33 @@ export function galleryLayout(keys: readonly string[], levels: readonly number[]
   };
 }
 
+/**
+ * Where models stand on the real lawn: a lane per model with its levels along the columns,
+ * or, for a crowd of `crowd` units, the lawn filled tile by tile and then a second and third
+ * unit on each tile, a little to one side.
+ */
+function lawnLayout(keys: readonly string[], levels: readonly number[], crowd: number): GalleryCell[] {
+  if (crowd > 0) {
+    return Array.from({ length: crowd }, (_, i) => {
+      const layer = Math.floor(i / 50) % 3;
+      return {
+        key: keys[i % keys.length] as string,
+        level: levels[i % levels.length] as number,
+        x: (i % 10) + 0.4 + 0.2 * layer,
+        z: (Math.floor(i / 10) % 5) + 0.6 - 0.15 * layer,
+      };
+    });
+  }
+  return keys.flatMap((key, index) => levels.map((level, i) => ({ key, level, x: i + 1.5, z: ((2 + index) % 5) + 0.5 })));
+}
+
+/** The box that holds every cell, with room around each model. */
+function boxAround(cells: readonly GalleryCell[]): FrameBox {
+  const xs = cells.map((cell) => cell.x);
+  const zs = cells.map((cell) => cell.z);
+  return { x: [Math.min(...xs) - 0.7, Math.max(...xs) + 0.7], y: [0, HEADROOM], z: [Math.min(...zs) - 0.6, Math.max(...zs) + 0.6] };
+}
+
 /** A grass-topped block of soil under each model. */
 function buildPads(cells: readonly GalleryCell[]): Mesh {
   const batch = new BoxBatch();
@@ -130,6 +157,8 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   const portrait = params.get('portrait') === '1';
   const pitch = number(params, 'pitch');
   const yaw = number(params, 'yaw');
+  /** The camera angle asked for (the lawn's own where nothing was), with room left for the labels. */
+  const view = { pitchDeg: pitch ?? undefined, yawDeg: yaw ?? undefined, side: 0.04, top: 0.06, bottom: 0.12 };
 
   const asked = params.get('quality') as Quality | null;
   const renderer = new Renderer(canvas, asked && QUALITIES.includes(asked) ? asked : 'high');
@@ -141,29 +170,11 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   let lawn: Lawn | null = null;
   let pads: Mesh | null = null;
   if (onLawn) {
-    // On tiles: a lane per model, levels along the columns. A crowd fills the lawn tile by
-    // tile, then stacks a second and third unit on each a little to one side.
-    cells = crowd
-      ? Array.from({ length: crowd }, (_, i) => {
-          const layer = Math.floor(i / 50) % 3;
-          return {
-            key: keys[i % keys.length] as string,
-            level: levels[i % levels.length] as number,
-            x: (i % 10) + 0.4 + 0.2 * layer,
-            z: (Math.floor(i / 10) % 5) + 0.6 - 0.15 * layer,
-          };
-        })
-      : keys.flatMap((key, index) => levels.map((lv, i) => ({ key, level: lv, x: i + 1.5, z: ((2 + index) % 5) + 0.5 })));
+    cells = lawnLayout(keys, levels, crowd);
     lawn = new Lawn();
     renderer.scene.add(lawn.group);
-    if (pitch !== null || yaw !== null) {
-      const xs = cells.map((c) => c.x);
-      const zs = cells.map((c) => c.z);
-      renderer.rig.frameSubject(
-        { x: [Math.min(...xs) - 0.7, Math.max(...xs) + 0.7], y: [0, HEADROOM], z: [Math.min(...zs) - 0.6, Math.max(...zs) + 0.6] },
-        { pitchDeg: pitch ?? undefined, yawDeg: yaw ?? undefined, side: 0.04, top: 0.06, bottom: 0.12 },
-      );
-    }
+    // Left alone, the camera is the game's own. An angle of its own closes in on the models.
+    if (pitch !== null || yaw !== null) renderer.rig.frameSubject(boxAround(cells), view);
   } else {
     const layout = galleryLayout(keys, levels);
     cells = layout.cells;
@@ -178,9 +189,8 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
       const halfDepth = Math.max(box.z[1] - box.z[0], OVERVIEW_DEPTH) / 2;
       box = { x: [CENTRE_X - halfWidth, CENTRE_X + halfWidth], y: box.y, z: [CENTRE_Z - halfDepth, CENTRE_Z + halfDepth] };
     }
-    renderer.rig.frameSubject(box, { pitchDeg: pitch ?? undefined, yawDeg: yaw ?? undefined, side: 0.04, top: 0.06, bottom: 0.12 });
+    renderer.rig.frameSubject(box, view);
   }
-  const view = { pitchDeg: pitch ?? undefined, yawDeg: yaw ?? undefined };
 
   const instances = cells.map((cell) => {
     const instance = new ModelInstance(getModelDef(cell.key), cell.level);
