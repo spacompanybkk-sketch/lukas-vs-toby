@@ -11,10 +11,11 @@ import { classicConfig, eventsOf, merge, place, remove } from './helpers';
 
 describe('defaultConfig', () => {
   it('takes energy and base health from the balance table, both sides alike', () => {
+    const { startEnergy: energy, baseHp: hp } = BALANCE; // the tuned values, whatever they are
     expect(defaultConfig(5)).toEqual({
       seed: 5,
-      startEnergy: { plants: 50, zombies: 50 },
-      baseHp: { plants: 6000, zombies: 6000 },
+      startEnergy: { plants: energy, zombies: energy },
+      baseHp: { plants: hp, zombies: hp },
       cards: PHASE1_CARDS,
       incomeMultiplier: { plants: 1, zombies: 1 },
       suddenDeath: true,
@@ -39,15 +40,16 @@ describe('defaultConfig', () => {
 describe('new Match', () => {
   it('starts from the config', () => {
     const m = new Match(defaultConfig(42));
+    const { startEnergy: energy, baseHp: hp } = BALANCE;
     expect(m.balance).toBe(BALANCE);
     expect(m.state).toEqual({
       tick: 0, rng: 42, nextId: 1, units: [], projectiles: [],
       players: {
-        plants: { energy: 50, carry: 0, recharge: {} },
-        zombies: { energy: 50, carry: 0, recharge: {} },
+        plants: { energy, carry: 0, recharge: {} },
+        zombies: { energy, carry: 0, recharge: {} },
       },
-      baseHp: { plants: 6000, zombies: 6000 },
-      baseMaxHp: { plants: 6000, zombies: 6000 },
+      baseHp: { plants: hp, zombies: hp },
+      baseMaxHp: { plants: hp, zombies: hp },
       baseDefenseTimers: [0, 0, 0, 0, 0],
       suddenDeath: false, winner: null,
       config: defaultConfig(42),

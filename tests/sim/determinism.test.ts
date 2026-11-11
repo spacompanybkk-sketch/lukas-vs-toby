@@ -14,9 +14,10 @@ import { classicConfig, eventsOf, merge, remove, withBaseDefense } from './helpe
  * Review Focus 5: crowded and simultaneous moments, and determinism.
  *
  * Two sweeps of seeds play random commands: 50 seeds on a rich setup that keeps the lawn crowded,
- * for 3,000 steps each, and 20 on the plain default configuration, for 4,000. After every step
- * the state is checked (`findProblem`); then each seed is played again from scratch, and once
- * more from a snapshot, and the checksums must agree.
+ * for 3,000 steps each, and 20 on the plain default configuration, until the latest tick any such
+ * match can still be running (see `LAST_POSSIBLE_TICK`). After every step the state is checked
+ * (`findProblem`); then each seed is played again from scratch, and once more from a snapshot,
+ * and the checksums must agree.
  */
 
 /** The brief's budget for this whole file; a fuzz test that runs past it fails. */
@@ -286,15 +287,27 @@ const RICH: Sweep = {
 };
 
 /**
- * The plain default configuration. Random commands end these matches after roughly 3,200 to 3,700
- * steps, so the sweep plays 4,000 to see them end; the snapshot and the extra checkpoints (300,
- * 600, 900) fall where every seed is still playing.
+ * The latest tick a match on the shipped balance can still be running, whatever the tuned values.
+ * Once sudden death starts both bases lose the same share of `BALANCE.baseHp` every tick, growing
+ * with time, and neither can heal: a base at its full health is empty `t` seconds later, where
+ * `rate × t + growth × t² / 2 = 1`. A few seconds are added for the drain being paid per tick.
+ */
+const LAST_POSSIBLE_TICK = ((): number => {
+  const { startSeconds, baseRate: r, growthPerSecond: g } = BALANCE.suddenDeath;
+  const drainSeconds = g > 0 ? (-r + Math.sqrt(r * r + 2 * g)) / g : 1 / r;
+  return seconds(startSeconds + drainSeconds + 5);
+})();
+
+/**
+ * The plain default configuration, played until `LAST_POSSIBLE_TICK`, so every seed's match ends
+ * however the balance is tuned. The snapshot and the extra checkpoints (300, 600, 900) fall where
+ * every seed is still playing.
  */
 const PLAIN: Sweep = {
   name: 'default config',
   seeds: Array.from({ length: 20 }, (_, i) => i + 1),
-  steps: 4000,
-  checkpoints: [300, 500, 600, 900, 1000, 2000, 3000, 4000],
+  steps: LAST_POSSIBLE_TICK,
+  checkpoints: [300, 500, 600, 900, 1000, 2000, 3000, LAST_POSSIBLE_TICK],
   snapshotAt: 600,
   liveAtSnapshot: () => true,
   setup: (seed) => ({ config: defaultConfig(seed), balance: BALANCE }),

@@ -16,15 +16,19 @@ export interface MatchResult {
 export const MAX_MATCH_TICKS = 14_400;
 
 /**
- * Plays a whole match between bots without drawing anything. Every tick each bot is asked for
- * its commands, plants' bots first, then zombies', and they go to the match in that order in one
- * `step`. Stops when a base falls or after `maxTicks` steps; a match still going then is a draw.
+ * Plays a whole match between bots without drawing anything. Pass one bot per side, each made for
+ * this match (bots keep private state). Every tick each bot is asked for its commands, plants'
+ * bots first, then zombies', whatever order they are passed in, and the commands go to the match
+ * in that order in one `step`. Stops when a base falls or after `maxTicks` steps; a match still
+ * going then is a draw.
  */
 export function runMatch(
-  config: MatchConfig, bots: readonly Bot[], maxTicks: number = MAX_MATCH_TICKS, balance: Balance = BALANCE,
+  config: MatchConfig, bots: readonly Bot[], maxTicks: number = MAX_MATCH_TICKS,
+  balance: Balance = BALANCE,
 ): MatchResult {
   const match = new Match(config, balance);
-  const ordered = [...bots.filter((b) => b.faction === 'plants'), ...bots.filter((b) => b.faction === 'zombies')];
+  const plantsFirst = (faction: Faction): number => (faction === 'plants' ? 0 : 1);
+  const ordered = [...bots].sort((a, b) => plantsFirst(a.faction) - plantsFirst(b.faction));
   while (match.state.winner === null && match.state.tick < maxTicks) {
     const commands: Command[] = [];
     for (const bot of ordered) commands.push(...bot.think(match));
@@ -38,8 +42,12 @@ export function runMatch(
  * `seed`, and a basic bot on each side at the given skill, both seeded with `seed`.
  */
 export function runBotMatch(
-  seed: number, skills: Record<Faction, Skill>, maxTicks: number = MAX_MATCH_TICKS, balance: Balance = BALANCE,
+  seed: number, skills: Record<Faction, Skill>, maxTicks: number = MAX_MATCH_TICKS,
+  balance: Balance = BALANCE,
 ): MatchResult {
-  const bots = [createBasicBot('plants', skills.plants, seed), createBasicBot('zombies', skills.zombies, seed)];
+  const bots = [
+    createBasicBot('plants', skills.plants, seed),
+    createBasicBot('zombies', skills.zombies, seed),
+  ];
   return runMatch(defaultConfig(seed, balance), bots, maxTicks, balance);
 }

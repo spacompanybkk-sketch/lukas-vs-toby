@@ -5,7 +5,8 @@
  *
  * A bot is a pure function of the match state it is shown and its own private state: its random
  * numbers (seeded, never the match's) and what the zombie strategy remembers about its push. Its
- * schedule follows `match.state.tick`, never a clock.
+ * schedule follows `match.state.tick`, never a clock. Because that private state carries on from
+ * one think to the next, make one bot object per match and do not reuse it in another.
  */
 
 import type { Match } from '../sim/match';
@@ -24,19 +25,44 @@ export interface SkillTable {
   readonly randomShare: number;
   /** Plants: Sunflowers to keep. */
   readonly sunflowers: number;
-  /** Zombies: merge a walking zombie whenever energy is above this; null: never merge. */
-  readonly mergeAbove: number | null;
+  /** Plants: the level it merges its Sunflowers up to once it has them all (1: no merging). */
+  readonly sunflowerLevel: number;
+  /** Plants: how much more firepower than reckoned it wants in a threatened lane. */
+  readonly defenceMargin: number;
+  /**
+   * Zombies: merge a walking zombie of the push whenever spare energy is worth more than this many
+   * seconds of trickle income (25 s is 150 energy at a trickle of 6); null: never merge.
+   */
+  readonly mergeSpareSeconds: number | null;
+  /** Zombies: each push brings between `min` and `max` Brain Eaters behind its Skeleton Warrior. */
+  readonly pushBrainEaters: { readonly min: number; readonly max: number };
 }
 
+const PUSH = { min: 1, max: 3 };
+
+/** Everything the skills change, and nothing else. */
 export const SKILLS: Readonly<Record<Skill, SkillTable>> = {
-  easy: { thinkEvery: 60, randomShare: 0.4, sunflowers: 2, mergeAbove: null },
-  medium: { thinkEvery: 30, randomShare: 0, sunflowers: 4, mergeAbove: null },
-  hard: { thinkEvery: 15, randomShare: 0, sunflowers: 5, mergeAbove: 300 },
+  easy: {
+    thinkEvery: 60, randomShare: 0.4,
+    sunflowers: 2, sunflowerLevel: 1, defenceMargin: 1,
+    mergeSpareSeconds: null, pushBrainEaters: PUSH,
+  },
+  medium: {
+    thinkEvery: 30, randomShare: 0,
+    sunflowers: 4, sunflowerLevel: 3, defenceMargin: 1,
+    mergeSpareSeconds: null, pushBrainEaters: PUSH,
+  },
+  hard: {
+    thinkEvery: 15, randomShare: 0,
+    sunflowers: 5, sunflowerLevel: 4, defenceMargin: 1.25,
+    mergeSpareSeconds: 25, pushBrainEaters: PUSH,
+  },
 };
 
 /** Keeps a plants bot and a zombies bot made with the same seed from drawing the same numbers. */
 const SEED_SALT: Record<Faction, number> = { plants: 0x5eed_0001, zombies: 0x5eed_0002 };
 
+/** A basic bot for one side of one match (see the note at the top on reuse). */
 export function createBasicBot(faction: Faction, skill: Skill, seed: number): Bot {
   const table = SKILLS[skill];
   const rng: BotRng = { rng: (seed ^ SEED_SALT[faction]) >>> 0 };
@@ -46,13 +72,15 @@ export function createBasicBot(faction: Faction, skill: Skill, seed: number): Bo
 
   const decide = (match: Match): Command | null => {
     if (table.randomShare > 0 && nextRandom(rng) < table.randomShare) return randomLegal(match, faction, rng);
-    return faction === 'plants' ? plantMove(match, rng, table) : zombieMove(match, rng, table, memory);
+    if (faction === 'plants') return plantMove(match, rng, table);
+    return zombieMove(match, rng, table, memory);
   };
 
   return {
     faction,
     think(match: Match): Command[] {
       const s = match.state;
+      // A finished match gets no thought at all, so it draws no random numbers either.
       if (s.winner !== null || s.tick % table.thinkEvery !== phase) return [];
       const cmd = decide(match);
       return cmd === null ? [] : [cmd];

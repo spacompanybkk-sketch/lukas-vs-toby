@@ -10,22 +10,23 @@ function steps(m: Match, n: number): void {
 }
 
 describe('income', () => {
-  it('pays plants 2 and zombies 1.8 energy over 30 steps, the part of an energy kept as carry', () => {
+  it('pays plants 1.8 and zombies 6 energy over 30 steps, the part of an energy kept as carry', () => {
     const m = new Match(defaultConfig(1));
     steps(m, 30);
-    expect(m.state.players.plants.energy).toBe(52);
-    expect(m.state.players.zombies.energy).toBe(51);
-    expect(m.state.players.zombies.carry).toBe(24000); // 0.8 of an energy
+    expect(m.state.players.plants.energy).toBe(191);
+    expect(m.state.players.plants.carry).toBe(24000); // 0.8 of an energy
+    expect(m.state.players.zombies.energy).toBe(196);
+    expect(m.state.players.zombies.carry).toBe(0);
   });
 
-  it('scales with the income multiplier: zombies at 1.2 earn 2.16 a second', () => {
+  it('scales with the income multiplier: zombies at 1.2 earn 7.2 a second', () => {
     const config = defaultConfig(1);
     config.incomeMultiplier.zombies = 1.2;
     const m = new Match(config);
     steps(m, 30);
-    expect(m.state.players.zombies.energy).toBe(52);
-    expect(m.state.players.zombies.carry).toBe(4800); // 0.16 of an energy
-    expect(m.state.players.plants.energy).toBe(52);
+    expect(m.state.players.zombies.energy).toBe(197);
+    expect(m.state.players.zombies.carry).toBe(6000); // 0.2 of an energy
+    expect(m.state.players.plants.energy).toBe(191);
   });
 
   it('keeps energy a whole number after every step, whatever the multiplier', () => {
@@ -47,19 +48,19 @@ describe('income', () => {
   it('adds the whole carry of a tick before paying out whole energy', () => {
     const m = new Match(defaultConfig(1));
     m.step();
-    // 2 energy per second is 2000 per tick; nothing whole yet.
-    expect(m.state.players.plants.carry).toBe(2000);
-    expect(m.state.players.plants.energy).toBe(50);
-    expect(m.state.players.zombies.carry).toBe(1800);
+    // 1.8 energy per second is 1800 per tick; nothing whole yet.
+    expect(m.state.players.plants.carry).toBe(1800);
+    expect(m.state.players.plants.energy).toBe(190);
+    expect(m.state.players.zombies.carry).toBe(6000);
   });
 
   it('can pay out several energy in one tick at a high rate', () => {
     const config = defaultConfig(1);
-    config.incomeMultiplier.zombies = 60; // 108 energy a second: 108000 carry a tick
+    config.incomeMultiplier.zombies = 11; // 66 energy a second: 66000 carry a tick
     const m = new Match(config);
     m.step();
-    expect(m.state.players.zombies.energy).toBe(53);
-    expect(m.state.players.zombies.carry).toBe(18000);
+    expect(m.state.players.zombies.energy).toBe(192);
+    expect(m.state.players.zombies.carry).toBe(6000);
   });
 });
 
@@ -131,8 +132,8 @@ describe('sunflower', () => {
         });
       }
       if (n === 300) {
-        // 50 start - 50 card + 20 trickle (300 ticks at 2000 carry) + 25 sun
-        expect(m.state.players.plants.energy).toBe(45);
+        // 190 start - 50 card + 18 trickle (300 ticks at 1800 carry) + 25 sun
+        expect(m.state.players.plants.energy).toBe(183);
       }
     }
     expect(paidOn).toEqual([300, 600]);
@@ -150,7 +151,7 @@ describe('sunflower', () => {
     expect(eventsOf(events, 'energyGained')).toEqual([
       { type: 'energyGained', faction: 'plants', amount: 75, source: 'sunflower', unitId: u.id, lane: 1, x: 2.5 },
     ]);
-    expect(m.state.players.plants.energy).toBe(125);
+    expect(m.state.players.plants.energy).toBe(265);
     expect(u.abilityTimer).toBe(seconds(10));
   });
 
@@ -163,7 +164,7 @@ describe('sunflower', () => {
     const events: SimEvent[] = [];
     tickEconomy(m.state, BALANCE, events);
     expect(eventsOf(events, 'energyGained')).toEqual([]);
-    expect(m.state.players.plants.energy).toBe(50);
+    expect(m.state.players.plants.energy).toBe(190);
   });
 
   it('pays every ready Sunflower, in ascending id order', () => {
@@ -175,7 +176,7 @@ describe('sunflower', () => {
     const events: SimEvent[] = [];
     tickEconomy(m.state, BALANCE, events);
     expect(eventsOf(events, 'energyGained').map((e) => e.unitId)).toEqual([a.id, b.id]);
-    expect(m.state.players.plants.energy).toBe(100);
+    expect(m.state.players.plants.energy).toBe(240);
   });
 });
 
@@ -189,8 +190,8 @@ describe('payBounty', () => {
     const zombie = victim(m, 'brainEater', 6.25); // spent 100
     const events: SimEvent[] = [];
     payBounty(m.state, BALANCE, zombie, events);
-    expect(m.state.players.plants.energy).toBe(70);
-    expect(m.state.players.zombies.energy).toBe(50);
+    expect(m.state.players.plants.energy).toBe(210);
+    expect(m.state.players.zombies.energy).toBe(190);
     expect(events).toEqual([
       { type: 'energyGained', faction: 'plants', amount: 20, source: 'bounty', unitId: null, lane: 3, x: 6.25 },
     ]);
@@ -201,8 +202,8 @@ describe('payBounty', () => {
     const plant = victim(m, 'peashooter', 2.5); // spent 100
     const events: SimEvent[] = [];
     payBounty(m.state, BALANCE, plant, events);
-    expect(m.state.players.zombies.energy).toBe(100);
-    expect(m.state.players.plants.energy).toBe(50);
+    expect(m.state.players.zombies.energy).toBe(240);
+    expect(m.state.players.plants.energy).toBe(190);
     expect(eventsOf(events, 'energyGained')).toEqual([
       { type: 'energyGained', faction: 'zombies', amount: 50, source: 'bounty', unitId: null, lane: 3, x: 2.5 },
     ]);
@@ -215,7 +216,7 @@ describe('payBounty', () => {
     const events: SimEvent[] = [];
     payBounty(m.state, BALANCE, plant, events);
     expect(eventsOf(events, 'energyGained')[0]?.amount).toBe(25);
-    expect(m.state.players.zombies.energy).toBe(75);
+    expect(m.state.players.zombies.energy).toBe(215);
   });
 
   it('pays nothing and emits nothing when the amount is 0', () => {
@@ -225,7 +226,7 @@ describe('payBounty', () => {
     const events: SimEvent[] = [];
     payBounty(m.state, BALANCE, zombie, events);
     expect(events).toEqual([]);
-    expect(m.state.players.plants.energy).toBe(50);
+    expect(m.state.players.plants.energy).toBe(190);
   });
 
   it('uses the victim\'s own spent, not the card price, so merged units pay more', () => {
@@ -234,6 +235,6 @@ describe('payBounty', () => {
     zombie.spent = 300;
     const events: SimEvent[] = [];
     payBounty(m.state, BALANCE, zombie, events);
-    expect(m.state.players.plants.energy).toBe(110);
+    expect(m.state.players.plants.energy).toBe(250);
   });
 });

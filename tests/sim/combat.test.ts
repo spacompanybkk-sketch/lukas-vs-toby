@@ -4,7 +4,7 @@ import type { Balance } from '../../src/data/balance';
 import { damageBase, damageUnit, resolveDeaths, tickProjectiles } from '../../src/sim/combat';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Projectile, SimEvent, Unit } from '../../src/sim/types';
-import { eventsOf } from './helpers';
+import { eventsOf, withBaseDefense } from './helpers';
 
 /**
  * Units are set with `spawnUnit`. Income is switched off so energy only moves through bounties,
@@ -373,7 +373,7 @@ describe('melee', () => {
   );
 
   it('a zombie at the base deals 40 per second to the plant base', () => {
-    const m = fresh();
+    const m = fresh(withBaseDefense(0)); // the base does not strike back here (baseDefense.test.ts covers that)
     const z = spawnUnit(m.state, BALANCE, 'brainEater', 4, 0.3); // at the base: blocked from its first step
     const baseHits: Array<[number, Extract<SimEvent, { type: 'baseDamaged' }>]> = [];
     const throwsOn: number[] = [];
