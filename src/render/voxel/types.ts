@@ -86,8 +86,9 @@ export interface Clip {
   parts?: string[];
   /**
    * Writes the pose at `t` seconds into `pose`, which arrives at rest. A clip touches only
-   * the parts it moves and skips any the model does not have. It must not keep or create
-   * objects: it runs for every unit on every frame.
+   * the parts it moves. One that lists them in `parts` can rely on every one being there;
+   * one without `parts` is not checked, so it must skip any part the model does not have.
+   * It must not keep or create objects: it runs for every unit on every frame.
    */
   sample(t: number, pose: Pose): void;
 }
@@ -96,8 +97,14 @@ export interface Clip {
  * Where projectiles leave, in voxels, in the same space as the boxes. Given with a part,
  * the point rides on that part: it follows a turned head and moves with the shot. Given as
  * a bare point it stays where it is on the model, whatever the parts do.
+ *
+ * A mouth that grows with the levels moves its muzzle with `atLevel`: from each level
+ * listed there up, that point replaces `at` (`{ 2: [7, 11.5, 0] }`: level 1 fires from
+ * `at`, levels 2 to 5 from x 7).
  */
-export type Muzzle = [number, number, number] | { part: string; at: [number, number, number] };
+export type Muzzle =
+  | [number, number, number]
+  | { part: string; at: [number, number, number]; atLevel?: Partial<Record<2 | 3 | 4 | 5, [number, number, number]>> };
 
 export interface ModelDef {
   /** The unit's name in the registry and in `?scene=gallery&model=<key>`. */

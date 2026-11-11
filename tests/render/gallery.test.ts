@@ -245,6 +245,28 @@ describe('gallery scene', () => {
     for (let i = 1; i < levels.length; i++) expect(left(levels[i] as HTMLElement) - left(levels[i - 1] as HTMLElement)).toBeGreaterThan(40);
   });
 
+  it('replays die on a unit built afresh each time, since a dead unit plays nothing more', () => {
+    const { gallery, renderer } = open('scene=gallery&model=peashooter&level=1&clip=die&flash=0.5');
+    const first = gallery.instances[0] as ModelInstance;
+    expect(first.clip).toBe('die');
+    const spot = first.root.position.clone();
+    frames(30); // 0.5 s: wilted, and holding it
+    expect(gallery.instances[0]).toBe(first);
+    frames(30); // 1 s: past the 0.2 s wilt and the pause, so it dies again
+    const again = gallery.instances[0] as ModelInstance;
+    expect(again).not.toBe(first);
+    expect(first.root.parent).toBeNull();
+    expect(again.root.parent).toBe(renderer.scene);
+    expect(again.root.position.toArray()).toEqual(spot.toArray());
+    expect(again.clip).toBe('die');
+    // Wilting from the start again, not held at the end (where the stem is down to 0.6).
+    expect(part(first, 'stem').scale.y).toBeCloseTo(0.6, 6);
+    expect(part(again, 'stem').scale.y).toBeGreaterThan(0.75);
+    // Flash carried over to the new unit.
+    const mesh = part(again, 'head').children.find((child) => child instanceof Mesh) as Mesh;
+    expect((mesh.material as MeshStandardMaterial).emissive.r).toBeGreaterThan(0.2);
+  });
+
   it('holds the last pose of a one-shot when frozen at its end', () => {
     const { gallery } = open('scene=gallery&model=peashooter&level=1&clip=hit&t=0.2');
     frames(20);

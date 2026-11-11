@@ -1,5 +1,4 @@
 import { Euler, Group, MathUtils, Matrix4, Mesh, type BufferGeometry } from 'three';
-import { getModelDef } from '../models/registry';
 import { disposeMaterials, glowKey, sharedMaterial, type MaterialKey } from './materials';
 import { findSharedSurface, meshPart, type Shape, type Solid } from './mesh';
 import { LEVEL_MATERIALS, LEVEL_SCALE, MAX_LEVEL, PALETTE, levelMaterial, type LevelMaterial } from './palette';
@@ -78,8 +77,16 @@ function ordered(def: ModelDef): PartDef[] {
   for (const eye of def.eyes ?? []) {
     if (!byName.has(eye)) throw new Error(`Model "${def.key}": eyes names "${eye}", which is not a part`);
   }
-  if (def.muzzle && !Array.isArray(def.muzzle) && !byName.has(def.muzzle.part)) {
-    throw new Error(`Model "${def.key}": the muzzle is on "${def.muzzle.part}", which is not a part`);
+  if (def.muzzle && !Array.isArray(def.muzzle)) {
+    if (!byName.has(def.muzzle.part)) {
+      throw new Error(`Model "${def.key}": the muzzle is on "${def.muzzle.part}", which is not a part`);
+    }
+    for (const level of Object.keys(def.muzzle.atLevel ?? {})) {
+      const n = Number(level);
+      if (!Number.isInteger(n) || n < 2 || n > MAX_LEVEL) {
+        throw new Error(`Model "${def.key}": the muzzle's atLevel lists level ${level}; use whole levels from 2 to ${MAX_LEVEL}`);
+      }
+    }
   }
   for (const [name, clip] of Object.entries(def.clips)) {
     for (const moved of clip.parts ?? []) {
@@ -192,7 +199,8 @@ function build(def: ModelDef, level: number): Built {
     throw new Error(
       `Model "${def.key}": box ${clash.one.box} of part "${clash.a.def.name}" (${clash.one.hex}) and box ${clash.other.box} ` +
         `of part "${clash.b.def.name}" (${clash.other.hex}) share a surface at level ${level} and would flicker. Move one ` +
-        `of them a fraction of a voxel, or make them touch face to face instead of overlapping.`,
+        `of them a fraction of a voxel, make them touch face to face instead of overlapping, or make one of ` +
+        `the two boxes a fraction narrower (the usual fix where one part is turned).`,
     );
   }
 
@@ -270,17 +278,25 @@ export function modelStats(def: ModelDef, level: number): { meshes: number; tria
 }
 
 /**
- * Builds the named models at the given levels (all five unless told otherwise) and makes
- * their materials, so that the first unit of each to appear, or a merge in the middle of a
- * match, has nothing left to build. Call it while a level loads.
+ * Builds `def` at `level` and makes its materials, so that nothing is left to build when
+ * the first one appears. `prewarmModels` in the registry does this for a list of keys.
  */
-export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]): void {
-  for (const key of keys) {
-    const def = getModelDef(key);
-    for (const level of levels) {
-      for (const part of builtFor(def, level).parts) for (const piece of part.meshes) sharedMaterial(piece.material);
-    }
-  }
+export function prewarmModel(def: ModelDef, level: number): void {
+  for (const part of builtFor(def, level).parts) for (const piece of part.meshes) sharedMaterial(piece.material);
+}
+
+/**
+ * Where a model's projectiles leave at `level`: the part the point rides on (none for a
+ * bare point) and the point, in authored voxels. A model with no muzzle answers with its feet.
+ */
+export function muzzleOf(def: ModelDef, level: number): { part?: string; at: [number, number, number] } {
+  const muzzle = def.muzzle;
+  if (!muzzle) return { at: [0, 0, 0] };
+  if (Array.isArray(muzzle)) return { at: muzzle };
+  let at = muzzle.at;
+  const table = muzzle.atLevel as Partial<Record<number, [number, number, number]>> | undefined;
+  for (let from = 2; from <= level; from++) at = table?.[from] ?? at;
+  return { part: muzzle.part, at };
 }
 
 /**

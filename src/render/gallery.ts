@@ -239,6 +239,17 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   });
   const flash = number(params, 'flash');
   if (flash !== null) for (const instance of instances) instance.setFlash(flash);
+  /** Replaces the unit in cell `i` with a new one, standing where it stood. */
+  const rebuild = (i: number): ModelInstance => {
+    const old = instances[i] as ModelInstance;
+    const fresh = new ModelInstance(old.def, old.level);
+    fresh.root.position.copy(old.root.position);
+    renderer.scene.add(fresh.root);
+    if (flash !== null) fresh.setFlash(flash);
+    old.dispose();
+    instances[i] = fresh;
+    return fresh;
+  };
 
   // What they are doing.
   let clip: ClipName | null = null;
@@ -328,7 +339,9 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
           replayIn[i] = (replayIn[i] as number) - gameDt;
           if ((replayIn[i] as number) > 0) return;
           replayIn[i] = own.duration + REPLAY_PAUSE;
-          instance.play(clip as ClipName);
+          // A unit that has died plays nothing more, so to watch it die again it is built afresh.
+          const fresh = clip === 'die' && instance.clip === 'die' ? rebuild(i) : instance;
+          fresh.play(clip as ClipName);
         });
       }
       for (const instance of instances) instance.update(frozen ? 0 : gameDt);

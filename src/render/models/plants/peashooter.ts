@@ -25,7 +25,8 @@ export const peashooter: ModelDef = {
   // The pale lip and collar of level 2 up, and the plainer lip of level 1.
   trim: ['peaLight', 'pea'],
   eyes: ['eyes'],
-  muzzle: { part: 'head', at: [5.5, 11.5, 0] },
+  // At the front of the lip, which reaches further from level 2.
+  muzzle: { part: 'head', at: [5.5, 11.5, 0], atLevel: { 2: [7, 11.5, 0] } },
   parts: [
     {
       name: 'root',
@@ -202,12 +203,13 @@ export const peashooter: ModelDef = {
         { at: [-3, 17, -1], size: [1, 1, 2], color: 'leafLight', minLevel: 2, maxLevel: 2 },
         { at: [0, 16, -1], size: [1, 1, 2], color: 'leafDark', minLevel: 2, maxLevel: 2 },
         { at: [1, 17, -1], size: [1, 1, 2], color: 'leafLight', minLevel: 2, maxLevel: 2 },
-        // … and at level 5, taller and tipped with gold.
-        { at: [-1, 15.5, -0.5], size: [1, 1.5, 1], color: 'stem', minLevel: 5 },
-        { at: [-2, 16.5, -1], size: [1, 1, 2], color: 'leaf', minLevel: 5 },
-        { at: [-3, 17.5, -1], size: [1, 1, 2], color: 'levelGold', minLevel: 5 },
-        { at: [0, 16.5, -1], size: [1, 1, 2], color: 'leaf', minLevel: 5 },
-        { at: [1, 17.5, -1], size: [1, 1, 2], color: 'levelGold', minLevel: 5 },
+        // … and at level 5, taller and tipped with gold. Each step sits a whole voxel against
+        // the one before it, face to face, so the tuft reads as one plant, not loose slabs.
+        { at: [-1, 15.5, -0.5], size: [1, 2, 1], color: 'stem', minLevel: 5 },
+        { at: [-2, 16.5, -1], size: [1, 1.5, 2], color: 'leaf', minLevel: 5 },
+        { at: [-3, 17, -1], size: [1, 1.5, 2], color: 'levelGold', minLevel: 5 },
+        { at: [0, 16.5, -1], size: [1, 1.5, 2], color: 'leaf', minLevel: 5 },
+        { at: [1, 17, -1], size: [1, 1.5, 2], color: 'levelGold', minLevel: 5 },
       ],
     },
   ],

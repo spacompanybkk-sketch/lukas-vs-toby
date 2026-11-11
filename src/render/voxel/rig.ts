@@ -1,5 +1,5 @@
 import { Color, Euler, Group, Mesh, Quaternion, type MeshStandardMaterial, type Object3D, type Vector3 } from 'three';
-import { VOXEL, buildParts } from './build';
+import { VOXEL, buildParts, muzzleOf } from './build';
 import { ownCopy } from './materials';
 import type { Clip, ClipName, ModelDef, PartPose, Pose } from './types';
 
@@ -144,9 +144,9 @@ export class ModelInstance {
 
     // A muzzle on a part is kept relative to that part's pivot; a bare point, or none (the
     // model's feet), is kept relative to the model.
-    const muzzle = def.muzzle;
-    const rides = muzzle && !Array.isArray(muzzle) ? def.parts.find((part) => part.name === muzzle.part) : undefined;
-    const at = muzzle ? (Array.isArray(muzzle) ? muzzle : muzzle.at) : [0, 0, 0];
+    const muzzle = muzzleOf(def, level);
+    const rides = muzzle.part === undefined ? undefined : def.parts.find((part) => part.name === muzzle.part);
+    const at = muzzle.at;
     const pivot = rides ? rides.pivot : [0, 0, 0];
     this.muzzleOn = rides ? (this.model.getObjectByName(rides.name) as Object3D) : this.model;
     this.muzzleX = ((at[0] as number) - (pivot[0] as number)) * VOXEL;

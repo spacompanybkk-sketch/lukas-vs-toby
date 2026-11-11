@@ -36,8 +36,10 @@ export interface LevelMaterialDef {
 
 export const LEVEL_MATERIALS: Record<Exclude<LevelMaterial, 'none'>, LevelMaterialDef> = {
   iron: { tones: ['levelIron', 'levelIronDark'], metalness: 0.6, roughness: 0.4, emissive: 0, shadedGlow: false },
-  // Glows: bright enough to cross the bloom threshold, and keeps its shading while it does.
-  crystal: { tones: ['levelCrystal', 'levelCrystalDeep'], metalness: 0, roughness: 0.25, emissive: 2, shadedGlow: true },
+  // Glows, and keeps its shading while it does. The glow is multiplied by the baked tone, so
+  // the intensity is set for what a lit top face emits after that: about 1.37 in scene
+  // luminance, over the bloom threshold of 1.2, with sides and creases falling below it.
+  crystal: { tones: ['levelCrystal', 'levelCrystalDeep'], metalness: 0, roughness: 0.25, emissive: 2.5, shadedGlow: true },
   // A warm, even sheen, not a glow.
   gold: { tones: ['levelGold', 'levelGoldDark'], metalness: 0.8, roughness: 0.35, emissive: 0.15, shadedGlow: false },
 };

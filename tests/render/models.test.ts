@@ -2,6 +2,7 @@ import { Box3, Mesh, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import { getModelDef, modelKeys } from '../../src/render/models/registry';
 import { VOXEL, buildParts, modelColors } from '../../src/render/voxel/build';
+import { LEVEL_SCALE } from '../../src/render/voxel/palette';
 import { ModelInstance } from '../../src/render/voxel/rig';
 import type { ModelDef, PartPose, Pose } from '../../src/render/voxel/types';
 
@@ -125,15 +126,17 @@ describe.each(modelKeys())('model %s', (key) => {
     }
   });
 
-  it('keeps its muzzle inside its own bounds, if it has one', () => {
+  it('keeps its muzzle inside its own bounds at every level, if it has one', () => {
     if (!def.muzzle) return;
-    const instance = new ModelInstance(def, 1);
     // The rest pose, whatever clip the model idles on.
-    const still = new ModelInstance({ ...def, key: `${def.key}-at-rest`, clips: {} }, 1);
-    const muzzle = still.muzzleWorld(new Vector3());
-    const box = bounds(def, 1).expandByScalar(VOXEL);
-    expect(box.containsPoint(muzzle), `${muzzle.toArray().map((v) => (v / VOXEL).toFixed(2))} voxels`).toBe(true);
-    instance.dispose();
-    still.dispose();
+    const resting: ModelDef = { ...def, key: `${def.key}-at-rest`, clips: {} };
+    for (const level of LEVELS) {
+      const still = new ModelInstance(resting, level);
+      still.root.scale.setScalar(1 / (LEVEL_SCALE[level] as number));
+      const muzzle = still.muzzleWorld(new Vector3());
+      const box = bounds(def, level).expandByScalar(VOXEL);
+      expect(box.containsPoint(muzzle), `level ${level}: ${muzzle.toArray().map((v) => (v / VOXEL).toFixed(2))} voxels`).toBe(true);
+      still.dispose();
+    }
   });
 });

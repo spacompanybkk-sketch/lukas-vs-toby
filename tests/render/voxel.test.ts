@@ -1,12 +1,13 @@
 import { Box3, Color, Group, Mesh, MeshStandardMaterial, Object3D, Scene, ShaderLib, Vector3, type BufferGeometry } from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { getModelDef, hasModel, modelKeys, registerModel } from '../../src/render/models/registry';
+import { getModelDef, hasModel, modelKeys, prewarmModels, registerModel } from '../../src/render/models/registry';
 import { peashooter } from '../../src/render/models/plants/peashooter';
-import { VOXEL, buildParts, disposeModels, modelColors, modelStats, prewarmModels } from '../../src/render/voxel/build';
+import { BLOOM_THRESHOLD } from '../../src/render/look';
+import { VOXEL, buildParts, disposeModels, modelColors, modelStats, muzzleOf } from '../../src/render/voxel/build';
 import { cheerJump, hitRecoil, idleBob, shootSnap, spawnRise, wilt } from '../../src/render/voxel/clips';
 import { LEVEL_SCALE, PALETTE, levelMaterial } from '../../src/render/voxel/palette';
 import { ModelInstance } from '../../src/render/voxel/rig';
-import type { Box, Clip, ModelDef, PartPose, Pose } from '../../src/render/voxel/types';
+import type { Box, Clip, ModelDef, PartDef, PartPose, Pose } from '../../src/render/voxel/types';
 import { BoxBatch } from '../../src/render/world/boxes';
 
 const LEVELS = [1, 2, 3, 4, 5];
@@ -167,13 +168,35 @@ describe('buildParts', () => {
     expect(iron?.roughness).toBe(0.4);
     // Crystal glows hard enough to bloom; gold only has a sheen.
     const crystal = materialsAt(4).find((m) => m.name === 'crystal');
-    expect(crystal?.emissiveIntensity).toBeGreaterThanOrEqual(1.5);
     expect(crystal?.emissive.getHex()).toBe(hex('levelCrystal'));
     const gold = materialsAt(5).find((m) => m.metalness === 0.8);
     expect(gold?.emissiveIntensity).toBe(0.15);
     // Level-5 eyes glow.
     const eyes = buildParts(peashooter, 5).getObjectByName((peashooter.eyes as string[])[0] as string) as Object3D;
     expect(meshes(eyes).some((mesh) => (mesh.material as MeshStandardMaterial).emissiveIntensity >= 1.5)).toBe(true);
+  });
+
+  it('makes crystal bright enough to bloom on its lit faces, by what it actually emits', () => {
+    // The glow is multiplied by the baked vertex colour (see materials.ts), so the material's
+    // intensity alone says nothing about brightness. What a face emits is
+    // emissive colour × intensity × vertex colour; its luminance must cross the bloom threshold.
+    const luminance = (r: number, g: number, b: number): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    let brightest = 0;
+    let dimmest = Infinity;
+    for (const mesh of meshes(buildParts(peashooter, 4))) {
+      const material = mesh.material as MeshStandardMaterial;
+      if (material.name !== 'crystal') continue;
+      const color = mesh.geometry.getAttribute('color');
+      const k = material.emissiveIntensity;
+      for (let i = 0; i < color.count; i++) {
+        const emitted = luminance(material.emissive.r * k * color.getX(i), material.emissive.g * k * color.getY(i), material.emissive.b * k * color.getZ(i));
+        brightest = Math.max(brightest, emitted);
+        dimmest = Math.min(dimmest, emitted);
+      }
+    }
+    expect(brightest).toBeGreaterThanOrEqual(BLOOM_THRESHOLD);
+    // And it keeps its shading: creases and undersides stay well below, so it does not flatten.
+    expect(dimmest).toBeLessThan(brightest * 0.5);
   });
 
   it('makes crystal and glowing boxes glow in their own baked colours, so shading survives the glow', () => {
@@ -361,6 +384,8 @@ describe('buildParts', () => {
     });
     // Sunk half into the head with its side flush with the head's side: two meshes, one surface.
     expect(() => buildParts(def(1.5), 1)).toThrow(/"head".*"eye".*share a surface/);
+    // The message offers the usual fix for a turned part as well.
+    expect(() => buildParts(def(1.5), 1)).toThrow(/a fraction narrower/);
     // Standing on the head's face instead is fine.
     expect(() => buildParts(def(2), 1)).not.toThrow();
   });
@@ -634,6 +659,18 @@ describe('Peashooter', () => {
     const at = (peashooter.muzzle as { at: [number, number, number] }).at;
     expect(at[0]).toBeGreaterThan(4);
     expect(at[1]).toBeGreaterThan(8);
+  });
+
+  it('fires from the lip of its mouth at every level, so peas never start inside the tube', () => {
+    const head = peashooter.parts.find((part) => part.name === 'head') as PartDef;
+    for (const level of LEVELS) {
+      const muzzle = muzzleOf(peashooter, level);
+      expect(muzzle.part, `level ${level}`).toBe('head');
+      const lip = Math.max(
+        ...head.boxes.filter((b) => (b.minLevel ?? 1) <= level && level <= (b.maxLevel ?? 5)).map((b) => b.at[0] + b.size[0]),
+      );
+      expect(muzzle.at[0], `level ${level}`).toBe(lip);
+    }
   });
 
   it('loops every looping clip without a seam, on its real parts', () => {
@@ -1155,13 +1192,20 @@ describe('ModelInstance', () => {
     instance.seek(0);
     instance.root.position.x += 1;
     expect(instance.muzzleWorld(new Vector3()).x).toBeCloseTo(rest.x + 1, 9);
+    // Levels 2 and 5 share a lip (level 1's is shorter), so between them only the size differs.
+    const two = new ModelInstance(peashooter, 2);
+    two.play('shoot');
+    two.seek(0);
+    const small = two.muzzleWorld(new Vector3());
     const big = new ModelInstance(peashooter, 5);
     big.play('shoot');
     big.seek(0);
     const offset = big.muzzleWorld(new Vector3());
-    expect(offset.x).toBeCloseTo((rest.x - 2.5) * 1.34, 6);
-    expect(offset.y).toBeCloseTo(rest.y * 1.34, 6);
-    expect(offset.z).toBeCloseTo((rest.z - 1.5) * 1.34, 6);
+    expect(offset.x).toBeCloseTo((small.x * 1.34) / 1.08, 6);
+    expect(offset.y).toBeCloseTo((small.y * 1.34) / 1.08, 6);
+    expect(offset.z).toBeCloseTo((small.z * 1.34) / 1.08, 6);
+    // And level 2's lip is further forward than level 1's.
+    expect(small.x / 1.08).toBeGreaterThan(rest.x - 2.5 + VOXEL);
   });
 
   it('also takes a muzzle as a plain point on the model, and answers with its feet if it has none', () => {
