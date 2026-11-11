@@ -1,8 +1,11 @@
 // Screenshot tool: `node tools/shots.mjs <scenario...> [--headed]`.
 //
-// Opens each scenario in Playwright's bundled Chromium at 1440x900, waits for
-// `window.__lvt.ready`, and saves artifacts/shots/<scenario>.png. Exits non-zero on
-// any page error or if the 3D canvas came out as one flat colour.
+// Opens each scenario in Playwright's bundled Chromium (at 1440x900 unless the scenario
+// sets its own viewport), waits for `window.__lvt.ready`, and saves
+// artifacts/shots/<scenario>.png, or one artifacts/shots/<scenario>-<suffix>.png per frame
+// for a scenario that lists `frames`. Exits non-zero on any page error or if the 3D canvas
+// came out as one flat colour. `LVT_PORT=<port>` runs the dev server on another port, for a
+// second checkout whose server must not clash with this one's.
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -11,16 +14,258 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-/** @type {{ name: string, url: string, steps?: (page: import('playwright').Page) => Promise<void> }[]} */
+/**
+ * @type {{
+ *   name: string,
+ *   url: string,
+ *   viewport?: { width: number, height: number },
+ *   steps?: (page: import('playwright').Page) => Promise<void>,
+ *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
+ * }[]}
+ */
+/** The three plants of the first level, which the first plant lawn shots stand on the lawn. */
+const PLANTS = ['peashooter', 'sunflower', 'walnutBomb'];
+
+/** The other seven plants, in unlock order. */
+const PLANTS2 = ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker', 'torchwood', 'cherryBomber', 'pumpkinSquash'];
+
+/** Shows or hides a part on every model in the gallery (the mine's `armed`, the bunker's `cracks`). */
+async function showPart(page, part, shown) {
+  await page.evaluate(([p, s]) => window.__lvt.gallery.instances.forEach((instance) => instance.showPart(p, s)), [part, shown]);
+}
+
+/** A model's still frames: each a suffix and a clip frozen at a time, with any parts shown first. */
+function moves(key, frames) {
+  return {
+    name: `gallery-${key}-moves`,
+    url: `/?scene=gallery&model=${key}&t=0`,
+    frames: frames.map(([suffix, clip, t, part]) => ({
+      suffix,
+      run: async (page) => {
+        if (part) await showPart(page, part, true);
+        await pose(page, clip, t);
+      },
+    })),
+  };
+}
+
+/** The ten zombies a player can field, in unlock order. The Bone Minion is raised, not fielded. */
+const ZOMBIES = [
+  'brainEater',
+  'veryFastWalker',
+  'skeletonWarrior',
+  'desertZombie',
+  'skeletonArcher',
+  'hotTopic',
+  'cowboyZombie',
+  'necromancer',
+  'tridentZombie',
+  'brainRot',
+];
+
 const SCENARIOS = [
   { name: 'boot', url: '/?scene=boot' },
+  { name: 'lawn', url: '/?scene=lawn&t=3' },
+  { name: 'lawn-wide', url: '/?scene=lawn&t=3', viewport: { width: 2560, height: 1080 } },
+  { name: 'lawn-small', url: '/?scene=lawn&t=3', viewport: { width: 1280, height: 720 } },
+  {
+    name: 'lawn-highlight',
+    url: '/?scene=lawn&t=3',
+    steps: (page) => highlight(page, [2, 3, 'ok'], [4, 'ok']),
+  },
+  {
+    name: 'lawn-highlight-bad',
+    url: '/?scene=lawn&t=3',
+    steps: (page) => highlight(page, [1, 6, 'bad'], [0, 'bad']),
+  },
+  // Every model at about the size it has on the lawn, then the Peashooter's row close up.
+  { name: 'gallery', url: '/?scene=gallery&t=0.4' },
+  { name: 'gallery-page2', url: '/?scene=gallery&t=0.4&page=2' },
+  { name: 'gallery-page3', url: '/?scene=gallery&t=0.4&page=3' },
+  { name: 'gallery-peashooter', url: '/?scene=gallery&model=peashooter&t=0.4' },
+  {
+    // Lean back, release, snap, settle.
+    name: 'gallery-peashooter-shoot',
+    url: '/?scene=gallery&model=peashooter&clip=shoot&t=0',
+    frames: [0.06, 0.12, 0.16, 0.3].map((t) => ({ suffix: t.toFixed(2), run: (page) => pose(page, 'shoot', t) })),
+  },
+  // On the real lawn, under the game's own camera.
+  { name: 'gallery-lawn', url: `/?scene=gallery&stage=lawn&models=${PLANTS.join(',')}&t=0.4` },
+  // The same without labels, which otherwise sit over the faces of the nearest lane.
+  { name: 'gallery-lawn-clean', url: `/?scene=gallery&stage=lawn&models=${PLANTS.join(',')}&t=0.4&labels=0` },
+  // Three-quarter views from the front and from behind.
+  { name: 'gallery-peashooter-front', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=20&yaw=38' },
+  { name: 'gallery-peashooter-back', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=24&yaw=-142' },
+  // Each level as it would sit on a card: 88 x 112 pixels.
+  portraits('gallery-portraits', 'peashooter'),
+  // The three plants of the first level, side by side at the lawn angle.
+  { name: 'gallery-plants', url: '/?scene=gallery&models=peashooter,sunflower,walnutBomb&t=0.4' },
+  { name: 'gallery-sunflower', url: '/?scene=gallery&model=sunflower&t=0.4' },
+  { name: 'gallery-sunflower-front', url: '/?scene=gallery&model=sunflower&t=0.4&pitch=20&yaw=38' },
+  { name: 'gallery-sunflower-back', url: '/?scene=gallery&model=sunflower&t=0.4&pitch=24&yaw=-142' },
+  {
+    // Paying out: the nod and the flare at their fullest, and on the way back.
+    name: 'gallery-sunflower-pulse',
+    url: '/?scene=gallery&model=sunflower&clip=shoot&t=0',
+    frames: [0.15, 0.3].map((t) => ({ suffix: t.toFixed(2), run: (page) => pose(page, 'shoot', t) })),
+  },
+  portraits('gallery-portraits-sunflower', 'sunflower'),
+  { name: 'gallery-walnutBomb', url: '/?scene=gallery&model=walnutBomb&t=0.4' },
+  { name: 'gallery-walnutBomb-front', url: '/?scene=gallery&model=walnutBomb&t=0.4&pitch=20&yaw=38' },
+  { name: 'gallery-walnutBomb-back', url: '/?scene=gallery&model=walnutBomb&t=0.4&pitch=24&yaw=-142' },
+  {
+    // Breathing in, swelling before the blast, and cracked.
+    name: 'gallery-walnutBomb-moves',
+    url: '/?scene=gallery&model=walnutBomb&t=0',
+    frames: [
+      { suffix: 'breath-in', run: (page) => pose(page, 'idle', 0.4) },
+      { suffix: 'breath-out', run: (page) => pose(page, 'idle', 1.2) },
+      { suffix: 'swell', run: (page) => pose(page, 'die', 0.2) },
+      {
+        suffix: 'cracked',
+        run: async (page) => {
+          await page.evaluate(() => window.__lvt.gallery.instances.forEach((instance) => instance.showPart('cracks', true)));
+          await pose(page, 'idle', 0.4);
+        },
+      },
+    ],
+  },
+  portraits('gallery-portraits-walnutBomb', 'walnutBomb'),
+  // The ten zombies, side by side at the lawn angle, then from the front (they face −X).
+  { name: 'gallery-zombies', url: `/?scene=gallery&models=${ZOMBIES.join(',')}&t=0.4` },
+  { name: 'gallery-zombies-front', url: `/?scene=gallery&models=${ZOMBIES.join(',')}&t=0.4&pitch=20&yaw=-38` },
+  {
+    // Four evenly spaced frames of each zombie's walk, levels 1 and 5.
+    name: 'gallery-zombie-walk',
+    url: `/?scene=gallery&models=${ZOMBIES.join(',')}&levels=1,5&clip=walk&phase=0`,
+    frames: [0, 0.25, 0.5, 0.75].map((share) => ({ suffix: `f${share * 4}`, run: (page) => posePhase(page, 'walk', share) })),
+  },
+  {
+    // Each zombie's attack, frozen at its strike or release.
+    name: 'gallery-zombie-attack',
+    url: `/?scene=gallery&models=${ZOMBIES.join(',')}&levels=1,5&t=0.4`,
+    frames: [
+      { suffix: 'melee', run: (page) => posePhase(page, 'melee', 0.42) },
+      { suffix: 'shoot', run: (page) => posePhase(page, 'shoot', 0.3) },
+      { suffix: 'spawn', run: (page) => posePhase(page, 'spawn', 0.45) },
+      { suffix: 'die', run: (page) => posePhase(page, 'die', 1) },
+      { suffix: 'cheer', run: (page) => posePhase(page, 'cheer', 0.5) },
+    ],
+  },
+  // The seven later plants at the lawn angle and from the front, and all ten plants at levels
+  // 1 and 5 on the left half of the real lawn, the game's camera.
+  { name: 'gallery-plants2', url: `/?scene=gallery&models=${PLANTS2.join(',')}&t=0.4` },
+  { name: 'gallery-plants2-front', url: `/?scene=gallery&models=${PLANTS2.join(',')}&t=0.4&pitch=20&yaw=38` },
+  { name: 'gallery-lawn-plants', url: `/?scene=gallery&stage=lawn&models=${[...PLANTS, ...PLANTS2].join(',')}&levels=1,5&labels=0&t=0.4` },
+  ...PLANTS2.flatMap((key) => [
+    { name: `gallery-${key}`, url: `/?scene=gallery&model=${key}&t=0.4` },
+    { name: `gallery-${key}-front`, url: `/?scene=gallery&model=${key}&t=0.4&pitch=20&yaw=38` },
+    { name: `gallery-lawn-${key}`, url: `/?scene=gallery&stage=lawn&model=${key}&labels=0&t=0.4` },
+    portraits(`gallery-portraits-${key}`, key, [1, 5]),
+  ]),
+  // The special motions, frozen: the mine armed and going off, the two flings at wind-up and
+  // release, the pumpkin's leap at its apex and on impact, the cherries' swell, the torch's
+  // fire at two beats, the bunker cracked.
+  moves('potatoMine', [
+    ['asleep', 'idle', 0.4],
+    ['armed', 'idle', 0.4, 'armed'],
+    ['trigger-jump', 'shoot', 0.18, 'armed'],
+    ['trigger-blast', 'shoot', 0.3, 'armed'],
+  ]),
+  moves('kernelPult', [
+    ['windup', 'shoot', 0.0825],
+    ['release', 'shoot', 0.15],
+    ['over', 'shoot', 0.2],
+  ]),
+  moves('mangoPult', [
+    ['windup', 'shoot', 0.1375],
+    ['release', 'shoot', 0.25],
+    ['over', 'shoot', 0.33],
+  ]),
+  moves('pumpkinSquash', [
+    ['crouch', 'melee', 0.1],
+    ['apex', 'melee', 0.28],
+    ['impact', 'melee', 0.401],
+  ]),
+  moves('cherryBomber', [
+    ['swell-half', 'shoot', 0.5],
+    ['swell-full', 'shoot', 1],
+  ]),
+  moves('torchwood', [
+    ['flame-a', 'idle', 0.2],
+    ['flame-b', 'idle', 0.75],
+  ]),
+  moves('avocadoBunker', [['cracked', 'idle', 0.4, 'cracks']]),
+  // Level 1 and level 5 of each zombie on the right half of the real lawn, the game's camera.
+  { name: 'gallery-lawn-zombies', url: `/?scene=gallery&stage=lawn&models=${ZOMBIES.join(',')}&levels=1,5&from=5&labels=0&t=0.4` },
+  ...[...ZOMBIES, 'boneMinion'].flatMap((key) => [
+    { name: `gallery-${key}`, url: `/?scene=gallery&model=${key}&t=0.4` },
+    { name: `gallery-${key}-front`, url: `/?scene=gallery&model=${key}&t=0.4&pitch=20&yaw=-38` },
+    // Its five levels walking in on the real lawn, the game's camera.
+    { name: `gallery-lawn-${key}`, url: `/?scene=gallery&stage=lawn&model=${key}&from=4&labels=0&t=0.4` },
+    portraits(`gallery-portraits-${key}`, key, [1, 5], -32),
+  ]),
+  // The two bases: three damage states side by side, then each state in place, a close look
+  // at each end, the plants' base swatting, and both falling.
+  {
+    name: 'bases',
+    url: '/?scene=fx&effects=0&t=1',
+    frames: [
+      { suffix: 'states', run: () => Promise.resolve() },
+      { suffix: 'states-low', run: (page) => open(page, '/?scene=fx&effects=0&healths=0.6,0.3,0.1&t=1') },
+      ...[1, 0.6, 0.3, 0.1].map((h) => ({
+        suffix: `game-${h.toFixed(2)}`,
+        run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=${h}&t=1`),
+      })),
+      ...['plants', 'zombies'].flatMap((side) =>
+        [1, 0.6, 0.3, 0.1].map((h) => ({
+          suffix: `${side}-${h.toFixed(2)}`,
+          run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=${h}&focus=${side}&t=1`),
+        })),
+      ),
+      { suffix: 'strike', run: (page) => open(page, '/?scene=fx&layout=game&effects=0&strike=2&focus=plants&t=0.13') },
+      ...[0.5, 1.0, 1.6, 2.4, 4.0].map((t) => ({
+        suffix: `collapse-${t.toFixed(2)}`,
+        run: (page) => open(page, `/?scene=fx&layout=game&effects=0&health=0.1&collapse=both&t=${t}`),
+      })),
+    ],
+  },
+  // Every effect on the lawn, between a hurt plants' base and a badly hurt zombies' base;
+  // t = 0.15 catches the explosion's flash and ring.
+  {
+    name: 'fx',
+    url: '/?scene=fx&layout=game&plants=0.6&zombies=0.3&t=0.15',
+    frames: [0.15, 0.3, 0.6, 1.3].map((t) => ({
+      suffix: t.toFixed(2),
+      run: (page) => (t === 0.15 ? Promise.resolve() : open(page, `/?scene=fx&layout=game&plants=0.6&zombies=0.3&t=${t}`)),
+    })),
+  },
+  // The same in the side-by-side layout, as `?scene=fx` opens.
+  { name: 'fx-states', url: '/?scene=fx&t=0.15' },
 ];
+
+/**
+ * A card portrait of each of `levels` of `model`, saved as `<name>-L1.png` and so on. Zombies
+ * face the other way, so their cards turn the camera the other way (`yaw`).
+ */
+function portraits(name, model, levels = [1, 2, 3, 4, 5], yaw = 32) {
+  return {
+    name,
+    url: portraitUrl(levels[0], model, yaw),
+    viewport: { width: 88, height: 112 },
+    frames: levels.map((level, i) => ({
+      suffix: `L${level}`,
+      run: (page) => (i === 0 ? Promise.resolve() : open(page, portraitUrl(level, model, yaw))),
+    })),
+  };
+}
 
 const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const OUT_DIR = path.join(ROOT, 'artifacts', 'shots');
-const PORT = 5273;
+/** The dev server's port: 5273 unless LVT_PORT names another (a second checkout's server keeps its own). */
+const PORT = Number(process.env.LVT_PORT) || 5273;
 const ORIGIN = `http://localhost:${PORT}`;
-const VIEWPORT = { width: 1440, height: 900 };
+const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 const READY_TIMEOUT_MS = 20_000;
 const FLAT_THRESHOLD = 0.999; // share of sampled pixels that is one colour
 
@@ -167,35 +412,82 @@ function dominantShare(page, png) {
   }, png.toString('base64'));
 }
 
+/** Shows the lawn's tile and lane highlights, then waits for them to be drawn. */
+async function highlight(page, tile, lane) {
+  await page.evaluate(
+    ([t, l]) => {
+      window.__lvt.lawn.highlightTile(...t);
+      window.__lvt.lawn.highlightLane(...l);
+    },
+    [tile, lane],
+  );
+  await nextFrames(page, 3);
+}
+
+function portraitUrl(level, model = 'peashooter', yaw = 32) {
+  return `/?scene=gallery&model=${model}&level=${level}&portrait=1&pitch=20&yaw=${yaw}&t=0.4`;
+}
+
+/** Loads a scene and waits until it has drawn and its fonts are in. */
+async function open(page, url) {
+  await page.goto(ORIGIN + url, { waitUntil: 'load' });
+  await page
+    .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
+    .catch((error) => {
+      throw new Error(`__lvt.ready did not resolve within ${READY_TIMEOUT_MS} ms (${String(error.message).split('\n')[0]})`);
+    });
+  await page.evaluate(() => document.fonts.ready);
+}
+
+/** Freezes every model in the gallery at `seconds` into `clip`, then waits for it to be drawn. */
+async function pose(page, clip, seconds) {
+  await page.evaluate(([c, t]) => window.__lvt.gallery.pose(c, t), [clip, seconds]);
+  await nextFrames(page, 3);
+}
+
+/** Freezes every model in the gallery at `share` of its own `clip`, then waits for it to be drawn. */
+async function posePhase(page, clip, share) {
+  await page.evaluate(([c, s]) => window.__lvt.gallery.posePhase(c, s), [clip, share]);
+  await nextFrames(page, 3);
+}
+
+/** Resolves after the page has drawn `count` more animation frames. */
+function nextFrames(page, count) {
+  return page.evaluate(
+    (n) =>
+      new Promise((resolve) => {
+        const tick = () => (n-- > 0 ? requestAnimationFrame(tick) : resolve());
+        tick();
+      }),
+    count,
+  );
+}
+
 async function shoot(scenario) {
-  const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: scenario.viewport ?? DEFAULT_VIEWPORT, deviceScaleFactor: 1 });
   const problems = [];
   page.on('pageerror', (error) => problems.push(`page error: ${error.message}`));
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
   });
   try {
-    await page.goto(ORIGIN + scenario.url, { waitUntil: 'load' });
-    await page
-      .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
-      .catch((error) => {
-        throw new Error(`__lvt.ready did not resolve within ${READY_TIMEOUT_MS} ms (${String(error.message).split('\n')[0]})`);
-      });
-    await page.evaluate(() => document.fonts.ready);
+    await open(page, scenario.url);
     await scenario.steps?.(page);
 
-    // Judge the 3D canvas on its own: hide the UI layer so text cannot mask a blank canvas.
-    const hideUi = await page.addStyleTag({ content: '#ui { visibility: hidden !important; }' });
-    const { share, colours } = await dominantShare(page, await page.screenshot({ type: 'png' }));
-    await hideUi.evaluate((el) => el.remove());
-    if (share > FLAT_THRESHOLD) problems.push(`canvas is one flat colour (${(share * 100).toFixed(2)}% of pixels)`);
-
     await mkdir(OUT_DIR, { recursive: true });
-    const file = path.join(OUT_DIR, `${scenario.name}.png`);
-    await writeFile(file, await page.screenshot({ type: 'png' }));
-    console.log(
-      `[${scenario.name}] ${path.relative(ROOT, file)} (${colours} colours, ${(share * 100).toFixed(1)}% dominant)`,
-    );
+    for (const frame of scenario.frames ?? [{ suffix: '', run: async () => {} }]) {
+      await frame.run(page);
+
+      // Judge the 3D canvas on its own: hide the UI layer so text cannot mask a blank canvas.
+      const hideUi = await page.addStyleTag({ content: '#ui { visibility: hidden !important; }' });
+      const { share, colours } = await dominantShare(page, await page.screenshot({ type: 'png' }));
+      await hideUi.evaluate((el) => el.remove());
+      if (share > FLAT_THRESHOLD) problems.push(`canvas is one flat colour (${(share * 100).toFixed(2)}% of pixels)`);
+
+      const file = path.join(OUT_DIR, `${scenario.name}${frame.suffix ? `-${frame.suffix}` : ''}.png`);
+      await writeFile(file, await page.screenshot({ type: 'png' }));
+      console.log(`[${scenario.name}] ${path.relative(ROOT, file)} (${colours} colours, ${(share * 100).toFixed(1)}% dominant)`);
+    }
   } catch (error) {
     problems.push(error instanceof Error ? error.message : String(error));
   } finally {

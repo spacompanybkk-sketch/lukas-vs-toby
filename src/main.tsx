@@ -1,74 +1,49 @@
 import { render } from 'preact';
-import {
-  AmbientLight,
-  BoxGeometry,
-  Color,
-  DirectionalLight,
-  Mesh,
-  MeshStandardMaterial,
-  PerspectiveCamera,
-  Scene,
-  WebGLRenderer,
-} from 'three';
 import { installDebug, markReady } from './app/debug';
+import * as gallery from './render/gallery';
+import * as boot from './scenes/boot';
+import * as fx from './scenes/fx';
+import * as lawn from './scenes/lawn';
 import { App } from './ui/App';
 import './ui/theme.css';
 
-/** A lit, slowly spinning green cube: proves the renderer, lights and fonts work. */
-function mountBoot(canvas: HTMLCanvasElement): void {
-  const renderer = new WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+/** Undoes everything a scene set up: stops its loop, removes its listeners, frees its GPU resources. */
+type Teardown = () => void;
 
-  const scene = new Scene();
-  scene.background = new Color('#1b2430');
-
-  const camera = new PerspectiveCamera(40, 1, 0.1, 50);
-  camera.position.set(2.6, 2.2, 3.4);
-  camera.lookAt(0, 0, 0);
-
-  const cube = new Mesh(
-    new BoxGeometry(1.4, 1.4, 1.4),
-    new MeshStandardMaterial({ color: '#58c13b', roughness: 0.7 }),
-  );
-  cube.rotation.y = 0.5;
-  scene.add(cube);
-
-  scene.add(new AmbientLight('#ffffff', 0.9));
-  const sun = new DirectionalLight('#fff4d6', 2.4);
-  sun.position.set(3, 5, 2);
-  scene.add(sun);
-
-  const resize = (): void => {
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-  };
-  window.addEventListener('resize', resize);
-  resize();
-
-  let first = true;
-  let last = performance.now();
-  renderer.setAnimationLoop((now: number) => {
-    cube.rotation.y += ((now - last) / 1000) * 0.6;
-    last = now;
-    renderer.render(scene, camera);
-    if (first) {
-      first = false;
-      markReady();
-    }
-  });
+/** A development scene, opened with `?scene=<name>`. It calls `markReady()` once it has drawn. */
+interface SceneModule {
+  mount(canvas: HTMLCanvasElement, params: URLSearchParams): void | Teardown | Promise<void | Teardown>;
+  /** True if the game title should stay on screen over the scene. */
+  keepTitle?: boolean;
 }
+
+// A Map, not an object: `?scene=constructor` must find nothing, not something inherited.
+const SCENES = new Map<string, SceneModule>([
+  ['boot', boot],
+  ['lawn', lawn],
+  ['gallery', gallery],
+  ['fx', fx],
+]);
 
 installDebug();
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
-render(<App />, document.getElementById('ui') as HTMLElement);
+const params = new URLSearchParams(location.search);
+const scene = SCENES.get(params.get('scene') ?? '');
 
-switch (new URLSearchParams(location.search).get('scene')) {
-  case 'boot':
-    mountBoot(canvas);
-    break;
-  default:
-    // The real app mounts here in later tasks; for now it is just the title.
-    requestAnimationFrame(markReady);
+if (!scene || scene.keepTitle) render(<App />, document.getElementById('ui') as HTMLElement);
+
+if (scene) {
+  void Promise.resolve(scene.mount(canvas, params)).then((teardown) => {
+    if (!teardown) return;
+    window.addEventListener('pagehide', () => teardown(), { once: true });
+    // A page brought back from the back/forward cache would show a scene that has been
+    // torn down; load it afresh instead.
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) location.reload();
+    });
+  });
+} else {
+  // The real app mounts here in later tasks; for now it is just the title.
+  requestAnimationFrame(markReady);
 }

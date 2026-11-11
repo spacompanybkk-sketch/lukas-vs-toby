@@ -6,6 +6,11 @@ pick whatever keeps the lawn readable and the mood bright and goofy.
 Direction: a bright toy diorama. Crossy Road-style voxel characters on a floating
 island, soft shadows, saturated colour. Nothing frightening, no gore.
 
+Michal, 2026-11-11, on seeing the lawn and the Peashooter: keep the Minecraft look in
+everything still to be built: boxy, hard-edged, pixelated. No rounded or smooth shapes,
+no bevels, no soft gradients on models, HUD art or effects; curves are stepped in voxels
+and interface art is pixel-crisp. What is already built stays as it is.
+
 ## 1. Scale
 
 - World unit = one lawn tile. Columns run along +X (column c covers x in [c, c+1]),
@@ -21,9 +26,15 @@ island, soft shadows, saturated colour. Nothing frightening, no gore.
 - Chunky: head is 40–50% of total height. Limbs short. Hands and feet are one box each.
 - Zombies slouch (torso pitched 10° forward), arms held out in front.
 - Plants have a base (leaves or pot), a stem, and an expressive head.
-- Eyes: black 2×2 voxel squares, one voxel deep, each with a single white glint voxel
-  in the top corner nearest the light. Plants look determined and friendly. Zombies
-  look silly: one eye bigger than the other, a tooth or tongue showing.
+- Eyes: black, 2 wide by 3 tall on a vertical face (they come out square through the
+  lawn camera, which foreshortens a vertical face to 0.62 of its height), standing half
+  a voxel proud of the surface, each with a single white glint voxel in the top corner
+  nearest the light. Plants look determined and friendly. Zombies look silly: one eye
+  bigger than the other, a tooth or tongue showing.
+- Faces turn to the player. The body faces along its lane, but the head is turned about
+  14° towards the camera and tipped back about 6°, so the mouth and the near eye show
+  from the lawn camera. The Peashooter (`src/render/models/plants/peashooter.ts`) is the
+  reference for how a unit is built and how its five levels escalate.
 - Blink: eye height collapses to 10% for 100 ms every 2–5 s, offset per unit.
 
 ## 3. Colour
@@ -77,8 +88,22 @@ Level materials (applied to a model's trim colour slots and added parts)
 |-------|-----------|
 | 2 | Same colours, more parts |
 | 3 | Iron `#AEB7C2`, metalness 0.6, roughness 0.4 |
-| 4 | Crystal `#7DE8FF`, emissive 0.6 |
-| 5 | Gold `#FFC83D`, metalness 0.8, warm emissive 0.15, golden aura motes |
+| 4 | Crystal `#7DE8FF`, glowing: emissive intensity 1.5 or more so it blooms |
+| 5 | Gold `#FFC83D`, metalness 0.8, warm emissive 0.15 (a sheen, not a glow), golden aura motes |
+
+Every level must be visible from the lawn camera, which looks down from above and
+behind the plants. A level's additions go on top of the head, in front of the face, or
+outside the head's footprint; never only under or behind the head. Each step up must
+change the silhouette a child sees during play, level 1 to level 2 included.
+
+Crystal keeps its shading: its glow is multiplied by the surface's own baked tones, so
+creases and faces still read and a crystal mouth still shows its dark opening. Iron and
+gold reflect a small built-in studio environment so they read as metal; that reflection
+is part of the material, not an extra light.
+
+Anything meant to glow (crystal, fuse tips, eyes, fire, tokens) needs an emissive
+intensity of 1.5 or more: bloom starts at scene luminance 1.2, and a lit surface with
+emissive 0.6 reaches only about 0.8.
 
 Effects
 
@@ -98,9 +123,14 @@ Each side stays inside its colour family so a lane reads at a glance.
 
 - Surfaces: matte toy plastic. Vertex-coloured standard material, roughness 0.85,
   metalness 0, except level materials above.
-- Sun: one warm directional light `#FFF1D6` from the upper left front, soft shadows
-  (2048 map). Shadows fall to the right and slightly towards the camera.
+- Sun: one warm directional light `#FFF1D6` from the upper left, slightly behind the
+  lawn (light travels along (0.5, −1, 0.22)), soft shadows (2048 map). Shadows fall to
+  the right and slightly towards the camera, so they land on ground the player can see.
 - Fill: hemisphere light, sky `#BFE8FF`, ground `#6BBE3F`.
+- Bounce: a shadowless directional light from in front and slightly below, `#DCEBFF`,
+  so camera-facing sides are not flat or green-tinted.
+- These three lights live in `Renderer` (`sun`, `fill`, `bounce`). Every scene uses
+  them as they are; models and effects never add lights of their own.
 - Screen-space ambient occlusion, subtle. Bloom only on emissive parts and effects.
   Light vignette. Anti-aliased. Filmic tone mapping, sRGB output.
 - Camera: perspective, 30° field of view, pitched about 52° down, straight on (no yaw),

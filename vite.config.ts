@@ -21,7 +21,18 @@ export default defineConfig({
   plugins: [preact(), projectRoot()],
   build: {
     target: 'es2022',
-    // Three.js alone is ~500 kB minified; warn if the one game bundle grows well past that.
+    // Three.js alone is ~540 kB minified, so it gets a chunk of its own, as do the
+    // post-processing libraries (~300 kB). Warn if any one chunk grows well past Three.js.
     chunkSizeWarningLimit: 700,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'three', test: /node_modules[\\/]three[\\/]/ },
+            { name: 'post', test: /node_modules[\\/](postprocessing|n8ao)[\\/]/ },
+          ],
+        },
+      },
+    },
   },
 });

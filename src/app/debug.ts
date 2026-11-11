@@ -1,7 +1,14 @@
+import type { Renderer } from '../render/Renderer';
+import type { Lawn } from '../render/world/Lawn';
+
 /** Test hooks exposed on `window.__lvt`; later tasks add fields to it. */
 export interface LvtDebug {
   /** Resolves once the current scene has drawn its first frame. */
   ready: Promise<void>;
+  /** The renderer of the current 3D scene, if it has one. */
+  renderer?: Renderer;
+  /** The lawn of the current 3D scene, if it has one. */
+  lawn?: Lawn;
   [key: string]: unknown;
 }
 

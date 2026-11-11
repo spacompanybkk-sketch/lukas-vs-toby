@@ -16,6 +16,7 @@
     "@fontsource-variable/fredoka": "^5.3.0",
     "@fontsource/lilita-one": "^5.3.0",
     "@preact/signals": "^2.11.4",
+    "n8ao": "2.0.1",
     "postprocessing": "^6.39.6",
     "preact": "^11.2.0",
     "three": "^0.187.0"
