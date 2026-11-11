@@ -22,6 +22,20 @@ import { chromium } from 'playwright';
  *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
  * }[]}
  */
+/** The ten zombies a player can field, in unlock order. The Bone Minion is raised, not fielded. */
+const ZOMBIES = [
+  'brainEater',
+  'veryFastWalker',
+  'skeletonWarrior',
+  'desertZombie',
+  'skeletonArcher',
+  'hotTopic',
+  'cowboyZombie',
+  'necromancer',
+  'tridentZombie',
+  'brainRot',
+];
+
 const SCENARIOS = [
   { name: 'boot', url: '/?scene=boot' },
   { name: 'lawn', url: '/?scene=lawn&t=3' },
@@ -88,17 +102,50 @@ const SCENARIOS = [
     ],
   },
   portraits('gallery-portraits-walnutBomb', 'walnutBomb'),
+  // The ten zombies, side by side at the lawn angle, then from the front (they face −X).
+  { name: 'gallery-zombies', url: `/?scene=gallery&models=${ZOMBIES.join(',')}&t=0.4` },
+  { name: 'gallery-zombies-front', url: `/?scene=gallery&models=${ZOMBIES.join(',')}&t=0.4&pitch=20&yaw=-38` },
+  {
+    // Four evenly spaced frames of each zombie's walk, levels 1 and 5.
+    name: 'gallery-zombie-walk',
+    url: `/?scene=gallery&models=${ZOMBIES.join(',')}&levels=1,5&clip=walk&phase=0`,
+    frames: [0, 0.25, 0.5, 0.75].map((share) => ({ suffix: `f${share * 4}`, run: (page) => posePhase(page, 'walk', share) })),
+  },
+  {
+    // Each zombie's attack, frozen at its strike or release.
+    name: 'gallery-zombie-attack',
+    url: `/?scene=gallery&models=${ZOMBIES.join(',')}&levels=1,5&t=0.4`,
+    frames: [
+      { suffix: 'melee', run: (page) => posePhase(page, 'melee', 0.42) },
+      { suffix: 'shoot', run: (page) => posePhase(page, 'shoot', 0.3) },
+      { suffix: 'spawn', run: (page) => posePhase(page, 'spawn', 0.45) },
+      { suffix: 'die', run: (page) => posePhase(page, 'die', 1) },
+      { suffix: 'cheer', run: (page) => posePhase(page, 'cheer', 0.5) },
+    ],
+  },
+  // Level 1 and level 5 of each zombie on the right half of the real lawn, the game's camera.
+  { name: 'gallery-lawn-zombies', url: `/?scene=gallery&stage=lawn&models=${ZOMBIES.join(',')}&levels=1,5&from=5&labels=0&t=0.4` },
+  ...[...ZOMBIES, 'boneMinion'].flatMap((key) => [
+    { name: `gallery-${key}`, url: `/?scene=gallery&model=${key}&t=0.4` },
+    { name: `gallery-${key}-front`, url: `/?scene=gallery&model=${key}&t=0.4&pitch=20&yaw=-38` },
+    // Its five levels walking in on the real lawn, the game's camera.
+    { name: `gallery-lawn-${key}`, url: `/?scene=gallery&stage=lawn&model=${key}&from=4&labels=0&t=0.4` },
+    portraits(`gallery-portraits-${key}`, key, [1, 5], -32),
+  ]),
 ];
 
-/** A card portrait of each level of `model`, saved as `<name>-L1.png` to `-L5.png`. */
-function portraits(name, model) {
+/**
+ * A card portrait of each of `levels` of `model`, saved as `<name>-L1.png` and so on. Zombies
+ * face the other way, so their cards turn the camera the other way (`yaw`).
+ */
+function portraits(name, model, levels = [1, 2, 3, 4, 5], yaw = 32) {
   return {
     name,
-    url: portraitUrl(1, model),
+    url: portraitUrl(levels[0], model, yaw),
     viewport: { width: 88, height: 112 },
-    frames: [1, 2, 3, 4, 5].map((level) => ({
+    frames: levels.map((level, i) => ({
       suffix: `L${level}`,
-      run: (page) => (level === 1 ? Promise.resolve() : open(page, portraitUrl(level, model))),
+      run: (page) => (i === 0 ? Promise.resolve() : open(page, portraitUrl(level, model, yaw))),
     })),
   };
 }
@@ -266,8 +313,8 @@ async function highlight(page, tile, lane) {
   await nextFrames(page, 3);
 }
 
-function portraitUrl(level, model = 'peashooter') {
-  return `/?scene=gallery&model=${model}&level=${level}&portrait=1&pitch=20&yaw=32&t=0.4`;
+function portraitUrl(level, model = 'peashooter', yaw = 32) {
+  return `/?scene=gallery&model=${model}&level=${level}&portrait=1&pitch=20&yaw=${yaw}&t=0.4`;
 }
 
 /** Loads a scene and waits until it has drawn and its fonts are in. */
@@ -284,6 +331,12 @@ async function open(page, url) {
 /** Freezes every model in the gallery at `seconds` into `clip`, then waits for it to be drawn. */
 async function pose(page, clip, seconds) {
   await page.evaluate(([c, t]) => window.__lvt.gallery.pose(c, t), [clip, seconds]);
+  await nextFrames(page, 3);
+}
+
+/** Freezes every model in the gallery at `share` of its own `clip`, then waits for it to be drawn. */
+async function posePhase(page, clip, share) {
+  await page.evaluate(([c, s]) => window.__lvt.gallery.posePhase(c, s), [clip, share]);
   await nextFrames(page, 3);
 }
 

@@ -78,6 +78,47 @@ const colours = {
   eye: '#1A1A22',
   eyeGlint: '#FFFFFF',
 
+  // Extra zombie colours: each a flat tone and a darker companion, inside the zombies'
+  // family of sickly skin, purples, bone and iron.
+  // Old trousers and hair: a slate purple between cloth dark and the graveyard.
+  trouser: '#4E4870',
+  trouserDark: '#363052',
+  // The inside of a mouth, a brain's grooves, and teeth (warmer than bone, so they read as teeth).
+  mouthDark: '#3B1530',
+  brainDark: '#E2668F',
+  tooth: '#FFF7E3',
+  // Plain plastic armour, before level 3 turns it to real metal.
+  armour: '#8E95A3',
+  armourDark: '#676E7C',
+  // A skeleton's eye sockets, and the red dots that glow in them.
+  socket: '#2C2238',
+  eyeRed: '#FF4436',
+  // The Very Fast Walker's red-flushed skin.
+  skinFlush: '#B8C47E',
+  skinFlushDark: '#8C9E5C',
+  // The Desert Zombie: sand, and the bandages it is wrapped in.
+  sand: '#E2C68A',
+  sandDark: '#BC9C5E',
+  bandage: '#EEE4C6',
+  bandageDark: '#C9B88F',
+  // The Cowboy's hat, vest and belt.
+  hatBrown: '#8E5B32',
+  hatBrownDark: '#633D1E',
+  // The Necromancer's robe, and its paler trim (the trim that turns to metal and crystal).
+  robePurple: '#5B3799',
+  robePurpleDark: '#3C226B',
+  robeTrim: '#B08CF2',
+  // The Trident Zombie's sea-soaked skin, and seaweed.
+  seaBlue: '#7898AC',
+  seaBlueDark: '#56758A',
+  seaweed: '#3F8A5A',
+  seaweedDark: '#2C6642',
+  // Brain Rot: its sallow skin, and the toxic green of its brain and goo.
+  sickSkin: '#B9C77C',
+  sickSkinDark: '#8E9D57',
+  toxicGreen: '#8CD445',
+  toxicGreenDark: '#5C9A2A',
+
   // Extra world colours: ground that is neither tile nor prop, and what stands on it.
   rimGrass: '#5DB53C',
   rimGrave: '#473B65',

@@ -4,7 +4,7 @@ import { GameLoop } from '../game/GameLoop';
 import type { FrameBox } from './CameraRig';
 import { worldToClient } from './coords';
 import { MATTE_PLASTIC } from './look';
-import { getModelDef, modelKeys } from './models/registry';
+import { getModelDef, hasModel, modelKeys } from './models/registry';
 import { PALETTE } from './palette';
 import { Renderer, type Quality } from './Renderer';
 import { VOXEL, disposeModels, modelStats } from './voxel/build';
@@ -23,8 +23,12 @@ import { Sky } from './world/Sky';
 //   &model=<key>                   one model's row, larger
 //   &models=<key,key,…>            only these models, laid out as the overview
 //   &level=<1-5>                   only that level
+//   &levels=<n,n,…>                only these levels, framed close
+//   &from=<column>                 on the lawn, the column the first level stands in (default 1);
+//                                  more than five models fill the lanes again further right
 //   &clip=<name>&t=<seconds>       every model frozen at that time of that clip
 //   &clip=<name>                   every model playing that clip (one-shots repeat)
+//   &clip=<name>&phase=<0-1>       every model frozen at that share of its own clip's length
 //   &t=<seconds>                   idle, frozen
 //   &pitch=<deg>&yaw=<deg>         camera angle (default 52 and 0, the lawn's)
 //   &stage=lawn                    stand them on the real lawn instead of pads
@@ -112,7 +116,7 @@ export function galleryLayout(keys: readonly string[], levels: readonly number[]
  * or, for a crowd of `crowd` units, the lawn filled tile by tile and then a second and third
  * unit on each tile, a little to one side.
  */
-function lawnLayout(keys: readonly string[], levels: readonly number[], crowd: number): GalleryCell[] {
+function lawnLayout(keys: readonly string[], levels: readonly number[], crowd: number, from = 1): GalleryCell[] {
   if (crowd > 0) {
     return Array.from({ length: crowd }, (_, i) => {
       const layer = Math.floor(i / 50) % 3;
@@ -124,7 +128,10 @@ function lawnLayout(keys: readonly string[], levels: readonly number[], crowd: n
       };
     });
   }
-  return keys.flatMap((key, index) => levels.map((level, i) => ({ key, level, x: i + 1.5, z: ((2 + index) % 5) + 0.5 })));
+  // Five lanes; a sixth model starts a second block of columns to the right of the first.
+  return keys.flatMap((key, index) =>
+    levels.map((level, i) => ({ key, level, x: from + Math.floor(index / 5) * levels.length + i + 0.5, z: ((2 + index) % 5) + 0.5 })),
+  );
 }
 
 /** The box that holds every cell, with room around each model. */
@@ -191,12 +198,23 @@ function number(params: URLSearchParams, name: string): number | null {
 export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () => void {
   const only = params.get('model');
   const crowd = Math.max(0, Math.floor(number(params, 'crowd') ?? 0));
-  const listed = params.get('models')?.split(',').filter((key) => key !== '').map((key) => getModelDef(key).key);
+  // Keys not (yet) registered are left out, so a list can name units still being built.
+  const listed = params.get('models')?.split(',').filter((key) => key !== '' && hasModel(key));
   const paged = galleryPage(listed ?? modelKeys(), number(params, 'page') ?? 1);
   // One model, or a crowd drawn from all of them, or one page of the overview.
   const keys = only ? [getModelDef(only).key] : crowd > 0 ? modelKeys() : paged.keys;
   const level = number(params, 'level');
-  const levels = level !== null && level >= 1 && level <= MAX_LEVEL ? [Math.floor(level)] : [1, 2, 3, 4, 5];
+  const listedLevels = params
+    .get('levels')
+    ?.split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= MAX_LEVEL);
+  const levels =
+    listedLevels && listedLevels.length > 0
+      ? listedLevels
+      : level !== null && level >= 1 && level <= MAX_LEVEL
+        ? [Math.floor(level)]
+        : [1, 2, 3, 4, 5];
   const onLawn = params.get('stage') === 'lawn' || crowd > 0;
   const portrait = params.get('portrait') === '1';
   const pitch = number(params, 'pitch');
@@ -216,7 +234,7 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   let lawn: Lawn | null = null;
   let pads: Mesh | null = null;
   if (onLawn) {
-    cells = lawnLayout(keys, levels, crowd);
+    cells = lawnLayout(keys, levels, crowd, number(params, 'from') ?? 1);
     lawn = new Lawn();
     renderer.scene.add(lawn.group);
     // Left alone, the camera is the game's own. An angle of its own closes in on the models.
@@ -229,7 +247,7 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
       renderer.scene.add(pads);
     }
     let box = layout.box;
-    if (!only && level === null) {
+    if (!only && level === null && !listedLevels?.length) {
       // The overview: wide enough that models show at about the size they have on the lawn.
       const halfWidth = Math.max(box.x[1] - box.x[0], OVERVIEW_WIDTH) / 2;
       const halfDepth = Math.max(box.z[1] - box.z[0], OVERVIEW_DEPTH) / 2;
@@ -272,7 +290,14 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
       if (frozenAt !== null) instance.seek(frozenAt);
     }
   };
-  pose(params.get('clip'), number(params, 't'));
+  /** Plays `name` on every model, each frozen at `share` (0 to 1) of its own clip's length. */
+  const posePhase = (name: string, share: number): void => {
+    pose(name, 0);
+    for (const instance of instances) instance.seek(share * (instance.def.clips[clip ?? 'idle']?.duration ?? 0));
+  };
+  const phase = number(params, 'phase');
+  if (phase !== null && params.get('clip') !== null) posePhase(params.get('clip') as string, phase);
+  else pose(params.get('clip'), number(params, 't'));
 
   // A card frames the unit's envelope, with room above for what higher levels wear.
   if (portrait) renderer.rig.frameSubject(envelopeAround(cells), { ...view, side: 0.08, top: 0.16, bottom: 0.05 });
@@ -325,6 +350,8 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
     instances,
     /** Plays `clip` on every model (null for idle), frozen at `seconds` unless that is null. */
     pose,
+    /** Plays `clip` on every model, frozen at a share of each one's own clip length. */
+    posePhase,
     /** What each model on show costs to draw. */
     stats: cells.map((cell) => ({ key: cell.key, level: cell.level, ...modelStats(getModelDef(cell.key), cell.level) })),
   };

@@ -19,6 +19,18 @@ const PLANT_KEYS = new Set(
     .map((value) => (value as Partial<ModelDef>).key)
     .filter((key): key is string => typeof key === 'string'),
 );
+/** The models in `zombies/`: they face −X, towards the plants. */
+const ZOMBIE_KEYS = new Set(
+  Object.values(import.meta.glob<Record<string, unknown>>('../../src/render/models/zombies/*.ts', { eager: true }))
+    .flatMap((module) => Object.values(module))
+    .map((value) => (value as Partial<ModelDef>).key)
+    .filter((key): key is string => typeof key === 'string'),
+);
+/**
+ * Models that are never merged, so they have one look at every level. The Bone Minion is
+ * raised by the Necromancer and cannot be placed or levelled; its five levels are the same.
+ */
+const SINGLE_LEVEL_MODELS = new Set(['boneMinion']);
 
 describe('the registry', () => {
   it('has the three plants of the first level', () => {
@@ -108,6 +120,11 @@ describe.each(modelKeys())('model %s', (key) => {
   });
 
   it('changes at every level: more or different boxes, or different colours, than the level below', () => {
+    if (SINGLE_LEVEL_MODELS.has(key)) {
+      for (const level of [2, 3, 4, 5]) expect(modelColors(def, level), `level ${level}`).toEqual(modelColors(def, 1));
+      for (const level of [2, 3, 4, 5]) expect(boxesAt(def, level), `level ${level}`).toBe(boxesAt(def, 1));
+      return;
+    }
     for (const level of [2, 3, 4, 5]) {
       const moreBoxes = boxesAt(def, level) !== boxesAt(def, level - 1);
       const otherColours = modelColors(def, level).join() !== modelColors(def, level - 1).join();
@@ -118,6 +135,7 @@ describe.each(modelKeys())('model %s', (key) => {
   it('grows at every level where the lawn camera can see it: taller, longer in front, or wider', () => {
     // Art bible section 3: a level's additions go on top of the head, in front of the face
     // or outside the footprint. Measured before the level's scale is applied.
+    if (SINGLE_LEVEL_MODELS.has(key)) return;
     for (const level of [2, 3, 4, 5]) {
       const now = bounds(def, level);
       const before = bounds(def, level - 1);
@@ -170,6 +188,25 @@ describe.each(modelKeys())('model %s', (key) => {
       x = box.getCenter(new Vector3()).x;
     }
     expect(x / VOXEL).toBeGreaterThanOrEqual(-1e-6);
+    still.dispose();
+  });
+
+  it('walks and attacks, if it is a zombie: a looping walk, and a melee or a shot', () => {
+    if (!ZOMBIE_KEYS.has(key)) return;
+    expect(def.clips.walk?.loop).toBe(true);
+    expect(def.clips.melee ?? def.clips.shoot).toBeDefined();
+  });
+
+  it('faces −X, if it is a zombie: its head, and its muzzle if it has one, at x <= 0', () => {
+    if (!ZOMBIE_KEYS.has(key)) return;
+    const still = new ModelInstance({ ...def, key: `${def.key}-facing`, clips: {} }, 1);
+    still.root.updateMatrixWorld(true);
+    const head = still.root.getObjectByName('head');
+    expect(head, 'a zombie names its head part "head"').toBeDefined();
+    const box = new Box3();
+    for (const child of (head as Object3D).children) if (child instanceof Mesh) box.expandByObject(child, true);
+    expect(box.getCenter(new Vector3()).x / VOXEL).toBeLessThanOrEqual(1e-6);
+    if (def.muzzle) expect(still.muzzleWorld(new Vector3()).x / VOXEL).toBeLessThanOrEqual(1e-6);
     still.dispose();
   });
 

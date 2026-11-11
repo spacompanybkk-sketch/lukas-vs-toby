@@ -3,6 +3,9 @@ import type { ModelDef } from '../voxel/types';
 import { peashooter } from './plants/peashooter';
 import { sunflower } from './plants/sunflower';
 import { walnutBomb } from './plants/walnutBomb';
+import { brainEater } from './zombies/brainEater';
+import { skeletonWarrior } from './zombies/skeletonWarrior';
+import { veryFastWalker } from './zombies/veryFastWalker';
 
 // Every model the game can show, by key. To add a unit: write its definition in
 // `plants/` or `zombies/`, then add it to the list at the bottom of this file.
@@ -42,4 +45,4 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
   }
 }
 
-for (const def of [peashooter, sunflower, walnutBomb]) registerModel(def);
+for (const def of [peashooter, sunflower, walnutBomb, brainEater, veryFastWalker, skeletonWarrior]) registerModel(def);
