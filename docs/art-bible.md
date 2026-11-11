@@ -6,6 +6,11 @@ pick whatever keeps the lawn readable and the mood bright and goofy.
 Direction: a bright toy diorama. Crossy Road-style voxel characters on a floating
 island, soft shadows, saturated colour. Nothing frightening, no gore.
 
+Michal, 2026-11-11, on seeing the lawn and the Peashooter: keep the Minecraft look in
+everything still to be built: boxy, hard-edged, pixelated. No rounded or smooth shapes,
+no bevels, no soft gradients on models, HUD art or effects; curves are stepped in voxels
+and interface art is pixel-crisp. What is already built stays as it is.
+
 ## 1. Scale
 
 - World unit = one lawn tile. Columns run along +X (column c covers x in [c, c+1]),
