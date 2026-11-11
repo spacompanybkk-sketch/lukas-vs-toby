@@ -1,8 +1,9 @@
 // Screenshot tool: `node tools/shots.mjs <scenario...> [--headed]`.
 //
-// Opens each scenario in Playwright's bundled Chromium at 1440x900, waits for
-// `window.__lvt.ready`, and saves artifacts/shots/<scenario>.png. Exits non-zero on
-// any page error or if the 3D canvas came out as one flat colour.
+// Opens each scenario in Playwright's bundled Chromium (at 1440x900 unless the scenario
+// sets its own viewport), waits for `window.__lvt.ready`, and saves
+// artifacts/shots/<scenario>.png. Exits non-zero on any page error or if the 3D canvas
+// came out as one flat colour.
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -11,16 +12,36 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-/** @type {{ name: string, url: string, steps?: (page: import('playwright').Page) => Promise<void> }[]} */
+/**
+ * @type {{
+ *   name: string,
+ *   url: string,
+ *   viewport?: { width: number, height: number },
+ *   steps?: (page: import('playwright').Page) => Promise<void>,
+ * }[]}
+ */
 const SCENARIOS = [
   { name: 'boot', url: '/?scene=boot' },
+  { name: 'lawn', url: '/?scene=lawn&t=3' },
+  { name: 'lawn-wide', url: '/?scene=lawn&t=3', viewport: { width: 2560, height: 1080 } },
+  { name: 'lawn-small', url: '/?scene=lawn&t=3', viewport: { width: 1280, height: 720 } },
+  {
+    name: 'lawn-highlight',
+    url: '/?scene=lawn&t=3',
+    steps: (page) => highlight(page, [2, 3, 'ok'], [4, 'ok']),
+  },
+  {
+    name: 'lawn-highlight-bad',
+    url: '/?scene=lawn&t=3',
+    steps: (page) => highlight(page, [1, 6, 'bad'], [0, 'bad']),
+  },
 ];
 
 const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const OUT_DIR = path.join(ROOT, 'artifacts', 'shots');
 const PORT = 5273;
 const ORIGIN = `http://localhost:${PORT}`;
-const VIEWPORT = { width: 1440, height: 900 };
+const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 const READY_TIMEOUT_MS = 20_000;
 const FLAT_THRESHOLD = 0.999; // share of sampled pixels that is one colour
 
@@ -167,8 +188,32 @@ function dominantShare(page, png) {
   }, png.toString('base64'));
 }
 
+/** Shows the lawn's tile and lane highlights, then waits for them to be drawn. */
+async function highlight(page, tile, lane) {
+  await page.evaluate(
+    ([t, l]) => {
+      window.__lvt.lawn.highlightTile(...t);
+      window.__lvt.lawn.highlightLane(...l);
+    },
+    [tile, lane],
+  );
+  await nextFrames(page, 3);
+}
+
+/** Resolves after the page has drawn `count` more animation frames. */
+function nextFrames(page, count) {
+  return page.evaluate(
+    (n) =>
+      new Promise((resolve) => {
+        const tick = () => (n-- > 0 ? requestAnimationFrame(tick) : resolve());
+        tick();
+      }),
+    count,
+  );
+}
+
 async function shoot(scenario) {
-  const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: scenario.viewport ?? DEFAULT_VIEWPORT, deviceScaleFactor: 1 });
   const problems = [];
   page.on('pageerror', (error) => problems.push(`page error: ${error.message}`));
   page.on('console', (msg) => {
