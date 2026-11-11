@@ -13,7 +13,10 @@ declare global {
 
 let resolveReady: () => void = () => {};
 
+/** Creates `window.__lvt` once; later calls return the existing object. */
 export function installDebug(): LvtDebug {
+  const existing = (window as Partial<Window>).__lvt;
+  if (existing) return existing;
   const ready = new Promise<void>((resolve) => {
     resolveReady = resolve;
   });

@@ -4,6 +4,7 @@
 // `window.__lvt.ready`, and saves artifacts/shots/<scenario>.png. Exits non-zero on
 // any page error or if the 3D canvas came out as one flat colour.
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -15,7 +16,7 @@ const SCENARIOS = [
   { name: 'boot', url: '/?scene=boot' },
 ];
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const OUT_DIR = path.join(ROOT, 'artifacts', 'shots');
 const PORT = 5273;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -34,14 +35,62 @@ function portOpen() {
   });
 }
 
-/** Starts `vite` on the dev port unless something already listens there. */
+/** The project root the server on the dev port reports (see vite.config.ts), or null. */
+async function servedRoot() {
+  try {
+    const res = await fetch(`${ORIGIN}/__lvt/root`, { signal: AbortSignal.timeout(3000) });
+    const body = (await res.text()).trim();
+    // A Vite SPA fallback answers unknown paths with index.html, so check the shape too.
+    if (!res.ok || !res.headers.get('content-type')?.startsWith('text/plain') || !path.isAbsolute(body)) return null;
+    try {
+      return realpathSync(body);
+    } catch {
+      return body;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** The dev server this tool started (null when it reused one or none is needed yet). */
+let server = null;
+/** The browser this tool launched, so a signal can close it. */
+let browser = null;
+
+/** SIGTERM the dev server we started, then SIGKILL it if it is still alive after 3 s. */
+function stopServer() {
+  const child = server;
+  server = null;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    const killTimer = setTimeout(() => child.kill('SIGKILL'), 3000);
+    child.once('exit', () => (clearTimeout(killTimer), resolve()));
+    child.kill('SIGTERM');
+  });
+}
+
+/**
+ * Reuses the dev server on the dev port if it serves this checkout, refuses if it serves
+ * another one, and otherwise starts `vite` here.
+ */
 async function ensureDevServer() {
-  if (await portOpen()) return null;
+  if (await portOpen()) {
+    const served = await servedRoot();
+    if (served === ROOT) return;
+    throw new Error(
+      served === null
+        ? `Port ${PORT} is in use by something that does not answer ${ORIGIN}/__lvt/root, so it is not this ` +
+            `project's dev server.\n  this checkout: ${ROOT}\nStop whatever listens on port ${PORT} and retry.`
+        : `Port ${PORT} is served by a different checkout.\n  this checkout:   ${ROOT}\n` +
+            `  server on ${PORT}:  ${served}\nStop that dev server and retry.`,
+    );
+  }
   const vite = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
   const child = spawn(process.execPath, [vite, '--port', String(PORT), '--strictPort'], {
     cwd: ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  server = child;
   let log = '';
   child.stdout.on('data', (d) => (log += d));
   child.stderr.on('data', (d) => (log += d));
@@ -49,16 +98,15 @@ async function ensureDevServer() {
   child.once('exit', () => (exited = true));
   for (let i = 0; i < 150; i++) {
     if (exited) throw new Error(`dev server exited early:\n${log}`);
-    if (await portOpen()) return child;
+    if (await portOpen()) return;
     await new Promise((r) => setTimeout(r, 200));
   }
-  child.kill('SIGTERM');
   throw new Error(`dev server did not open port ${PORT}:\n${log}`);
 }
 
 /** Returns the WebGL2 renderer string, or null if no WebGL2 context can be created. */
-async function probeWebGL2(browser) {
-  const page = await browser.newPage();
+async function probeWebGL2(target) {
+  const page = await target.newPage();
   try {
     return await page.evaluate(() => {
       const gl = document.createElement('canvas').getContext('webgl2');
@@ -74,14 +122,26 @@ async function probeWebGL2(browser) {
 /** Launches Chromium with GPU flags, falling back to software GL if WebGL2 is missing. */
 async function launchBrowser(headed) {
   for (const [label, args] of [['metal', GPU_ARGS], ['swiftshader (fallback)', SOFTWARE_ARGS]]) {
-    const browser = await chromium.launch({ headless: !headed, args });
-    const renderer = await probeWebGL2(browser).catch(() => null);
+    // Signals are handled below, so the server we started is stopped as well.
+    const candidate = await chromium.launch({
+      headless: !headed,
+      args,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+    });
+    browser = candidate;
+    let failure = '';
+    const renderer = await probeWebGL2(candidate).catch((error) => {
+      failure = ` (probe failed: ${error instanceof Error ? error.message : error})`;
+      return null;
+    });
     if (renderer) {
       console.log(`WebGL2 renderer [${label}]: ${renderer}`);
-      return browser;
+      return;
     }
-    console.log(`No WebGL2 with ${label} flags: ${args.join(' ')}`);
-    await browser.close();
+    console.log(`No WebGL2 with ${label} flags: ${args.join(' ')}${failure}`);
+    browser = null;
+    await candidate.close();
   }
   throw new Error('No WebGL2 context available with GPU or software flags');
 }
@@ -101,11 +161,13 @@ function dominantShare(page, png) {
       counts.set(key, (counts.get(key) ?? 0) + 1);
       sampled++;
     }
-    return { share: Math.max(...counts.values()) / sampled, colours: counts.size };
+    let top = 0;
+    for (const count of counts.values()) top = Math.max(top, count);
+    return { share: top / sampled, colours: counts.size };
   }, png.toString('base64'));
 }
 
-async function shoot(browser, scenario) {
+async function shoot(scenario) {
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
   const problems = [];
   page.on('pageerror', (error) => problems.push(`page error: ${error.message}`));
@@ -114,12 +176,11 @@ async function shoot(browser, scenario) {
   });
   try {
     await page.goto(ORIGIN + scenario.url, { waitUntil: 'load' });
-    await Promise.race([
-      page.evaluate(() => window.__lvt.ready),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`__lvt.ready not resolved in ${READY_TIMEOUT_MS} ms`)), READY_TIMEOUT_MS),
-      ),
-    ]);
+    await page
+      .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
+      .catch((error) => {
+        throw new Error(`__lvt.ready did not resolve within ${READY_TIMEOUT_MS} ms (${String(error.message).split('\n')[0]})`);
+      });
     await page.evaluate(() => document.fonts.ready);
     await scenario.steps?.(page);
 
@@ -155,17 +216,24 @@ async function main() {
     return 2;
   }
 
-  const server = await ensureDevServer();
-  let browser;
   let ok = true;
   try {
-    browser = await launchBrowser(headed);
-    for (const scenario of chosen) ok = (await shoot(browser, scenario)) && ok;
+    await ensureDevServer();
+    await launchBrowser(headed);
+    for (const scenario of chosen) ok = (await shoot(scenario)) && ok;
   } finally {
     await browser?.close();
-    server?.kill('SIGTERM');
+    await stopServer();
   }
   return ok ? 0 : 1;
+}
+
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+  process.once(signal, async () => {
+    await browser?.close().catch(() => {});
+    await stopServer();
+    process.exit(code);
+  });
 }
 
 process.exitCode = await main().catch((error) => {
