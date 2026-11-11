@@ -1,40 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BALANCE } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { PHASE1_CARDS } from '../../src/data/units';
 import { hashState, snapshotState } from '../../src/sim/hash';
 import { Match, defaultConfig } from '../../src/sim/match';
-import type { SimEvent, SimState } from '../../src/sim/types';
 import { place } from './helpers';
 
-// The stage functions are recorded, so the order of `step` is pinned whatever they come to do.
-const log = vi.hoisted(() => [] as string[]);
-
-vi.mock('../../src/sim/economy', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/sim/economy')>();
-  return {
-    ...actual,
-    tickEconomy: (s: SimState, b: Balance, events: SimEvent[]) => {
-      log.push(`economy tick=${s.tick} units=${s.units.length}`);
-      actual.tickEconomy(s, b, events);
-    },
-  };
-});
-vi.mock('../../src/sim/movement', () => ({
-  tickMovement: (s: SimState) => { log.push(`movement tick=${s.tick}`); },
-}));
-vi.mock('../../src/sim/combat', () => ({
-  tickAttacks: (s: SimState) => { log.push(`attacks tick=${s.tick}`); },
-  tickProjectiles: (s: SimState) => { log.push(`projectiles tick=${s.tick}`); },
-  resolveDeaths: (s: SimState) => { log.push(`deaths tick=${s.tick}`); },
-}));
-vi.mock('../../src/sim/endgame', () => ({
-  tickEndgame: (s: SimState) => { log.push(`endgame tick=${s.tick}`); },
-}));
-
-beforeEach(() => {
-  log.length = 0;
-});
+// The stages run for real in this file (the stage-order test, which mocks them, is step-order.test.ts).
 
 describe('defaultConfig', () => {
   it('takes energy and base health from the balance table, both sides alike', () => {
@@ -106,28 +78,13 @@ describe('new Match', () => {
 });
 
 describe('step', () => {
-  it('runs commands, economy, movement, attacks, projectiles, deaths, endgame, then the tick', () => {
-    const m = new Match(defaultConfig(1));
-    m.step([place('plants', 'peashooter', 0, 0)]);
-    expect(log).toEqual([
-      'economy tick=0 units=1', // the command already ran
-      'movement tick=0',
-      'attacks tick=0',
-      'projectiles tick=0',
-      'deaths tick=0',
-      'endgame tick=0',
-    ]);
-    expect(m.state.tick).toBe(1);
-  });
-
-  it('adds one to the tick per step, with or without commands', () => {
+  it('adds one to the tick per step, with or without commands, rejected or not', () => {
     const m = new Match(defaultConfig(1));
     m.step();
     m.step([]);
     m.step([place('plants', 'peashooter', 0, 0)]);
     m.step([place('plants', 'peashooter', 0, 0)]); // rejected
     expect(m.state.tick).toBe(4);
-    expect(log.filter((l) => l.startsWith('endgame'))).toHaveLength(4);
   });
 
   it('still ticks after a rejection', () => {
@@ -143,6 +100,14 @@ describe('step', () => {
     const second = m.step();
     expect(first).toHaveLength(1);
     expect(second).toEqual([]);
+  });
+
+  it('throws for a merge or remove that gets past check, so a missing branch cannot pass silently', () => {
+    // Until merge and remove are built `check` refuses them; force it to say yes.
+    const m = new Match(defaultConfig(1));
+    vi.spyOn(m, 'check').mockReturnValue(null);
+    expect(() => m.step([{ type: 'merge', faction: 'plants', unit: 'peashooter', targetId: 1 }])).toThrow('not implemented');
+    expect(() => m.step([{ type: 'remove', faction: 'plants', targetId: 1 }])).toThrow('not implemented');
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, seconds } from '../../src/data/balance';
+import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
 import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command, CommandRejection, SimEvent, UnitKey } from '../../src/sim/types';
@@ -109,7 +109,7 @@ describe('spawnUnit', () => {
     expect(u).toEqual({
       id: 1, key: 'skeletonWarrior', faction: 'zombies', lane: 3, x: 5.5, level: 1,
       hp: 700, maxHp: 700, spent: 125,
-      meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: seconds(4), blocked: false,
+      meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, blocked: false, // its shield is ready at once
     });
     expect(m.state.nextId).toBe(2);
     expect(m.state.players.zombies.energy).toBe(200);
@@ -127,7 +127,7 @@ describe('spawnUnit', () => {
     expect(m.state.units).toHaveLength(2);
   });
 
-  it('starts every Phase 1 unit at its full intervals', () => {
+  it('starts attack timers and the Sunflower\'s sun timer at their full intervals, a shield ready', () => {
     const expected: Record<string, [number, number, number]> = {
       // meleeTimer, shotTimer, abilityTimer
       peashooter: [0, 45, 0],
@@ -135,7 +135,7 @@ describe('spawnUnit', () => {
       walnutBomb: [0, 0, 0],
       brainEater: [30, 60, 0],
       veryFastWalker: [21, 0, 0],
-      skeletonWarrior: [36, 0, 120],
+      skeletonWarrior: [36, 0, 0], // shield ready from the start
     };
     for (const [key, [melee, shot, ability]] of Object.entries(expected)) {
       const m = fresh();
@@ -252,6 +252,21 @@ describe('rejections', () => {
     // Match over beats all of them.
     m.state.winner = 'plants';
     expect(m.check(place('plants', 'brainEater', 9, 99))).toBe('match-over');
+  });
+
+  it('says not-in-hand for a card in the hand that the balance table has no numbers for', () => {
+    const b = cloneBalance(BALANCE);
+    delete b.units.peashooter;
+    const m = new Match(defaultConfig(7, b), b);
+    const cmd = place('plants', 'peashooter', 2, 3);
+    expect(m.state.config.cards.plants).toContain('peashooter'); // it is in the hand...
+    expect(m.check(cmd)).toBe('not-in-hand'); // ...but cannot be played
+
+    const events = m.step([cmd]); // and stepping does not throw
+    expect(eventsOf(events, 'commandRejected')).toEqual([{ type: 'commandRejected', command: cmd, reason: 'not-in-hand' }]);
+    expect(m.state.units).toHaveLength(0);
+    expect(m.state.players.plants.energy).toBe(200);
+    expect(m.check(place('plants', 'sunflower', 2, 3))).toBeNull(); // the other cards are unaffected
   });
 
   it('is not fooled by a zombie standing on the column when checking occupied', () => {

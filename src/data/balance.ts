@@ -22,12 +22,42 @@ export interface Balance {
   bountyShare: Record<Faction, number>; // share of the victim's `spent` paid to this side
   baseShotFactor: number; // plant shots reaching the zombie base
   hitRadius: number; // projectile vs unit, tiles
-  levelScale: number[]; // index = level
+  levelScale: readonly number[]; // index = level
   suddenDeath: { startSeconds: number; baseRate: number; growthPerSecond: number };
   startEnergy: number; baseHp: number;
 }
 
-export const BALANCE: Balance = {
+/** `T` with every property, nested ones and array elements included, read-only. */
+export type DeepReadonly<T> =
+  T extends readonly (infer U)[] ? readonly DeepReadonly<U>[]
+  : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+  : T;
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+function deepCopy<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => deepCopy(item)) as T;
+  if (typeof value === 'object' && value !== null) {
+    const copy: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) copy[key] = deepCopy(child);
+    return copy as T;
+  }
+  return value;
+}
+
+/** A plain, unfrozen deep copy of a balance table: the way a test (or a tuning tool) gets numbers of its own. */
+export function cloneBalance(b: Balance): Balance {
+  return deepCopy(b);
+}
+
+/** The shipped numbers. Deeply frozen: change them here, or `cloneBalance` for a variant. */
+export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   units: {
     peashooter: {
       recharge: 5, hp: 300, armor: 0, speed: 0,
@@ -64,7 +94,7 @@ export const BALANCE: Balance = {
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 200,
   baseHp: 3000,
-};
+});
 
 /** Seconds to whole ticks. */
 export function seconds(s: number): number {

@@ -8,7 +8,7 @@ import { restoreState, hashState, snapshotState } from './hash';
 import { tickMovement } from './movement';
 import { LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
-  Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit, UnitKey,
+  Command, CommandRejection, MatchConfig, SimEvent, SimState, Unit, UnitKey,
 } from './types';
 
 type PlaceCommand = Extract<Command, { type: 'place' }>;
@@ -56,7 +56,7 @@ export function spawnUnit(
     hp: stats.hp, maxHp: stats.hp, spent: info.price,
     meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
     shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
-    abilityTimer: stats.sun ? seconds(stats.sun.interval) : stats.shield ? seconds(stats.shield.interval) : 0,
+    abilityTimer: stats.sun ? seconds(stats.sun.interval) : 0, // a shield is ready from the start
     blocked: false,
   };
   s.nextId += 1;
@@ -103,7 +103,9 @@ export class Match {
 
     const info = UNIT_INFO[cmd.unit];
     if (info.faction !== cmd.faction) return 'wrong-side';
-    if (!s.config.cards[cmd.faction].includes(cmd.unit)) return 'not-in-hand';
+    // A card with no numbers in the balance table cannot be played, so it is not really in the hand.
+    const inHand = s.config.cards[cmd.faction].includes(cmd.unit) && this.balance.units[cmd.unit] !== undefined;
+    if (!inHand) return 'not-in-hand';
     if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
     if (cmd.faction === 'plants') {
       if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
@@ -131,8 +133,20 @@ export class Match {
       const reason = this.check(cmd);
       if (reason !== null) {
         events.push({ type: 'commandRejected', command: cmd, reason });
-      } else if (cmd.type === 'place') {
-        this.place(cmd, events);
+        continue;
+      }
+      switch (cmd.type) {
+        case 'place':
+          this.place(cmd, events);
+          break;
+        case 'merge':
+        case 'remove':
+          // `check` refuses these until they are built; a command that gets here has no branch yet.
+          throw new Error('not implemented');
+        default: {
+          const unhandled: never = cmd;
+          throw new Error(`Unhandled command ${JSON.stringify(unhandled)}`);
+        }
       }
     }
     tickEconomy(s, b, events);
