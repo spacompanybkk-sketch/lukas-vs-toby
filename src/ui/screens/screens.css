@@ -39,7 +39,7 @@
 }
 .title__play {
   min-width: clamp(220px, 28vw, 380px);
-  --ico-size: 1.1em;
+  --ico-size: calc(var(--fs-big) * 1.1);
   animation: px-pop var(--t-pop) steps(4, end) 520ms both, px-breathe 1400ms steps(2, jump-none) 900ms infinite;
 }
 .title__gear {
@@ -91,7 +91,7 @@
   gap: 6px;
   font-size: var(--fs-body);
   font-weight: 600;
-  --ico-size: 1.3em;
+  --ico-size: calc(var(--fs-body) * 1.3);
 }
 .boy:active { --lip: 2px; transform: translateY(var(--px-lip)); filter: brightness(var(--press-dim)); }
 .boy.is-selected {
@@ -103,7 +103,7 @@
 @media (hover: hover) {
   .boy:not(.is-selected):hover { transform: translateY(-4px); }
 }
-.skill { --ico-size: 0.9em; }
+.skill { --ico-size: calc(var(--fs-btn) * 0.9); }
 .skill__stars { display: inline-flex; gap: 1px; }
 .sidepick__start { min-width: clamp(220px, 26vw, 360px); }
 .sidepick__start[aria-disabled='true'] { filter: grayscale(0.9) brightness(0.75); }
@@ -127,7 +127,7 @@
   width: var(--btn-h);
   height: var(--btn-h);
   flex: none;
-  --ico-size: 62%;
+  --ico-size: calc(var(--btn-h) * 0.62);
 }
 .settings__slider input[type='range'] {
   -webkit-appearance: none;
@@ -153,7 +153,7 @@
 .settings__slider input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: clamp(36px, 5vh, 48px);
+  width: clamp(44px, 5.6vh, 56px);
   height: clamp(44px, 6.4vh, 60px);
   margin-top: calc((clamp(16px, 2.6vh, 26px) - clamp(44px, 6.4vh, 60px)) / 2);
   background: var(--c-wood);
@@ -165,13 +165,13 @@
     calc(var(--px-line) * -1) 0 0 0 var(--ink), var(--px-line) 0 0 0 var(--ink);
 }
 .settings__slider input[type='range']::-moz-range-thumb {
-  width: clamp(36px, 5vh, 48px);
+  width: clamp(44px, 5.6vh, 56px);
   height: clamp(44px, 6.4vh, 60px);
   background: var(--c-wood);
   border: var(--px-line) solid var(--ink);
   border-radius: 0;
 }
-.settings__mute { width: var(--btn-h); padding: 0 0 var(--px-bev); --ico-size: 58%; flex: none; }
+.settings__mute { width: var(--btn-h); padding: 0 0 var(--px-bev); --ico-size: calc(var(--btn-h) * 0.58); flex: none; }
 .settings__quality { display: flex; flex: 1; gap: clamp(8px, 1vw, 14px); }
 .settings__q { flex: 1; flex-direction: column; gap: 4px; padding-inline: 8px; font-size: var(--fs-body); }
 .pips { display: inline-flex; gap: 3px; align-items: flex-end; }

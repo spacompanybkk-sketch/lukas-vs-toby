@@ -159,7 +159,7 @@
 }
 
 /* ---- Pause button ---- */
-.hud-pause { --ico-size: 52%; }
+.hud-pause { --ico-size: calc(max(var(--tap-min), var(--hud-h)) * 0.52); }
 
 /* ---- Card tray ---- */
 .hud-tray {
@@ -255,7 +255,7 @@
   font-family: var(--font-display);
   font-size: clamp(14px, calc(var(--card-w) * 0.2), 24px);
   line-height: 1.1;
-  --ico-size: 1.05em;
+  --ico-size: clamp(15px, calc(var(--card-w) * 0.21), 25px);
   box-shadow: 0 0 0 2px var(--ink);
   z-index: 1;
 }
@@ -304,7 +304,7 @@
   width: calc(var(--card-w) * 0.9);
   min-height: calc(var(--card-h) * 0.8);
   align-self: center;
-  --ico-size: 62%;
+  --ico-size: calc(var(--card-w) * 0.56);
 }
 .hud-shovel.is-selected {
   --fill: var(--c-sun);

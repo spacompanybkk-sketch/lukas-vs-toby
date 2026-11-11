@@ -7,7 +7,7 @@ import type { Mock } from 'vitest';
 import type { BattleOptions, HudSignals } from '../../src/app/BattleController';
 import { go, screen } from '../../src/app/store';
 import type { Faction, UnitKey } from '../../src/sim/types';
-import { App } from '../../src/ui/App';
+import { App, hudOnlySession } from '../../src/ui/App';
 import type { BattleSessionLike, SessionFactory } from '../../src/ui/screens/BattleScreen';
 
 interface FakeSession extends BattleSessionLike {
@@ -247,5 +247,91 @@ describe('App flow', () => {
     expect(JSON.parse(localStorage.getItem('lvt2_settings') ?? '{}')).toMatchObject({ quality: 'low' });
     tap('[data-action="close-settings"]');
     expect(q('[data-screen="settings"]')).toBeNull();
+  });
+
+  it('turning the device to portrait pauses the battle and makes the game inert', () => {
+    const { factory, sessions } = fakeFactory();
+    toBattle(factory);
+    act(() => { vi.advanceTimersByTime(1400); });
+    setViewport(768, 1024);
+    expect(sessions[0]?.controller.setPaused).toHaveBeenCalledWith(true);
+    expect(q('[data-app]')?.hasAttribute('inert')).toBe(true);
+    expect(q('[data-screen="rotate"]')).not.toBeNull();
+    setViewport(1024, 768);
+    expect(q('[data-app]')?.hasAttribute('inert')).toBe(false);
+    expect(sessions[0]?.controller.setPaused).not.toHaveBeenCalledWith(false);
+  });
+
+  it('offers onGesture on every activation (not pointerdown) until it returns true', () => {
+    let ok = false;
+    const onGesture = vi.fn(() => ok);
+    act(() => render(<App onGesture={onGesture} />, root));
+    document.dispatchEvent(new Event('pointerdown'));
+    expect(onGesture).not.toHaveBeenCalled();
+    document.dispatchEvent(new Event('pointerup'));
+    document.dispatchEvent(new Event('touchend'));
+    expect(onGesture).toHaveBeenCalledTimes(2);
+    ok = true;
+    document.dispatchEvent(new Event('click'));
+    expect(onGesture).toHaveBeenCalledTimes(3);
+    document.dispatchEvent(new Event('keydown'));
+    document.dispatchEvent(new Event('click'));
+    expect(onGesture).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops offering onGesture once its promise resolves true', async () => {
+    const answers = [false, true];
+    const onGesture = vi.fn(() => Promise.resolve(answers.shift() ?? true));
+    act(() => render(<App onGesture={onGesture} />, root));
+    document.dispatchEvent(new Event('click'));
+    await Promise.resolve();
+    document.dispatchEvent(new Event('keydown'));
+    await Promise.resolve();
+    await Promise.resolve();
+    document.dispatchEvent(new Event('click'));
+    expect(onGesture).toHaveBeenCalledTimes(2);
+  });
+
+  it('in a production build without createSession it shows Unsupported and logs an error', () => {
+    vi.stubEnv('DEV', false);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      act(() => render(<App />, root));
+      tap('[data-action="play"]');
+      tap('[data-side="plants"]');
+      tap('[data-action="start"]');
+      expect(screen.value.name).toBe('unsupported');
+      expect(err).toHaveBeenCalled();
+    } finally {
+      err.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe('hudOnlySession (development stand-in)', () => {
+  it('is the default in development and runs the real controller once begun, until disposed', () => {
+    expect(import.meta.env.DEV).toBe(true);
+    const s = hudOnlySession({ playerFaction: 'plants', skill: 'easy', seed: 7 });
+    const hud = s.controller.hud;
+    expect(hud.cards.value.length).toBeGreaterThan(0);
+    vi.advanceTimersByTime(3000);
+    expect(hud.seconds.value).toBe(0);
+    s.begin();
+    vi.advanceTimersByTime(3000);
+    expect(hud.seconds.value).toBeGreaterThanOrEqual(2);
+    s.dispose();
+    const at = hud.seconds.value;
+    vi.advanceTimersByTime(3000);
+    expect(hud.seconds.value).toBe(at);
+  });
+
+  it('App uses it when no factory is passed in development', () => {
+    act(() => render(<App />, root));
+    tap('[data-action="play"]');
+    tap('[data-side="zombies"]');
+    tap('[data-action="start"]');
+    expect(q('[data-screen="battle"]')).not.toBeNull();
+    expect(q('[data-hud="energy"]')?.className).toContain('side-zombies');
   });
 });

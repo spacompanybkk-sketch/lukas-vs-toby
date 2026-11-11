@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { Component } from 'preact';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CardVM } from '../../app/BattleController';
 import type { Faction, UnitKey } from '../../sim/types';
 import './hud.css';
@@ -33,29 +34,38 @@ export function rechargeStep(fraction: number): number {
  * at once (so a drag onto the lawn can start from it); a plain tap on the selected card deselects.
  */
 export function CardTray(props: CardTrayProps) {
-  const { cards, selected, portraits, side, denied, onSelect, onDeselect, shovel = false, onShovel } = props;
-  // The unit that this press selected on pointer down, so its click does not deselect it again.
-  const pressSelected = useRef<UnitKey | null>(null);
+  const { cards, selected, portraits, side, denied, shovel = false, onShovel } = props;
+  // Latest props for the handlers below, which stay the same function across renders so that a
+  // card whose own entry did not change can skip re-rendering without holding stale callbacks.
+  const latest = useRef(props);
+  latest.current = props;
   const shake = useShake(denied);
-
-  const down = (unit: UnitKey): void => {
-    if (selected === unit) {
-      pressSelected.current = null;
-      return;
-    }
-    pressSelected.current = unit;
-    onSelect(unit);
-  };
-  const click = (unit: UnitKey): void => {
-    if (pressSelected.current === unit) {
-      pressSelected.current = null;
-      return;
-    }
-    pressSelected.current = null;
-    const was = selected === unit;
-    onSelect(unit);
-    if (was) onDeselect?.();
-  };
+  const { down, click } = useMemo(() => {
+    // The unit that this press selected on pointer down, so its click does not deselect it again.
+    let pressSelected: UnitKey | null = null;
+    return {
+      down(unit: UnitKey): void {
+        const p = latest.current;
+        if (p.selected === unit) {
+          pressSelected = null;
+          return;
+        }
+        pressSelected = unit;
+        p.onSelect(unit);
+      },
+      click(unit: UnitKey): void {
+        if (pressSelected === unit) {
+          pressSelected = null;
+          return;
+        }
+        pressSelected = null;
+        const p = latest.current;
+        const was = p.selected === unit;
+        p.onSelect(unit);
+        if (was) p.onDeselect?.();
+      },
+    };
+  }, []);
 
   const shakeClass = shake === 0 ? '' : shake % 2 === 1 ? ' is-denied is-denied-a' : ' is-denied is-denied-b';
   return (
@@ -87,7 +97,24 @@ interface CardProps {
   onDown(unit: UnitKey): void; onClick(unit: UnitKey): void;
 }
 
-function Card({ card, side, selected, portrait, onDown, onClick }: CardProps) {
+const sameCard = (a: CardVM, b: CardVM): boolean =>
+  a.unit === b.unit && a.name === b.name && a.price === b.price && a.hotkey === b.hotkey
+  && a.affordable === b.affordable && a.rechargeFraction === b.rechargeFraction;
+
+/** Re-renders only when its own entry (or its selection, side or portrait) changes. */
+class Card extends Component<CardProps> {
+  override shouldComponentUpdate(next: CardProps): boolean {
+    const p = this.props;
+    return !(sameCard(p.card, next.card) && p.selected === next.selected && p.side === next.side
+      && p.portrait === next.portrait && p.onDown === next.onDown && p.onClick === next.onClick);
+  }
+
+  override render() {
+    return renderCard(this.props);
+  }
+}
+
+function renderCard({ card, side, selected, portrait, onDown, onClick }: CardProps) {
   const veil = rechargeStep(card.rechargeFraction);
   const cls = ['card', 'px', 'pal-side', `card--${side}`];
   if (!card.affordable) cls.push('is-disabled');
@@ -97,7 +124,11 @@ function Card({ card, side, selected, portrait, onDown, onClick }: CardProps) {
     <button
       type="button" data-card={card.unit} class={cls.join(' ')}
       aria-pressed={selected} aria-label={`${card.name}, ${card.price}`}
-      onPointerDown={(e) => { if (e.isPrimary !== false) onDown(card.unit); }}
+      onPointerDown={(e) => {
+        // First finger or pen, or the main mouse button; never a right click or a second finger.
+        if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        onDown(card.unit);
+      }}
       onClick={() => onClick(card.unit)}
     >
       <span class="card__art">

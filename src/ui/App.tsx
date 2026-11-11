@@ -18,20 +18,33 @@ import { Title } from './screens/Title';
 import './screens/screens.css';
 
 export interface AppProps {
-  /** Builds the battle; the 3D `BattleSession` is plugged in here. Defaults to a HUD-only session. */
+  /**
+   * Builds the battle; the 3D `BattleSession` is plugged in here. In development it defaults to a
+   * HUD-only stand-in; in a production build a missing factory shows the Unsupported screen.
+   */
   createSession?: SessionFactory;
   /** Card portraits by unit key, and the two boys' portraits. */
   portraits?: Record<string, string>;
   boys?: BoyPortraits;
   /** Called with the settings once at start and on every change (apply to audio and renderer here). */
   onSettingsChange?(s: Settings): void;
-  /** Called on the first pointer down anywhere: Safari only lets audio start inside a gesture. */
-  onFirstGesture?(): void;
+  /**
+   * Called on each user activation (pointerup, touchend, click, keydown) until it returns or
+   * resolves `true`. Safari lets audio start only inside one of these; pass the audio unlock and
+   * report whether the context is now running. `pointerdown` does not count for touch.
+   */
+  onGesture?(): boolean | Promise<boolean>;
   energyRef?: Ref<HTMLDivElement>;
 }
 
+/** Production fallback: there is no stand-in, so a missing factory is a loud error. */
+const missingSession: SessionFactory = () => {
+  console.error('App: no createSession was passed; the battle cannot start.');
+  throw new Error('webgl2-unavailable');
+};
+
 /**
- * Until the 3D session is wired in, a battle runs the real controller with no view: the HUD is
+ * Development only. Until the 3D session is wired in, a battle runs the real controller with no view: the HUD is
  * live (clock, energy, cards, the bot attacking) but there is no lawn to tap.
  */
 export const hudOnlySession: SessionFactory = (options) => {
@@ -66,39 +79,59 @@ function usePortrait(): boolean {
   return portrait;
 }
 
+/** Events that count as user activation for audio in Safari (touch `pointerdown` does not). */
+const ACTIVATION_EVENTS = ['pointerup', 'touchend', 'click', 'keydown'] as const;
+
 /**
  * Touch housekeeping for iPad Safari: an (empty) touchstart listener makes `:active` work, so
- * buttons visibly press; pinch gestures are cancelled so the page never zooms.
+ * buttons visibly press; pinch gestures are cancelled so the page never zooms. `onGesture` is
+ * offered every activation until it reports success.
  */
-function useTouchHousekeeping(onFirstGesture: (() => void) | undefined): void {
-  const callback = useRef(onFirstGesture);
-  callback.current = onFirstGesture;
+function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | undefined): void {
+  const callback = useRef(onGesture);
+  callback.current = onGesture;
   useEffect(() => {
     const noop = (): void => {};
     const noGesture = (e: Event): void => e.preventDefault();
-    let first = true;
+    let done = false;
+    const stop = (): void => {
+      done = true;
+      for (const name of ACTIVATION_EVENTS) document.removeEventListener(name, gesture, true);
+    };
     const gesture = (): void => {
-      if (!first) return;
-      first = false;
-      callback.current?.();
+      const cb = callback.current;
+      if (done || cb === undefined) return;
+      let result: boolean | Promise<boolean>;
+      try {
+        result = cb();
+      } catch (e) {
+        console.error('onGesture failed', e);
+        return;
+      }
+      if (result === true) {
+        stop();
+      } else if (result instanceof Promise) {
+        result.then((ok) => { if (ok) stop(); }, (e: unknown) => console.error('onGesture failed', e));
+      }
     };
     document.addEventListener('touchstart', noop, { passive: true });
     document.addEventListener('gesturestart', noGesture);
-    document.addEventListener('pointerdown', gesture, { capture: true });
+    for (const name of ACTIVATION_EVENTS) document.addEventListener(name, gesture, true);
     return () => {
+      stop();
       document.removeEventListener('touchstart', noop);
       document.removeEventListener('gesturestart', noGesture);
-      document.removeEventListener('pointerdown', gesture, { capture: true });
     };
   }, []);
 }
 
-export function App({ createSession = hudOnlySession, portraits, boys, onSettingsChange, onFirstGesture, energyRef }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef }: AppProps) {
+  const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  useTouchHousekeeping(onFirstGesture);
+  useTouchHousekeeping(onGesture);
 
   useEffect(() => {
     onSettingsChange?.(settings);
@@ -134,7 +167,7 @@ export function App({ createSession = hudOnlySession, portraits, boys, onSetting
 
   return (
     <>
-      <div data-app class="app" aria-hidden={portrait ? 'true' : undefined}>
+      <div data-app class="app" aria-hidden={portrait ? 'true' : undefined} inert={portrait || undefined}>
         {body}
         {settingsOpen && s.name === 'title' && (
           <SettingsPanel settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />

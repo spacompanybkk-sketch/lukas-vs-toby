@@ -23,7 +23,7 @@ export function EnergyCounter({ value, side, anchorRef }: EnergyCounterProps) {
     <div
       data-hud="energy" ref={anchorRef}
       class={`hud-energy px pal-side side-${side}${bumpClass}`}
-      role="status" aria-label={`${side === 'plants' ? 'Sun' : 'Brains'} ${value}`}
+      aria-label={`${side === 'plants' ? 'Sun' : 'Brains'} ${value}`}
     >
       <span class={`hud-energy__icon ico ico--${side === 'plants' ? 'sun' : 'brain'}`} aria-hidden="true" />
       <span class="hud-energy__value inked">{value}</span>

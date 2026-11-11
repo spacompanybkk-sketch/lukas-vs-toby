@@ -214,7 +214,7 @@ button {
   font-size: var(--fs-btn);
   line-height: 1;
   white-space: nowrap;
-  --ico-size: 1.25em;
+  --ico-size: calc(var(--fs-btn) * 1.25);
   transition: transform var(--t-press) steps(2, end), filter var(--t-press) steps(2, end);
 }
 .btn__label { position: relative; top: 0.04em; }
@@ -222,13 +222,18 @@ button {
   min-height: var(--btn-big-h);
   font-size: var(--fs-big);
   padding-inline: calc(var(--btn-big-h) * 0.45);
+  --ico-size: calc(var(--fs-big) * 1.1);
 }
 .btn--square {
   width: var(--btn-h);
   padding: 0 0 var(--px-bev);
-  --ico-size: 58%;
+  --ico-size: calc(var(--btn-h) * 0.58);
 }
-.btn--square.btn--small { width: max(var(--tap-min), var(--hud-h)); min-height: max(var(--tap-min), var(--hud-h)); }
+.btn--square.btn--small {
+  width: max(var(--tap-min), var(--hud-h));
+  min-height: max(var(--tap-min), var(--hud-h));
+  --ico-size: calc(max(var(--tap-min), var(--hud-h)) * 0.55);
+}
 .btn:active,
 .btn.is-pressed {
   --lip: 1px;

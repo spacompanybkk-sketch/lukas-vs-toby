@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
 import type { BattleOptions, HudSignals } from '../../app/BattleController';
 import type { Settings } from '../../app/settings';
 import type { Faction, UnitKey } from '../../sim/types';
 import { SettingsPanel } from '../SettingsPanel';
-import { BaseBars } from '../hud/BaseBars';
+import { BaseBar } from '../hud/BaseBars';
 import type { BoyPortraits } from '../hud/BaseBars';
 import { CardTray } from '../hud/CardTray';
 import { EnergyCounter } from '../hud/EnergyCounter';
@@ -29,6 +29,8 @@ export interface BattleSessionLike {
 /** Builds a session for a battle; throws Error('webgl2-unavailable') when the device cannot draw it. */
 export type SessionFactory = (options: BattleOptions) => BattleSessionLike;
 
+type Controller = BattleSessionLike['controller'];
+
 export interface BattleScreenProps {
   session: BattleSessionLike;
   /** Card portraits by unit key. */
@@ -47,32 +49,16 @@ export interface BattleScreenProps {
 /** Each intro banner shows this long; the session begins when the second has gone. */
 export const BANNER_MS = 700;
 
-type Phase = 'ready' | 'fight' | 'live';
-
 /**
- * The HUD over the lawn. It draws only from the session's signals and talks back only through
- * the controller's methods, so the same layout runs with the real 3D session or a fake.
+ * The HUD over the lawn. This component reads no signal itself: each HUD block below is a small
+ * leaf that reads only the signals it shows, so a tick re-renders only what changed (the clock
+ * when a second passes, a card when its recharge steps), never the whole screen.
  */
 export function BattleScreen(props: BattleScreenProps) {
-  const { session, portraits = {}, boys, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef } = props;
+  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  useEffect(() => {
-    setPhase('ready');
-    const fight = setTimeout(() => setPhase('fight'), BANNER_MS);
-    const live = setTimeout(() => {
-      setPhase('live');
-      session.begin();
-    }, BANNER_MS * 2);
-    return () => {
-      clearTimeout(fight);
-      clearTimeout(live);
-    };
-  }, [session]);
 
   // A hidden tab always pauses; coming back never resumes by itself.
   useEffect(() => {
@@ -83,66 +69,142 @@ export function BattleScreen(props: BattleScreenProps) {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [ctl, hud]);
 
+  // Turning the device upright pauses too (the rotate picture covers the game).
   useEffect(() => {
     if (portrait && hud.result.peek() === null) ctl.setPaused(true);
   }, [portrait, ctl, hud]);
-
-  const paused = hud.paused.value;
-  const result = hud.result.value;
-  const pause = (): void => {
-    if (hud.result.peek() === null) ctl.setPaused(true);
-  };
-  const resume = (): void => {
-    setSettingsOpen(false);
-    ctl.setPaused(false);
-  };
 
   return (
     <div data-screen="battle" class={`battle side-${side}`}>
       <div class="battle__top">
         <div class="battle__left">
-          <EnergyCounter value={hud.energy.value} side={side} anchorRef={energyRef} />
+          <LiveEnergy hud={hud} side={side} anchorRef={energyRef} />
         </div>
-        <TopBar seconds={hud.seconds.value} suddenDeath={hud.suddenDeath.value} />
+        <LiveClock hud={hud} />
         <div class="battle__right">
           <button
             type="button" data-hud="pause" class="btn btn--square btn--small pal-stone hud-pause"
-            aria-label="Pause" onClick={pause}
+            aria-label="Pause" onClick={() => { if (hud.result.peek() === null) ctl.setPaused(true); }}
           >
             <span class="ico ico--pause" aria-hidden="true" />
           </button>
         </div>
       </div>
       <div class="battle__bases">
-        <BaseBars base={hud.base.value} playerFaction={side} portraits={boys} />
+        <LiveBase hud={hud} faction="plants" playerFaction={side} portrait={boys.lukas} />
+        <LiveBase hud={hud} faction="zombies" playerFaction={side} portrait={boys.toby} />
       </div>
       <div class="battle__bottom">
-        <CardTray
-          cards={hud.cards.value} selected={hud.selected.value} portraits={portraits} side={side}
-          denied={hud.denied.value}
-          onSelect={(u) => ctl.select(u)} onDeselect={() => ctl.select(null)}
-          shovel={hud.shovel.value} onShovel={side === 'plants' ? () => ctl.toggleShovel() : undefined}
-        />
+        <LiveTray ctl={ctl} portraits={portraits} />
       </div>
-
-      {phase !== 'live' && result === null && (
-        <div class="battle__banner" data-banner={phase} aria-live="assertive">
-          <span key={phase} class={`banner inked banner--${phase}`}>{phase === 'ready' ? 'READY…' : 'FIGHT!'}</span>
-        </div>
-      )}
-
-      {paused && result === null && !settingsOpen && (
-        <PauseMenu onResume={resume} onRestart={onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit} />
-      )}
-      {paused && result === null && settingsOpen && (
-        <SettingsPanel settings={settings} onChange={onSettingsChange} onClose={() => setSettingsOpen(false)} />
-      )}
-      {result !== null && (
-        <ResultOverlay
-          result={result} playerFaction={side} seconds={hud.seconds.value} portraits={boys}
-          onPlayAgain={onRestart} onMenu={onQuit}
-        />
-      )}
+      <IntroBanner session={session} />
+      <Overlays
+        ctl={ctl} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
+        onRestart={onRestart} onQuit={onQuit}
+      />
     </div>
+  );
+}
+
+function LiveEnergy({ hud, side, anchorRef }: { hud: HudSignals; side: Faction; anchorRef: Ref<HTMLDivElement> | undefined }) {
+  return <EnergyCounter value={hud.energy.value} side={side} anchorRef={anchorRef} />;
+}
+
+function LiveClock({ hud }: { hud: HudSignals }) {
+  return <TopBar seconds={hud.seconds.value} suddenDeath={hud.suddenDeath.value} />;
+}
+
+function LiveBase({ hud, faction, playerFaction, portrait }: { hud: HudSignals; faction: Faction; playerFaction: Faction; portrait: string | undefined }) {
+  return <BaseBar faction={faction} vm={hud.base.value[faction]} you={playerFaction === faction} portrait={portrait} />;
+}
+
+function LiveTray({ ctl, portraits }: { ctl: Controller; portraits: Record<string, string> }) {
+  const hud = ctl.hud;
+  const side = ctl.playerFaction;
+  return (
+    <CardTray
+      cards={hud.cards.value} selected={hud.selected.value} portraits={portraits} side={side}
+      denied={hud.denied.value}
+      onSelect={(u) => ctl.select(u)} onDeselect={() => ctl.select(null)}
+      shovel={hud.shovel.value} onShovel={side === 'plants' ? () => ctl.toggleShovel() : undefined}
+    />
+  );
+}
+
+type Phase = 'ready' | 'fight' | 'live';
+
+/**
+ * READY… then FIGHT!, BANNER_MS each, then `session.begin()`. The countdown holds while the game
+ * is paused and resumes where it stopped; unmounting (Quit, a hidden screen change) cancels it,
+ * so `begin()` is never called for a battle that was left during its banners.
+ */
+function IntroBanner({ session }: { session: BattleSessionLike }) {
+  const hud = session.controller.hud;
+  const paused = hud.paused.value;
+  const over = hud.result.value !== null;
+  const [phase, setPhase] = useState<Phase>('ready');
+  const remaining = useRef(BANNER_MS);
+
+  useEffect(() => {
+    if (phase === 'live' || paused) return undefined;
+    const started = Date.now();
+    let fired = false;
+    const t = setTimeout(() => {
+      fired = true;
+      remaining.current = BANNER_MS;
+      if (phase === 'ready') {
+        setPhase('fight');
+      } else {
+        setPhase('live');
+        session.begin();
+      }
+    }, remaining.current);
+    return () => {
+      clearTimeout(t);
+      if (!fired) remaining.current = Math.max(0, remaining.current - (Date.now() - started));
+    };
+  }, [phase, paused, session]);
+
+  if (phase === 'live' || over) return null;
+  return (
+    <div class="battle__banner" data-banner={phase} aria-live="assertive">
+      <span key={phase} class={`banner inked banner--${phase}`}>{phase === 'ready' ? 'READY…' : 'FIGHT!'}</span>
+    </div>
+  );
+}
+
+interface OverlaysProps {
+  ctl: Controller;
+  boys: BoyPortraits;
+  settings: Settings;
+  onSettingsChange(s: Settings): void;
+  onRestart(): void;
+  onQuit(): void;
+}
+
+/** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
+function Overlays({ ctl, boys, settings, onSettingsChange, onRestart, onQuit }: OverlaysProps) {
+  const hud = ctl.hud;
+  const paused = hud.paused.value;
+  const result = hud.result.value;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  if (result !== null) {
+    return (
+      <ResultOverlay
+        result={result} playerFaction={ctl.playerFaction} seconds={hud.seconds.value} portraits={boys}
+        onPlayAgain={onRestart} onMenu={onQuit}
+      />
+    );
+  }
+  if (!paused) return null;
+  if (settingsOpen) {
+    return <SettingsPanel settings={settings} onChange={onSettingsChange} onClose={() => setSettingsOpen(false)} />;
+  }
+  return (
+    <PauseMenu
+      onResume={() => { setSettingsOpen(false); ctl.setPaused(false); }}
+      onRestart={onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
+    />
   );
 }

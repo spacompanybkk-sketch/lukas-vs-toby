@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CardVM } from '../../src/app/BattleController';
-import { CardTray } from '../../src/ui/hud/CardTray';
+import { CardTray, rechargeStep } from '../../src/ui/hud/CardTray';
 import type { CardTrayProps } from '../../src/ui/hud/CardTray';
 
 const CARDS: CardVM[] = [
@@ -126,5 +126,32 @@ describe('CardTray', () => {
     expect(onShovel).toHaveBeenCalledTimes(1);
     mount({ side: 'zombies', onShovel });
     expect(root.querySelector('[data-shovel]')).toBeNull();
+  });
+
+  it('ignores a right-button mouse press and a second finger', () => {
+    const props = mount();
+    const pea = card('peashooter');
+    act(() => {
+      pea.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, pointerType: 'mouse', button: 2 }));
+      pea.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: false, pointerType: 'touch', button: 0 }));
+    });
+    expect(props.onSelect).not.toHaveBeenCalled();
+    act(() => {
+      pea.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, pointerType: 'touch', button: 0 }));
+    });
+    expect(props.onSelect).toHaveBeenCalledWith('peashooter');
+  });
+
+  it('quantises the recharge veil up to eighths', () => {
+    expect(rechargeStep(0)).toBe(0);
+    expect(rechargeStep(0.01)).toBe(0.125);
+    expect(rechargeStep(0.125)).toBe(0.125);
+    expect(rechargeStep(0.3)).toBe(0.375);
+    expect(rechargeStep(0.51)).toBe(0.625);
+    expect(rechargeStep(1)).toBe(1);
+    expect(rechargeStep(1.7)).toBe(1);
+    expect(rechargeStep(-0.2)).toBe(0);
+    mount({ cards: [{ ...CARDS[0]!, rechargeFraction: 0.3 }] });
+    expect(card('peashooter').querySelector<HTMLElement>('.card__recharge')?.style.height).toBe('37.5%');
   });
 });

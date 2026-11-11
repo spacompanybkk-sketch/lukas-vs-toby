@@ -3,13 +3,18 @@
  * o outline, w white, y/Y sun, p/P brain pink, b wood, i/h/I iron, r red, l highlight).
  * To change one, edit its grid and re-encode: each run of a colour in a row is one
  * "M x y h run v1 h -run z" path segment inside a crispEdges SVG.
- * Usage: <span class="ico ico--play" aria-hidden="true"></span>; size with --ico-size.
+ * Usage: <span class="ico ico--play" aria-hidden="true"></span>; size with --ico-size, which must be
+ * a definite length (px/vh/vw/clamp of those), never a percentage: buttons have only a min-height,
+ * so a percentage height would collapse to 0.
  */
 .ico {
   display: inline-block;
   flex: none;
-  width: var(--ico-size, 1.4em);
-  height: var(--ico-size, 1.4em);
+  width: var(--ico-size, clamp(20px, 3.4vh, 34px));
+  height: var(--ico-size, clamp(20px, 3.4vh, 34px));
+  min-width: 12px;
+  min-height: 12px;
+  aspect-ratio: 1;
   background: center / contain no-repeat;
   image-rendering: pixelated;
   pointer-events: none;
