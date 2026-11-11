@@ -2,7 +2,7 @@ import { Object3D, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { createBasicBot } from '../../src/ai/basicBot';
 import { BALANCE } from '../../src/data/balance';
-import { BattleView, PICK_TOLERANCE_PX } from '../../src/render/battle/BattleView';
+import { BattleView, GHOST_RENDER_ORDER, PICK_TOLERANCE_PX } from '../../src/render/battle/BattleView';
 import { HealthBars, QUADS_PER_UNIT } from '../../src/render/battle/HealthBars';
 import { worldToClient } from '../../src/render/coords';
 import { Effects } from '../../src/render/fx/Effects';
@@ -240,6 +240,21 @@ describe('BattleView placement preview', () => {
     ctx.view.setPreview(null);
     expect(ghost.visible).toBe(false);
     expect(tile).toHaveBeenLastCalledWith(0, 0, null);
+  });
+
+  it('draws the ghost after the see-through tile mark, so the mark does not wash it out', () => {
+    const ctx = setUp();
+    ctx.view.setPreview({ unit: 'peashooter', lane: 1, col: 4, ok: true, mergeTargetId: null });
+    const ghost = ctx.scene.getObjectByName('ghost-peashooter') as Object3D;
+    let meshes = 0;
+    ghost.traverse((o) => {
+      if ((o as { isMesh?: boolean }).isMesh) {
+        meshes++;
+        expect(o.renderOrder).toBe(GHOST_RENDER_ORDER);
+      }
+    });
+    expect(meshes).toBeGreaterThan(0);
+    expect(GHOST_RENDER_ORDER).toBeGreaterThan(2); // the tile mark's
   });
 
   it('marks a zombie lane with its ghost at the spawn point', () => {

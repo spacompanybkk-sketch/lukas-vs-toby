@@ -40,6 +40,8 @@ const STACK_X = 0.14;
 const LATE_FLIGHT = 0.08;
 /** A finger may miss a unit by this many CSS pixels and still pick it. */
 export const PICK_TOLERANCE_PX = 28;
+/** The placement ghost draws after the lawn's highlight marks. */
+export const GHOST_RENDER_ORDER = 10;
 /** Flight height of a projectile once it has left the muzzle, and how long it takes to get there. */
 const SETTLE_SECONDS = 0.14;
 /** A brain is lobbed: up at this speed, pulled down at this rate, never below the floor. */
@@ -331,7 +333,7 @@ export class BattleView {
     const ghost = this.ghostFor(p.unit);
     // Only one ghost shows at a time, so they all share one material, tinted red on a bad spot.
     this.ghostMaterial.color.setHex(p.ok ? 0xffffff : 0xff7070);
-    this.ghostMaterial.opacity = p.ok ? 0.5 : 0.45;
+    this.ghostMaterial.opacity = p.ok ? 0.72 : 0.6; // strong enough to read under the post chain
     ghost.root.position.set(isPlant ? p.col + 0.5 : ZOMBIE_SPAWN_X, 0, p.lane + 0.5);
     ghost.root.visible = true;
     this.ghost = ghost;
@@ -437,6 +439,8 @@ export class BattleView {
           o.material = this.ghostMaterial;
           o.castShadow = false;
           o.receiveShadow = false;
+          // After the see-through tile and lane marks, which would otherwise wash out its lower half.
+          o.renderOrder = GHOST_RENDER_ORDER;
         }
       });
       ghost.root.visible = false;

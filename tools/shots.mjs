@@ -325,6 +325,15 @@ const SCENARIOS = [
       await settleUi(page);
     },
   },
+  {
+    name: 'settings',
+    url: '/',
+    steps: async (page) => {
+      await demoAt(page, 30);
+      await page.click('[data-action="settings"]');
+      await settleUi(page);
+    },
+  },
   hud('hud-plants', 'plants', 'peashooter', [2, 4]),
   hud('hud-zombies', 'zombies', 'brainEater', [2, 6]),
   { ...hud('hud-ipad', 'plants', 'peashooter', [2, 4]), viewport: { width: 1024, height: 768 } },

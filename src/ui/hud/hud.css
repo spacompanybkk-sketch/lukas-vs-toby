@@ -46,7 +46,7 @@
   align-items: center;
   gap: calc(var(--hud-h) * 0.16);
   height: var(--hud-h);
-  min-width: calc(var(--hud-h) * 2.9);
+  min-width: calc(var(--hud-h) * 2.5);
   padding: 0 calc(var(--hud-h) * 0.28) 0 calc(var(--hud-h) * 0.16);
   transform-origin: left center;
 }
@@ -232,32 +232,28 @@
 }
 .card--zombies .card__placeholder { background: var(--c-purple); }
 .card__name {
-  margin-top: 2px;
-  font-size: clamp(9px, calc(var(--card-w) * 0.12), 14px);
-  font-weight: 600;
-  line-height: 1.05;
-  text-align: center;
+  /* Toby cannot read: the picture and the price say it all. The name stays for screen readers. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
-  text-overflow: clip;
 }
 .card__price {
-  position: absolute;
-  left: 50%;
-  bottom: calc(var(--px-lip) * -1 - 2px);
-  transform: translateX(-50%);
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 8px 2px 4px;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  margin: var(--px-bev) calc(var(--px-bev) * -1) calc(var(--px-bev) * -1);
+  padding: 0 4px 1px 2px;
   background: var(--ink);
   color: var(--c-sun);
   font-family: var(--font-display);
-  font-size: clamp(14px, calc(var(--card-w) * 0.2), 24px);
-  line-height: 1.1;
-  --ico-size: clamp(15px, calc(var(--card-w) * 0.21), 25px);
-  box-shadow: 0 0 0 2px var(--ink);
-  z-index: 1;
+  font-size: clamp(16px, calc(var(--card-w) * 0.24), 28px);
+  line-height: 1;
+  --ico-size: clamp(16px, calc(var(--card-w) * 0.24), 28px);
 }
 .card--zombies .card__price { color: var(--c-brain); }
 .card__hotkey {
@@ -287,7 +283,8 @@
   pointer-events: none;
   transition: height 120ms steps(1, end);
 }
-.card.is-disabled { filter: grayscale(0.85) brightness(0.72); }
+.card.is-disabled { filter: grayscale(1) brightness(0.92); }
+.card.is-disabled .card__img { opacity: 0.7; }
 .card.is-disabled .card__price { color: var(--c-red-hi); }
 .card.is-selected {
   transform: translateY(-14%);
@@ -304,7 +301,7 @@
   width: calc(var(--card-w) * 0.9);
   min-height: calc(var(--card-h) * 0.8);
   align-self: center;
-  --ico-size: calc(var(--card-w) * 0.56);
+  --ico-size: calc(var(--card-w) * 0.62);
 }
 .hud-shovel.is-selected {
   --fill: var(--c-sun);
@@ -353,7 +350,7 @@
   color: var(--c-sun);
   animation: px-drop 520ms steps(6, end) both;
 }
-.result--lose .result__word { color: var(--c-stone-hi); }
+.result--lose .result__word { color: var(--c-red); }
 .result--draw .result__word { color: var(--c-cream); }
 .result__winners { --chip-size: clamp(84px, 17vh, 170px); }
 .result__chip { --lip: var(--px-lip); }

@@ -68,7 +68,7 @@
 
   /* Overlays */
   --dim: rgba(26, 16, 8, 0.6);          /* flat dim behind pause and result */
-  --menu-dim: rgba(26, 16, 8, 0.35);    /* over the title battle (no blur, by design) */
+  --menu-dim: rgba(26, 16, 8, 0.42);    /* over the title battle (no blur, by design) */
 
   /* Safe-area aware gutters */
   --gutter-x: max(12px, env(safe-area-inset-left), env(safe-area-inset-right));

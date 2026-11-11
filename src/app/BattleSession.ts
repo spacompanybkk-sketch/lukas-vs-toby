@@ -40,7 +40,7 @@ const point = new Vector3();
  *
  * Life: made → `start()` plays the camera intro → the HUD shows READY and FIGHT! and calls
  * `begin()`, which lets the simulation and the input go → the match ends: the loser's base falls,
- * the camera swings to the winner, then `resultReady` turns true and the result panel shows.
+ * then the camera swings to the winner, `resultReady` turns true and the result panel shows.
  */
 export class BattleSession implements Director, InputTarget {
   readonly controller: BattleController;
@@ -222,10 +222,14 @@ export class BattleSession implements Director, InputTarget {
     this.view.setPreview(null);
     this.audio.stopMusic(0.8);
     this.audio.play('collapse');
-    if (result.winner !== 'draw') this.stage.rig.orbitVictory(result.winner);
+    // The camera holds still while the loser's base falls, so the fall is seen; then it swings
+    // round to the winner's base behind the result panel.
     void this.view.celebrate(result.winner).then(() => {
       if (this.disposed) return;
-      if (result.winner !== 'draw') this.audio.play(result.playerWon ? 'win' : 'lose');
+      if (result.winner !== 'draw') {
+        this.stage.rig.orbitVictory(result.winner);
+        this.audio.play(result.playerWon ? 'win' : 'lose');
+      }
       this.ready.value = true;
     });
   }

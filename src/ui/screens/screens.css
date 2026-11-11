@@ -27,6 +27,11 @@
 }
 .logo__line {
   font-size: var(--fs-huge);
+  /* A thicker ink edge and drop for the biggest text, still hard-edged. */
+  text-shadow:
+    -4px -4px 0 var(--ink), 4px -4px 0 var(--ink), -4px 4px 0 var(--ink), 4px 4px 0 var(--ink),
+    0 -4px 0 var(--ink), 0 4px 0 var(--ink), -4px 0 0 var(--ink), 4px 0 0 var(--ink),
+    4px 9px 0 var(--ink);
   animation: px-drop 640ms steps(8, end) both;
 }
 .logo__line--plants { color: var(--c-leaf-hi); }
