@@ -110,7 +110,7 @@ export const brainRot = bipedModel({
   // Slumped: twice the usual slouch, the arms drooping.
   slouch: 20,
   rots: { armL: [0, 0, 15], armR: [0, 0, 15] },
-  walk: { legs: 16, arms: 10, bob: 0.8, roll: 6 },
+  walk: { legs: 16, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',

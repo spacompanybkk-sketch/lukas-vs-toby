@@ -101,7 +101,7 @@ export const skeletonWarrior = bipedModel({
     { at: [-2.5, 3, -1], size: [0.5, 2.5, 2], color: 'clothDark' },
   ],
   joints: { torso: [0, 5.5, 0], head: [-1, 9.5, 0], armL: [-0.5, 9, 3.75], armR: [-0.5, 9, -3.75], legL: [0, 4, 1.5], legR: [0, 4, -1.5] },
-  walk: { legs: 20, arms: 10, bob: 1.2, roll: 5 },
+  walk: { legs: 20, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',

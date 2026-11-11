@@ -99,7 +99,7 @@ export const tridentZombie = bipedModel({
   ],
   joints: { torso: [0, 5, 0], head: [-1.5, 9, 0], armL: [-0.5, 8, 4.25], armR: [-0.5, 8, -4.25], legL: [0, 4, 1.5], legR: [0, 4, -1.5] },
   // Heavy: a long, rolling stride.
-  walk: { legs: 22, arms: 10, bob: 1.2, roll: 6 },
+  walk: { legs: 22, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',

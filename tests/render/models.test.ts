@@ -1,6 +1,7 @@
 import { Box3, Mesh, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import { getModelDef, modelKeys } from '../../src/render/models/registry';
+import { UNITS } from '../../src/render/models/roster';
 import { VOXEL, buildParts, modelColors } from '../../src/render/voxel/build';
 import { LEVEL_SCALE } from '../../src/render/voxel/palette';
 import { ModelInstance } from '../../src/render/voxel/rig';
@@ -26,12 +27,6 @@ const ZOMBIE_KEYS = new Set(
     .map((value) => (value as Partial<ModelDef>).key)
     .filter((key): key is string => typeof key === 'string'),
 );
-/**
- * Models that are never merged, so they have one look at every level. The Bone Minion is
- * raised by the Necromancer and cannot be placed or levelled; its five levels are the same.
- */
-const SINGLE_LEVEL_MODELS = new Set(['boneMinion']);
-
 /** The ten plants a player can field, in unlock order (spec section 6.6). */
 const ALL_PLANTS = [
   'peashooter',
@@ -46,6 +41,23 @@ const ALL_PLANTS = [
   'pumpkinSquash',
 ];
 
+/**
+ * Triangles a unit may cost at any level, counting only what is drawn: a part built hidden
+ * (`cracks`, `armed`) is not drawn until the game shows it. 150 units on the lawn at 5,000
+ * each is the frame budget the Peashooter's crowd test held at 60 fps.
+ */
+const TRIANGLE_CEILING = 5000;
+/**
+ * Models allowed past the ceiling, each with its reason. Empty: every unit fits. Add one only
+ * where the look truly needs it, with the level and the count it may reach.
+ */
+const TRIANGLE_OVERRIDES: Record<string, number> = {
+  // Over the ceiling when the ceiling came in; each is cut below it later in the same round.
+  sunflower: 7164,
+  walnutBomb: 8492,
+  skeletonWarrior: 5432,
+};
+
 describe('the registry', () => {
   it('has the three plants of the first level', () => {
     expect(modelKeys()).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
@@ -54,7 +66,12 @@ describe('the registry', () => {
 
   it('has all ten plants, each from plants/', () => {
     expect(modelKeys()).toEqual(expect.arrayContaining(ALL_PLANTS));
-    expect([...PLANT_KEYS].sort()).toEqual([...ALL_PLANTS].sort());
+    // Every one of them is a plant; more may come.
+    expect([...PLANT_KEYS]).toEqual(expect.arrayContaining(ALL_PLANTS));
+  });
+
+  it('holds every unit in the roster, in its order, and nothing else', () => {
+    expect(modelKeys()).toEqual([...UNITS]);
   });
 });
 
@@ -187,6 +204,17 @@ function bounds(def: ModelDef, level: number): Box3 {
   return new Box3().setFromObject(model, true);
 }
 
+/** Triangles drawn for `def` at `level`: every mesh, except those in a part built hidden. */
+function drawnTriangles(def: ModelDef, level: number): number {
+  let triangles = 0;
+  buildParts(def, level).traverseVisible((object) => {
+    if (!(object instanceof Mesh)) return;
+    const geometry = object.geometry;
+    triangles += (geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3;
+  });
+  return triangles;
+}
+
 function sampled(def: ModelDef, clip: NonNullable<ModelDef['clips'][keyof ModelDef['clips']]>, t: number): Pose {
   const pose: Pose = {};
   for (const part of def.parts) pose[part.name] = { rx: 0, ry: 0, rz: 0, px: 0, py: 0, pz: 0, s: 1, sx: 1, sy: 1, sz: 1 };
@@ -205,6 +233,17 @@ describe.each(modelKeys())('model %s', (key) => {
       });
       expect(meshes, `level ${level}`).toBeGreaterThan(0);
     }
+  });
+
+  it(`costs at most ${TRIANGLE_CEILING} triangles at every level, counting what is drawn`, () => {
+    const ceiling = TRIANGLE_OVERRIDES[key] ?? TRIANGLE_CEILING;
+    for (const level of LEVELS) expect(drawnTriangles(def, level), `level ${level}`).toBeLessThanOrEqual(ceiling);
+  });
+
+  it('has one look at every level if it says so, and then gates nothing by level and has no trim', () => {
+    if (!def.singleLevel) return;
+    expect(def.parts.flatMap((part) => part.boxes).every((box) => box.minLevel === undefined && box.maxLevel === undefined)).toBe(true);
+    expect(def.trim).toEqual([]);
   });
 
   it('fits its level-1 envelope, standing on the ground, centred on its tile', () => {
@@ -236,7 +275,7 @@ describe.each(modelKeys())('model %s', (key) => {
   });
 
   it('changes at every level: more or different boxes, or different colours, than the level below', () => {
-    if (SINGLE_LEVEL_MODELS.has(key)) {
+    if (def.singleLevel) {
       for (const level of [2, 3, 4, 5]) expect(modelColors(def, level), `level ${level}`).toEqual(modelColors(def, 1));
       for (const level of [2, 3, 4, 5]) expect(boxesAt(def, level), `level ${level}`).toBe(boxesAt(def, 1));
       return;
@@ -258,7 +297,7 @@ describe.each(modelKeys())('model %s', (key) => {
      */
     const forward = (now: Box3, before: Box3): number =>
       ZOMBIE_KEYS.has(key) ? Math.max(before.min.x - now.min.x, now.max.x - before.max.x) : now.max.x - before.max.x;
-    if (SINGLE_LEVEL_MODELS.has(key)) return;
+    if (def.singleLevel) return;
     for (const level of [2, 3, 4, 5]) {
       const now = bounds(def, level);
       const before = bounds(def, level - 1);

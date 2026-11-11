@@ -7,7 +7,8 @@ import type { Box, Clip, ClipName, ColorRef, ModelDef, Muzzle, PartDef } from '.
 //
 //   root    the hips; moves everything (bob, roll, rise, recoil). Pivot at the feet.
 //   torso   on the hips, slouched forward (10° unless the spec says otherwise)
-//   head    on the torso, turned 14° to the camera and tipped back 6° overall
+//   head    on the torso, turned HEAD_TURN (30°) to the camera and tipped back HEAD_TIP
+//           (12°) overall, whatever the slouch; a spec may set its own (`headRot`)
 //   armL    on the torso at the left shoulder (+Z, the side the lawn camera sees)
 //   armR    on the torso at the right shoulder (−Z)
 //   legL    on the hips at the left hip
@@ -123,7 +124,7 @@ export function bipedModel(spec: BipedSpec): ModelDef {
   ];
   const clips: Partial<Record<ClipName, Clip>> = {
     idle: zombieIdle(spec.sway ?? []),
-    walk: zombieWalk(spec.stepSeconds, spec.walk),
+    walk: zombieWalk(spec.stepSeconds, { ...walkFor(spec.stepSeconds), ...spec.walk }),
     hit: hitRecoil('root', 1),
     spawn: zombieRise(),
     die: zombieCrumble(),
@@ -137,11 +138,22 @@ export function bipedModel(spec: BipedSpec): ModelDef {
 }
 
 /**
+ * Zombies slower than this (seconds per walk cycle) bob and roll harder: from above the
+ * legs are hidden under the body, so the bob and the roll carry the walk.
+ */
+export const SLOW_STEP = 0.75;
+
+/** The bob (voxels) and roll (degrees) of a walk at this pace. */
+export function walkFor(stepSeconds: number): { bob: number; roll: number } {
+  return stepSeconds >= SLOW_STEP ? { bob: 1.5, roll: 6 } : { bob: 1, roll: 4 };
+}
+
+/**
  * The head's turn relative to a torso slouched `slouch` degrees, such that the head itself
  * is turned `HEAD_TURN` about the vertical and then tipped back `HEAD_TIP`: undoing the
  * slouch, then turning, then tipping.
  */
-function headTurn(slouch: number): Vec3 {
+export function headTurn(slouch: number): Vec3 {
   const rad = MathUtils.degToRad;
   const undo = new Quaternion().setFromEuler(new Euler(0, 0, rad(-slouch)));
   const turn = new Quaternion().setFromEuler(new Euler(0, rad(HEAD_TURN), 0));

@@ -117,7 +117,7 @@ export const desertZombie = bipedModel({
     { at: [-1.5, 5, -2.25], size: [3, 0.5, 4.5], color: 'bandage' },
   ],
   joints: { torso: [0, 5, 0], head: [-1.5, 8.5, 0], armL: [-0.5, 7.5, 4], armR: [-0.5, 7.5, -4], legL: [0, 4, 1.5], legR: [0, 4, -1.5] },
-  walk: { legs: 20, arms: 6, bob: 1 },
+  walk: { legs: 20, arms: 10, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',

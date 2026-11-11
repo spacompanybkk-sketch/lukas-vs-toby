@@ -71,7 +71,7 @@ export const skeletonArcher = bipedModel({
     { at: [-1.5, 5, -2], size: [3, 0.5, 4], color: 'hatBrownDark' },
   ],
   joints: { torso: [0, 5.5, 0], head: [-1, 9.5, 0], armL: [-0.5, 9, 3], armR: [-0.5, 9, -3], legL: [0, 4, 1.25], legR: [0, 4, -1.25] },
-  walk: { legs: 22, arms: 8, bob: 1 },
+  walk: { legs: 22, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',

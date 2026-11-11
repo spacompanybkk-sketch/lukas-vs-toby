@@ -31,9 +31,12 @@ and interface art is pixel-crisp. What is already built stays as it is.
   a voxel proud of the surface, each with a single white glint voxel in the top corner
   nearest the light. Plants look determined and friendly. Zombies look silly: one eye
   bigger than the other, a tooth or tongue showing.
-- Faces turn to the player. The body faces along its lane, but the head is turned about
-  14° towards the camera and tipped back about 6°, so the mouth and the near eye show
-  from the lawn camera. The Peashooter (`src/render/models/plants/peashooter.ts`) is the
+- Faces turn to the player. The body faces along its lane, but the head is turned towards
+  the camera and tipped back, so both eyes and the mouth show from the lawn camera. About
+  14° and 6° is enough for the Peashooter; zombies and several plants need 30–45° to show
+  their faces (zombies 30° and 12° by default, `HEAD_TURN`/`HEAD_TIP` in `biped.ts`); use
+  what the camera needs. Where a face sits in shade or on a dark body, put a light plate
+  behind the eyes and mouth so they read. The Peashooter (`src/render/models/plants/peashooter.ts`) is the
   reference for how a unit is built and how its five levels escalate.
 - Blink: eye height collapses to 10% for 100 ms every 2–5 s, offset per unit.
 
@@ -143,7 +146,7 @@ Nothing moves linearly. Spawns overshoot (back-out easing); moves use cubic easi
 | Motion | Timing |
 |--------|--------|
 | Idle | 1.6 s loop: body bob ±0.5 voxel, head sway ±3°, leaves flutter |
-| Walk | 0.5–0.9 s step cycle by speed: legs ±25°, arms ±15° opposite, bob 1 voxel, zombie roll ±4° |
+| Walk | 0.5–0.9 s step cycle by speed: legs ±25°, arms ±15° opposite (reaching forward and back so the swing shows from above), bob 1 voxel, zombie roll ±4°; zombies with a cycle of 0.75 s or more bob 1.5 voxels and roll ±6°, since from above the legs are hidden and the bob and roll carry the walk |
 | Shot | 120 ms lean back and squash to 0.9, 80 ms snap forward and stretch to 1.1, 200 ms settle. Projectile leaves at the snap. |
 | Melee | 150 ms wind-up, 80 ms strike, 250 ms recover |
 | Hit | 60 ms white flash, 2 voxel recoil over 80 ms, 120 ms return |

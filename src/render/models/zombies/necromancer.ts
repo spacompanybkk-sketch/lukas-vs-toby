@@ -66,7 +66,7 @@ export const necromancer = bipedModel({
   ],
   joints: { torso: [0, 4, 0], head: [-1, 8, 0], armL: [-0.5, 7, 3.5], armR: [-0.5, 7, -3.5], legL: [0, 2, 1.25], legR: [0, 2, -1.25] },
   // A slow shuffle: short steps, little swing.
-  walk: { legs: 14, arms: 6, bob: 0.6, roll: 3 },
+  walk: { legs: 14, arms: 10, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',

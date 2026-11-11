@@ -131,5 +131,11 @@ export interface ModelDef {
    * for a unit, which gets the art bible's 12 × 16 × 10; a base or a boss names its own.
    */
   envelope?: [number, number, number];
+  /**
+   * A unit that is never merged (the Bone Minion, which a Necromancer raises): it has one
+   * look, so it gates no boxes by level, has no trim, and the gallery shows it once, at
+   * level 1. The rules that every level must add something do not apply to it.
+   */
+  singleLevel?: true;
   clips: Partial<Record<ClipName, Clip>>;
 }

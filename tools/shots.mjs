@@ -13,6 +13,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+// The unit lists live in one place, shared with the registry and the tests (Node strips its types).
+import { FIRST_PLANTS, PLANTS as ALL_PLANTS, RAISED, ZOMBIES as FIELDED_ZOMBIES } from '../src/render/models/roster.ts';
 
 /**
  * @type {{
@@ -24,10 +26,10 @@ import { chromium } from 'playwright';
  * }[]}
  */
 /** The three plants of the first level, which the first plant lawn shots stand on the lawn. */
-const PLANTS = ['peashooter', 'sunflower', 'walnutBomb'];
+const PLANTS = [...FIRST_PLANTS];
 
 /** The other seven plants, in unlock order. */
-const PLANTS2 = ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker', 'torchwood', 'cherryBomber', 'pumpkinSquash'];
+const PLANTS2 = ALL_PLANTS.filter((key) => !FIRST_PLANTS.includes(key));
 
 /** Shows or hides a part on every model in the gallery (the mine's `armed`, the bunker's `cracks`). */
 async function showPart(page, part, shown) {
@@ -49,19 +51,9 @@ function moves(key, frames) {
   };
 }
 
-/** The ten zombies a player can field, in unlock order. The Bone Minion is raised, not fielded. */
-const ZOMBIES = [
-  'brainEater',
-  'veryFastWalker',
-  'skeletonWarrior',
-  'desertZombie',
-  'skeletonArcher',
-  'hotTopic',
-  'cowboyZombie',
-  'necromancer',
-  'tridentZombie',
-  'brainRot',
-];
+/** The ten zombies a player can field, in unlock order, and the one that is raised, not fielded. */
+const ZOMBIES = [...FIELDED_ZOMBIES];
+const RAISED_ZOMBIES = [...RAISED];
 
 const SCENARIOS = [
   { name: 'boot', url: '/?scene=boot' },
@@ -133,12 +125,16 @@ const SCENARIOS = [
   portraits('gallery-portraits-walnutBomb', 'walnutBomb'),
   // The ten zombies, side by side at the lawn angle, then from the front (they face −X).
   { name: 'gallery-zombies', url: `/?scene=gallery&models=${ZOMBIES.join(',')}&t=0.4` },
-  { name: 'gallery-zombies-front', url: `/?scene=gallery&models=${ZOMBIES.join(',')}&t=0.4&pitch=20&yaw=-38` },
+  // From the front, five to a picture and one to a row: side by side, the far column's rows
+  // ran into the near one's and its names sat on faces.
+  { name: 'gallery-zombies-front', url: `/?scene=gallery&models=${ZOMBIES.slice(0, 5).join(',')}&perRow=1&t=0.4&pitch=20&yaw=-38` },
+  { name: 'gallery-zombies-front2', url: `/?scene=gallery&models=${ZOMBIES.slice(5).join(',')}&perRow=1&t=0.4&pitch=20&yaw=-38` },
   {
-    // Four evenly spaced frames of each zombie's walk, levels 1 and 5.
+    // Four evenly spaced frames of each zombie's walk, levels 1 and 5, each an eighth of a
+    // cycle off the passing pose so that every frame catches the legs and arms swung out.
     name: 'gallery-zombie-walk',
-    url: `/?scene=gallery&models=${ZOMBIES.join(',')}&levels=1,5&clip=walk&phase=0`,
-    frames: [0, 0.25, 0.5, 0.75].map((share) => ({ suffix: `f${share * 4}`, run: (page) => posePhase(page, 'walk', share) })),
+    url: `/?scene=gallery&models=${ZOMBIES.join(',')}&levels=1,5&clip=walk&phase=0.125`,
+    frames: [0.125, 0.375, 0.625, 0.875].map((share, i) => ({ suffix: `f${i}`, run: (page) => posePhase(page, 'walk', share) })),
   },
   {
     // Each zombie's attack, frozen at its strike or release.
@@ -198,7 +194,7 @@ const SCENARIOS = [
   moves('avocadoBunker', [['cracked', 'idle', 0.4, 'cracks']]),
   // Level 1 and level 5 of each zombie on the right half of the real lawn, the game's camera.
   { name: 'gallery-lawn-zombies', url: `/?scene=gallery&stage=lawn&models=${ZOMBIES.join(',')}&levels=1,5&from=5&labels=0&t=0.4` },
-  ...[...ZOMBIES, 'boneMinion'].flatMap((key) => [
+  ...[...ZOMBIES, ...RAISED_ZOMBIES].flatMap((key) => [
     { name: `gallery-${key}`, url: `/?scene=gallery&model=${key}&t=0.4` },
     { name: `gallery-${key}-front`, url: `/?scene=gallery&model=${key}&t=0.4&pitch=20&yaw=-38` },
     // Its five levels walking in on the real lawn, the game's camera.
@@ -469,6 +465,9 @@ async function shoot(scenario) {
   page.on('pageerror', (error) => problems.push(`page error: ${error.message}`));
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+    // The gallery warns when a scenario names a model that is not registered: a typo there
+    // would otherwise leave a shot quietly missing a unit.
+    if (msg.type() === 'warning' && msg.text().startsWith('[gallery]')) problems.push(`console warning: ${msg.text()}`);
   });
   try {
     await open(page, scenario.url);

@@ -22,6 +22,8 @@ import { Sky } from './world/Sky';
 //   &page=<n>                      the overview holds ten models; this shows the next ten
 //   &model=<key>                   one model's row, larger
 //   &models=<key,key,…>            only these models, laid out as the overview
+//   &perRow=1                      one model to a row instead of two: for a view at an angle
+//                                  of its own, where a second column's rows run into the first's
 //   &level=<1-5>                   only that level
 //   &levels=<n,n,…>                only these levels, framed close
 //   &from=<column>                 on the lawn, the column the first level stands in (default 1);
@@ -89,8 +91,12 @@ export function galleryPage(keys: readonly string[], page: number): { keys: stri
  * Where each model stands: one row per model (two rows side by side), levels left to right.
  * Give it one page of models at most, or the rows run out of the sun's shadow.
  */
-export function galleryLayout(keys: readonly string[], levels: readonly number[]): { cells: GalleryCell[]; box: FrameBox } {
-  const groups = Math.min(GROUPS_PER_ROW, Math.max(1, keys.length));
+export function galleryLayout(
+  keys: readonly string[],
+  levels: readonly number[],
+  perRow: number = GROUPS_PER_ROW,
+): { cells: GalleryCell[]; box: FrameBox } {
+  const groups = Math.min(Math.max(1, Math.floor(perRow)), Math.max(1, keys.length));
   const rows = Math.ceil(keys.length / groups);
   const groupWidth = levels.length * CELL;
   const width = groups * groupWidth + (groups - 1) * GROUP_GAP;
@@ -132,6 +138,25 @@ function lawnLayout(keys: readonly string[], levels: readonly number[], crowd: n
   return keys.flatMap((key, index) =>
     levels.map((level, i) => ({ key, level, x: from + Math.floor(index / 5) * levels.length + i + 0.5, z: ((2 + index) % 5) + 0.5 })),
   );
+}
+
+/**
+ * The cells with each `singleLevel` model kept only in the first of its cells, as level 1:
+ * it looks the same at every level, so five copies would only repeat it.
+ */
+export function singleLevelOnce(cells: readonly GalleryCell[]): GalleryCell[] {
+  const seen = new Set<string>();
+  const out: GalleryCell[] = [];
+  for (const cell of cells) {
+    if (getModelDef(cell.key).singleLevel !== true) {
+      out.push(cell);
+      continue;
+    }
+    if (seen.has(cell.key)) continue;
+    seen.add(cell.key);
+    out.push({ ...cell, level: 1 });
+  }
+  return out;
 }
 
 /** The box that holds every cell, with room around each model. */
@@ -198,8 +223,17 @@ function number(params: URLSearchParams, name: string): number | null {
 export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () => void {
   const only = params.get('model');
   const crowd = Math.max(0, Math.floor(number(params, 'crowd') ?? 0));
-  // Keys not (yet) registered are left out, so a list can name units still being built.
-  const listed = params.get('models')?.split(',').filter((key) => key !== '' && hasModel(key));
+  // Keys not registered are left out, with a warning: a misspelt key would otherwise leave a
+  // shot quietly short of a unit. The screenshot tool fails on the warning; under the tests
+  // it is an error.
+  const asked = params.get('models')?.split(',').filter((key) => key !== '');
+  const unknown = asked?.filter((key) => !hasModel(key)) ?? [];
+  if (unknown.length > 0) {
+    const message = `[gallery] no model is registered as ${unknown.map((key) => `"${key}"`).join(', ')}; left out of &models=`;
+    if (import.meta.env.MODE === 'test') throw new Error(message);
+    console.warn(message);
+  }
+  const listed = asked?.filter((key) => hasModel(key));
   const paged = galleryPage(listed ?? modelKeys(), number(params, 'page') ?? 1);
   // One model, or a crowd drawn from all of them, or one page of the overview.
   const keys = only ? [getModelDef(only).key] : crowd > 0 ? modelKeys() : paged.keys;
@@ -222,8 +256,8 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   /** The camera angle asked for (the lawn's own where nothing was), with room left for the labels. */
   const view = { pitchDeg: pitch ?? undefined, yawDeg: yaw ?? undefined, side: 0.04, top: 0.06, bottom: 0.12 };
 
-  const asked = params.get('quality') as Quality | null;
-  const renderer = new Renderer(canvas, asked && QUALITIES.includes(asked) ? asked : 'high');
+  const quality = params.get('quality') as Quality | null;
+  const renderer = new Renderer(canvas, quality && QUALITIES.includes(quality) ? quality : 'high');
   const sky = new Sky();
   renderer.scene.add(sky.group);
   // A card has plain sky behind the unit.
@@ -234,20 +268,23 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   let lawn: Lawn | null = null;
   let pads: Mesh | null = null;
   if (onLawn) {
+    // A model with one look (`singleLevel`) stands once, as level 1, in its first cell (a
+    // crowd keeps every copy: it is there to be counted).
     cells = lawnLayout(keys, levels, crowd, number(params, 'from') ?? 1);
+    if (crowd === 0) cells = singleLevelOnce(cells);
     lawn = new Lawn();
     renderer.scene.add(lawn.group);
     // Left alone, the camera is the game's own. An angle of its own closes in on the models.
     if (pitch !== null || yaw !== null) renderer.rig.frameSubject(boxAround(cells), view);
   } else {
-    const layout = galleryLayout(keys, levels);
-    cells = layout.cells;
+    const layout = galleryLayout(keys, levels, number(params, 'perRow') ?? GROUPS_PER_ROW);
+    cells = singleLevelOnce(layout.cells);
     if (!portrait) {
       pads = buildPads(cells);
       renderer.scene.add(pads);
     }
     let box = layout.box;
-    if (!only && level === null && !listedLevels?.length) {
+    if (!only && level === null && !listedLevels?.length && params.get('perRow') === null) {
       // The overview: wide enough that models show at about the size they have on the lawn.
       const halfWidth = Math.max(box.x[1] - box.x[0], OVERVIEW_WIDTH) / 2;
       const halfDepth = Math.max(box.z[1] - box.z[0], OVERVIEW_DEPTH) / 2;
@@ -330,7 +367,14 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
       named.add(cell.key);
       label(cell.key, 'name', cell.x - 0.62, cell.z, '-100%, -50%');
     }
-    if (!only && paged.pages > 1) label(`page ${paged.page} of ${paged.pages}`, 'page', CENTRE_X, CENTRE_Z + OVERVIEW_DEPTH / 2 + 1.2, '-50%, 0');
+    // The page number sits in the top corner of the window, clear of every row's labels.
+    if (!only && paged.pages > 1) {
+      const tag = document.createElement('div');
+      tag.style.cssText = `${LABEL_STYLE};left:auto;right:12px;top:10px`;
+      tag.dataset.label = 'page';
+      tag.textContent = `page ${paged.page} of ${paged.pages}`;
+      labels.appendChild(tag);
+    }
   }
   ui?.appendChild(labels);
   const anchor = new Vector3();
