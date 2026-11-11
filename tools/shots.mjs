@@ -22,8 +22,31 @@ import { chromium } from 'playwright';
  *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
  * }[]}
  */
-/** The plants built so far, which the plant lawn shots stand on the lawn. */
+/** The three plants of the first level, which the first plant lawn shots stand on the lawn. */
 const PLANTS = ['peashooter', 'sunflower', 'walnutBomb'];
+
+/** The other seven plants, in unlock order. */
+const PLANTS2 = ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker', 'torchwood', 'cherryBomber', 'pumpkinSquash'];
+
+/** Shows or hides a part on every model in the gallery (the mine's `armed`, the bunker's `cracks`). */
+async function showPart(page, part, shown) {
+  await page.evaluate(([p, s]) => window.__lvt.gallery.instances.forEach((instance) => instance.showPart(p, s)), [part, shown]);
+}
+
+/** A model's still frames: each a suffix and a clip frozen at a time, with any parts shown first. */
+function moves(key, frames) {
+  return {
+    name: `gallery-${key}-moves`,
+    url: `/?scene=gallery&model=${key}&t=0`,
+    frames: frames.map(([suffix, clip, t, part]) => ({
+      suffix,
+      run: async (page) => {
+        if (part) await showPart(page, part, true);
+        await pose(page, clip, t);
+      },
+    })),
+  };
+}
 
 /** The ten zombies a player can field, in unlock order. The Bone Minion is raised, not fielded. */
 const ZOMBIES = [
@@ -57,6 +80,7 @@ const SCENARIOS = [
   // Every model at about the size it has on the lawn, then the Peashooter's row close up.
   { name: 'gallery', url: '/?scene=gallery&t=0.4' },
   { name: 'gallery-page2', url: '/?scene=gallery&t=0.4&page=2' },
+  { name: 'gallery-page3', url: '/?scene=gallery&t=0.4&page=3' },
   { name: 'gallery-peashooter', url: '/?scene=gallery&model=peashooter&t=0.4' },
   {
     // Lean back, release, snap, settle.
@@ -127,6 +151,50 @@ const SCENARIOS = [
       { suffix: 'cheer', run: (page) => posePhase(page, 'cheer', 0.5) },
     ],
   },
+  // The seven later plants at the lawn angle and from the front, and all ten plants at levels
+  // 1 and 5 on the left half of the real lawn, the game's camera.
+  { name: 'gallery-plants2', url: `/?scene=gallery&models=${PLANTS2.join(',')}&t=0.4` },
+  { name: 'gallery-plants2-front', url: `/?scene=gallery&models=${PLANTS2.join(',')}&t=0.4&pitch=20&yaw=38` },
+  { name: 'gallery-lawn-plants', url: `/?scene=gallery&stage=lawn&models=${[...PLANTS, ...PLANTS2].join(',')}&levels=1,5&labels=0&t=0.4` },
+  ...PLANTS2.flatMap((key) => [
+    { name: `gallery-${key}`, url: `/?scene=gallery&model=${key}&t=0.4` },
+    { name: `gallery-${key}-front`, url: `/?scene=gallery&model=${key}&t=0.4&pitch=20&yaw=38` },
+    { name: `gallery-lawn-${key}`, url: `/?scene=gallery&stage=lawn&model=${key}&labels=0&t=0.4` },
+    portraits(`gallery-portraits-${key}`, key, [1, 5]),
+  ]),
+  // The special motions, frozen: the mine armed and going off, the two flings at wind-up and
+  // release, the pumpkin's leap at its apex and on impact, the cherries' swell, the torch's
+  // fire at two beats, the bunker cracked.
+  moves('potatoMine', [
+    ['asleep', 'idle', 0.4],
+    ['armed', 'idle', 0.4, 'armed'],
+    ['trigger-jump', 'shoot', 0.18, 'armed'],
+    ['trigger-blast', 'shoot', 0.3, 'armed'],
+  ]),
+  moves('kernelPult', [
+    ['windup', 'shoot', 0.0825],
+    ['release', 'shoot', 0.15],
+    ['over', 'shoot', 0.2],
+  ]),
+  moves('mangoPult', [
+    ['windup', 'shoot', 0.1375],
+    ['release', 'shoot', 0.25],
+    ['over', 'shoot', 0.33],
+  ]),
+  moves('pumpkinSquash', [
+    ['crouch', 'melee', 0.1],
+    ['apex', 'melee', 0.28],
+    ['impact', 'melee', 0.401],
+  ]),
+  moves('cherryBomber', [
+    ['swell-half', 'shoot', 0.5],
+    ['swell-full', 'shoot', 1],
+  ]),
+  moves('torchwood', [
+    ['flame-a', 'idle', 0.2],
+    ['flame-b', 'idle', 0.75],
+  ]),
+  moves('avocadoBunker', [['cracked', 'idle', 0.4, 'cracks']]),
   // Level 1 and level 5 of each zombie on the right half of the real lawn, the game's camera.
   { name: 'gallery-lawn-zombies', url: `/?scene=gallery&stage=lawn&models=${ZOMBIES.join(',')}&levels=1,5&from=5&labels=0&t=0.4` },
   ...[...ZOMBIES, 'boneMinion'].flatMap((key) => [

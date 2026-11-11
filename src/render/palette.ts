@@ -78,6 +78,39 @@ const colours = {
   eye: '#1A1A22',
   eyeGlint: '#FFFFFF',
 
+  // Extra plant colours, inside the plants' family of greens with warm accents: each a flat
+  // tone and a darker companion (and a paler one where a face needs a plate to stand on).
+  // Potato Mine: the potato's skin.
+  potato: '#C89656',
+  potatoDark: '#96652F',
+  potatoLight: '#DDB27A',
+  // Kernel-pult: the cob's kernels, and the husk leaves round it.
+  corn: '#FFCF33',
+  cornDark: '#E3A21A',
+  cornLight: '#FFE98C',
+  husk: '#BCD86A',
+  huskDark: '#87AD43',
+  // Mango-pult: the mango and its red-orange blush.
+  mango: '#FF9A1F',
+  mangoDark: '#E2661A',
+  // Avocado Bunker: the dark skin, the pale flesh of the cut face, the stone.
+  avocadoSkin: '#3F7A2C',
+  avocadoSkinDark: '#2A561D',
+  avocadoFlesh: '#D9EE8C',
+  avocadoFleshDark: '#B4D55F',
+  avocadoStone: '#93592E',
+  avocadoStoneDark: '#6C3E1C',
+  // Torchwood's bark and the pale wood of its rings; the Mango-pult's wooden arm.
+  bark: '#8E5D35',
+  barkDark: '#5F3C1F',
+  barkLight: '#D9AE78',
+  // Cherry Bomber.
+  cherry: '#E3303C',
+  cherryDark: '#A71D2B',
+  // Pumpkin Squash: the rind and the creases between its ribs.
+  pumpkin: '#FF8A1C',
+  pumpkinDark: '#D2600F',
+
   // Extra zombie colours: each a flat tone and a darker companion, inside the zombies'
   // family of sickly skin, purples, bone and iron.
   // Old trousers and hair: a slate purple between cloth dark and the graveyard.

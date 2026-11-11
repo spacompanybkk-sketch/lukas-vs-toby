@@ -327,6 +327,263 @@ export function swellBlast(body: string): Clip {
   };
 }
 
+// ---- Plants with a trick of their own --------------------------------------------------------
+
+/**
+ * A potato mine going off, 0.3 s: `body` crouches for 60 ms, jumps four voxels stretched thin
+ * by 0.18 s (the flash, `ModelInstance.setFlash`, goes with the jump), then swells to 1.3
+ * times its size as it hangs there, three voxels up, and holds: the blast goes off at the end.
+ */
+export function mineTrigger(body: string): Clip {
+  const crouch = 0.06;
+  const jump = 0.18;
+  const duration = 0.3;
+  return {
+    duration,
+    loop: false,
+    parts: named(body),
+    sample(t, pose) {
+      const trunk = pose[body];
+      if (!trunk) return;
+      const time = clamp(t, 0, duration);
+      if (time <= crouch) {
+        const k = easeOutQuad(time / crouch);
+        trunk.sy = 1 - 0.2 * k;
+        trunk.sx = trunk.sz = 1 + 0.1 * k;
+        return;
+      }
+      if (time <= jump) {
+        const u = (time - crouch) / (jump - crouch);
+        trunk.py = 4 * easeOutCubic(u);
+        trunk.sy = 0.8 + 0.35 * Math.sin((Math.PI / 2) * u);
+        trunk.sx = trunk.sz = 1.1 - 0.18 * u;
+        return;
+      }
+      const u = (time - jump) / (duration - jump);
+      const swell = easeOutCubic(u);
+      trunk.py = 4 - u;
+      trunk.s = 1 + 0.3 * swell;
+      trunk.sy = 1.15 - 0.15 * swell;
+      trunk.sx = trunk.sz = 0.92 + 0.08 * swell;
+    },
+  };
+}
+
+/**
+ * A catapult throw, `duration` seconds with the shot leaving at `release`: the `arm` is
+ * pulled further back (`windUp` degrees) for the first 55% of the time to the release, then
+ * whips over the top, passing upright and letting go `lead` degrees past upright at the
+ * release, and on `forward` degrees further before it springs back to rest. `body` (if
+ * named) leans back with the wind-up and rocks forward with the throw. Plants face +X, so
+ * the arm's turns about Z are positive back, negative forward. `rest` is how far back the
+ * arm leans at rest, in degrees, so upright is `-rest` from there.
+ */
+export function pultFling(opts: {
+  arm: string;
+  body?: string;
+  duration: number;
+  release: number;
+  rest: number;
+  windUp?: number;
+  lead?: number;
+  forward?: number;
+}): Clip {
+  const { arm, body, duration, release, rest } = opts;
+  const windUpAt = 0.55 * release;
+  /** The arm's turn from rest at the end of the wind-up, at the release, and at its furthest forward. */
+  const back = (opts.windUp ?? 25) * DEG;
+  const upright = -(rest + (opts.lead ?? 30)) * DEG;
+  const forward = upright - (opts.forward ?? 35) * DEG;
+  /** When the throw is all the way over: as long after the release as the whip took to get there. */
+  const overAt = release + 0.6 * (release - windUpAt);
+  return {
+    duration,
+    loop: false,
+    parts: named(arm, body),
+    sample(t, pose) {
+      const time = clamp(t, 0, duration);
+      let turn: number;
+      let lean: number;
+      if (time <= windUpAt) {
+        const k = easeOutQuad(time / windUpAt);
+        turn = back * k;
+        lean = k;
+      } else if (time <= release) {
+        // Accelerating out of the wind-up, past upright, to the release.
+        const u = easeInQuad((time - windUpAt) / (release - windUpAt));
+        turn = back + (upright - back) * u;
+        lean = 1 - 2 * u;
+      } else if (time <= overAt) {
+        const u = easeOutQuad((time - release) / (overAt - release));
+        turn = upright + (forward - upright) * u;
+        lean = -1;
+      } else {
+        const u = clamp((time - overAt) / (duration - overAt), 0, 1);
+        const k = springBack(u);
+        turn = forward * k;
+        lean = -k;
+      }
+      const lever = pose[arm];
+      if (lever) lever.rz = turn;
+      const trunk = body === undefined ? undefined : pose[body];
+      if (trunk) {
+        trunk.rz = DEG * (lean > 0 ? 6 * lean : 8 * lean);
+        trunk.sy = 1 - 0.05 * Math.abs(lean);
+      }
+    },
+  };
+}
+
+/**
+ * A leap and slam, 0.6 s by default with the impact at 0.4 s: `body` crouches (to 0.8 high)
+ * for the first sixth, leaps `height` voxels (a tile by default) stretched thin, peaks at the
+ * middle of the leap, drops and lands at `impact` squashed flat (0.6 high, 1.3 wide), then
+ * springs back to rest.
+ */
+export function leapSlam(opts: { body: string; duration?: number; impact?: number; height?: number }): Clip {
+  const { body } = opts;
+  const duration = opts.duration ?? 0.6;
+  const impact = opts.impact ?? 0.4;
+  const height = opts.height ?? 16;
+  const crouch = impact / 4;
+  const apex = crouch + 0.6 * (impact - crouch);
+  return {
+    duration,
+    loop: false,
+    parts: named(body),
+    sample(t, pose) {
+      const trunk = pose[body];
+      if (!trunk) return;
+      const time = clamp(t, 0, duration);
+      if (time <= crouch) {
+        const k = easeOutQuad(time / crouch);
+        trunk.sy = 1 - 0.2 * k;
+        trunk.sx = trunk.sz = 1 + 0.12 * k;
+        return;
+      }
+      if (time <= apex) {
+        const u = (time - crouch) / (apex - crouch);
+        trunk.py = height * easeOutQuad(u);
+        trunk.sy = 0.8 + 0.35 * Math.sin(Math.PI * Math.min(1, u * 1.4)) + 0.2 * u;
+        trunk.sx = trunk.sz = 1.12 - 0.2 * Math.sin(Math.PI * Math.min(1, u * 1.4)) - 0.12 * u;
+        // Tucks back at the top, ready to come down face first.
+        trunk.rz = 8 * DEG * u;
+        return;
+      }
+      if (time <= impact) {
+        const u = (time - apex) / (impact - apex);
+        trunk.py = height * (1 - easeInQuad(u));
+        trunk.sy = 1 + 0.12 * u;
+        trunk.sx = trunk.sz = 1 - 0.06 * u;
+        trunk.rz = 8 * DEG * (1 - 2 * u);
+        return;
+      }
+      // Squashed flat on the impact, springing back up.
+      const u = (time - impact) / (duration - impact);
+      const k = springBack(u);
+      trunk.sy = 1 - 0.4 * k;
+      trunk.sx = trunk.sz = 1 + 0.3 * k;
+      trunk.rz = -8 * DEG * k;
+    },
+  };
+}
+
+/**
+ * A fire burning, a 1.6 s loop: each part in `flames` licks upwards and back on its own beat,
+ * taller and thinner then shorter and fatter (scaled about its pivot, so pivot each flame at
+ * its base), and leans a little in the draught. `body`, if named, bobs a quarter voxel.
+ */
+export function flameIdle(parts: { flames: string[]; body?: string }): Clip {
+  const { flames, body } = parts;
+  const duration = 1.6;
+  return {
+    duration,
+    loop: true,
+    parts: named(body, ...flames),
+    sample(t, pose) {
+      const beat = (t / duration) * TAU;
+      const trunk = body === undefined ? undefined : pose[body];
+      if (trunk) trunk.py = 0.25 * Math.sin(beat);
+      for (let i = 0; i < flames.length; i++) {
+        const flame = pose[flames[i] as string];
+        if (!flame) continue;
+        // Whole multiples of the beat, so the loop has no seam; each flame out of step.
+        const lick = 0.6 * Math.sin(3 * beat + i * 2.1) + 0.4 * Math.sin(5 * beat + i * 1.3 + 0.7);
+        flame.sy = 1 + 0.16 * lick;
+        flame.sx = flame.sz = 1 - 0.08 * lick;
+        flame.rz = 4 * DEG * Math.sin(2 * beat + i * 1.9);
+        flame.rx = 3 * DEG * Math.sin(4 * beat + i * 2.6);
+      }
+    },
+  };
+}
+
+/**
+ * A fuse burning down, `duration` seconds (1 by default): each part in `parts` throbs, faster
+ * and bigger as it goes, out of step with the others, and trembles, swelling to 1.35 times
+ * its size by the end and holding there. The flash and the blast are the caller's.
+ */
+export function fuseSwell(parts: string[], duration = 1): Clip {
+  return {
+    duration,
+    loop: false,
+    parts: named(...parts),
+    sample(t, pose) {
+      const u = clamp(t / duration, 0, 1);
+      for (let i = 0; i < parts.length; i++) {
+        const part = pose[parts[i] as string];
+        if (!part) continue;
+        // Three throbs, then four, quickening; nothing left of them at the very end.
+        const throb = Math.sin(Math.PI * (6 * u + 4 * u * u) + i * Math.PI) * u * (1 - u);
+        part.s = 1 + 0.35 * easeInQuad(u) + 0.25 * throb;
+        const shiver = Math.sin(u * 30 * Math.PI + i) * u * (1 - u);
+        part.px = 0.8 * shiver;
+        part.sy = 1 + 0.05 * shiver;
+      }
+    },
+  };
+}
+
+/**
+ * Two heads on one stem, a 1.6 s loop: `body` bobs half a voxel and sways, while `a` and `b`
+ * each breathe and rock on alternate beats, as if bickering; each part in `sway` flutters
+ * as in `idleBob`.
+ */
+export function pairBob(parts: { body: string; a: string; b: string; sway?: string[] }): Clip {
+  const { body, a, b } = parts;
+  const sway = parts.sway ?? [];
+  const duration = 1.6;
+  return {
+    duration,
+    loop: true,
+    parts: named(body, a, b, ...sway),
+    sample(t, pose) {
+      const beat = (t / duration) * TAU;
+      const trunk = pose[body];
+      if (trunk) {
+        trunk.py = 0.5 * Math.sin(beat);
+        trunk.rz = 2 * DEG * Math.sin(beat - 0.6);
+      }
+      const one = pose[a];
+      if (one) {
+        one.s = 1 + 0.04 * Math.sin(2 * beat);
+        one.rz = 4 * DEG * Math.sin(beat + 0.3);
+      }
+      const two = pose[b];
+      if (two) {
+        two.s = 1 - 0.04 * Math.sin(2 * beat);
+        two.rz = -4 * DEG * Math.sin(beat + 0.3);
+      }
+      for (let i = 0; i < sway.length; i++) {
+        const leaf = pose[sway[i] as string];
+        if (!leaf) continue;
+        leaf.rz = 6 * DEG * Math.sin(2 * beat + i * 2.4);
+        leaf.rx = 4 * DEG * Math.sin(3 * beat + i * 1.7 + 0.6);
+      }
+    },
+  };
+}
+
 // ---- Zombies ---------------------------------------------------------------------------------
 //
 // The zombie builders move a biped's parts (see models/zombies/biped.ts): `root` (the hips,

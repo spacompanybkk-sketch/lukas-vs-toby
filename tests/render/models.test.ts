@@ -57,6 +57,67 @@ describe('Walnut Bomb', () => {
     }
   });
 });
+/** Builds `key` at every level and checks that its part `name` has boxes, is hidden at rest and shows and hides on request. */
+function expectToggledPart(key: string, name: string): void {
+  const def = getModelDef(key);
+  const part = def.parts.find((p) => p.name === name);
+  expect(part?.boxes.length, `${key} has a part ${name}`).toBeGreaterThan(0);
+  for (const level of LEVELS) {
+    const instance = new ModelInstance(def, level);
+    const object = instance.root.getObjectByName(name) as Object3D;
+    expect(object.children.some((child) => child instanceof Mesh), `level ${level}`).toBe(true);
+    expect(object.visible, `level ${level}`).toBe(false);
+    instance.showPart(name, true);
+    expect(object.visible).toBe(true);
+    instance.showPart(name, false);
+    expect(object.visible).toBe(false);
+    instance.dispose();
+  }
+}
+
+describe('Potato Mine', () => {
+  it('lights up in a part named armed, hidden until the game shows it', () => {
+    expectToggledPart('potatoMine', 'armed');
+    // What it shows glows: the bulb, at every level.
+    const armed = getModelDef('potatoMine').parts.find((p) => p.name === 'armed');
+    for (const level of LEVELS) {
+      const lit = armed?.boxes.filter((b) => (b.minLevel ?? 1) <= level && level <= (b.maxLevel ?? 5) && (b.emissive ?? 0) >= 1.5);
+      expect(lit?.length, `level ${level}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('is the smallest plant: about half a tile tall, under a smaller envelope than a unit', () => {
+    const def = getModelDef('potatoMine');
+    expect(def.envelope?.[1]).toBeLessThanOrEqual(10);
+    expect(bounds(def, 1).max.y / VOXEL).toBeLessThan(10);
+  });
+
+  it('jumps and swells when it goes off', () => {
+    const def = getModelDef('potatoMine');
+    expect(def.clips.shoot?.parts).toEqual(['body']);
+    const blast = sampled(def, def.clips.shoot as NonNullable<ModelDef['clips']['shoot']>, 0.3).body as PartPose;
+    expect(blast.py).toBeGreaterThan(2);
+    expect(blast.s).toBeCloseTo(1.3, 6);
+  });
+});
+
+describe('the catapults', () => {
+  it.each([
+    ['kernelPult', 0.4, 0.15],
+    ['mangoPult', 0.6, 0.25],
+  ])('%s throws with a part named arm: %s s, letting go at %s s', (key, duration, release) => {
+    const def = getModelDef(key);
+    expect(def.parts.some((p) => p.name === 'arm' && p.boxes.length > 0)).toBe(true);
+    const shoot = def.clips.shoot as NonNullable<ModelDef['clips']['shoot']>;
+    expect(shoot.duration).toBe(duration);
+    expect(shoot.parts).toContain('arm');
+    // Wound back before the release, thrown well forward of rest by it, at rest at the end.
+    expect((sampled(def, shoot, 0.55 * release).arm as PartPose).rz).toBeGreaterThan(0);
+    expect((sampled(def, shoot, release).arm as PartPose).rz).toBeLessThan(-0.5);
+    expect((sampled(def, shoot, duration).arm as PartPose).rz).toBeCloseTo(0, 6);
+  });
+});
+
 /** Art bible section 1: what a level-1 unit fits, in voxels, unless the model names its own. */
 const UNIT_ENVELOPE: [number, number, number] = [12, 16, 10];
 

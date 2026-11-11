@@ -1,6 +1,9 @@
 import { prewarmModel } from '../voxel/build';
 import type { ModelDef } from '../voxel/types';
+import { kernelPult } from './plants/kernelPult';
+import { mangoPult } from './plants/mangoPult';
 import { peashooter } from './plants/peashooter';
+import { potatoMine } from './plants/potatoMine';
 import { sunflower } from './plants/sunflower';
 import { walnutBomb } from './plants/walnutBomb';
 import { boneMinion } from './zombies/boneMinion';
@@ -53,4 +56,4 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
   }
 }
 
-for (const def of [peashooter, sunflower, walnutBomb, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion]) registerModel(def);
+for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion]) registerModel(def);
