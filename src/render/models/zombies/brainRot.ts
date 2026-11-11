@@ -11,7 +11,7 @@ import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 //   2  big round goggles with a strap, standing out in front of its eyes
 //   3  a gas mask with a canister snout over its mouth; iron rims
 //   4  a crystal jar over the brain; crystal rims
-//   5  a gold tank on its back with a hose to the mask, bubbling; gold rims
+//   5  a tank of glowing goo on its back, gold bands and cap, a hose to the mask, bubbling; gold rims
 
 const head: Box[] = [
   // The head, its top cut off level where the brain shows.
@@ -69,12 +69,14 @@ const torso: Box[] = [
   // Toxic stains down the front and the camera's side.
   { at: [-2, 6, -1], size: [0.5, 1, 1.5], color: 'toxicGreenDark' },
   { at: [-1, 6.5, 2.5], size: [1.5, 1, 0.5], color: 'toxicGreenDark' },
-  // Level 5: a gold tank on its back, a cap and a hose over the shoulder.
+  // Level 5: a tank of glowing goo on its back, banded and capped in gold, and a hose over
+  // the shoulder. The goo is the tank's colour, so the gold is its bands and cap.
   ...atLevels(5, 5, [
-    { at: [2, 5, -2], size: [2.5, 7, 3], color: 'levelGold' },
-    { at: [2.5, 5, -2.5], size: [1.5, 7, 4], color: 'levelGold' },
+    { at: [2, 5, -2], size: [2.5, 7, 3], color: 'toxicGreen', emissive: 1.5 },
+    { at: [2.5, 5, -2.5], size: [1.5, 7, 4], color: 'toxicGreen', emissive: 1.5 },
+    { at: [2, 5, -2.5], size: [2.5, 1, 4], color: 'levelGold' },
     { at: [2, 8.5, -2.5], size: [2.5, 0.5, 4], color: 'levelGoldDark' },
-    { at: [2.5, 12, -1.5], size: [1.5, 1, 2], color: 'levelGoldDark' },
+    { at: [2.5, 12, -1.5], size: [1.5, 1, 2], color: 'levelGold' },
     { at: [3, 13, -1], size: [1, 1, 1], color: 'poison', emissive: 2 },
     { at: [0, 8.5, -2.5], size: [2, 0.5, 0.5], color: 'levelGoldDark' },
     { at: [-2, 8.5, -2.5], size: [2, 0.5, 0.5], color: 'levelGoldDark' },

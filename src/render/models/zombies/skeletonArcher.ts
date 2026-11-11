@@ -7,7 +7,7 @@ import { atLevels, bipedModel, mirrorZ, zombieEyes } from './biped';
 // rust-red bow in its left hand, on the camera's side, upright with the string towards it.
 // It stands tall to draw and loose. Its trim is the bow.
 //
-//   2  a bigger bow with a grip wrap, a long feather, more arrows
+//   2  a bigger bow with a grip wrap, a long feather, more arrows, a leather shoulder guard
 //   3  an iron bow with a crossbow stock, iron-tipped arrows
 //   4  a crystal bow with a glowing string
 //   5  a gold bow, a gold band on the cap and a gold-rimmed quiver
@@ -46,6 +46,11 @@ const armL: Box[] = [
   { at: [-3, 8, 2.5], size: [1, 2, 1], color: 'boneShadow' },
   { at: [-4.5, 8.5, 2.5], size: [1.5, 1, 1], color: 'bone' },
   { at: [-5, 8, 2.5], size: [1, 2, 1], color: 'bone' },
+  // Level 2 up: a leather guard on the bow shoulder, on the camera's side and seen from above.
+  ...atLevels(2, 5, [
+    { at: [-1.75, 9.5, 2], size: [2.5, 1, 2.25], color: 'hatBrown' },
+    { at: [-1, 10.5, 2.5], size: [1, 0.5, 1.25], color: 'hatBrownDark' },
+  ]),
 ];
 
 const legL: Box[] = [

@@ -10,7 +10,7 @@ import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 //   2  a full headdress: a taller cap and lappets flaring out past the shoulders
 //   3  a pharaoh's: the headdress turns to iron striped with sand, a cobra rising off the brow
 //   4  a glowing crystal headdress and cobra
-//   5  a gold headdress and cobra, and a broad gold collar with warm gems
+//   5  a purple headdress striped in gold, a gold cobra, and a broad gold collar with warm gems
 
 /** The pharaoh's headdress (nemes): a cap, lappets flaring past the shoulders, a tail behind. */
 const nemes = (from: number, to: number, cloth: string, stripe: string): Box[] =>
@@ -56,7 +56,10 @@ const head: Box[] = [
   // Level 2: the full headdress, taller, striped over the top, the lappets flaring out. From
   // level 3 it is a pharaoh's: the cloth turns to metal and the stripes to sand.
   ...nemes(2, 2, 'sand', 'clothPurple'),
-  ...nemes(3, 5, 'clothPurple', 'sand'),
+  ...nemes(3, 4, 'clothPurple', 'sand'),
+  // Level 5: the headdress stays purple cloth, its stripes turn gold: a mummy in a royal
+  // headdress, not a block of gold.
+  ...nemes(5, 5, 'robePurple', 'levelGold'),
   // A cobra rising off the brow: iron at 3, crystal at 4, gold at 5.
   ...atLevels(3, 3, [
     { at: [-6, 13.5, -0.5], size: [1, 2.5, 1], color: 'levelIron' },

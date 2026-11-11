@@ -10,7 +10,7 @@ import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 //   2  spiked running shoes, a longer pair of sweatband tails and a racing number on its back
 //   3  a chrome visor across its eyes; iron cleats
 //   4  crystal lightning fins on its head and back
-//   5  gold visor, cleats and fins, and a glowing gold speed trail streaming out behind it
+//   5  gold visor, cleats and fins, and a glowing trail of fire streaming out behind it
 
 // The head is modelled further back than it is drawn: the 25° lean carries it forward over
 // the chest, and a little past it, so that it juts ahead of its feet. Its face is the −X
@@ -139,18 +139,19 @@ export const veryFastWalker = bipedModel({
       ],
     },
     {
-      // Level 5: a glowing gold trail streaming out behind it, in three ribbons.
+      // Level 5: a speed trail of fire streaming out behind it, in four ribbons: warm
+      // accents, red into yellow, so the gold stays on its visor, fins and cleats.
       name: 'trail',
       parent: 'root',
       pivot: [3, 9, 0],
       boxes: atLevels(5, 5, [
-        { at: [3, 12, -0.5], size: [4, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [3, 12, -0.5], size: [4, 1, 1], color: 'speedRed', emissive: 1.6 },
         { at: [7, 12, -0.5], size: [2, 1, 1], color: 'fireLight', emissive: 1.6 },
-        { at: [2.5, 9.5, 1.5], size: [3.5, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [2.5, 9.5, 1.5], size: [3.5, 1, 1], color: 'fire', emissive: 1.6 },
         { at: [6, 9.5, 1.5], size: [2, 1, 1], color: 'fireLight', emissive: 1.6 },
-        { at: [2.5, 7, -2.5], size: [3, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [2.5, 7, -2.5], size: [3, 1, 1], color: 'fire', emissive: 1.6 },
         { at: [5.5, 7, -2.5], size: [2, 1, 1], color: 'fireLight', emissive: 1.6 },
-        { at: [2, 4.5, 0.5], size: [2.5, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [2, 4.5, 0.5], size: [2.5, 1, 1], color: 'speedRed', emissive: 1.6 },
         { at: [4.5, 4.5, 0.5], size: [1.5, 1, 1], color: 'fireLight', emissive: 1.6 },
       ]),
     },

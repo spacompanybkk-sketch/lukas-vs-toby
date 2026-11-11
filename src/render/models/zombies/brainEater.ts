@@ -7,7 +7,7 @@ import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 // up in its right hand, which is what it throws (the view hides `brain` when it leaves and
 // shows it again on the next idle). Its trim is the shoulder pads.
 //
-//   2  rusty shoulder pads with a stud, standing up off both shoulders
+//   2  rusty shoulder pads with a stud, standing up off both shoulders; an arrow through the head
 //   3  an iron spiked helmet; iron pads
 //   4  a crystal skull cap with shards and a brain floating above it; crystal pads
 //   5  a gold crown with points, a brain still floating over it, gold pads, eyes alight
@@ -33,6 +33,14 @@ const head: Box[] = [
   { at: [-3, 14.5, 0.5], size: [1, 1, 1], color: 'trouserDark', maxLevel: 2 },
   { at: [0, 14.5, 1.5], size: [1, 0.5, 1], color: 'trouserDark', maxLevel: 2 },
   { at: [1.5, 13.5, -1], size: [0.5, 1, 1.5], color: 'trouserDark', maxLevel: 2 },
+
+  // Level 2 up: an arrow clean through the head, sticking out both sides (a joke that the
+  // lawn camera sees from above): the head on the far side, the purple flights near.
+  ...atLevels(2, 5, [
+    { at: [-1.5, 12.5, -4.5], size: [1, 1, 8.5], color: 'hatBrown' },
+    { at: [-2, 12, -5.5], size: [2, 2, 1], color: 'iron' },
+    { at: [-2.5, 12, 4], size: [3, 2, 0.5], color: 'clothPurple' },
+  ]),
 
   // Level 3: an iron helmet with a brim and a spike.
   ...atLevels(3, 3, [

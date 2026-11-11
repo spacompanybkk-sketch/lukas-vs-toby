@@ -7,23 +7,26 @@ import { atLevels, bipedModel, mirrorZ, zombieEyes } from './biped';
 // in its right hand and a round purple shield on its left arm, facing the lawn camera. Its
 // trim is the sword's blade and the shield's rim.
 //
-//   2  a bigger sword with a wide crossguard; bone horns curling up off the skull
-//   3  full iron plate: a horned helmet, pauldrons, greaves; a tall tower shield; iron blade
+//   2  a bigger sword with a wide crossguard; bone horns curling up off the skull; a purple plume
+//   3  full iron plate: a horned helmet, pauldrons; a tall tower shield; iron blade
 //   4  a glowing crystal blade and shield rim
-//   5  the armour turns gold, gold blade and rim, and the sword's tip is on fire
+//   5  gold crest and ridge on the iron armour, gold blade and rim, and the sword's tip is on fire
 
-/** Plate armour from level 3: iron at 3 and 4, gold at 5. */
+/**
+ * Plate armour from level 3: iron. At level 5 the plates stay iron, so it is still a bone
+ * knight in grey armour from the lawn, and only the accents (crest, ridge) turn gold.
+ */
 const plate = (boxes: Box[]): Box[] => [
   ...atLevels(3, 4, boxes),
-  ...atLevels(5, 5, boxes.map((box) => ({ ...box, color: box.color === 'levelIron' ? 'levelGold' : 'levelGoldDark' }))),
+  ...atLevels(5, 5, boxes.map((box) => (box.color === 'levelIronDark' ? { ...box, color: 'levelGold' } : box))),
 ];
 
 const head: Box[] = [
-  // The skull: a rounded cranium and a narrower jaw below it.
-  { at: [-4, 10, -2.5], size: [6, 4.5, 5], color: 'bone' },
-  { at: [-3.5, 10, -3], size: [5, 4.5, 6], color: 'bone' },
-  { at: [-3.5, 14.5, -2.5], size: [5, 1, 5], color: 'bone' },
-  { at: [-4, 9, -2], size: [4.5, 1, 4], color: 'boneShadow' },
+  // The skull: a blocky cranium, seated on whole voxels (half-voxel edges cut every face
+  // into more cells), and a narrower jaw below it.
+  { at: [-4, 10, -3], size: [6, 5, 6], color: 'bone' },
+  { at: [-3, 15, -2], size: [4, 0.5, 4], color: 'bone' },
+  { at: [-4, 9, -2], size: [4, 1, 4], color: 'boneShadow' },
   // A nose hole, and a grin: a dark line with the teeth standing in it.
   { at: [-4, 11, -0.5], size: [0.5, 1, 1], color: 'socket' },
   { at: [-4, 10, -2], size: [0.5, 0.5, 4], color: 'socket' },
@@ -36,10 +39,16 @@ const head: Box[] = [
     { at: [-1.5, 13, -4], size: [1, 1, 1], color: 'boneShadow' },
     { at: [-2, 14, -4.5], size: [1, 3, 1], color: 'bone' },
   ]),
+  // Level 2: a purple plume on the bare skull, standing up where the lawn camera sees it
+  // (the helmet's crest takes its place from 3).
+  ...atLevels(2, 2, [
+    { at: [-2.5, 15.5, -0.5], size: [3, 1, 1], color: 'clothPurple' },
+    { at: [-1, 16.5, -0.5], size: [2, 1.5, 1], color: 'clothPurple' },
+  ]),
   // Level 3 up: a helmet with a crest, between the horns.
   ...plate([
-    { at: [-4.5, 13.5, -3], size: [7, 1, 6], color: 'levelIronDark' },
-    { at: [-4, 14.5, -2.5], size: [6, 1.5, 5], color: 'levelIron' },
+    { at: [-4.5, 13.5, -3.5], size: [7, 1.5, 7], color: 'levelIron' },
+    { at: [-3.5, 15, -2.5], size: [5, 1, 5], color: 'levelIron' },
     { at: [-3, 16, -0.5], size: [5, 1, 1], color: 'levelIronDark' },
   ]),
 ];
@@ -62,25 +71,18 @@ const torso: Box[] = [
 ];
 
 const armL: Box[] = [
+  // Shoulder, one long bone, a fist: few boxes, as the arm is seen from above.
   { at: [-1, 8, 3], size: [1.5, 2, 1.5], color: 'bone' },
-  { at: [-2.5, 8.5, 3.5], size: [2, 1, 1], color: 'bone' },
-  { at: [-3, 8, 3], size: [1, 2, 1.5], color: 'boneShadow' },
-  { at: [-4.5, 8.5, 3.5], size: [1.5, 1, 1], color: 'bone' },
+  { at: [-4, 8.5, 3.5], size: [3, 1, 1], color: 'boneShadow' },
   { at: [-5, 8, 3], size: [1, 2, 1.5], color: 'bone' },
   // Level 3 up: a pauldron, two layers, standing up off the shoulder.
-  ...plate([
-    { at: [-1.5, 10, 2.5], size: [3, 1, 2.5], color: 'levelIron' },
-    { at: [-1, 11, 3], size: [2, 0.5, 2], color: 'levelIronDark' },
-  ]),
+  ...plate([{ at: [-1.5, 10, 2.5], size: [3, 1, 2.5], color: 'levelIron' }]),
 ];
 
 const legL: Box[] = [
-  { at: [-0.5, 2.5, 1], size: [1, 1.5, 1], color: 'bone' },
-  { at: [-1, 1.5, 0.5], size: [2, 1, 2], color: 'boneShadow' },
-  { at: [-0.5, 1, 1], size: [1, 0.5, 1], color: 'bone' },
+  // A shin bone and a foot: legs hide under the body from above.
+  { at: [-0.5, 1, 1], size: [1, 3, 1], color: 'bone' },
   { at: [-2, 0, 0.5], size: [3, 1, 2], color: 'bone' },
-  // Level 3 up: a greave over the shin and knee.
-  ...plate([{ at: [-1.5, 0.5, 0.25], size: [1, 2.5, 2.5], color: 'levelIron' }]),
 ];
 
 export const skeletonWarrior = bipedModel({

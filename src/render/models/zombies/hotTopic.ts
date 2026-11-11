@@ -12,7 +12,7 @@ import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 //   2  a fork and a knife held up, ready to eat
 //   3  a saucepan for a helmet, its handle sticking out behind; iron teeth, fork and knife
 //   4  a tall crystal chef's hat; crystal teeth, fork and knife, glowing
-//   5  a gold chef's hat with warm jewels; gold teeth, fork and knife; eyes alight
+//   5  a white chef's hat with a gold band and warm jewels; gold teeth, fork and knife; eyes alight
 
 /** The cutlery in a level's material: grey plastic at 2, iron, crystal, gold. */
 const cutlery = (boxes: Box[]): Box[] => [
@@ -61,11 +61,13 @@ const head: Box[] = [
     { at: [-3.5, 17.5, -3], size: [6, 1.5, 6], color: 'levelCrystal' },
     { at: [-2.5, 19, -2], size: [4, 0.5, 4], color: 'levelCrystal' },
   ]),
+  // Level 5: a white chef's hat with a gold band and warm jewels: the gold is the band, so
+  // it is still a hungry green zombie in a chef's hat from the lawn.
   ...atLevels(5, 5, [
-    { at: [-3.5, 14, -3], size: [6, 1.5, 6], color: 'levelGoldDark' },
-    { at: [-3, 15.5, -2.5], size: [5, 2, 5], color: 'levelGold' },
-    { at: [-3.5, 17.5, -3], size: [6, 1.5, 6], color: 'levelGold' },
-    { at: [-2.5, 19, -2], size: [4, 0.5, 4], color: 'levelGold' },
+    { at: [-3.5, 14, -3], size: [6, 1.5, 6], color: 'levelGold' },
+    { at: [-3, 15.5, -2.5], size: [5, 2, 5], color: 'bone' },
+    { at: [-3.5, 17.5, -3], size: [6, 1.5, 6], color: 'bone' },
+    { at: [-2.5, 19, -2], size: [4, 0.5, 4], color: 'boneShadow' },
     { at: [-4, 14.5, -0.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 2 },
     { at: [-0.5, 14.5, 3], size: [1, 1, 0.5], color: 'fireLight', emissive: 2 },
   ]),
@@ -74,16 +76,18 @@ const head: Box[] = [
 const torso: Box[] = [
   // A big round belly, wider than the head, in a striped shirt too small for it: the bottom
   // row is bare green skin.
+  // Stripes a whole voxel tall on whole voxels: half-voxel stripes cut every face of the
+  // belly into twice the cells.
   { at: [-3.5, 3, -4], size: [7, 5, 8], color: 'clothPurple' },
   { at: [-3, 3, -4.5], size: [6, 5, 9], color: 'clothPurple' },
   { at: [-3, 2.5, -3.5], size: [6, 0.5, 7], color: 'skinDark' },
   { at: [-3, 8, -3.5], size: [6, 0.5, 7], color: 'clothDark' },
-  { at: [-3.5, 3, -4], size: [7, 0.5, 8], color: 'skin' },
-  { at: [-3, 3, -4.5], size: [6, 0.5, 9], color: 'skin' },
-  { at: [-3.5, 5, -4], size: [7, 0.5, 8], color: 'clothDark' },
-  { at: [-3, 5, -4.5], size: [6, 0.5, 9], color: 'clothDark' },
-  { at: [-3.5, 6.5, -4], size: [7, 0.5, 8], color: 'clothDark' },
-  { at: [-3, 6.5, -4.5], size: [6, 0.5, 9], color: 'clothDark' },
+  { at: [-3.5, 3, -4], size: [7, 1, 8], color: 'skin' },
+  { at: [-3, 3, -4.5], size: [6, 1, 9], color: 'skin' },
+  { at: [-3.5, 5, -4], size: [7, 1, 8], color: 'clothDark' },
+  { at: [-3, 5, -4.5], size: [6, 1, 9], color: 'clothDark' },
+  { at: [-3.5, 7, -4], size: [7, 1, 8], color: 'clothDark' },
+  { at: [-3, 7, -4.5], size: [6, 1, 9], color: 'clothDark' },
   // The napkin tucked in under the chin, checked purple, and its knot sticking up behind.
   { at: [-4, 4.5, -2.5], size: [0.5, 3.5, 5], color: 'bone' },
   { at: [-4, 5.5, -1.5], size: [0.5, 1, 1], color: 'clothPurple' },

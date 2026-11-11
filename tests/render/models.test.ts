@@ -55,7 +55,6 @@ const TRIANGLE_OVERRIDES: Record<string, number> = {
   // Over the ceiling when the ceiling came in; each is cut below it later in the same round.
   sunflower: 7164,
   walnutBomb: 8492,
-  skeletonWarrior: 5432,
 };
 
 describe('the registry', () => {
