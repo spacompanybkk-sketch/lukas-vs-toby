@@ -1,4 +1,4 @@
-import { Box3, Group } from 'three';
+import { Box3, Group, Mesh, Vector3, type Object3D } from 'three';
 import type { Faction, UnitKey } from '../../sim/types';
 import { getModelDef } from '../models/registry';
 import { ModelInstance } from '../voxel/rig';
@@ -33,20 +33,56 @@ export interface UnitHooks {
   burst(view: UnitView): void;
 }
 
-/** Model height per model and level, in tiles, measured once. */
-const heights = new Map<string, number>();
 const box = new Box3();
 
-function heightOf(instance: ModelInstance): number {
-  const key = `${instance.def.key}@${instance.level}`;
-  let h = heights.get(key);
-  if (h === undefined) {
-    instance.root.updateMatrixWorld(true);
-    box.setFromObject(instance.root);
-    h = Number.isFinite(box.max.y) ? box.max.y - instance.root.position.y : 1;
-    heights.set(key, h);
-  }
-  return h;
+/** Height of the top of a model above its feet, in tiles. Measured when a model is adopted. */
+function measureHeight(instance: ModelInstance): number {
+  // Measured at rest size and facing: a merge swaps the level while the root is spun and swollen.
+  const root = instance.root;
+  const scale = root.scale.x;
+  const turn = root.rotation.y;
+  root.scale.setScalar(1);
+  root.rotation.y = 0;
+  root.updateMatrixWorld(true);
+  box.setFromObject(root);
+  const height = Number.isFinite(box.max.y) ? box.max.y - root.getWorldPosition(scratch).y : 1;
+  root.scale.setScalar(scale);
+  root.rotation.y = turn;
+  root.updateMatrixWorld(true);
+  return height;
+}
+const scratch = new Vector3();
+
+/**
+ * Below this size (tiles, the longest side of a mesh's own box) a mesh casts no shadow: eyes,
+ * glints, small accents and held props add a shadow draw each and nothing a child can see.
+ */
+export const SHADOW_MIN_SIZE = 0.2;
+
+/**
+ * Parts whose shadow nobody sees under the body's own: the eyes (their box spans both eyes,
+ * so size alone misses them), accents and held props. Glowing pieces cast none either.
+ */
+const NO_SHADOW_PARTS = new Set(['eyes', 'sprout', 'fuse', 'band', 'trail', 'brain', 'floatBrain', 'cracks', 'aura']);
+
+/**
+ * Turns shadows off for a model's small meshes, for the parts named in `NO_SHADOW_PARTS`, for
+ * glowing pieces and for parts built hidden (damage cracks), keeping them on bodies, heads,
+ * limbs and anything big. Done once per adopted instance.
+ */
+export function trimShadows(instance: ModelInstance): void {
+  instance.root.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const geometry = object.geometry;
+    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    const b = geometry.boundingBox as Box3;
+    const longest = Math.max(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z);
+    let hidden = false;
+    for (let o: Object3D | null = object; o && o !== instance.root; o = o.parent) if (!o.visible) hidden = true;
+    const part = object.name.slice(0, object.name.indexOf(':'));
+    const glow = object.name.includes(':glow');
+    if (longest < SHADOW_MIN_SIZE || hidden || glow || NO_SHADOW_PARTS.has(part)) object.castShadow = false;
+  });
 }
 
 export class UnitView {
@@ -73,6 +109,11 @@ export class UnitView {
   /** Drawn this far back from where it stands: a biting zombie steps back off its plant. */
   offsetX = 0;
   targetX = 0;
+  /** Lifted this far in a stack (art bible section 6: offset in depth and height). */
+  offsetY = 0;
+  targetY = 0;
+  /** Height of the top of the model above its feet, in tiles, for the current level. */
+  height = 1;
   /** Seconds since the unit died, or −1 while it stands. */
   dyingFor = -1;
   /** Seconds the dying unit takes to break up (its `die` clip). */
@@ -103,6 +144,8 @@ export class UnitView {
     this.hooks = hooks;
     this.def = getModelDef(key);
     this.model = new ModelInstance(this.def, level);
+    trimShadows(this.model);
+    this.height = measureHeight(this.model);
     this.wrapper.name = `unit-${id}`;
     this.wrapper.add(this.model.root);
     this.wrapper.position.set(x, 0, lane + 0.5);
@@ -188,11 +231,6 @@ export class UnitView {
     this.model.play('die');
   }
 
-  /** Height of the top of the model above its feet, in tiles. */
-  get height(): number {
-    return heightOf(this.model);
-  }
-
   /** Moves the view on by `dt` and places it between its last two steps. True once it should go. */
   update(dt: number, alpha: number): boolean {
     this.time += dt;
@@ -211,7 +249,8 @@ export class UnitView {
     const follow = Math.min(1, dt * STACK_FOLLOW);
     this.offsetZ += (this.targetZ - this.offsetZ) * follow;
     this.offsetX += (this.targetX - this.offsetX) * follow;
-    this.wrapper.position.set(x + this.offsetX, 0, this.lane + 0.5 + this.offsetZ);
+    this.offsetY += (this.targetY - this.offsetY) * follow;
+    this.wrapper.position.set(x + this.offsetX, this.offsetY, this.lane + 0.5 + this.offsetZ);
 
     if (this.mergeFor >= 0) this.stepMerge(dt);
 
@@ -264,6 +303,8 @@ export class UnitView {
     if (this.mergeTo === this.level) return;
     this.level = this.mergeTo;
     this.model = this.model.setLevel(this.mergeTo);
+    trimShadows(this.model);
+    this.height = measureHeight(this.model);
     this.flashFor = 0;
     this.hooks.mergePeak(this);
   }

@@ -11,8 +11,9 @@ import { disposeModels } from '../render/voxel/build';
 import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
 import { Sky } from '../render/world/Sky';
-import { Match, defaultConfig } from '../sim/match';
-import type { Command, SimEvent } from '../sim/types';
+import { Match, defaultConfig, spawnUnit } from '../sim/match';
+import { BALANCE } from '../data/balance';
+import type { Command, SimEvent, UnitKey } from '../sim/types';
 
 // A whole match, Medium bot against Medium bot, through the battle view on the real lawn,
 // with no HUD: for judging the battle by eye and for the screenshot tool.
@@ -20,6 +21,8 @@ import type { Command, SimEvent } from '../sim/types';
 //   ?scene=battle-demo            the match plays live
 //   &seed=<n>                     the match's seed (default 7)
 //   &t=<seconds>                  fast-forwards to that time and freezes there
+//   &setup=stack                  no bots: a few plants and two stacks of zombies walking into
+//                                 them, for judging stacks and their health bars
 //   &quality=low|medium|high
 //
 // `window.__lvt.battle` holds `{ match, view }`, plus `advance(seconds)` (moves a frozen
@@ -54,8 +57,25 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
 
   const seed = Math.trunc(number(params, 'seed', 7));
   const match = new Match(defaultConfig(seed));
-  const bots: Bot[] = [createBasicBot('plants', 'medium', seed), createBasicBot('zombies', 'medium', seed)];
-  const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, 'plants');
+  const stack = params.get('setup') === 'stack';
+  const bots: Bot[] = stack ? [] : [createBasicBot('plants', 'medium', seed), createBasicBot('zombies', 'medium', seed)];
+  const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, 'plants', {
+    units: [...match.state.config.cards.plants, ...match.state.config.cards.zombies],
+  });
+  if (stack) {
+    // Five zombies at one spot in lane 2 against a Walnut Bomb and a Peashooter behind it, three
+    // more in lane 3 against a Peashooter, and a Sunflower between, all placed directly.
+    const placed: SimEvent[] = [];
+    const put = (key: UnitKey, lane: number, x: number): void => void spawnUnit(match.state, BALANCE, key, lane, x, placed);
+    put('peashooter', 2, 2.5);
+    put('walnutBomb', 2, 4.5);
+    put('sunflower', 1, 3.5);
+    put('peashooter', 3, 3.5);
+    put('peashooter', 1, 1.5);
+    for (const key of ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'brainEater', 'veryFastWalker'] as const) put(key, 2, 6.2);
+    for (const key of ['skeletonWarrior', 'brainEater', 'veryFastWalker'] as const) put(key, 3, 5.6);
+    view.applyEvents(placed, match.state);
+  }
 
   // Feel: shake and punch go to the camera; hit-stop and slow motion to the loop's clock.
   let hitStopLeft = 0;

@@ -246,6 +246,35 @@ const SCENARIOS = [
   { name: 'battle-early', url: '/?scene=battle-demo&seed=7&t=25' },
   { name: 'battle-mid', url: '/?scene=battle-demo&seed=7&t=80' },
   { name: 'battle-busy', url: '/?scene=battle-demo&seed=7&t=150' },
+  // Stacks: five zombies piled against a Walnut Bomb in one lane, three in the next, with
+  // plants behind, so the depth nudge, the lift and the bars of a stack can be judged.
+  { name: 'battle-stack', url: '/?scene=battle-demo&setup=stack&t=8' },
+  {
+    // Close up, as played, then with every unit at 60% so all the stack's bars show.
+    name: 'battle-stack-close',
+    url: '/?scene=battle-demo&setup=stack&t=8',
+    steps: async (page) => {
+      await page.evaluate(() => window.__lvt.battle.focus(2, 4.6));
+      await nextFrames(page, 3);
+    },
+    frames: [
+      { suffix: 'play', run: () => Promise.resolve() },
+      {
+        suffix: 'bars',
+        run: async (page) => {
+          await page.evaluate(() => {
+            const battle = window.__lvt.battle;
+            for (const u of battle.match.state.units) {
+              const v = battle.view.unit(u.id);
+              if (v) v.hp = v.maxHp * 0.6;
+            }
+            battle.redraw();
+          });
+          await nextFrames(page, 3);
+        },
+      },
+    ],
+  },
   // Every unit's bar at 40% health, so the bars and level pips of the busy frame can be judged.
   {
     name: 'battle-bars',

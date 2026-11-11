@@ -7,11 +7,12 @@ import type { Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../..
 import { BASE_STOP_X, ZOMBIE_SPAWN_X } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
 import { BaseView } from '../models/bases';
-import { makeGravestone, makeProjectile, makeToken, spinToken, type TokenKind } from '../models/props';
-import { getModelDef, prewarmModels } from '../models/registry';
+import { PEA_COLORS, makeGravestone, makeProjectile, makeToken, spinToken, type TokenKind } from '../models/props';
+import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
 import { PALETTE } from '../palette';
 import { modelColors } from '../voxel/build';
 import { ModelInstance } from '../voxel/rig';
+import { worldToClient } from '../coords';
 import type { Lawn } from '../world/Lawn';
 import { HealthBars } from './HealthBars';
 import type { Feel, PlacementPreview } from './types';
@@ -31,6 +32,14 @@ const hex = (c: string): number => parseInt(c.slice(1), 16);
 const STACK_DISTANCE = 0.4;
 /** Depth nudge per place in a stack: the first stands on the lane's centre line. */
 const STACK_Z = [0, 0.12, -0.12, 0.24, -0.24, 0.06, -0.06, 0.18, -0.18];
+/** Lift per place in a stack (art bible section 6: offset in height by a few voxels), at most three places. */
+const STACK_Y = 0.045;
+/** Queue step per place in a stack, back along the lane (+x, away from the plants). */
+const STACK_X = 0.14;
+/** A pea whose hit came before it left the mouth flies from the muzzle to the hit in this long. */
+const LATE_FLIGHT = 0.08;
+/** A finger may miss a unit by this many CSS pixels and still pick it. */
+export const PICK_TOLERANCE_PX = 28;
 /** Flight height of a projectile once it has left the muzzle, and how long it takes to get there. */
 const SETTLE_SECONDS = 0.14;
 /** A brain is lobbed: up at this speed, pulled down at this rate, never below the floor. */
@@ -44,11 +53,15 @@ const GRAVE_SECONDS = 0.45;
 /** Smoke puffs from each hurt base this often. */
 const SMOKE_EVERY = 0.16;
 /** How far back a zombie biting a plant is drawn from where the simulation has it. */
-const BITE_STEP_BACK = 0.12;
+const BITE_STEP_BACK = 0.2;
 /** The fewest seconds between two shudders of one base. */
 const BASE_HIT_GAP = 0.45;
 /** Bars of a zombie and the plant it bites stand apart: each is moved this far towards its own side. */
 const BAR_SHIFT = 0.11;
+/** Lift of each further bar in a stack: a bar and its outline, plus a gap. */
+const BAR_LIFT = 0.19;
+/** The lowest a zombie's bar sits (tiles above its feet, before the 0.14 gap). */
+const ZOMBIE_BAR_FLOOR = 1.1;
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
 const PROJECTILE_SCALE: Record<ProjectileKind, number> = { pea: 1.2, brain: 1.1 };
 /** Sudden death warms the sun and sky towards this over two seconds. */
@@ -57,7 +70,7 @@ const SUDDEN_DEATH_SHARE = 0.4;
 
 const LEVEL_COLOR = [0, hex('#FFFFFF'), hex('#FFFFFF'), hex(PALETTE.levelIron), hex(PALETTE.levelCrystal), hex(PALETTE.levelGold)];
 const STONE = [hex(PALETTE.stone), hex(PALETTE.stoneDark), hex(PALETTE.graveRock), hex(PALETTE.graveSoil)];
-const TRAIL: Record<ProjectileKind, number> = { pea: hex(PALETTE.pea), brain: hex(PALETTE.brainPink) };
+const TRAIL: Record<ProjectileKind, number> = { pea: hex(PEA_COLORS.body), brain: hex(PALETTE.brainPink) };
 
 interface ProjectileView {
   id: number;
@@ -76,6 +89,12 @@ interface ProjectileView {
   fromY: number;
   fromZ: number;
   flightY: number;
+  /** Hit before it was seen: it flies from `start` to `hit` once released, then lands. */
+  doomed: boolean;
+  start: Vector3;
+  hit: Vector3;
+  hitBlocked: boolean;
+  hitTarget: number | null;
 }
 
 interface TokenView { object: Object3D; kind: TokenKind; age: number; at: Vector3; active: boolean }
@@ -85,6 +104,13 @@ interface PendingBlast { at: Vector3; radius: number; delay: number; active: boo
 const v1 = new Vector3();
 const v2 = new Vector3();
 const ndc = new Vector2();
+const client = { width: 1, height: 1 };
+
+/** Options for a battle view. */
+export interface BattleViewOptions {
+  /** Model keys that can appear, built ahead so nothing hitches later (default: every model). */
+  units?: readonly string[];
+}
 
 export class BattleView {
   /** Screen feedback for the session to pass on to the camera and the loop. */
@@ -112,21 +138,24 @@ export class BattleView {
   private readonly blasts: PendingBlast[] = [];
   private readonly colors = new Map<string, number[]>();
   private readonly hooks: UnitHooks;
-  private prewarmed = false;
+  /** False until the first `applyEvents`, which also brings the bases up to the state. */
+  private synced = false;
+  private resolveCelebrate: (() => void) | null = null;
+  private disposed = false;
   private time = 0;
 
   private readonly lights: { light: DirectionalLight | HemisphereLight; base: Color }[] = [];
   private tint = -1;
 
   private readonly ghosts = new Map<UnitKey, ModelInstance>();
-  private readonly ghostOk: MeshStandardMaterial;
-  private readonly ghostBad: MeshStandardMaterial;
+  /** One see-through material for every ghost; only one ghost shows at a time. */
+  private readonly ghostMaterial: MeshStandardMaterial;
   private ghost: ModelInstance | null = null;
   private pulseTarget: UnitView | null = null;
   private readonly raycaster = new Raycaster();
   private readonly pickables: Object3D[] = [];
 
-  constructor(scene: Scene, camera: Camera, lawn: Lawn, fx: Effects, playerFaction: Faction) {
+  constructor(scene: Scene, camera: Camera, lawn: Lawn, fx: Effects, playerFaction: Faction, options: BattleViewOptions = {}) {
     this.scene = scene;
     this.camera = camera;
     this.lawn = lawn;
@@ -138,10 +167,9 @@ export class BattleView {
       mergePeak: (view) => this.mergePeak(view),
       burst: (view) => this.burst(view),
     };
-    this.ghostOk = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: 0.5, depthWrite: false });
-    this.ghostBad = new MeshStandardMaterial({
-      vertexColors: true, roughness: 0.85, transparent: true, opacity: 0.45, depthWrite: false, color: '#FF7070',
-    });
+    this.ghostMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: 0.5, depthWrite: false });
+    // Every model that can appear is built now, so a first spawn or a merge mid-match has nothing left to build.
+    prewarmModels([...(options.units ?? modelKeys())]);
     for (let i = 0; i < 8; i++) this.graves.push({ object: makeGravestone(), age: 0, active: false });
     for (let i = 0; i < 10; i++) {
       const kind: TokenKind = i % 2 === 0 ? 'sun' : 'brain';
@@ -162,9 +190,10 @@ export class BattleView {
 
   /** Call once per simulation step, with its events and the state after it. */
   applyEvents(events: readonly SimEvent[], state: SimState): void {
-    if (!this.prewarmed) {
-      this.prewarmed = true;
-      prewarmModels([...state.config.cards.plants, ...state.config.cards.zombies]);
+    if (!this.synced) {
+      // A view attached to a match already under way (or restored) starts from its state.
+      this.synced = true;
+      for (const side of ['plants', 'zombies'] as const) this.setBaseHealth(side, state.baseHp[side], state.baseMaxHp[side]);
     }
     for (const e of events) this.apply(e, state);
 
@@ -187,9 +216,12 @@ export class BattleView {
       if (!view) continue;
       view.stackPlace = place;
       view.targetZ = STACK_Z[Math.min(place, STACK_Z.length - 1)] as number;
+      view.targetY = STACK_Y * Math.min(place, 3);
       // Halted by a plant (not at the base): the simulation's reach is shorter than the two
       // models are deep, so it is drawn a little back and lunges in to bite.
-      view.targetX = u.blocked && u.x > BASE_STOP_X + 0.01 ? BITE_STEP_BACK : 0;
+      // Behind the first, the rest of a stack queue back a little along the lane as well, so
+      // five at one spot read as five.
+      view.targetX = (u.blocked && u.x > BASE_STOP_X + 0.01 ? BITE_STEP_BACK : 0) + STACK_X * Math.min(place, 4);
     }
     for (const p of state.projectiles) {
       const view = this.projectiles.get(p.id);
@@ -227,7 +259,12 @@ export class BattleView {
         if (view.lane !== lane || view.dying || !(view.hp < view.maxHp)) continue;
         v1.copy(view.wrapper.position);
         v1.x += view.faction === 'plants' ? -BAR_SHIFT : BAR_SHIFT;
-        v1.y += view.height + 0.14 + 0.13 * Math.min(view.stackPlace, 4);
+        // A stack's bars stand in a column over the lane's centre line, one bar height apart, so
+        // the depth nudge of the zombies under them cannot jumble them.
+        v1.z = view.lane + 0.5;
+        // Zombies' bars share one floor whatever their height, so a column of them is even.
+        const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
+        v1.y = top + 0.14 + BAR_LIFT * Math.min(view.stackPlace, 4);
         this.bars.add(v1, view.hp / view.maxHp, view.level);
       }
     }
@@ -276,77 +313,107 @@ export class BattleView {
     this.lawn.highlightLane(null, 'ok');
     if (!p) return;
 
-    const isPlant = UNIT_INFO[p.unit].faction === 'plants';
+    const state = p.ok ? 'ok' : 'bad';
     if (p.mergeTargetId !== null) {
       const target = this.views.get(p.mergeTargetId);
       if (target && !target.dying) {
         target.pulsing = true;
         this.pulseTarget = target;
-        if (target.faction === 'plants') this.lawn.highlightTile(target.lane, Math.floor(target.currX), p.ok ? 'ok' : 'bad', 'plants');
-        else this.lawn.highlightLane(target.lane, p.ok ? 'ok' : 'bad', 'zombies');
+        if (target.faction === 'plants') this.lawn.highlightTile(target.lane, Math.floor(target.currX), state, 'plants');
+        else this.lawn.highlightLane(target.lane, state, 'zombies');
         return;
       }
     }
-    const side: Faction = isPlant ? 'plants' : 'zombies';
-    if (isPlant) this.lawn.highlightTile(p.lane, p.col, p.ok ? 'ok' : 'bad', side);
-    else this.lawn.highlightLane(p.lane, p.ok ? 'ok' : 'bad', side);
+    const isPlant = UNIT_INFO[p.unit].faction === 'plants';
+    if (isPlant) this.lawn.highlightTile(p.lane, p.col, state, 'plants');
+    else this.lawn.highlightLane(p.lane, state, 'zombies');
 
-    let ghost = this.ghosts.get(p.unit);
-    if (!ghost) {
-      ghost = new ModelInstance(getModelDef(p.unit), 1);
-      ghost.root.name = `ghost-${p.unit}`;
-      this.ghosts.set(p.unit, ghost);
-      this.scene.add(ghost.root);
-    }
-    const material = p.ok ? this.ghostOk : this.ghostBad;
-    ghost.root.traverse((o) => {
-      if (o instanceof Mesh) {
-        o.material = material;
-        o.castShadow = false;
-      }
-    });
+    const ghost = this.ghostFor(p.unit);
+    // Only one ghost shows at a time, so they all share one material, tinted red on a bad spot.
+    this.ghostMaterial.color.setHex(p.ok ? 0xffffff : 0xff7070);
+    this.ghostMaterial.opacity = p.ok ? 0.5 : 0.45;
     ghost.root.position.set(isPlant ? p.col + 0.5 : ZOMBIE_SPAWN_X, 0, p.lane + 0.5);
     ghost.root.visible = true;
     this.ghost = ghost;
   }
 
-  /** The unit under a pointer at normalised device coordinates, or null. */
-  unitAtRay(ndcX: number, ndcY: number): number | null {
+  /**
+   * The unit under a pointer at normalised device coordinates, or null. Hidden parts and dying
+   * units never pick. With `viewport` (CSS pixels) a near miss still picks: the unit whose
+   * middle is nearest the pointer, within `PICK_TOLERANCE_PX`.
+   */
+  unitAtRay(ndcX: number, ndcY: number, viewport?: { width: number; height: number }): number | null {
     this.pickables.length = 0;
-    for (const view of this.list) if (!view.dying) this.pickables.push(view.wrapper);
+    for (const view of this.list) {
+      if (view.dying || !view.wrapper.visible) continue;
+      view.wrapper.updateMatrixWorld(true); // as drawn this frame, even before a render
+      this.pickables.push(view.wrapper);
+    }
     if (this.pickables.length === 0) return null;
+    this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(ndc.set(ndcX, ndcY), this.camera);
     const hits = this.raycaster.intersectObjects(this.pickables, true);
     for (const hit of hits) {
+      let id: number | null = null;
+      let shown = true;
       for (let o: Object3D | null = hit.object; o; o = o.parent) {
-        if (o.name.startsWith('unit-')) return Number(o.name.slice(5));
+        if (!o.visible) shown = false;
+        if (id === null && o.name.startsWith('unit-')) id = Number(o.name.slice(5));
+      }
+      if (shown && id !== null) return id;
+    }
+    if (!viewport) return null;
+
+    // A finger is wider than a ray: the nearest unit middle on screen, if close enough.
+    client.width = viewport.width;
+    client.height = viewport.height;
+    const px = (ndcX * 0.5 + 0.5) * viewport.width;
+    const py = (0.5 - ndcY * 0.5) * viewport.height;
+    let best: number | null = null;
+    let bestD = PICK_TOLERANCE_PX * PICK_TOLERANCE_PX;
+    for (const view of this.list) {
+      if (view.dying || !view.wrapper.visible) continue;
+      v1.copy(view.wrapper.position);
+      v1.y += view.height / 2;
+      const at = worldToClient(v1, this.camera, client);
+      const d = (at.x - px) ** 2 + (at.y - py) ** 2;
+      if (d <= bestD) {
+        bestD = d;
+        best = view.id;
       }
     }
-    return null;
+    return best;
   }
 
-  /** The end of the match: the loser's base falls and the winners cheer. Resolves when it has fallen. */
+  /** The end of the match: the loser's base falls and the winners cheer. Resolves when it has fallen (or the view is disposed). */
   celebrate(winner: Faction | 'draw'): Promise<void> {
     const falls: Promise<void>[] = [];
     if (winner !== 'zombies') falls.push(this.bases.zombies.collapse());
     if (winner !== 'plants') falls.push(this.bases.plants.collapse());
     for (const view of this.list) if (winner !== 'draw' && view.faction === winner) view.play('cheer');
-    return Promise.all(falls).then(() => undefined);
+    const cut = new Promise<void>((resolve) => (this.resolveCelebrate = resolve));
+    if (this.disposed) this.resolveCelebrate?.();
+    return Promise.race([Promise.all(falls).then(() => undefined), cut]);
   }
 
+  /** Takes everything the view added out of the scene and frees it. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     for (const view of this.list) view.dispose();
     this.list.length = 0;
     this.views.clear();
     for (const p of this.flying) p.object.removeFromParent();
     this.flying.length = 0;
     this.projectiles.clear();
-    for (const t of this.tokens) t.object.removeFromParent();
-    for (const g of this.graves) g.object.removeFromParent();
+    for (const t of this.tokens) (t.active = false), t.object.removeFromParent();
+    for (const g of this.graves) (g.active = false), g.object.removeFromParent();
+    for (const b of this.blasts) b.active = false;
     for (const ghost of this.ghosts.values()) ghost.dispose();
     this.ghosts.clear();
-    this.ghostOk.dispose();
-    this.ghostBad.dispose();
+    this.ghost = null;
+    this.pulseTarget = null;
+    this.ghostMaterial.dispose();
     for (const side of ['plants', 'zombies'] as const) {
       this.scene.remove(this.bases[side].group);
       this.bases[side].dispose();
@@ -355,6 +422,28 @@ export class BattleView {
     for (const { light, base } of this.lights) light.color.copy(base);
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
+    this.resolveCelebrate?.();
+    this.resolveCelebrate = null;
+  }
+
+  /** The ghost of a unit type, made once with the see-through material and kept. */
+  private ghostFor(key: UnitKey): ModelInstance {
+    let ghost = this.ghosts.get(key);
+    if (!ghost) {
+      ghost = new ModelInstance(getModelDef(key), 1);
+      ghost.root.name = `ghost-${key}`;
+      ghost.root.traverse((o) => {
+        if (o instanceof Mesh) {
+          o.material = this.ghostMaterial;
+          o.castShadow = false;
+          o.receiveShadow = false;
+        }
+      });
+      ghost.root.visible = false;
+      this.ghosts.set(key, ghost);
+      this.scene.add(ghost.root);
+    }
+    return ghost;
   }
 
   // ---- Events ----------------------------------------------------------------------------
@@ -434,9 +523,7 @@ export class BattleView {
       }
       case 'baseDamaged': {
         const base = this.bases[e.faction];
-        const max = state.baseMaxHp[e.faction];
-        base.setHealth(max > 0 ? e.hp / max : 0);
-        this.smokeAt[e.faction] = base.smokeAnchors();
+        this.setBaseHealth(e.faction, e.hp, state.baseMaxHp[e.faction]);
         // Sudden death wears both bases down every step (no lane): that shows as damage, not
         // as blows. Blows shudder the base, but no more often than BASE_HIT_GAP, or several
         // biters at once would keep it flashing white.
@@ -469,6 +556,12 @@ export class BattleView {
         void unhandled;
       }
     }
+  }
+
+  private setBaseHealth(side: Faction, hp: number, max: number): void {
+    const base = this.bases[side];
+    base.setHealth(max > 0 ? hp / max : 0);
+    this.smokeAt[side] = base.smokeAnchors();
   }
 
   private addUnit(id: number, key: UnitKey, faction: Faction, lane: number, x: number, level: number): UnitView {
@@ -528,6 +621,7 @@ export class BattleView {
       // Leaves at the snap of the shot, if the shooter has one to show.
       revealAt: owner && owner.has('shoot') ? RELEASE_SECONDS : 0,
       shown: false, ownerId, fromX: 0, fromY: 0.6, fromZ: 0, flightY: 0.6,
+      doomed: false, start: new Vector3(), hit: new Vector3(), hitBlocked: false, hitTarget: null,
     };
     this.projectiles.set(id, view);
     this.flying.push(view);
@@ -547,7 +641,7 @@ export class BattleView {
   private hitProjectile(id: number, lane: number, x: number, targetId: number | null, targetBase: Faction | null, blocked: boolean): void {
     const view = this.projectiles.get(id);
     const target = targetId === null ? undefined : this.views.get(targetId);
-    if (view && view.shown) v1.copy(view.object.position);
+    if (view && view.shown && !view.doomed) v1.copy(view.object.position);
     else v1.set(x, 0.55, lane + 0.5);
     if (target) {
       // At the front of the unit it hit.
@@ -555,18 +649,33 @@ export class BattleView {
       v1.z = target.wrapper.position.z;
     } else if (targetBase === 'zombies') v1.x = Math.min(v1.x, 10.1);
     else if (targetBase === 'plants') v1.x = Math.max(v1.x, -0.1);
-    if (blocked) {
-      v1.y = Math.max(v1.y, 0.5);
-      this.fx.blockFlash(v1);
-      target?.play('shoot'); // the shield goes up
-    } else {
-      this.fx.spark(v1);
+    if (blocked) v1.y = Math.max(v1.y, 0.5);
+    if (view && !view.shown) {
+      // It struck before the shooter's snap let it go: it is still seen, leaving the mouth
+      // at the snap and flying straight to the hit, which lands then.
+      view.doomed = true;
+      view.hit.copy(v1);
+      view.hitBlocked = blocked;
+      view.hitTarget = targetId;
+      return;
     }
+    this.impact(v1, blocked, target);
     if (view) this.release(view);
   }
 
+  /** A projectile lands at `at`: a spark, or a block flash and the shield going up. */
+  private impact(at: Vector3, blocked: boolean, target: UnitView | undefined): void {
+    if (blocked) {
+      this.fx.blockFlash(at);
+      target?.play('shoot'); // the shield goes up
+    } else {
+      this.fx.spark(at);
+    }
+  }
+
   private moveProjectiles(dt: number, alpha: number): void {
-    for (const p of this.flying) {
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      const p = this.flying[i] as ProjectileView;
       p.age += dt;
       if (!p.shown) {
         if (p.age < p.revealAt) continue;
@@ -585,7 +694,19 @@ export class BattleView {
           p.fromZ = 0;
         }
         p.flightY = p.kind === 'pea' ? Math.max(0.45, p.fromY) : p.fromY;
+        p.start.set(simX + p.fromX, p.fromY, p.lane + 0.5 + p.fromZ);
         p.age = 0;
+      }
+      if (p.doomed) {
+        // Out of the mouth and straight into what it already hit.
+        const u = Math.min(1, p.age / LATE_FLIGHT);
+        p.object.position.lerpVectors(p.start, p.hit, u);
+        p.object.updateMatrixWorld();
+        if (u >= 1) {
+          this.impact(p.hit, p.hitBlocked, p.hitTarget === null ? undefined : this.views.get(p.hitTarget));
+          this.release(p);
+        }
+        continue;
       }
       const x = p.prevX + (p.currX - p.prevX) * alpha;
       // Out of the muzzle, then onto the lane's centre line.

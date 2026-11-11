@@ -5,7 +5,7 @@ import {
 import { PALETTE } from '../palette';
 
 // Health bars (art bible section 6): 0.6 tile wide above each damaged unit, green, then
-// yellow under 50%, red under 25%, with the level as pips on its left end for levels 2 to 5.
+// yellow under 50%, red under 25%, with one pip per level above the first on its left end.
 // Every bar of every unit is one instanced mesh of camera-facing quads: one draw call.
 
 /** Bar size in tiles. */
@@ -13,10 +13,10 @@ const BAR_W = 0.6;
 const BAR_H = 0.085;
 /** The dark outline round the bar and the pips. */
 const EDGE = 0.03;
-const PIP = 0.07;
+const PIP = 0.085;
 const PIP_GAP = 0.012;
-/** Quads per unit at most: outline, track, fill, and an outline and a fill per pip. */
-const QUADS_PER_UNIT = 3 + 2 * 5;
+/** Quads per unit at most: outline, track, fill, and an outline and a fill per pip (4 at level 5). */
+export const QUADS_PER_UNIT = 3 + 2 * 4;
 
 /**
  * Basic materials still go through the filmic tone mapper (exposure 2); this brings their
@@ -34,7 +34,9 @@ const C = {
   green: tone('#5BD13D'),
   yellow: tone(PALETTE.petal),
   red: tone(PALETTE.speedRed),
-  pips: [tone('#FFFFFF'), tone('#FFF7E3'), tone(PALETTE.levelIron), tone(PALETTE.levelCrystal), tone(PALETTE.levelGold)],
+  // Pips are brighter than the bar, so they read at lawn size; still under the bloom threshold.
+  white: tone('#FFFFFF', 0.75),
+  gold: tone(PALETTE.levelGold, 0.75),
 };
 
 const matrix = new Matrix4();
@@ -82,11 +84,13 @@ export class HealthBars {
       this.quad(at, -BAR_W / 2 + w / 2, 0, w, BAR_H, f < 0.25 ? C.red : f < 0.5 ? C.yellow : C.green);
     }
     if (level >= 2) {
-      const color = C.pips[Math.min(level, 5) - 1] as Color;
-      // Pips sit in a row on the bar's left end, just above it, so a row of plants one tile
-      // apart never has its pips run into the next bar.
+      // One bright square per level above the first: white, and gold for the top level.
+      // They sit just above the bar's left end, so a row of plants one tile apart never has
+      // its pips run into the next bar.
+      const pips = Math.min(level, 5) - 1;
+      const color = level >= 5 ? C.gold : C.white;
       const dy = BAR_H / 2 + EDGE + PIP / 2 + EDGE - 0.005;
-      for (let i = 0; i < level; i++) {
+      for (let i = 0; i < pips; i++) {
         const dx = -BAR_W / 2 + PIP / 2 + i * (PIP + EDGE + PIP_GAP);
         this.quad(at, dx, dy, PIP + 2 * EDGE, PIP + 2 * EDGE, C.edge);
         this.quad(at, dx, dy, PIP, PIP, color);

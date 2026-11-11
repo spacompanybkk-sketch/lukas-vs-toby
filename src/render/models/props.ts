@@ -3,7 +3,7 @@ import type { ProjectileKind } from '../../sim/types';
 import { glowMaterial } from '../fx/glow';
 import { MATTE_PLASTIC } from '../look';
 import { PALETTE } from '../palette';
-import { BoxBatch, hash2, paint, shade } from '../world/boxes';
+import { BoxBatch, hash2, paint } from '../world/boxes';
 
 // Small things that fly or float over the lawn: the two projectiles and the two energy
 // tokens. Each is a little ball of voxels; every copy of one shares its geometry and
@@ -49,15 +49,23 @@ function blob(
 
 const round = (x: number, y: number, z: number): boolean => x * x + y * y + z * z <= 1.25;
 
+/**
+ * The pea in flight is deeper and darker than the palette's pea (#7ED957), which is almost the
+ * grass's own colour (#7FD14B): a child has to be able to follow it down the lawn. A bright
+ * glint on top, a near-black-green underside and edge so it stands off the grass.
+ */
+export const PEA_COLORS = { body: '#2E9E2E', glint: '#B5EF8A', rim: '#17561B' } as const;
+
 function peaGeometry(): BufferGeometry {
   const n = 5;
-  const light = paint(PALETTE.peaLight);
-  const pea = paint(PALETTE.pea);
-  const dark = shade(PALETTE.pea, -0.12);
+  const light = paint(PEA_COLORS.glint);
+  const pea = paint(PEA_COLORS.body);
+  const dark = paint(PEA_COLORS.rim);
   return blob(PROJECTILE_SIZE.pea / n, n, n, n, round, (i, j, k) => {
-    // A glint at the top towards the sun, a darker underside.
+    // A glint at the top towards the sun; the underside and the outer ring dark.
     if (j === n - 1 && i <= 2 && k <= 2) return light;
     if (j === 0) return dark;
+    if (i === 0 || i === n - 1 || k === 0 || k === n - 1) return j >= n - 2 ? pea : dark;
     return pea;
   });
 }
