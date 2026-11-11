@@ -49,7 +49,7 @@ Goals
 
 Non-goals
 
-- Phones, tablets, touch input.
+- Phones. (iPad was a non-goal until 2026-11-11; it is now in scope, see section 19.)
 - Gamepads (the input layer must not prevent adding them later).
 - Accounts, strangers, chat, leaderboards beyond the two brothers.
 - Languages other than English.
@@ -67,8 +67,8 @@ Anti-goals (these make it a failure even if it runs)
 
 ## 4. Constraints
 
-- Runs in desktop Safari and Chromium browsers (the family Mac has Safari and Brave).
-  WebGL2 is required.
+- Runs in desktop Safari and Chromium browsers (the family Mac has Safari and Brave)
+  and in Safari on the boys' iPad (section 19). WebGL2 is required.
 - Reference machine: MacBook Air M3, 8 GB RAM, 2880×1864 display. 60 fps there.
 - Static build, deployable to the existing Firebase Hosting site
   (`lukas-toby-plants-vs-zombies`). Nothing is deployed without Michal saying so.
@@ -465,3 +465,28 @@ None of these blocks phases 1 or 2.
    it for the new one): it felt unbalanced and too easy; make it a notch harder.**
    Applied to the new game as the raised targets in section 10. Toby's Easy setting
    and his Versus head start stay, so the extra difficulty lands on Normal and Hard.
+
+## 19. iPad (added 2026-11-11)
+
+Michal, after seeing the first renders: the boys have an iPad and use Safari, so the game
+must work there too. This replaces the original "computer only". Phones stay out of scope.
+
+What it changes:
+
+- Input is pointer-based everywhere: tap a card then tap a tile, or drag a card onto the
+  lawn; tap a unit with a card selected to merge. Nothing may depend on hover, right-click
+  or a keyboard. Keyboard shortcuts remain as extras on a computer.
+- Touch targets are at least 44 points. Cards, the shovel, pause and the hero power are
+  sized for a five-year-old's finger.
+- Layout fits 4:3 (iPad) as well as 16:10 and 16:9, in landscape. In portrait the game
+  shows a "turn your iPad" picture. Safe areas and the home indicator are respected; the
+  page does not scroll, zoom or bounce.
+- Same-device Versus on the iPad is two-handed touch: Lukas's cards on the left edge,
+  Toby's on the right, both playable at once (multi-touch).
+- Sound starts on the first tap, as Safari requires.
+- Performance: the automatic resolution scaling and the Low/Medium/High setting must
+  hold 60 fps, or a steady 30, on the boys' iPad. The model is not yet known.
+- The iPad cannot reach a computer's localhost: testing there needs the game served on
+  the home network or a preview deployment, with Michal's go-ahead.
+- Proof gains an iPad pass: WebKit in the browser tests with a touch device profile, and
+  a hands-on check on the real iPad before each phase is called done.
