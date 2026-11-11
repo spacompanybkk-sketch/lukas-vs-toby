@@ -16,7 +16,7 @@ import { bothSides, lv, round, span } from './kit';
 //   2  big leaves on both shoulders, like pads
 //   3  an iron helmet band round the brow, riveted, with a crest over the top
 //   4  the carved mouth and nose glow crystal blue from inside; crystal band and spikes
-//   5  a gold crown round the stem, a gold band, a warm glow in the carvings and the eyes
+//   5  a gold crown round the stem on an iron band, a warm glow in the carvings and the eyes
 
 /** The carved-out dark, and the lights inside the carvings at levels 4 and 5. */
 const CARVED = '#2B1206';
@@ -98,7 +98,9 @@ export const pumpkinSquash: ModelDef = {
         // Level 2 up: leaf pads on both shoulders.
         ...lv(2, 5, bothSides(PAD)),
         // Level 3 up: a band round the brow, rivets, and a crest over the top.
-        ...lv(3, 5, round(0, 0, [[4, 2.5], [3, 3.5], [1.5, 4]], 10, 11, BAND)),
+        ...lv(3, 4, round(0, 0, [[4, 2.5], [3, 3.5], [1.5, 4]], 10, 11, BAND)),
+        // Level 5: the band stays iron under the gold crown, so the pumpkin stays orange and the gold is the crown.
+        ...lv(5, 5, round(0, 0, [[4, 2.5], [3, 3.5], [1.5, 4]], 10, 11, 'levelIron')),
         ...lv(3, 4, bothSides([span(-0.5, 0.5, 12, 13, 1, 2.5, BAND), span(-1, 1, 11, 12, 2.5, 3, BAND)])),
         ...lv(3, 4, [span(4, 4.5, 10.25, 10.75, -0.25, 0.25, 'levelIronDark'), span(1.25, 1.75, 10.25, 10.75, 3.5, 4, 'levelIronDark')]),
         ...lv(5, 5, [span(4, 4.5, 10.25, 10.75, -0.25, 0.25, 'fireLight', { emissive: 2 }), span(1.25, 1.75, 10.25, 10.75, 3.5, 4, 'fireLight', { emissive: 2 })]),

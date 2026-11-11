@@ -15,13 +15,16 @@ import { bothSides, lv, round, span } from './kit';
 // Every level adds something the lawn camera can see, on top or out to the side:
 //
 //   2  a second basket beside the first (two kernels), the arm a voxel taller, husk tips curl out
-//   3  iron baskets, and an iron hub and bands on the arm
+//   3  husk ears standing up off the crown; iron baskets, and an iron hub and bands on the arm
 //   4  crystal kernels in the baskets and a ring of crystal kernels on the crown
-//   5  the cob's kernels turn gold, a gold crown of kernels, gold baskets, warm lights in the eyes
+//   5  a gold crown of kernels, gold baskets, hub and husk tips, warm lights in the eyes (the cob
+//      stays corn)
 
 const MOUTH = '#5A2A08';
 const TOOTH = '#FFF4DC';
 const BROW = '#7A4A12';
+/** A cream plate behind the eyes and the grin: the face stands out from the yellow cob, even in shade. */
+const CREAM = '#FFF6DE';
 
 /** A checker of darker kernels on the cob, flush with it: one box per dark kernel. */
 function kernels(color: string): Box[] {
@@ -94,7 +97,7 @@ export const kernelPult: ModelDef = {
       name: 'head',
       parent: 'body',
       pivot: [0, 7, 0],
-      rot: [0, -20, 6],
+      rot: [0, -32, 8],
       shadedBy: ['eyes'],
       boxes: [
         span(-3, 3, 7, 12.5, -2.5, 2.5, 'corn'),
@@ -104,21 +107,23 @@ export const kernelPult: ModelDef = {
         // Silk: a pale tuft at the front of the crown.
         span(0, 2, 13, 13.5, -1, 1, 'cornLight'),
         span(1, 2.5, 13.5, 14, -0.5, 0.5, 'petalDark'),
-        // Kernels: darker ones in a checker, until level 5 turns them to gold.
-        ...lv(1, 4, kernels('cornDark')),
-        ...lv(5, 5, kernels('levelGold')),
-        // The face, on a paler plate: a cheeky grin, one corner up, a tooth.
-        span(2.5, 3, 7.5, 12.5, -2.5, 2.5, 'cornLight'),
+        // Kernels: darker ones in a checker.
+        ...kernels('cornDark'),
+        // The face, on a cream plate: a cheeky grin, one corner up, a tooth.
+        span(2.5, 3, 7.5, 12.5, -2.5, 2.5, CREAM),
         span(2.5, 3, 7.5, 8.5, -1.5, 1.5, MOUTH),
         span(2.5, 3, 8.5, 9, 1, 2, MOUTH),
-        span(2.75, 3, 8, 8.5, -0.5, 0.5, TOOTH),
+        span(3, 3.5, 8, 8.5, -0.5, 0.5, TOOTH),
         // Brows, low in the middle: determined.
         ...bothSides([span(3, 3.5, 12, 12.5, 0.5, 1.5, BROW), span(3, 3.5, 12.5, 13, 1.5, 2.5, BROW)]),
+        // Level 3 up: husk leaves standing up off both sides of the crown like ears, a new shape
+        // the lawn camera sees beside the head.
+        ...lv(3, 5, bothSides([span(0, 1.5, 10.5, 13.5, 3, 3.5, 'husk'), span(0.5, 1.5, 13.5, 15, 3, 3.5, 'huskDark')])),
         // Level 4: a ring of crystal kernels on the crown; level 5, a crown of gold ones.
         ...lv(4, 4, [...bothSides([span(-2, -1, 13, 14, 1, 2, 'levelCrystal'), span(0, 1, 13, 14.5, 1.5, 2.5, 'levelCrystal')])]),
         ...lv(5, 5, [
           ...bothSides([span(-2, -1, 13, 14, 1, 2, 'levelGold'), span(0, 1, 13, 14.5, 1.5, 2.5, 'levelGold')]),
-          span(0.25, 0.75, 14.5, 15, 1.75, 2.25, 'fireLight', { emissive: 2 }),
+          span(0, 1, 14.5, 15, 1.5, 2.5, 'fireLight', { emissive: 2 }),
         ]),
       ],
     },
