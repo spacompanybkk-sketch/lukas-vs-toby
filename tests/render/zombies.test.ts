@@ -237,6 +237,9 @@ const STEPS: Record<string, number> = {
   desertZombie: 0.75,
   skeletonArcher: 0.85,
   hotTopic: 0.6,
+  cowboyZombie: 0.65,
+  necromancer: 1.0,
+  tridentZombie: 0.9,
 };
 /** Parts the clips and the game ask for by name. */
 const PROPS: [string, string][] = [
@@ -245,6 +248,10 @@ const PROPS: [string, string][] = [
   ['skeletonArcher', 'bow'],
   ['desertZombie', 'sand'],
   ['hotTopic', 'jaw'],
+  ['cowboyZombie', 'lasso'],
+  ['cowboyZombie', 'pistol'],
+  ['necromancer', 'staff'],
+  ['tridentZombie', 'trident'],
 ];
 
 describe('the zombies', () => {

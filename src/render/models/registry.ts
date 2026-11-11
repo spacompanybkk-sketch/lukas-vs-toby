@@ -4,10 +4,13 @@ import { peashooter } from './plants/peashooter';
 import { sunflower } from './plants/sunflower';
 import { walnutBomb } from './plants/walnutBomb';
 import { brainEater } from './zombies/brainEater';
+import { cowboyZombie } from './zombies/cowboyZombie';
 import { desertZombie } from './zombies/desertZombie';
 import { hotTopic } from './zombies/hotTopic';
+import { necromancer } from './zombies/necromancer';
 import { skeletonArcher } from './zombies/skeletonArcher';
 import { skeletonWarrior } from './zombies/skeletonWarrior';
+import { tridentZombie } from './zombies/tridentZombie';
 import { veryFastWalker } from './zombies/veryFastWalker';
 
 // Every model the game can show, by key. To add a unit: write its definition in
@@ -48,4 +51,4 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
   }
 }
 
-for (const def of [peashooter, sunflower, walnutBomb, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic]) registerModel(def);
+for (const def of [peashooter, sunflower, walnutBomb, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie]) registerModel(def);
