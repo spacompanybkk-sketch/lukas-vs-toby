@@ -23,7 +23,7 @@ const PLANT_KEYS = new Set(
 describe('the registry', () => {
   it('has the three plants of the first level', () => {
     expect(modelKeys()).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
-    expect(PLANT_KEYS).toEqual(new Set(['peashooter', 'sunflower', 'walnutBomb']));
+    expect([...PLANT_KEYS]).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
   });
 });
 

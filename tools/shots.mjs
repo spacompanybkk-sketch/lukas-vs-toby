@@ -48,6 +48,8 @@ const SCENARIOS = [
   },
   // On the real lawn, under the game's own camera.
   { name: 'gallery-lawn', url: '/?scene=gallery&stage=lawn&t=0.4' },
+  // The same without labels, which otherwise sit over the faces of the nearest lane.
+  { name: 'gallery-lawn-clean', url: '/?scene=gallery&stage=lawn&t=0.4&labels=0' },
   // Three-quarter views from the front and from behind.
   { name: 'gallery-peashooter-front', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=20&yaw=38' },
   { name: 'gallery-peashooter-back', url: '/?scene=gallery&model=peashooter&t=0.4&pitch=24&yaw=-142' },

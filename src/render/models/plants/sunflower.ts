@@ -13,8 +13,10 @@ import type { Box, ColorRef, ModelDef } from '../../voxel/types';
 //
 //   2  a second ring of twelve longer, darker petals between the first; a second pair of leaves
 //   3  iron points on every front petal; an iron brace on the stem
-//   4  the back ring turns to glowing crystal; crystal points
-//   5  the back ring gold, gold points, a gold halo over the flower; the seeds glow warm
+//   4  the back ring and the points turn to glowing crystal; crystal shards rise behind the
+//      top petals
+//   5  the back ring gold, gold points, gold rays with warm tips behind the top petals; the
+//      seeds glow warm
 
 /** Face centre: the flower turns and its petals flare about here. */
 const CY = 11.5;
@@ -78,9 +80,18 @@ const BACK: Span[] = bothSides([
   [0.5, 2, -5.5, -3.5], // 165°
 ]);
 /** The raised middle of the face, where the eyes and smile are: a stepped plate, lighter than the rim. */
-const PLATE: Span[] = [[-2.5, 2.5, -1.5, 2.5], [-1.5, 1.5, -2.5, 3]];
+const PLATE: Span[] = [[-2.75, 2.75, -1.5, 2.5], [-1.5, 1.5, -2.5, 3]];
 /** Seeds: darker dots round the rim, outside the plate. */
-const SEEDS: Span[] = [[-0.5, 0.5, 3, 3.5], ...bothSides([[2.5, 3.5, -0.5, 0.5], [2, 2.5, -3, -2.5]])];
+const SEEDS: Span[] = [[-0.5, 0.5, 3, 3.5], ...bothSides([[2.75, 3.5, -0.5, 0.5], [2, 2.5, -3, -2.5]])];
+/**
+ * Level 4 crystal shards, level 5 gold rays: points rising behind the top petals, in a layer
+ * behind the back ring, so they change the flower's outline from above. Each is a shaft and
+ * a narrower tip, written as [z0, z1, y0, y1] pairs from the face centre.
+ */
+const RAY_SHAFTS: Span[] = [[-0.5, 0.5, 4.5, 6.5], ...bothSides([[1.75, 2.75, 4, 5.75], [3.5, 4.25, 2.5, 3.75]])];
+const RAY_TIPS: Span[] = [[-0.25, 0.25, 6.5, 7.25], ...bothSides([[2.25, 2.75, 5.75, 6.5], [4.25, 4.75, 3.25, 4]])];
+/** A pale row of teeth along the top of the smile. */
+const TEETH = '#FFF4DC';
 
 export const sunflower: ModelDef = {
   key: 'sunflower',
@@ -130,11 +141,11 @@ export const sunflower: ModelDef = {
       parent: 'root',
       pivot: [0, 1, 0],
       boxes: [
-        { at: [-1, 0.75, -1], size: [2, 6.75, 2], color: 'stem' },
+        { at: [-1.5, 0.75, -1.5], size: [3, 6.75, 3], color: 'stem' },
         // Level 3 up: a brace, two bands joined by a strap up the front.
-        { at: [-1.25, 2.5, -1.25], size: [2.5, 0.75, 2.5], color: 'petalLight', minLevel: 3 },
-        { at: [-1.25, 5.5, -1.25], size: [2.5, 0.75, 2.5], color: 'petalLight', minLevel: 3 },
-        { at: [1, 3.25, -0.5], size: [0.5, 2.25, 1], color: 'petalLight', minLevel: 3 },
+        { at: [-1.75, 2.5, -1.75], size: [3.5, 0.75, 3.5], color: 'petalLight', minLevel: 3 },
+        { at: [-1.75, 5.5, -1.75], size: [3.5, 0.75, 3.5], color: 'petalLight', minLevel: 3 },
+        { at: [1.5, 3.25, -0.5], size: [0.5, 2.25, 1], color: 'petalLight', minLevel: 3 },
       ],
     },
     {
@@ -146,7 +157,7 @@ export const sunflower: ModelDef = {
       shadedBy: ['eyes', 'petals'],
       boxes: [
         // Neck and calyx, the green behind the petals.
-        { at: [-0.5, 7.5, -1], size: [1.75, 2, 2], color: 'stem' },
+        { at: [-0.5, 7.75, -1], size: [1.75, 1.75, 2], color: 'stem' },
         ...layer(0.5, 1.5, [[-2.5, 2.5, -1.5, 1.5], [-1.5, 1.5, -2.5, 2.5]], 'leafDark'),
         // The face: a stepped disc seven across, its rim dotted with seeds (warm and glowing
         // at level 5), and a lighter plate standing half a voxel proud in the middle.
@@ -154,10 +165,17 @@ export const sunflower: ModelDef = {
         ...layer(3, 3.5, SEEDS, SEED, { maxLevel: 4 }),
         ...layer(3, 3.5, SEEDS, 'fireLight', { minLevel: 5, emissive: 2 }),
         ...layer(3.5, 4, PLATE, 'walnutLight'),
-        // A wide smile, turned up at the corners, and rosy cheeks on the rim beside it.
-        ...layer(3.5, 4, [[-1.5, 1.5, -2.5, -1.5], [1.5, 2.5, -1.75, -0.75], [-2.5, -1.5, -1.75, -0.75]], MOUTH),
+        // A wide open smile, turned up at the corners, with a pale row of teeth along its top
+        // and a tongue, and rosy cheeks on the rim beside it.
+        ...layer(3.5, 4, [[-1.75, 1.75, -2.5, -1.25], [1.75, 2.5, -1.75, -0.75], [-2.5, -1.75, -1.75, -0.75]], MOUTH),
+        ...layer(3.75, 4, [[-1.25, 1.25, -1.6, -1.25]], TEETH),
         ...layer(3.75, 4, [[-0.75, 0.75, -2.5, -2]], 'terracotta'),
-        ...layer(3, 3.5, [[2.5, 3.5, -1.5, -0.5], [-3.5, -2.5, -1.5, -0.5]], 'petalDark'),
+        ...layer(3, 3.5, [[2.75, 3.5, -1.5, -0.5], [-3.5, -2.75, -1.5, -0.5]], 'petalDark'),
+        // Level 4: crystal shards behind the top petals; level 5: gold rays with warm tips.
+        ...layer(-0.5, 0.5, RAY_SHAFTS, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
+        ...layer(-0.5, 0.5, RAY_TIPS, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
+        ...layer(-0.5, 0.5, RAY_SHAFTS, 'levelGold', { minLevel: 5 }),
+        ...layer(-0.5, 0.5, RAY_TIPS, 'fireLight', { minLevel: 5, emissive: 2 }),
       ],
     },
     {
@@ -181,34 +199,18 @@ export const sunflower: ModelDef = {
       shadedBy: ['head'],
       boxes: [
         // Black, half a voxel proud of the face, a glint in the top corner nearest the sun.
-        // Two and a half tall rather than the art bible's three: this face is tipped back so far
-        // that the lawn camera hardly foreshortens it, and at three they came out tall.
-        ...layer(4, 4.5, [[0.75, 2.75, 0.25, 2.75], [-2.75, -0.75, 0.25, 2.75]], 'eye'),
-        ...layer(4, 4.5, [[0.75, 1.75, 1.75, 2.75], [-2.75, -1.75, 1.75, 2.75]], 'eyeGlint'),
+        // A voxel and a half wide, two and a half apart, two and a half tall rather than the art
+        // bible's three: this face is tipped back so far that the lawn camera hardly
+        // foreshortens it, and at three they came out tall.
+        ...layer(4, 4.5, [[1.25, 2.75, 0, 2.5], [-2.75, -1.25, 0, 2.5]], 'eye'),
+        ...layer(4, 4.5, [[1.25, 2.25, 1.5, 2.5], [-2.75, -1.75, 1.5, 2.5]], 'eyeGlint'),
         // Level 5: a small warm light in each.
-        ...layer(4, 4.5, [[1.75, 2.75, 0.75, 1.75], [-1.75, -0.75, 0.75, 1.75]], 'fireLight', { minLevel: 5, emissive: 3 }),
-      ],
-    },
-    {
-      // Level 5: a gold halo over the flower, its corners left off so it reads round, with a
-      // warm light at the middle of each side.
-      name: 'halo',
-      parent: 'stem',
-      pivot: [-1.5, 17.5, 0],
-      boxes: [
-        { at: [-3.5, 17.5, -3], size: [4, 0.75, 1], color: 'levelGold', minLevel: 5 },
-        { at: [-3.5, 17.5, 2], size: [4, 0.75, 1], color: 'levelGold', minLevel: 5 },
-        { at: [-4.5, 17.5, -2], size: [1, 0.75, 4], color: 'levelGold', minLevel: 5 },
-        { at: [0.5, 17.5, -2], size: [1, 0.75, 4], color: 'levelGold', minLevel: 5 },
-        { at: [-2, 18.25, 2.25], size: [1, 0.5, 0.5], color: 'fireLight', emissive: 2, minLevel: 5 },
-        { at: [-2, 18.25, -2.75], size: [1, 0.5, 0.5], color: 'fireLight', emissive: 2, minLevel: 5 },
-        { at: [0.75, 18.25, -0.5], size: [0.5, 0.5, 1], color: 'fireLight', emissive: 2, minLevel: 5 },
-        { at: [-4.25, 18.25, -0.5], size: [0.5, 0.5, 1], color: 'fireLight', emissive: 2, minLevel: 5 },
+        ...layer(4, 4.5, [[1.75, 2.75, 0.25, 1.25], [-2.25, -1.25, 0.25, 1.25]], 'fireLight', { minLevel: 5, emissive: 3 }),
       ],
     },
   ],
   clips: {
-    idle: idleBob({ body: 'stem', head: 'head', sway: ['leaves', 'leaves2', 'petals', 'halo'] }),
+    idle: idleBob({ body: 'stem', head: 'head', sway: ['leaves', 'leaves2', 'petals'] }),
     shoot: sunPulse('head', 'petals'),
     hit: hitRecoil('root', -1),
     spawn: spawnRise('root'),

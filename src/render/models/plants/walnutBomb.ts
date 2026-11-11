@@ -1,5 +1,5 @@
 import { breathe, cheerJump, hitWobble, spawnRise, swellBlast } from '../../voxel/clips';
-import type { Box, ColorRef, ModelDef } from '../../voxel/types';
+import type { Box, ColorRef, ModelDef, PartDef } from '../../voxel/types';
 
 // Walnut Bomb. Faces +X. A fat walnut sitting in a heap of soil, its shell in two halves
 // with a dark seam between and a ridge over the top, a cross face on the upper half (a
@@ -21,31 +21,53 @@ import type { Box, ColorRef, ModelDef } from '../../voxel/types';
 //
 // Damage: the part `cracks` is built hidden; the view shows it below half health.
 
-/** The nut's centre line. A little ahead of the tile's centre, so its face is forward. */
+/** The nut's centre line, as authored: the face's front at x 5. */
 const CX = 0.5;
+/**
+ * Where the nut really stands: half a voxel further back than authored, so that turned 35
+ * degrees to the player it still fits the level-1 envelope.
+ */
+const NUT_X = -0.5;
+
+/** A part of the nut moved to where it really stands (see NUT_X). */
+function placed(part: PartDef): PartDef {
+  const move = ([x, y, z]: [number, number, number]): [number, number, number] => [x + NUT_X, y, z];
+  return { ...part, pivot: move(part.pivot), boxes: part.boxes.map((box) => ({ ...box, at: move(box.at) })) };
+}
 const SEAM = 'walnutDark';
 const CORD = '#3B2A1A';
 const MOUTH = '#24140A';
 const TEETH = '#F4EBDD';
+/** The pale plate the face is set in, so black eyes and white teeth stand out. */
+const FACE = 'walnutLight';
 const CRACK = '#2B1A0C';
 
 type Arms = [number, number][];
 /** Half-widths (x, z) of the boxes that make each size of stepped round. */
-const R45: Arms = [[4.5, 2.5], [3.5, 3.5], [2, 4]];
-const R40: Arms = [[4, 2.25], [3, 3.25], [2, 3.75]];
+const R45: Arms = [[4.5, 2.5], [3.5, 3.25], [2, 4]];
+const R40: Arms = [[4, 2.25], [3, 3.125], [2, 3.75]];
 /** The shoulders: round at the flanks, still flat in front where the face is. */
-const SHOULDER: Arms = [[4.5, 2.5], [3, 3.25], [1.75, 3.75]];
+const SHOULDER: Arms = [[4.5, 2.9], [3, 3.25], [1.75, 3.75]];
+/** The upper half is a little wider in front than the lower, to make room for the face. */
+const HEAD45: Arms = [[4.5, 2.9], [3.5, 3.5], [2, 4]];
 const R35: Arms = [[3.5, 2], [2.5, 3], [1.5, 3.5]];
 const R25: Arms = [[2.5, 1.5], [1.5, 2.5]];
 
-/** A stepped round of the given arms from y0 to y1, centred on CX, grown by `grow` all round. */
+/**
+ * A stepped round of the given arms from y0 to y1, centred on CX, grown by `grow` all round.
+ * The long arms are a voxel shorter at the back than in front: the face wants a flat front,
+ * and a short back keeps the turned nut inside its tile.
+ */
 function round(arms: Arms, y0: number, y1: number, color: ColorRef, grow = 0, extra: Partial<Box> = {}): Box[] {
-  return arms.map(([hx, hz]) => ({
-    at: [CX - hx - grow, y0, -hz - grow],
-    size: [2 * (hx + grow), y1 - y0, 2 * (hz + grow)],
-    color,
-    ...extra,
-  }));
+  return arms.map(([hx, hz]) => {
+    const back = hx >= 3 ? 1 : 0;
+    return {
+      at: [CX - hx + back - grow, y0, -hz - grow],
+      size: [2 * (hx + grow) - back, y1 - y0, 2 * (hz + grow)],
+      color,
+      ...extra,
+    };
+  });
 }
 
 /** A box that exists only from level `from` to level `to`. */
@@ -70,30 +92,31 @@ function rivets(boxes: Pick<Box, 'at' | 'size'>[]): Box[] {
 const farSide = (boxes: Box[]): Box[] =>
   boxes.map((box) => ({ ...box, at: [box.at[0], box.at[1], -box.at[2] - box.size[2]] as [number, number, number] }));
 
-/** Grooves in the shell, flush with the near flank (z = 4): short steps, so they wander. */
+/**
+ * Grooves in the shell, flush with the near flank (z = 4): short steps, so they wander. All
+ * on the half-voxel grid: an odd size cuts every face of the box it sits in, and costs.
+ */
 const GROOVES: Box[] = [
-  { at: [-1.75, 2, 3.75], size: [0.5, 1.5, 0.25], color: SEAM },
-  { at: [-1.25, 3.5, 3.75], size: [0.5, 1.5, 0.25], color: SEAM },
-  { at: [1.75, 2.5, 3.75], size: [0.5, 2.5, 0.25], color: SEAM },
-  { at: [-1.75, 6.5, 3.75], size: [0.5, 1.5, 0.25], color: SEAM },
-  { at: [-1.25, 8, 3.75], size: [0.5, 1.25, 0.25], color: SEAM },
-  { at: [1.5, 6.5, 3.75], size: [0.5, 1.25, 0.25], color: SEAM },
-  { at: [2, 7.75, 3.75], size: [0.5, 1.5, 0.25], color: SEAM },
+  { at: [-1.5, 2, 3.5], size: [0.5, 1.5, 0.5], color: SEAM },
+  { at: [-1, 3.5, 3.5], size: [0.5, 1.5, 0.5], color: SEAM },
+  { at: [1.5, 2.5, 3.5], size: [0.5, 2.5, 0.5], color: SEAM },
+  { at: [-1.5, 6.5, 3.5], size: [0.5, 1.5, 0.5], color: SEAM },
+  { at: [-1, 8, 3.5], size: [0.5, 1, 0.5], color: SEAM },
+  { at: [1.5, 6.5, 3.5], size: [0.5, 1, 0.5], color: SEAM },
+  { at: [2, 7.5, 3.5], size: [0.5, 1.5, 0.5], color: SEAM },
 ];
 
 /** Paler bumps on the upper shell, flush with the near flank and the crown. */
 const BUMPS: Box[] = [
-  { at: [-0.5, 6.5, 3.75], size: [1, 0.75, 0.25], color: 'walnutLight' },
-  { at: [-1.75, 8.25, 3.75], size: [0.5, 0.75, 0.25], color: 'walnutLight' },
-  { at: [0.25, 8.5, 3.75], size: [0.75, 0.5, 0.25], color: 'walnutLight' },
-  { at: [-2.5, 11.5, 1], size: [1, 0.25, 1], color: 'walnutLight' },
-  { at: [-3.5, 10.25, -1.5], size: [1, 0.25, 1], color: 'walnutLight' },
+  { at: [-0.5, 6.5, 3.5], size: [1, 1, 0.5], color: 'walnutLight' },
+  { at: [0.5, 8.5, 3.5], size: [0.5, 0.5, 0.5], color: 'walnutLight' },
+  { at: [-2, 11.25, 0.5], size: [1, 0.5, 1], color: 'walnutLight' },
 ];
 
 /** Crystal veins, flush with the lower flank: a zigzag that glows. */
 const VEINS: Box[] = [
-  { at: [-2, 2.25, 3.75], size: [1, 1, 0.25], color: 'levelCrystal', minLevel: 4 },
-  { at: [-1, 3.25, 3.75], size: [1, 0.75, 0.25], color: 'levelCrystal', minLevel: 4 },
+  { at: [-1.5, 2.25, 3.75], size: [1, 1, 0.25], color: 'levelCrystal', minLevel: 4 },
+  { at: [-0.5, 3.25, 3.75], size: [0.75, 0.75, 0.25], color: 'levelCrystal', minLevel: 4 },
   { at: [0, 2.75, 3.75], size: [1, 0.75, 0.25], color: 'levelCrystal', minLevel: 4 },
   { at: [0.25, 3.5, 3.75], size: [0.75, 1.25, 0.25], color: 'levelCrystal', minLevel: 4 },
   { at: [1.75, 2.25, 3.75], size: [0.75, 1, 0.25], color: 'levelCrystal', minLevel: 4 },
@@ -106,24 +129,30 @@ const SPIKES: Box[] = [
   { at: [-1, 14.25, 2.5], size: [0.75, 0.75, 0.5], color: 'levelCrystal', minLevel: 4 },
 ];
 const BACK_SPIKE: Box[] = [
-  { at: [-3.75, 10.5, -0.5], size: [1, 1.5, 1], color: 'levelCrystal', minLevel: 4 },
-  { at: [-4, 12, -0.375], size: [0.75, 1, 0.75], color: 'levelCrystal', minLevel: 4 },
+  { at: [-2.75, 10.5, -0.5], size: [0.75, 1.5, 1], color: 'levelCrystal', minLevel: 4 },
+  { at: [-2.5, 12, -0.375], size: [0.5, 1, 0.75], color: 'levelCrystal', minLevel: 4 },
 ];
 
 /**
  * Cracks on the upper shell's near flank, standing a quarter voxel proud: on the shell at
  * levels 1 and 2, and on the iron (later gold) plate that covers that spot from level 3.
+ * The crown gets one across it at every level.
  */
 const CRACK_SHAPE: [number, number, number, number][] = [
   // x, y, width, height
-  [-1.25, 8.5, 0.75, 0.5],
-  [-0.75, 7.75, 0.5, 1],
-  [-0.5, 7.25, 0.75, 0.5],
-  [-0.25, 6.5, 0.5, 1],
+  [-1.25, 8.25, 1.25, 0.75],
+  [-0.5, 7.5, 0.75, 1.5],
+  [-0.25, 6.75, 1, 0.75],
+  [0, 6.25, 0.75, 1.25],
 ];
 const CRACKS: Box[] = [
   ...CRACK_SHAPE.map(([x, y, w, h]): Box => ({ at: [x, y, 4], size: [w, h, 0.25], color: CRACK, maxLevel: 2 })),
-  ...CRACK_SHAPE.map(([x, y, w, h]): Box => ({ at: [x, y, 4.75], size: [w, h, 0.25], color: CRACK, minLevel: 3 })),
+  ...CRACK_SHAPE.map(([x, y, w, h]): Box => ({ at: [x, y, 5], size: [w, h, 0.25], color: CRACK, minLevel: 3 })),
+  // Across the crown, from the back ledge over the top to the near shoulder.
+  { at: [-3, 10.5, 0.5], size: [0.75, 0.25, 1.25], color: CRACK },
+  { at: [-2, 11.75, 1.5], size: [0.5, 0.25, 0.5], color: CRACK },
+  { at: [-2, 12.5, 1], size: [1, 0.25, 0.5], color: CRACK },
+  { at: [-1, 12.5, 1.25], size: [0.75, 0.25, 1], color: CRACK },
 ];
 
 export const walnutBomb: ModelDef = {
@@ -136,151 +165,145 @@ export const walnutBomb: ModelDef = {
       // to the player from here.
       name: 'root',
       pivot: [0, 0, 0],
-      rot: [0, -25, 0],
+      rot: [0, -38, 0],
       boxes: [
-        { at: [-4.75, 0, -2.5], size: [9.5, 1, 5], color: 'soil' },
-        { at: [-3.75, 0, -3.75], size: [7.5, 1, 7.5], color: 'soil' },
-        { at: [-2.5, 0, -4.25], size: [5, 1, 8.5], color: 'soil' },
-        // Its sides stand clear of the nut's, which share their planes and would flicker.
-        { at: [-3.5, 1, -2.4], size: [8, 0.75, 4.8], color: 'soilDark' },
-        { at: [-2.5, 1, -3.4], size: [6, 0.75, 6.8], color: 'soilDark' },
-        { at: [-1.5, 1, -3.9], size: [4, 0.75, 7.8], color: 'soilDark' },
+        // Its sides stand clear of the nut's low flanks (z 2, 3, 3.5 and 4), which share their
+        // planes and would flicker.
+        { at: [-4.5, 0, -2.5], size: [9, 1, 5], color: 'soil' },
+        { at: [-3.25, 0, -3.25], size: [6.5, 1, 6.5], color: 'soil' },
+        { at: [-2.5, 0, -4], size: [5, 1, 8], color: 'soil' },
+        { at: [-3, 1, -2.5], size: [7, 0.75, 5], color: 'soilDark' },
+        { at: [-2, 1, -4.25], size: [4, 0.75, 8.5], color: 'soilDark' },
       ],
     },
-    {
-      // The lower half, leaning back about the seam with everything on it. It heaves as it
-      // breathes and swells before it blows.
-      name: 'body',
-      parent: 'root',
-      pivot: [CX, 6, 0],
-      rot: [0, 0, 8],
-      boxes: [
-        // Narrower at the bottom, like an egg.
-        ...round(R35, 1, 2, 'walnut'),
-        ...round(R40, 2, 3.5, 'walnut'),
-        ...round(R45, 3.5, 6, 'walnut'),
-        ...GROOVES.filter((box) => box.at[1] < 6),
-        ...farSide(GROOVES.filter((box) => box.at[1] < 6)),
-        ...VEINS,
-        ...farSide(VEINS),
-        // The seam between the halves.
-        ...round(R45, 5.5, 6, SEAM),
-        // Level 2 up: a band round the seam, and the band over the top coming down the flanks.
-        ...round(R45, 5, 6, 'iron', 0.5, { minLevel: 2 }),
-        at({ at: [1, 2, 4], size: [1.5, 3, 0.5], color: 'iron' }, 2),
-        at({ at: [1, 2, -4.5], size: [1.5, 3, 0.5], color: 'iron' }, 2),
-      ],
-    },
-    {
-      // The upper half, with the face on its front.
-      name: 'head',
-      parent: 'body',
-      pivot: [CX, 6, 0],
-      shadedBy: ['eyes'],
-      boxes: [
-        ...round(R45, 6, 9.25, 'walnut'),
-        ...round(SHOULDER, 9.25, 10.5, 'walnut'),
-        ...round(R35, 10.5, 11.75, 'walnut'),
-        ...round(R25, 11.75, 12.5, 'walnutLight'),
-        ...GROOVES.filter((box) => box.at[1] >= 6),
-        ...farSide(GROOVES.filter((box) => box.at[1] >= 6)),
-        ...BUMPS,
-        // The ridge over the top, front to back, where the two shells of a walnut meet.
-        { at: [0, 12.5, -0.5], size: [3, 0.5, 1], color: 'walnut' },
-        { at: [3, 11.75, -0.5], size: [1, 0.75, 1], color: 'walnut' },
+    ...(
+    [
+      {
+        // The lower half, leaning back about the seam with everything on it. It heaves as it
+        // breathes and swells before it blows.
+        name: 'body',
+        parent: 'root',
+        pivot: [CX, 6, 0],
+        rot: [0, 0, 12],
+        boxes: [
+          // Narrower at the bottom, like an egg.
+          ...round(R35, 1, 2, 'walnut'),
+          ...round(R40, 2, 3.5, 'walnut'),
+          ...round(R45, 3.5, 6, 'walnut'),
+          // Details go on the near flank only: the far one faces away from the lawn camera.
+          ...GROOVES.filter((box) => box.at[1] < 6),
+          ...VEINS,
+          // The seam between the halves.
+          ...round(R45, 5.5, 6, SEAM),
+          // Level 2 up: a band round the seam, and the band over the top coming down the flanks.
+          ...round(R45, 5, 6, 'iron', 0.5, { minLevel: 2 }),
+          at({ at: [1, 2, 4], size: [1.5, 3, 0.5], color: 'iron' }, 2),
+        ],
+      },
+      {
+        // The upper half, with the face on its front.
+        name: 'head',
+        parent: 'body',
+        pivot: [CX, 6, 0],
+        shadedBy: ['eyes'],
+        boxes: [
+          ...round(HEAD45, 6, 9.25, 'walnut'),
+          ...round(SHOULDER, 9.25, 10.5, 'walnut'),
+          ...round(R35, 10.5, 11.75, 'walnut'),
+          ...round(R25, 11.75, 12.5, 'walnutLight'),
+          ...GROOVES.filter((box) => box.at[1] >= 6),
+          ...BUMPS,
+          // The ridge over the top, front to back, where the two shells of a walnut meet.
+          { at: [0, 12.5, -0.5], size: [3, 0.5, 1], color: 'walnut' },
+          { at: [3, 11.75, -0.5], size: [1, 0.75, 1], color: 'walnut' },
 
-        // A heavy brow, high at the ends and low in the middle, where it comes down over the
-        // tops of the eyes and dips between them into a scowl.
-        { at: [4, 11, 1.5], size: [1.75, 0.75, 1.25], color: 'walnutDark' },
-        { at: [4, 11, -2.75], size: [1.75, 0.75, 1.25], color: 'walnutDark' },
-        { at: [4, 10.5, 0.25], size: [1.5, 0.75, 1.25], color: 'walnutDark' },
-        { at: [4, 10.5, -1.5], size: [1.5, 0.75, 1.25], color: 'walnutDark' },
-        { at: [5.5, 10, 0.25], size: [0.75, 1.25, 1.25], color: 'walnutDark' },
-        { at: [5.5, 10, -1.5], size: [0.75, 1.25, 1.25], color: 'walnutDark' },
-        { at: [4, 9.75, -0.25], size: [2.25, 1.5, 0.5], color: 'walnutDark' },
-        // Gritted teeth: two rows of three in a dark mouth.
-        { at: [4.5, 6.25, -2], size: [0.5, 1.1, 4], color: MOUTH },
-        ...[6.4, 6.85].flatMap((y) =>
-          [-1.75, -0.5, 0.75].map((z): Box => ({ at: [4.75, y, z], size: [0.25, 0.35, 1], color: TEETH })),
-        ),
+          // The face plate, flush with the front, pale behind the eyes and the teeth.
+          { at: [4.75, 6, -2.9], size: [0.25, 4.5, 5.8], color: FACE },
+          // A heavy brow, high at the ends and low in the middle, where it comes down over the
+          // tops of the eyes and dips between them into a scowl.
+          { at: [4, 11, 1.75], size: [1.25, 0.75, 1], color: 'walnutDark' },
+          { at: [4, 11, -2.75], size: [1.25, 0.75, 1], color: 'walnutDark' },
+          { at: [4, 10.5, 0.5], size: [1.5, 0.5, 1.25], color: 'walnutDark' },
+          { at: [4, 10.5, -1.75], size: [1.5, 0.5, 1.25], color: 'walnutDark' },
+          { at: [5.5, 10, 0.5], size: [0.5, 1, 1.25], color: 'walnutDark' },
+          { at: [5.5, 10, -1.75], size: [0.5, 1, 1.25], color: 'walnutDark' },
+          { at: [4, 9.75, -0.5], size: [1.75, 1.25, 1], color: 'walnutDark' },
+          // Gritted teeth: two rows of three big ones in a dark mouth.
+          { at: [4.5, 6, -2.5], size: [0.5, 1.5, 5], color: MOUTH },
+          ...[6, 7].flatMap((y) => [-2, -0.5, 1].map((z): Box => ({ at: [4.5, y, z], size: [0.5, 0.5, 1], color: TEETH }))),
 
-        // Level 2: the band over the top, stepping down the shoulders. Plated over from 3.
-        at({ at: [1, 12.5, -2.5], size: [1.5, 0.5, 5], color: 'iron' }, 2, 2),
-        at({ at: [1, 11.75, 2.5], size: [1.5, 1.25, 1], color: 'iron' }, 2),
-        at({ at: [1, 11.75, -3.5], size: [1.5, 1.25, 1], color: 'iron' }, 2),
-        at({ at: [1, 10.5, 3.5], size: [1.5, 1.75, 0.5], color: 'iron' }, 2),
-        at({ at: [1, 10.5, -4], size: [1.5, 1.75, 0.5], color: 'iron' }, 2),
-        at({ at: [1, 9.25, 3.75], size: [1.5, 1.25, 0.5], color: 'iron' }, 2),
-        at({ at: [1, 9.25, -4.25], size: [1.5, 1.25, 0.5], color: 'iron' }, 2),
-        at({ at: [1, 6, 4], size: [1.5, 3.25, 0.5], color: 'iron' }, 2),
-        at({ at: [1, 6, -4.5], size: [1.5, 3.25, 0.5], color: 'iron' }, 2),
+          // Level 2: the band over the top, stepping down the shoulders. Plated over from 3.
+          at({ at: [1, 12.5, -2.5], size: [1.5, 0.5, 5], color: 'iron' }, 2, 2),
+          at({ at: [1, 11.75, 2.5], size: [1.5, 1.25, 1], color: 'iron' }, 2),
+          at({ at: [1, 10.5, 3.5], size: [1.5, 1.75, 0.5], color: 'iron' }, 2),
+          at({ at: [1, 9.25, 3.75], size: [1.5, 1.25, 0.5], color: 'iron' }, 2),
+          at({ at: [1, 6, 4], size: [1.5, 3.25, 0.5], color: 'iron' }, 2),
 
-        // Level 3 up: riveted plates on the crown, the flanks and the back.
-        ...plate({ at: [0, 12.5, -1.75], size: [3, 0.5, 3.5] }, { at: [0.25, 12.75, -1.5], size: [2.5, 0.5, 3] }),
-        ...plate({ at: [-1.5, 6.25, 4], size: [2.5, 3, 0.5] }, { at: [-1.25, 6.5, 4.25], size: [2, 2.5, 0.5] }),
-        ...plate({ at: [-1.5, 6.25, -4.5], size: [2.5, 3, 0.5] }, { at: [-1.25, 6.5, -4.75], size: [2, 2.5, 0.5] }),
-        ...plate({ at: [-4.5, 7, -2], size: [0.5, 3, 4] }, { at: [-4.75, 7.25, -1.75], size: [0.5, 2.5, 3.5] }),
-        ...rivets([
-          { at: [0.5, 13.25, -1.25], size: [0.5, 0.25, 0.5] },
-          { at: [0.5, 13.25, 0.75], size: [0.5, 0.25, 0.5] },
-          { at: [-1, 6.75, 4.75], size: [0.5, 0.5, 0.25] },
-          { at: [0.25, 8.5, 4.75], size: [0.5, 0.5, 0.25] },
-          { at: [-1, 6.75, -5], size: [0.5, 0.5, 0.25] },
-          { at: [0.25, 8.5, -5], size: [0.5, 0.5, 0.25] },
-        ]),
+          // Level 3 up: thick riveted plates, a voxel proud, on the crown and the near flank.
+          ...plate({ at: [0, 12.5, -1.75], size: [3, 0.75, 3.5] }, { at: [0.25, 12.75, -1.5], size: [2.5, 0.75, 3] }),
+          ...plate({ at: [-1.5, 6, 4], size: [2.5, 3.25, 0.75] }, { at: [-1.25, 6.25, 4.25], size: [2, 2.75, 0.75] }),
+          ...rivets([
+            { at: [0.5, 13.5, -1.25], size: [0.5, 0.25, 0.5] },
+            { at: [0.5, 13.5, 0.75], size: [0.5, 0.25, 0.5] },
+            { at: [-1.25, 6.5, 5], size: [0.5, 0.5, 0.25] },
+            { at: [0.25, 8.25, 5], size: [0.5, 0.5, 0.25] },
+          ]),
 
-        // Level 4 up: crystal spikes on both shoulders and the back of the crown.
-        ...SPIKES,
-        ...farSide(SPIKES),
-        ...BACK_SPIKE,
-      ],
-    },
-    {
-      name: 'eyes',
-      parent: 'head',
-      pivot: [5.25, 9, 0],
-      shadedBy: ['head'],
-      boxes: [
-        // Black, standing half a voxel proud, glint in the top corner nearest the sun.
-        { at: [5, 7.5, 0.5], size: [0.5, 3, 2], color: 'eye' },
-        // (The near eye's top inner corner is under the brow, so its glint sits just below.)
-        { at: [5, 9, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [5, 7.5, -2.5], size: [0.5, 3, 2], color: 'eye' },
-        { at: [5, 9.5, -2.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        // Level 5: a small warm light in each.
-        { at: [5, 8.5, 1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-        { at: [5, 8.5, -1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-      ],
-    },
-    {
-      // The fuse at the back of the crown: a cap (the trim), a cord stepping back, a glowing
-      // tip. Longer from level 2; two of them at level 5.
-      name: 'fuse',
-      parent: 'head',
-      pivot: [-1, 12.5, 0],
-      boxes: [
-        { at: [-2, 12.5, -1], size: [2, 0.75, 2], color: 'iron' },
-        { at: [-1.5, 13.25, -0.5], size: [1, 1.25, 1], color: CORD },
-        // Level 1: a short cord and the spark.
-        { at: [-2.25, 14.25, -0.5], size: [1, 0.75, 1], color: CORD, maxLevel: 1 },
-        { at: [-3, 14.5, -0.5], size: [1, 1, 1], color: 'fire', emissive: 2, maxLevel: 1 },
-        // Level 2 up: a voxel longer.
-        { at: [-2.25, 14.25, -0.5], size: [1, 1.75, 1], color: CORD, minLevel: 2 },
-        { at: [-3, 15.25, -0.5], size: [1, 1, 1], color: CORD, minLevel: 2 },
-        { at: [-3.75, 15.75, -0.5], size: [1, 1, 1], color: 'fire', emissive: 2, minLevel: 2 },
-        // Level 5: a second fuse, leaning the other way.
-        { at: [-0.75, 14, -0.375], size: [0.75, 1, 0.75], color: CORD, minLevel: 5 },
-        { at: [-0.25, 14.75, -0.375], size: [0.75, 1, 0.75], color: CORD, minLevel: 5 },
-        { at: [0.25, 15.5, -0.375], size: [0.75, 0.75, 0.75], color: 'fire', emissive: 2, minLevel: 5 },
-      ],
-    },
-    {
-      name: 'cracks',
-      parent: 'head',
-      pivot: [CX, 9, 0],
-      hidden: true,
-      boxes: [...CRACKS, ...farSide(CRACKS)],
-    },
+          // Level 4 up: crystal spikes on both shoulders and the back of the crown.
+          ...SPIKES,
+          ...farSide(SPIKES),
+          ...BACK_SPIKE,
+        ],
+      },
+      {
+        name: 'eyes',
+        parent: 'head',
+        pivot: [5.25, 9, 0],
+        shadedBy: ['head'],
+        boxes: [
+          // Black, standing half a voxel proud, glint in the top corner nearest the sun.
+          // Two by three, a voxel and a half apart.
+          { at: [5, 7.5, 0.75], size: [0.5, 3, 2], color: 'eye' },
+          // (The near eye's top inner corner is under the brow, so its glint sits just below.)
+          { at: [5, 9, 0.75], size: [0.5, 1, 1], color: 'eyeGlint' },
+          { at: [5, 7.5, -2.75], size: [0.5, 3, 2], color: 'eye' },
+          { at: [5, 9.5, -2.75], size: [0.5, 1, 1], color: 'eyeGlint' },
+          // Level 5: a small warm light in each.
+          { at: [5, 8.5, 1.75], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
+          { at: [5, 8.5, -1.75], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
+        ],
+      },
+      {
+        // The fuse at the back of the crown: a cap (the trim), a cord stepping back, a glowing
+        // tip. Longer from level 2; two of them at level 5.
+        name: 'fuse',
+        parent: 'head',
+        pivot: [-1, 12.5, 0],
+        boxes: [
+          { at: [-2, 12.5, -1], size: [2, 0.75, 2], color: 'iron' },
+          { at: [-1.5, 13.25, -0.5], size: [1, 1.25, 1], color: CORD },
+          // Level 1: a short cord and the spark.
+          { at: [-2.25, 14.25, -0.5], size: [1, 0.75, 1], color: CORD, maxLevel: 1 },
+          { at: [-3, 14.5, -0.5], size: [1, 1, 1], color: 'fire', emissive: 2, maxLevel: 1 },
+          // Level 2 up: a voxel longer.
+          { at: [-2.25, 14.25, -0.5], size: [1, 1.75, 1], color: CORD, minLevel: 2 },
+          { at: [-3, 15.25, -0.5], size: [1, 1, 1], color: CORD, minLevel: 2 },
+          { at: [-3.75, 15.75, -0.5], size: [1, 1, 1], color: 'fire', emissive: 2, minLevel: 2 },
+          // Level 5: a second fuse, leaning the other way.
+          { at: [-0.75, 14, -0.375], size: [0.75, 1, 0.75], color: CORD, minLevel: 5 },
+          { at: [-0.25, 14.75, -0.375], size: [0.75, 1, 0.75], color: CORD, minLevel: 5 },
+          { at: [0.25, 15.5, -0.375], size: [0.75, 0.75, 0.75], color: 'fire', emissive: 2, minLevel: 5 },
+        ],
+      },
+      {
+        name: 'cracks',
+        parent: 'head',
+        pivot: [CX, 9, 0],
+        hidden: true,
+        boxes: CRACKS,
+      },
+    ] satisfies PartDef[]
+    ).map(placed),
   ],
   clips: {
     idle: breathe({ body: 'body', head: 'head', sway: ['fuse'] }),

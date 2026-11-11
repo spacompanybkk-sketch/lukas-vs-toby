@@ -37,10 +37,15 @@ import { Sky } from './world/Sky';
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
 const CLIPS: readonly ClipName[] = ['idle', 'walk', 'shoot', 'melee', 'hit', 'spawn', 'die', 'cheer'];
 
-/** Tiles between neighbouring levels, between rows, and between the two models that share a row. */
+/**
+ * Tiles between neighbouring levels; the depth a row is framed with; the step from one row to
+ * the next; and the gap between the two models that share a row. The step and the gap leave
+ * room for the labels, so that a name or a level never touches a neighbouring pad.
+ */
 const CELL = 1.25;
 const ROW = 1.7;
-const GROUP_GAP = 0.6;
+const ROW_STEP = 1.9;
+const GROUP_GAP = 1.6;
 const GROUPS_PER_ROW = 2;
 /** The layout is centred on the middle of the lawn, where the sun's shadow map reaches. */
 const CENTRE_X = 5;
@@ -88,10 +93,10 @@ export function galleryLayout(keys: readonly string[], levels: readonly number[]
   const cells: GalleryCell[] = [];
   keys.forEach((key, index) => {
     const left = CENTRE_X - width / 2 + (index % groups) * (groupWidth + GROUP_GAP);
-    const z = CENTRE_Z + (Math.floor(index / groups) - (rows - 1) / 2) * ROW;
+    const z = CENTRE_Z + (Math.floor(index / groups) - (rows - 1) / 2) * ROW_STEP;
     levels.forEach((level, i) => cells.push({ key, level, x: left + (i + 0.5) * CELL, z }));
   });
-  const depth = Math.max(1, rows) * ROW;
+  const depth = ROW + Math.max(0, rows - 1) * ROW_STEP;
   return {
     cells,
     box: {
