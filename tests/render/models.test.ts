@@ -37,6 +37,7 @@ describe('the registry', () => {
     expect(modelKeys()).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
     expect([...PLANT_KEYS]).toEqual(expect.arrayContaining(['peashooter', 'sunflower', 'walnutBomb']));
   });
+
 });
 
 describe('Walnut Bomb', () => {
@@ -98,6 +99,12 @@ describe('Potato Mine', () => {
     const blast = sampled(def, def.clips.shoot as NonNullable<ModelDef['clips']['shoot']>, 0.3).body as PartPose;
     expect(blast.py).toBeGreaterThan(2);
     expect(blast.s).toBeCloseTo(1.3, 6);
+  });
+});
+
+describe('Avocado Bunker', () => {
+  it('carries its damage in a part named cracks, hidden at rest and shown when the view asks', () => {
+    expectToggledPart('avocadoBunker', 'cracks');
   });
 });
 
