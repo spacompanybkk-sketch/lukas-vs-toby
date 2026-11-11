@@ -296,8 +296,11 @@ and role. Thresholds are not loosened without telling Michal.
 Campaign levels are checked the same way with three stand-in players (a beginner, an
 average player, an expert), on Normal difficulty. The expert wins at least 95%
 everywhere without any Marketplace upgrades. The average player, buying upgrades at the
-rate the level rewards allow, sees a win rate that falls smoothly from about 95% in
-world 1 to about 50% at the last level. No level is harder than the one two after it.
+rate the level rewards allow, sees a win rate that falls smoothly from about 90% in
+world 1 to about 40% at the last level. No level is harder than the one two after it.
+In Quick Battle the computer beats the average stand-in about 15% of the time on Easy,
+45% on Medium and 70% on Hard. (These targets were raised a notch on Michal's
+instruction; see section 18, item 4.)
 Each boy can set his own Adventure to Easy, Normal or Hard at any time; Easy and Hard
 change only income, by 25% either way.
 
@@ -450,3 +453,7 @@ None of these blocks phases 1 or 2.
    (phase 5).
 3. "Video playability" was read as smooth, cinematic play with a replay of the winning
    blow. If he meant whole-match replays or saved clips, phase 6 grows.
+4. Difficulty. **Michal, 2026-11-11, after playing the old game on port 4321 (he took
+   it for the new one): it felt unbalanced and too easy; make it a notch harder.**
+   Applied to the new game as the raised targets in section 10. Toby's Easy setting
+   and his Versus head start stay, so the extra difficulty lands on Normal and Hard.
