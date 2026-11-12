@@ -53,6 +53,19 @@ describe('applyStatus', () => {
     expect(z.stun).toBe(45);
     expect(eventsOf(events, 'statusApplied').map((e) => [e.status, e.ticks])).toEqual([['stun', 45]]);
   });
+
+  it('with quietRefresh reports the start only, and still lengthens and strengthens', () => {
+    const m = fresh();
+    const z = spawnUnit(m.state, m.balance, 'brainEater', 2, 6);
+    const events: SimEvent[] = [];
+    applyStatus(m.state, z, 'poison', 30, 5, null, events, true);
+    expect(events).toEqual([{ type: 'statusApplied', unitId: z.id, status: 'poison', ticks: 30, sourceId: null }]);
+    events.length = 0;
+    z.poison = 10;
+    applyStatus(m.state, z, 'poison', 30, 9, null, events, true);
+    expect([z.poison, z.poisonDps]).toEqual([30, 9]);
+    expect(events).toEqual([]);
+  });
 });
 
 describe('a unit that cannot act', () => {

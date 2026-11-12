@@ -136,7 +136,7 @@ describe('Mega Mower', () => {
 
   it('leaves the base, projectiles and hazards alone', () => {
     const m = charged();
-    m.state.hazards.push({ id: 99, kind: 'rot', faction: 'zombies', lane: 3, x: 4.5, radius: 0.75, ticksLeft: 100, dps: 15 });
+    m.state.hazards.push({ id: 99, kind: 'rot', faction: 'zombies', lane: 3, x: 4.5, radius: 0.75, ticksLeft: 100, dps: 15, poisonTicks: 30 });
     const shooter = spawn(m, 'brainEater', 3, 4);
     m.state.units = m.state.units.filter((u) => u !== shooter);
     m.state.projectiles.push({

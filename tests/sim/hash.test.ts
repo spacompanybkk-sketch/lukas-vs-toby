@@ -4,8 +4,9 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1224 bytes). Re-pinned in phase 2,
- * Task 4, when players gained their hero timers (`heroTimer`) and the setup its `heroes`; in Task 3
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1232 bytes). Re-pinned in phase 2
+ * for the Task 3 review, when hazards gained `poisonTicks`; in Task 4 it was 3625389926 over 1224
+ * bytes, when players gained their hero timers (`heroTimer`) and the setup its `heroes`; in Task 3
  * it was 3963315096 over 1206 bytes, when units gained the Necromancer's heal timer (`auraTimer`); in Task 2 it was
  * 972736984 over 1190 bytes, from when projectiles gained the burn a Torchwood gives them
  * (`burnDps`, `burnTicks`); in Task 1 628692134 over 1174 bytes, from when units gained statuses,
@@ -13,7 +14,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 3625389926;
+const GOLDEN_HASH = 3875909580;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -41,7 +42,7 @@ function makeState(): SimState {
       },
     ],
     hazards: [
-      { id: 2, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15 },
+      { id: 2, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15, poisonTicks: 30 },
     ],
     players: {
       plants: { energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 }, heroTimer: 0 },
@@ -187,6 +188,7 @@ describe('hashState', () => {
     ['a hazard radius', (s) => { s.hazards[0]!.radius = 1; }],
     ['a hazard ticksLeft', (s) => { s.hazards[0]!.ticksLeft -= 1; }],
     ['a hazard dps', (s) => { s.hazards[0]!.dps += 1; }],
+    ['a hazard poisonTicks', (s) => { s.hazards[0]!.poisonTicks -= 1; }],
     // Hero powers.
     ['a player heroTimer', (s) => { s.players.zombies.heroTimer -= 1; }],
     ['a heroTimer of 0 becoming 1', (s) => { s.players.plants.heroTimer = 1; }],

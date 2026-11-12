@@ -120,7 +120,7 @@ const PROJECTILE: Fields<Projectile> = {
 };
 
 const HAZARD: Fields<Hazard> = {
-  id: num, kind: str, faction: str, lane: num, x: num, radius: num, ticksLeft: num, dps: num,
+  id: num, kind: str, faction: str, lane: num, x: num, radius: num, ticksLeft: num, dps: num, poisonTicks: num,
 };
 
 const PLAYER: Fields<PlayerState> = {

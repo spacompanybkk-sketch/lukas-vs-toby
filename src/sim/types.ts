@@ -60,6 +60,7 @@ export interface Projectile {
 export interface Hazard {
   id: number; kind: 'rot'; faction: Faction; lane: number; x: number; radius: number;
   ticksLeft: number; dps: number;
+  poisonTicks: number; // how long whoever stands in it stays poisoned, at least
 }
 
 export interface PlayerState {

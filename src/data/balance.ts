@@ -19,7 +19,11 @@ export interface ShotStats {
   splash?: number; // lobbed: radius hit at landing (0 = the target only)
   pierce?: number; // piercing: units passed through
   status?: ShotStatus;
-  puddle?: { seconds: number; radius: number; dps: number }; // left where a lobbed shot lands
+  /**
+   * Left where a lobbed shot lands, for `seconds`: each enemy standing within `radius` is poisoned
+   * at `dps` for at least `poisonSeconds` (so it keeps losing health that long after it steps out).
+   */
+  puddle?: { seconds: number; radius: number; dps: number; poisonSeconds: number };
 }
 
 export interface UnitStats {
@@ -237,7 +241,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       melee: { damage: 20, interval: 1.2, reach: 0.6 },
       shot: {
         kind: 'rot', damage: 30, interval: 4, range: 6, speed: 4, flight: 'lobbed',
-        puddle: { seconds: 4, radius: 0.75, dps: 15 },
+        puddle: { seconds: 4, radius: 0.75, dps: 15, poisonSeconds: 1 },
       },
       holds: true,
     },

@@ -303,21 +303,19 @@ function leavePuddle(
   const h: Hazard = {
     id: s.nextId, kind: 'rot', faction: p.faction, lane: p.lane, x, radius: puddle.radius,
     ticksLeft: seconds(puddle.seconds), dps: puddle.dps * levelScale(b, p.faction, p.level, 'special'),
+    poisonTicks: seconds(puddle.poisonSeconds),
   };
   s.nextId += 1;
   s.hazards.push(h);
   events.push({ type: 'hazardSpawned', hazardId: h.id, kind: h.kind, lane: h.lane, x, radius: h.radius, ticks: h.ticksLeft });
 }
 
-/** How long a puddle keeps poisoning a unit after it steps out, in ticks: one whole second. */
-const PUDDLE_POISON_TICKS = TICKS_PER_SECOND;
-
 /**
  * Step stage, after projectiles and before statuses: every hazard, in ascending id. Each standing
- * unit of the other side in its lane within `radius` of its x is poisoned for at least
- * `PUDDLE_POISON_TICKS` at the hazard's `dps` (the larger dps wins). Only the start of the poison
- * is reported (`statusApplied`, no source); topping it up each tick a unit stands in the puddle is
- * silent. Then the hazard counts down; the tick it was laid counts as its first, and on reaching 0
+ * unit of the other side in its lane within `radius` of its x is poisoned for at least the
+ * hazard's `poisonTicks` at its `dps` (the larger dps wins), through `applyStatus`. Only the start of
+ * the poison is reported (`statusApplied`, no source); topping it up each tick a unit stands in the
+ * puddle is silent. Then the hazard counts down; the tick it was laid counts as its first, and on reaching 0
  * it ends (`hazardEnded`) and leaves the lawn.
  */
 export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void {
@@ -326,12 +324,7 @@ export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void 
   for (const h of s.hazards) {
     for (const u of s.units) {
       if (u.faction === h.faction || u.lane !== h.lane || !isStanding(u) || Math.abs(u.x - h.x) > h.radius) continue;
-      if (u.poison > 0) {
-        u.poison = Math.max(u.poison, PUDDLE_POISON_TICKS);
-        u.poisonDps = Math.max(u.poisonDps, h.dps);
-      } else {
-        applyStatus(s, u, 'poison', PUDDLE_POISON_TICKS, h.dps, null, events);
-      }
+      applyStatus(s, u, 'poison', h.poisonTicks, h.dps, null, events, true);
     }
     h.ticksLeft -= 1;
     if (h.ticksLeft > 0) left.push(h);

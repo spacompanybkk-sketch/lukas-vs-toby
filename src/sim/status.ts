@@ -22,10 +22,12 @@ const KINDS: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn']
 /**
  * Puts `kind` on `u` for `ticks` ticks. A unit already affected keeps the longer of the two
  * durations and the larger damage per second (`dps` only counts for poison and burn). Emits
- * `statusApplied` only when the status starts or is lengthened. A unit that is down gets nothing.
+ * `statusApplied` only when the status starts or is lengthened, and with `quietRefresh` (a puddle
+ * topping up its poison every tick) only when it starts. A unit that is down gets nothing.
  */
 export function applyStatus(
   _s: SimState, u: Unit, kind: StatusKind, ticks: number, dps: number, sourceId: number | null, events: SimEvent[],
+  quietRefresh = false,
 ): void {
   if (!isStanding(u) || !(ticks > 0)) return;
   const before = u[kind];
@@ -33,6 +35,7 @@ export function applyStatus(
   if (kind === 'burn') u.burnDps = Math.max(u.burnDps, dps);
   if (ticks <= before) return;
   u[kind] = ticks;
+  if (quietRefresh && before > 0) return;
   events.push({ type: 'statusApplied', unitId: u.id, status: kind, ticks, sourceId });
 }
 
