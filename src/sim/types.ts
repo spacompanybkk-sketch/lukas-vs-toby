@@ -135,7 +135,9 @@ export type SimEvent =
   }
   | { type: 'unitDamaged'; unitId: number; amount: number; hp: number }
   | { type: 'unitDied'; unitId: number; key: UnitKey; faction: Faction; lane: number; x: number; level: number;
-    cause: 'damage' | 'blast' | 'shovel' | 'spent'; // spent: a mine or cherry that went off; pays no bounty
+    // spent: a mine or cherry that went off, a rock that crumbled; base: felled by the plant base's
+    // strike while `baseDefense.paysBounty` is false. Neither pays a bounty.
+    cause: 'damage' | 'blast' | 'shovel' | 'spent' | 'base';
   }
   | { type: 'explosion'; lane: number; x: number; radius: number; sourceKey: UnitKey }
   | { type: 'baseDamaged'; faction: Faction; amount: number; hp: number; lane: number | null }

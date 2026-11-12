@@ -3,6 +3,7 @@ import { humanMatchup, playSeries, winShare } from '../../src/ai/balanceChecks';
 import type { HumanStandIn } from '../../src/ai/balanceChecks';
 import type { Skill } from '../../src/ai/bot';
 import type { Faction } from '../../src/sim/types';
+import { phase1RulesKnobs } from './phase1Rules';
 
 // The difficulty buttons, measured with two stand-in humans on each side, each on its difficulty's
 // own setup (src/ai/difficulty.ts), 100 seeds:
@@ -13,6 +14,7 @@ import type { Faction } from '../../src/sim/types';
 const SEEDS = 100;
 const BULK_MS = 120_000;
 const SKILLS: readonly Skill[] = ['easy', 'medium', 'hard'];
+const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false
 
 const BANDS: Record<HumanStandIn, Record<Skill, readonly [number, number]>> = {
   child: { easy: [0.55, 0.85], medium: [0.15, 0.45], hard: [0, 0.15] },
@@ -21,7 +23,7 @@ const BANDS: Record<HumanStandIn, Record<Skill, readonly [number, number]>> = {
 
 function rates(standIn: HumanStandIn, human: Faction): Record<Skill, number> {
   const out = {} as Record<Skill, number>;
-  for (const skill of SKILLS) out[skill] = winShare(playSeries(humanMatchup(standIn, human, skill), SEEDS), human);
+  for (const skill of SKILLS) out[skill] = winShare(playSeries(humanMatchup(standIn, human, skill), SEEDS, KNOBS), human);
   return out;
 }
 

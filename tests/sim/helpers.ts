@@ -53,7 +53,7 @@ export function classicBalance(): Balance {
   b.hitRadius = 0.35;
   b.startEnergy = 190;
   b.baseHp = 7000;
-  b.baseDefense = { damage: 100, interval: 2 };
+  b.baseDefense = { damage: 100, interval: 2, paysBounty: true }; // phase 2 ships false: a strike's kill pays nothing
   b.zombieBaseShotRange = 3.5; // phase 2: what the base-shot rule read before it had a number of its own (the Brain Eater's range)
   b.suddenDeath = { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 };
   return b;
@@ -65,7 +65,7 @@ export function classicBalance(): Balance {
  */
 export function withBaseDefense(damage = 60, interval = 1): Balance {
   const balance = classicBalance();
-  balance.baseDefense = { damage, interval };
+  balance.baseDefense = { damage, interval, paysBounty: true };
   return balance;
 }
 

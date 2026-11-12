@@ -111,7 +111,12 @@ export interface Balance {
    * The plant base strikes a zombie biting it: `damage` per strike, at most one strike per lane
    * every `interval` seconds. Damage 0 switches it off.
    */
-  baseDefense: { damage: number; interval: number };
+  /**
+   * `paysBounty`: whether the plants get a bounty for a zombie the strike itself brings to 0 (a
+   * zombie that got past the defences should not pay the defender; when false it dies with cause
+   * `'base'` and pays nothing).
+   */
+  baseDefense: { damage: number; interval: number; paysBounty: boolean };
   /** A zombie shoots the plant base only from this close (x <= this), whatever its shot's range. */
   zombieBaseShotRange: number;
   /** At most this many of a Necromancer's raised minions stand at once. */
@@ -278,7 +283,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 190,
   baseHp: 7000,
-  baseDefense: { damage: 100, interval: 2 },
+  baseDefense: { damage: 100, interval: 2, paysBounty: false },
   zombieBaseShotRange: 3.5,
   minionCap: 3,
   hero: {

@@ -8,6 +8,7 @@ import { BALANCE, seconds } from '../../src/data/balance';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command, Faction, MatchConfig } from '../../src/sim/types';
 import { eventsOf } from '../sim/helpers';
+import { phase1RulesBalance } from './phase1Rules';
 
 const SKILL_NAMES: readonly Skill[] = ['easy', 'medium', 'hard'];
 const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
@@ -193,9 +194,11 @@ describe('runMatch', () => {
 });
 
 describe('bot against bot', () => {
+  const rules = phase1RulesBalance(); // TODO(phase 2 Task 8): re-measure with paysBounty false
+
   it('medium against medium, seeds 1..40: each side wins at least 8 and every match ends by tick 14,400', () => {
     // Run past 8:00 so a match that would not end shows up as one, rather than as a cut-off draw.
-    const results = SEEDS_1_TO_40.map((seed) => runBotMatch(seed, { plants: 'medium', zombies: 'medium' }, 2 * LAST_TICK));
+    const results = SEEDS_1_TO_40.map((seed) => runBotMatch(seed, { plants: 'medium', zombies: 'medium' }, 2 * LAST_TICK, rules));
     const lengths = results.map((r) => r.ticks);
     expect(Math.max(...lengths)).toBeLessThanOrEqual(LAST_TICK);
     expect(wins(results, 'plants'), 'plants wins').toBeGreaterThanOrEqual(8);
@@ -217,9 +220,9 @@ describe('bot against bot', () => {
           return commands;
         },
       }));
-      return runMatch(defaultConfig(seed), counted);
+      return runMatch(defaultConfig(seed, rules), counted, undefined, rules);
     });
-    expect(results[0]).toEqual(runBotMatch(1, skills));
+    expect(results[0]).toEqual(runBotMatch(1, skills, undefined, rules));
     expect(wins(results, hardSide)).toBeGreaterThanOrEqual(28);
     expect(hardMerges, 'merges by the hard bot').toBeGreaterThan(0);
   }, BULK_MS);
