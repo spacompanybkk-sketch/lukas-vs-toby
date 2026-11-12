@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
-import { PHASE1_CARDS, PLANT_KEYS, ZOMBIE_KEYS } from '../../src/data/units';
+import { PHASE1_CARDS, PLANT_KEYS, ZOMBIE_KEYS, isCard } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import { nextRandom, randomInt } from '../../src/sim/rng';
 import { BASE_STOP_X, COLS, LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from '../../src/sim/types';
@@ -79,13 +79,15 @@ function pickTarget(r: Rng, s: Readonly<SimState>): number {
  * then `max-level`, come up in random play. Null when the side has no unit.
  */
 function ownMerge(r: Rng, s: Readonly<SimState>, faction: Faction): Command | null {
-  const own = s.units.filter((u) => u.faction === faction);
+  const own = s.units.filter((u) => u.faction === faction && isCard(u.key)); // never a Bone Minion
   if (own.length === 0) return null;
   let target = pick(r, own);
   if (randomInt(r, 2) === 0) {
     for (const u of own) if (u.level > target.level || (u.level === target.level && u.id < target.id)) target = u;
   }
-  return merge(faction, target.key as CardKey, target.id); // a Bone Minion is refused, as a player's would be
+  const key = target.key;
+  if (!isCard(key)) throw new Error(`${key} is no card`);
+  return merge(faction, key, target.id);
 }
 
 function randomCommand(r: Rng, s: Readonly<SimState>): Command {

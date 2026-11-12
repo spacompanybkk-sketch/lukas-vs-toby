@@ -3,6 +3,7 @@
  * random legal move that Easy sometimes makes instead. Everything here only reads the match.
  */
 
+import { isCard } from '../data/units';
 import type { Match } from '../sim/match';
 import { isStanding } from '../sim/lookup';
 import { randomInt } from '../sim/rng';
@@ -80,9 +81,11 @@ export function sendCommand(unit: CardKey, lane: number): Command {
   return placeCommand('zombies', unit, lane, COLS - 1);
 }
 
+/** A merge onto `target` with its own card. Only a card can be merged into (never a Bone Minion). */
 export function mergeCommand(target: Unit): Command {
-  // A unit that is not a card (a Bone Minion) cannot be merged into; the match refuses it.
-  return { type: 'merge', faction: target.faction, unit: target.key as CardKey, targetId: target.id };
+  const key = target.key;
+  if (!isCard(key)) throw new Error(`${key} is not a card and cannot be merged into`);
+  return { type: 'merge', faction: target.faction, unit: key, targetId: target.id };
 }
 
 /**
@@ -103,7 +106,7 @@ export function randomLegal(match: Match, faction: Faction, rng: BotRng): Comman
     }
   }
   for (const u of s.units) {
-    if (u.faction === faction && isStanding(u)) offer(mergeCommand(u));
+    if (u.faction === faction && isStanding(u) && isCard(u.key)) offer(mergeCommand(u));
   }
   return legal.length === 0 ? null : (legal[randomInt(rng, legal.length)] ?? null);
 }
