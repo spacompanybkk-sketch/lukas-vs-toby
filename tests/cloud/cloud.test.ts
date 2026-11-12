@@ -4,6 +4,10 @@ import { SLOTS } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
 import { T0, hex, saveFor, setup } from './helpers';
 
+const V1 = '1111111111111111';
+const V2 = '2222222222222222';
+const V3 = '3333333333333333';
+
 /** The Cloud interface end to end: the real REST client over the fake database and the real rules. */
 describe('players', () => {
   it('create → list → load with the right pin', async () => {
@@ -58,11 +62,11 @@ describe('players', () => {
     const { cloud, db } = setup();
     const s = saveFor('p02', 'Toby');
     const h = await pinHash('p02', '777');
-    await cloud.createPlayer(s, h);
+    await cloud.createPlayer(s, h, V1);
     expect(db.peek(`v2/saves/p02/${h}/save`)).toBe(JSON.stringify(s));
     expect(await cloud.loadSave('p02', h)).toEqual(s);
     const t: Save = { ...s, plants: { stars: { 'w1-1': 2 }, unlocked: ['peashooter', 'sunflower'] }, updatedAt: T0 + 5 };
-    expect(await cloud.writeSave(t, h)).toBe('ok');
+    expect(await cloud.writeSave(t, h, V2, V1)).toBe('ok');
     expect(await cloud.loadSave('p02', h)).toEqual(t);
   });
 });
@@ -71,13 +75,13 @@ describe('saves and the board', () => {
   it('writeSave stores the save and its board row together', async () => {
     const { cloud, clock } = setup();
     const h = await pinHash('p01', '123');
-    await cloud.createPlayer(saveFor('p01', 'Lukas'), h);
+    await cloud.createPlayer(saveFor('p01', 'Lukas'), h, V1);
     clock.t = T0 + 60_000;
     const s: Save = {
       ...saveFor('p01', 'Lukas'), coins: 500, bestWave: 14, versusWins: 3, computerWins: 9,
       plants: { stars: { a: 3, b: 2 }, unlocked: [] }, updatedAt: T0 + 60_000,
     };
-    expect(await cloud.writeSave(s, h)).toBe('ok');
+    expect(await cloud.writeSave(s, h, V2, V1)).toBe('ok');
     expect(await cloud.loadSave('p01', h)).toEqual(s);
     expect(await cloud.board()).toEqual([{
       slot: 'p01', name: 'Lukas', picture: s.picture, stars: 5, wave: 14, versusWins: 3, computerWins: 9, updatedAt: T0 + 60_000,
@@ -88,8 +92,8 @@ describe('saves and the board', () => {
     const { cloud } = setup();
     const h = await pinHash('p01', '123');
     const s = saveFor('p01', 'Lukas');
-    await cloud.createPlayer(s, h);
-    expect(await cloud.writeSave({ ...s, coins: 9999 }, await pinHash('p01', '999'))).toBe('wrong-pin');
+    await cloud.createPlayer(s, h, V1);
+    expect(await cloud.writeSave({ ...s, coins: 9999 }, await pinHash('p01', '999'), V2, V1)).toBe('wrong-pin');
     expect(await cloud.loadSave('p01', h)).toEqual(s);
   });
 
@@ -107,6 +111,29 @@ describe('saves and the board', () => {
     const s: Save = { ...saveFor('p01'), bestWave: 123_456, computerWins: 200_000 };
     expect(await cloud.createPlayer(s, h)).toBe('ok');
     expect(await cloud.board()).toEqual([expect.objectContaining({ wave: 9999, computerWins: 99999 })]);
+  });
+});
+
+describe('compare-and-swap on the version id', () => {
+  it('a write lands only over the version it names; the second of two writers gets conflict', async () => {
+    const { cloud } = setup();
+    const h = await pinHash('p01', '123');
+    await cloud.createPlayer(saveFor('p01', 'Lukas'), h, V1);
+    expect(await cloud.loadRecord('p01', h)).toEqual({ save: saveFor('p01', 'Lukas'), ver: V1 });
+    const a = { ...saveFor('p01', 'Lukas'), coins: 10, updatedAt: T0 + 1 };
+    const b = { ...saveFor('p01', 'Lukas'), coins: 20, updatedAt: T0 + 2 };
+    expect(await cloud.writeSave(a, h, V2, V1)).toBe('ok');
+    expect(await cloud.writeSave(b, h, V3, V1)).toBe('conflict');
+    expect(await cloud.writeSave(b, h, V3, null)).toBe('conflict');
+    expect(await cloud.loadRecord('p01', h)).toEqual({ save: a, ver: V2 });
+    expect(await cloud.writeSave(b, h, V3, V2)).toBe('ok');
+  });
+
+  it('refuses a write that keeps the old version id', async () => {
+    const { cloud } = setup();
+    const h = await pinHash('p01', '123');
+    await cloud.createPlayer(saveFor('p01', 'Lukas'), h, V1);
+    expect(await cloud.writeSave({ ...saveFor('p01', 'Lukas'), updatedAt: T0 + 1 }, h, V1, V1)).toBe('refused');
   });
 });
 
@@ -152,7 +179,7 @@ describe('the grown-up gate', () => {
     expect(await cloud.loadSave('p04', fresh)).toEqual(s);
     expect(await cloud.loadSave('p04', old)).toBe('wrong-pin');
     expect(db.peek(`v2/saves/p04/${old}`)).toBeNull();
-    expect(await cloud.writeSave(s, old)).toBe('wrong-pin');
+    expect(await cloud.writeSave(s, old, V2, V1)).toBe('wrong-pin');
   });
 });
 
@@ -165,7 +192,7 @@ describe('failures', () => {
     expect(await cloud.listPlayers()).toBe('offline');
     expect(await cloud.createPlayer(s, h)).toBe('offline');
     expect(await cloud.loadSave('p01', h)).toBe('offline');
-    expect(await cloud.writeSave(s, h)).toBe('offline');
+    expect(await cloud.writeSave(s, h, V2, null)).toBe('offline');
     expect(await cloud.board()).toBe('offline');
     expect(await cloud.setGrownUpCode(hex('a'))).toBe('offline');
     expect(await cloud.deletePlayer('p01', hex('a'))).toBe('offline');

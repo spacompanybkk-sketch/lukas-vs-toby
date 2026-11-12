@@ -48,6 +48,7 @@ export const OLD_PATHS = {
 
 // Regexes avoid `{n}` quantifiers: the Realtime Database's regex dialect is a subset, and the
 // documented examples only use classes, groups, alternation, anchors and + * ?.
+const HEX16 = "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/)";
 const HEX64 = "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)";
 const NAME = "newData.isString() && newData.val().length >= 1 && newData.val().length <= 10 && newData.val().matches(/^[A-Za-z0-9]+$/)";
 const PICTURE = `newData.isString() && newData.val().matches(/^(${PICTURE_KEYS.join('|')})$/)`;
@@ -103,10 +104,16 @@ export function block(R) {
           '.read': `${slotOk} && root.child('${R}/secrets/' + $slot).val() === $hash`,
           // The owner may write the save but never delete it; only the grown-up clears saves.
           '.write': `${slotOk} && newData.exists() && $hash === ${secretAfter(3)}.val()`,
-          '.validate': `newData.hasChildren(['save', 'touch']) && $hash === ${secretAfter(3)}.val()`,
+          // Compare-and-swap: replacing a stored record needs `prev` equal to its `ver`, so of
+          // two devices writing from the same version only the first wins; the other reloads,
+          // merges and writes again.
+          '.validate': `newData.hasChildren(['save', 'touch', 'ver']) && $hash === ${secretAfter(3)}.val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val())`,
           // The save is ONE JSON string (the client parses it strictly), bounded in size.
           save: { '.validate': `newData.isString() && newData.val().length <= ${MAX_SAVE_CHARS}` },
           touch: { '.validate': 'newData.val() === now' },
+          // A fresh random version id with every write (never the one it replaces).
+          ver: { '.validate': `${HEX16} && newData.val() !== data.val()` },
+          prev: { '.validate': HEX16 },
           $other: NOTHING_ELSE,
         },
       },
@@ -131,8 +138,9 @@ export function block(R) {
     },
     admin: {
       secret: {
-        // Set once when there is none; changed later only with the current grown-up proof.
-        '.write': `!data.exists() || ${adminProof(2)}`,
+        // Set once when there is none; changed later only with the current grown-up proof;
+        // never deleted.
+        '.write': `newData.exists() && (!data.exists() || ${adminProof(2)})`,
         '.validate': HEX64,
       },
       proof: {

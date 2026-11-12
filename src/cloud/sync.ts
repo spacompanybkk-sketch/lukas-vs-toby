@@ -1,58 +1,66 @@
 import { signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { loadLocal, saveLocal, setLastSlot } from '../progress/localStore';
+import { mergeSaves } from '../progress/merge';
 import { touch } from '../progress/save';
 import type { Save, Slot } from '../progress/save';
 import { pinHash } from './hash';
-import type { Cloud, CloudError } from './types';
+import { randomVer } from './restClient';
+import type { Cloud, CloudError, SaveRecord } from './types';
 
 /**
  * - `synced`: the cloud has this device's save.
  * - `pending`: a change is on its way to the cloud.
  * - `offline`: the cloud could not be reached (or refuses); the device copy keeps everything.
- * - `replaced`: another device saved newer progress while this one had a change waiting; the
- *   newer save was taken whole and this device's waiting change dropped. Worth a picture-level
- *   message ("your game was updated from another device").
+ * - `merged`: another device had saved too, and both saves were joined into one (nothing lost).
+ *   Worth a small cue on screen; it clears with the next change.
  */
-export type SyncState = 'synced' | 'pending' | 'offline' | 'replaced';
+export type SyncState = 'synced' | 'pending' | 'offline' | 'merged';
 
 /** Retry after a failed cloud call: 2 s, doubling, at most 60 s. */
 export const BACKOFF = Object.freeze({ firstMs: 2000, maxMs: 60_000 });
 
+/** Write conflicts (another device wrote first) handled in a row before backing off. */
+export const MAX_CONFLICTS = 5;
+
 /**
- * Which copy of a save to keep: the one with the newer `updatedAt`, whole (never merged field by
- * field). `push`: the cloud needs the device's copy; `store`: the device needs the cloud's.
+ * Two copies with no shared history to go by: equal stamps → nothing to do; one missing → the
+ * other; otherwise both are joined with `mergeSaves`, so a child never loses progress to a sync.
  */
-export function reconcile(local: Save | null, remote: Save | null): { use: Save | null; push: boolean; store: boolean } {
+export function reconcile(local: Save | null, remote: Save | null, now = 0): { use: Save | null; push: boolean; store: boolean } {
   if (!local && !remote) return { use: null, push: false, store: false };
   if (!local) return { use: remote, push: false, store: true };
   if (!remote) return { use: local, push: true, store: false };
-  if (local.updatedAt > remote.updatedAt) return { use: local, push: true, store: false };
-  if (remote.updatedAt > local.updatedAt) return { use: remote, push: false, store: true };
-  return { use: local, push: false, store: false };
+  if (local.updatedAt === remote.updatedAt) return { use: local, push: false, store: false };
+  return { use: mergeSaves(local, remote, now), push: true, store: true };
 }
 
-export interface Decision { use: Save | null; push: boolean; store: boolean; replaced: boolean }
+/** A version of the cloud record: its random id, and the `updatedAt` of the save it held. */
+export interface Version { ver: string; at: number }
+
+export interface Decision { use: Save | null; push: boolean; store: boolean; merged: boolean }
 
 /**
- * `reconcile`, knowing which cloud version this device last synced with (`synced`, the
- * `updatedAt` of that version) and which one it may have just sent without hearing back
- * (`sent`). A save's `updatedAt` names a version (every edit gets a new, larger one), so this
- * compares identities, not clocks:
+ * What to do with the device copy `local` and the cloud record `remote`, knowing which version
+ * this device last synced with (`base`) and which it sent without hearing back (`sent`):
  *
- * - The cloud still holds what this device synced (or sent): nobody else wrote; the newer copy
- *   wins as in `reconcile`.
- * - The cloud holds something else: another device saved since. Its save is taken whole, even
- *   when this device's clock says its own change is newer; if this device had a change waiting,
- *   that change is dropped and `replaced` says so.
- * - This device never synced this player (`synced` null): `reconcile` alone decides.
+ * - The cloud holds `base` or `sent`: nobody else wrote since; only this device can have changed,
+ *   so its copy goes up if it differs.
+ * - The cloud holds a version this device never saw: if this device has not changed since `base`,
+ *   it takes the cloud's copy; if it has (or its history is unknown), both are merged — stored
+ *   here and pushed — so nothing either side earned is lost.
  */
-export function decide(local: Save | null, remote: Save | null, synced: number | null, sent: number | null = null): Decision {
-  const plain = (): Decision => ({ ...reconcile(local, remote), replaced: false });
-  if (!local || !remote || synced === null) return plain();
-  if (remote.updatedAt === local.updatedAt) return plain();
-  if (remote.updatedAt === synced || remote.updatedAt === sent) return plain();
-  return { use: remote, push: false, store: true, replaced: local.updatedAt !== synced };
+export function decide(local: Save | null, remote: SaveRecord | null, base: Version | null, sent: Version | null, now: number): Decision {
+  if (!remote) return { use: local, push: local !== null, store: false, merged: false };
+  if (!local) return { use: remote.save, push: false, store: true, merged: false };
+  const known = remote.ver === base?.ver || remote.ver === sent?.ver;
+  if (known || local.updatedAt === remote.save.updatedAt) {
+    // A device copy older than this device's own last version was rolled back: keep the version.
+    if (local.updatedAt < remote.save.updatedAt) return { use: remote.save, push: false, store: true, merged: false };
+    return { use: local, push: local.updatedAt !== remote.save.updatedAt, store: false, merged: false };
+  }
+  if (base !== null && local.updatedAt === base.at) return { use: remote.save, push: false, store: true, merged: false };
+  return { use: mergeSaves(local, remote.save, now), push: true, store: true, merged: true };
 }
 
 interface Listenable {
@@ -67,6 +75,8 @@ export interface SaveSyncOptions {
   window?: Listenable | null;
   /** Where `visibilitychange` fires (default `document`; null for none). */
   document?: (Listenable & { visibilityState?: string }) | null;
+  /** Version ids for writes (default `randomVer`, 16 hex digits from crypto.getRandomValues). */
+  newVer?: () => string;
 }
 
 /** `localStorage`, or undefined where there is none or touching it throws (as settings.ts). */
@@ -80,33 +90,42 @@ function defaultStorage(): Storage | undefined {
 
 /** The hash of the pin last used on this device per slot, so a known player can log in offline. */
 const hashKey = (slot: Slot): string => `lvt2_hash_${slot}`;
-/** The `updatedAt` of the cloud version this device last synced with, per slot. */
-export const syncedKey = (slot: Slot): string => `lvt2_synced_${slot}`;
+/**
+ * Per slot, the cloud version this device last synced with (`base`) and a write it sent without
+ * hearing back (`sent`), kept across reloads so the device always recognises its own writes.
+ */
+export const syncKey = (slot: Slot): string => `lvt2_sync_${slot}`;
+
+interface SyncRecord { base: Version | null; sent: Version | null }
+
+const isVersion = (v: unknown): v is Version =>
+  typeof v === 'object' && v !== null && typeof (v as Version).ver === 'string' && Number.isSafeInteger((v as Version).at);
+const versionOf = (r: SaveRecord): Version => ({ ver: r.ver, at: r.save.updatedAt });
 
 /**
  * One logged-in player's save, kept on the device and in the cloud. `update` writes the device
  * copy at once and queues one cloud write (the latest save wins; a failed one is retried with
  * backoff 2 s → 60 s, and when the browser comes back online or the page becomes visible).
- * Every write is preceded by a read of the cloud's copy (`decide`), so a stale device — offline
- * for a while, or simply left open while another device played — adopts newer progress instead
- * of overwriting it.
+ * Every write reads the cloud's record first (`decide`) and is a compare-and-swap on its version
+ * id, so two devices never overwrite each other: whoever comes second merges and writes again.
  */
 export class SaveSync {
   readonly state: Signal<SyncState> = signal<SyncState>('synced');
-  /** The logged-in player's save, or null. Changes when the cloud's copy turns out newer. */
+  /** The logged-in player's save, or null. Changes when another device's progress arrives. */
   readonly save: Signal<Save | null> = signal<Save | null>(null);
 
   private readonly now: () => number;
+  private readonly newVer: () => string;
   private readonly win: Listenable | null;
   private readonly doc: (Listenable & { visibilityState?: string }) | null;
   private readonly storage: Storage | undefined;
   private hash: string | null = null;
-  /** The cloud's copy must be read (to adopt it if newer), even with nothing to write. */
+  /** The cloud's record must be read (to take in another device's progress), even with nothing to write. */
   private needsRead = false;
   /** The device copy has changes the cloud may not have. */
   private dirty = false;
-  /** `updatedAt` of a write that failed without an answer: it may have landed. */
-  private sent: number | null = null;
+  /** A merge happened in this round; the state says so when the round ends. */
+  private merged = false;
   /** Stopped until the next log-in (the pin was changed elsewhere, or the cloud refuses). */
   private stopped = false;
   private disposed = false;
@@ -118,6 +137,7 @@ export class SaveSync {
   constructor(private readonly cloud: Cloud, storage?: Storage, opts: SaveSyncOptions = {}) {
     this.storage = storage ?? defaultStorage();
     this.now = opts.now ?? (() => Date.now());
+    this.newVer = opts.newVer ?? randomVer;
     this.win = opts.window !== undefined ? opts.window : typeof window === 'undefined' ? null : window;
     this.doc = opts.document !== undefined ? opts.document : typeof document === 'undefined' ? null : document;
     this.win?.addEventListener('online', this.wake);
@@ -126,16 +146,16 @@ export class SaveSync {
 
   /**
    * Logs a player in with their pin. Online, the cloud decides whether the pin is right and
-   * `decide` picks the copy to keep. Offline (or when the cloud refuses to answer), a player who
-   * has logged in on this device before with the same pin plays on from the device copy, and the
-   * cloud is checked when it can be. `no-save`: the pin is right but there is no save anywhere
-   * (only a console edit can cause it); the screen can offer a fresh start with `adopt`.
+   * `decide` picks (or merges) the copy to keep. Offline (or when the cloud refuses to answer), a
+   * player who has logged in on this device before with the same pin plays on from the device
+   * copy, and the cloud is checked when it can be. `no-save`: the pin is right but there is no
+   * save anywhere (only a console edit can cause it); the screen can offer a fresh start with `adopt`.
    */
   async login(slot: Slot, pin: string): Promise<Save | CloudError | 'no-save'> {
     const hash = await pinHash(slot, pin);
     const local = loadLocal(slot, this.storage);
     const known = this.readString(hashKey(slot));
-    const remote = await this.cloud.loadSave(slot, hash);
+    const remote = await this.cloud.loadRecord(slot, hash);
     if (this.disposed) return 'offline';
     if (remote === 'wrong-pin') return 'wrong-pin';
     if (typeof remote === 'string') {
@@ -147,15 +167,17 @@ export class SaveSync {
     }
     // The device copy counts only if it is this player's: the same pin was used here before,
     // or (after a grown-up reset the pin differs) it carries the same name and picture.
-    const mine = local && (known === hash || (remote !== null && remote.name === local.name && remote.picture === local.picture))
+    const mine = local && (known === hash || (remote !== null && remote.save.name === local.name && remote.save.picture === local.picture))
       ? local : null;
-    const d = decide(mine, remote, mine ? this.readSynced(slot) : null);
+    const st = mine ? this.readSync(slot) : { base: null, sent: null };
+    const d = decide(mine, remote, st.base, st.sent, this.now());
     if (!d.use) return 'no-save';
     this.begin(d.use, hash);
     if (d.store || mine !== local) saveLocal(d.use, this.storage);
-    if (!d.push && remote) this.markSynced(remote);
+    this.writeSync(slot, { base: remote ? versionOf(remote) : st.base, sent: remote ? null : st.sent });
     this.dirty = d.push;
-    this.state.value = d.push ? 'pending' : d.replaced ? 'replaced' : 'synced';
+    this.merged = d.merged;
+    this.state.value = d.push ? 'pending' : 'synced';
     if (d.push) this.kick();
     return d.use;
   }
@@ -168,21 +190,23 @@ export class SaveSync {
    */
   async create(save: Save, pin: string): Promise<Save | CloudError> {
     const hash = await pinHash(save.slot, pin);
-    let res = await this.cloud.createPlayer(save, hash);
-    let use = save;
+    const ver = this.newVer();
+    let res = await this.cloud.createPlayer(save, hash, ver);
+    let rec: SaveRecord | null = null;
     if (res === 'taken' || res === 'full') {
-      const there = await this.cloud.loadSave(save.slot, hash);
+      const there = await this.cloud.loadRecord(save.slot, hash);
       if (there === 'offline') return 'offline';
-      if (there && typeof there === 'object' && there.name === save.name && there.picture === save.picture) {
+      if (there && typeof there === 'object' && there.save.name === save.name && there.save.picture === save.picture) {
         res = 'ok';
-        use = there;
+        rec = there;
       }
     }
     if (this.disposed) return 'offline';
     if (res !== 'ok') return res;
+    const use = rec ? rec.save : save;
     this.begin(use, hash);
     saveLocal(use, this.storage);
-    this.markSynced(use);
+    this.writeSync(use.slot, { base: rec ? versionOf(rec) : { ver, at: save.updatedAt }, sent: null });
     this.state.value = 'synced';
     return use;
   }
@@ -193,12 +217,14 @@ export class SaveSync {
    */
   async adopt(save: Save, pin: string): Promise<Save | CloudError> {
     const hash = await pinHash(save.slot, pin);
-    const res = await this.cloud.writeSave(save, hash);
+    const ver = this.newVer();
+    const res = await this.cloud.writeSave(save, hash, ver, null);
     if (this.disposed) return 'offline';
+    if (res === 'conflict') return 'refused';
     if (res !== 'ok') return res;
     this.begin(save, hash);
     saveLocal(save, this.storage);
-    this.markSynced(save);
+    this.writeSync(save.slot, { base: { ver, at: save.updatedAt }, sent: null });
     this.state.value = 'synced';
     return save;
   }
@@ -235,8 +261,7 @@ export class SaveSync {
     this.clearTimer();
     this.hash = null;
     this.save.value = null;
-    this.needsRead = this.dirty = this.stopped = false;
-    this.sent = null;
+    this.needsRead = this.dirty = this.stopped = this.merged = false;
     this.running = null;
     this.state.value = 'synced';
   }
@@ -260,7 +285,7 @@ export class SaveSync {
   private readonly wake = (): void => {
     if (this.disposed || !this.save.value || this.stopped) return;
     if (this.doc?.visibilityState === 'hidden') return;
-    // Another device may have saved meanwhile: look before the player carries on.
+    // Another device may have saved meanwhile: take it in before the player carries on.
     this.needsRead = true;
     this.clearTimer();
     this.kick();
@@ -276,46 +301,57 @@ export class SaveSync {
     this.running = run;
   }
 
-  /** Read, decide, and write if this device's copy should go up; again while changes keep coming. */
+  /** Read, decide (maybe merge), and compare-and-swap the device's copy up; again while changes keep coming. */
   private async run(session: number): Promise<void> {
-    let replaced = false;
+    let conflicts = 0;
     while (this.session === session && (this.needsRead || this.dirty)) {
       const slot = this.save.value?.slot;
       const hash = this.hash;
       if (!slot || !hash) return;
-      const remote = await this.cloud.loadSave(slot, hash);
+      const remote = await this.cloud.loadRecord(slot, hash);
       if (this.session !== session) return;
       if (typeof remote === 'string') return this.fail(remote);
       // Decide on the save as it is now: `update` may have run while we waited.
       const cur = this.save.value;
       if (!cur) return;
-      const d = decide(cur, remote, this.readSynced(slot), this.sent);
+      const st = this.readSync(slot);
+      const d = decide(cur, remote, st.base, st.sent, this.now());
       this.needsRead = false;
-      this.sent = null;
+      this.dirty = false;
+      if (d.merged) this.merged = true;
       if (d.store && d.use) {
         this.save.value = d.use;
         saveLocal(d.use, this.storage);
       }
-      if (d.replaced) replaced = true;
-      if (!d.push) {
-        if (remote) this.markSynced(remote);
-        this.dirty = false;
+      const base = remote ? versionOf(remote) : st.base;
+      if (!d.push || !d.use) {
+        this.writeSync(slot, { base, sent: null });
         continue;
       }
-      this.dirty = false;
-      this.sent = cur.updatedAt;
-      const res = await this.cloud.writeSave(cur, hash);
+      const out = d.use;
+      const ver = this.newVer();
+      // Remembered before sending, so a reload after a lost answer still knows this write.
+      this.writeSync(slot, { base, sent: { ver, at: out.updatedAt } });
+      const res = await this.cloud.writeSave(out, hash, ver, remote ? remote.ver : null);
       if (this.session !== session) return;
-      if (res !== 'ok') {
-        this.dirty = true;
-        return this.fail(res);
+      if (res === 'ok') {
+        this.writeSync(slot, { base: { ver, at: out.updatedAt }, sent: null });
+        continue;
       }
-      this.sent = null;
-      this.markSynced(cur);
+      this.dirty = true;
+      if (res === 'conflict') {
+        // Another device wrote between our read and our write: read again, merge, retry.
+        conflicts += 1;
+        if (conflicts < MAX_CONFLICTS) continue;
+        return this.fail('offline');
+      }
+      this.needsRead = true;
+      return this.fail(res);
     }
     if (this.session !== session) return;
     this.delay = BACKOFF.firstMs;
-    this.state.value = replaced ? 'replaced' : 'synced';
+    this.state.value = this.merged ? 'merged' : 'synced';
+    this.merged = false;
   }
 
   private fail(err: CloudError): void {
@@ -340,13 +376,17 @@ export class SaveSync {
     this.timer = null;
   }
 
-  private markSynced(s: Save): void {
-    this.writeString(syncedKey(s.slot), String(s.updatedAt));
+  private readSync(slot: Slot): SyncRecord {
+    try {
+      const o = JSON.parse(this.readString(syncKey(slot)) ?? 'null') as Partial<SyncRecord> | null;
+      return { base: isVersion(o?.base) ? o.base : null, sent: isVersion(o?.sent) ? o.sent : null };
+    } catch {
+      return { base: null, sent: null };
+    }
   }
 
-  private readSynced(slot: Slot): number | null {
-    const v = Number(this.readString(syncedKey(slot)) ?? Number.NaN);
-    return Number.isSafeInteger(v) ? v : null;
+  private writeSync(slot: Slot, r: SyncRecord): void {
+    this.writeString(syncKey(slot), JSON.stringify(r));
   }
 
   private readString(key: string): string | null {
@@ -361,8 +401,8 @@ export class SaveSync {
     try {
       this.storage?.setItem(key, value);
     } catch {
-      // Without it this device cannot log in offline or tell whose save is newer; it falls
-      // back to comparing `updatedAt` alone. Online play is unaffected.
+      // Without it this device cannot log in offline or recognise its own writes; it then
+      // merges (losing nothing). Online play is unaffected.
     }
   }
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, createCloud, lazyCloud, saveFromWire, saveToWire } from '../../src/cloud/restClient';
+import { DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, createCloud, lazyCloud, randomVer, saveFromWire, saveToWire } from '../../src/cloud/restClient';
 import type { Cloud } from '../../src/cloud/types';
 import type { Save } from '../../src/progress/save';
 import { T0, hex, saveFor } from './helpers';
@@ -30,6 +30,8 @@ function mockFetch(answer: (call: Call) => { status: number; data?: unknown } | 
 
 const H = hex('1');
 const G = hex('9');
+const V1 = '0123456789abcdef';
+const V2 = 'fedcba9876543210';
 const s: Save = { ...saveFor('p01', 'Lukas'), coins: 50 };
 const SV = { '.sv': 'timestamp' };
 
@@ -51,37 +53,41 @@ describe('requests', () => {
 
   it('creates a player in ONE multi-path PATCH at the root', async () => {
     const m = mockFetch(() => ({ status: 200, data: {} }));
-    expect(await new RestCloud({ fetch: m.fetch }).createPlayer(s, H)).toBe('ok');
+    expect(await new RestCloud({ fetch: m.fetch, newVer: () => V1 }).createPlayer(s, H)).toBe('ok');
     expect(m.calls).toEqual([{
       url: `${DATABASE_URL}/v2.json`,
       method: 'PATCH',
       body: {
         'secrets/p01': H,
-        [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV },
+        [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV, ver: V1 },
         'players/p01': { name: 'Lukas', picture: s.picture },
         'board/p01': { slot: 'p01', name: 'Lukas', picture: s.picture, stars: 0, wave: 0, versusWins: 0, computerWins: 0, updatedAt: SV },
       },
     }]);
   });
 
-  it('writes a save and its board row in one PATCH', async () => {
+  it('writes a save and its board row in one PATCH, naming its new version and the one it replaces', async () => {
     const m = mockFetch(() => ({ status: 200, data: {} }));
-    await new RestCloud({ fetch: m.fetch }).writeSave(s, H);
+    await new RestCloud({ fetch: m.fetch }).writeSave(s, H, V2, V1);
+    await new RestCloud({ fetch: m.fetch }).writeSave(s, H, V1, null);
+    expect(m.calls[1]!.body).toEqual({ [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV, ver: V1 }, 'board/p01': boardRowFor(s) });
+    m.calls.splice(1);
     expect(m.calls).toEqual([{
       url: `${DATABASE_URL}/v2.json`, method: 'PATCH',
-      body: { [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV }, 'board/p01': boardRowFor(s) },
+      body: { [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV, ver: V2, prev: V1 }, 'board/p01': boardRowFor(s) },
     }]);
   });
 
   it('loads at the exact save path', async () => {
-    const m = mockFetch(() => ({ status: 200, data: { save: JSON.stringify(s), touch: T0 } }));
+    const m = mockFetch(() => ({ status: 200, data: { save: JSON.stringify(s), touch: T0, ver: V1 } }));
     expect(await new RestCloud({ fetch: m.fetch }).loadSave('p01', H)).toEqual(s);
+    expect(await new RestCloud({ fetch: m.fetch }).loadRecord('p01', H)).toEqual({ save: s, ver: V1 });
     expect(m.calls[0]).toMatchObject({ method: 'GET', url: `${DATABASE_URL}/v2/saves/p01/${H}.json` });
   });
 
   it('deletes and resets with the grown-up proof in the same update', async () => {
     const m = mockFetch(() => ({ status: 200, data: {} }));
-    const c = new RestCloud({ fetch: m.fetch });
+    const c = new RestCloud({ fetch: m.fetch, newVer: () => V1 });
     await c.deletePlayer('p01', G);
     await c.resetPin('p01', G, H, s);
     await c.setGrownUpCode(G);
@@ -90,7 +96,7 @@ describe('requests', () => {
     });
     expect(m.calls[1]!.body).toEqual({
       'secrets/p01': H,
-      'saves/p01': { [H]: { save: JSON.stringify(s), touch: SV } },
+      'saves/p01': { [H]: { save: JSON.stringify(s), touch: SV, ver: V1 } },
       'players/p01': { name: 'Lukas', picture: s.picture },
       'board/p01': boardRowFor(s),
       [`admin/proof/${G}`]: { touch: SV },
@@ -103,7 +109,10 @@ describe('requests', () => {
     const c = new RestCloud({ fetch: m.fetch });
     expect(await c.loadSave('p01', '../admin')).toBe('refused');
     expect(await c.loadSave('p/../x' as 'p01', H)).toBe('refused');
-    expect(await c.writeSave(s, 'ABC')).toBe('refused');
+    expect(await c.writeSave(s, 'ABC', V2, V1)).toBe('refused');
+    expect(await c.writeSave(s, H, 'short', V1)).toBe('refused');
+    expect(await c.writeSave(s, H, V2, 'bad')).toBe('refused');
+    expect(await c.createPlayer(s, H, 'XYZ')).toBe('refused');
     expect(await c.deletePlayer('p01', 'x')).toBe('refused');
     expect(await c.resetPin('p02', G, H, s)).toBe('refused');
     expect(await c.setGrownUpCode('nope')).toBe('refused');
@@ -116,7 +125,7 @@ describe('answers', () => {
     listPlayers: () => c.listPlayers(),
     createPlayer: () => c.createPlayer(s, H),
     loadSave: () => c.loadSave('p01', H),
-    writeSave: () => c.writeSave(s, H),
+    writeSave: () => c.writeSave(s, H, V2, V1),
     board: () => c.board(),
     setGrownUpCode: () => c.setGrownUpCode(G),
     deletePlayer: () => c.deletePlayer('p01', G),
@@ -157,10 +166,32 @@ describe('answers', () => {
     for (const fn of Object.values(each(new RestCloud({ fetch: m.fetch })))) expect(await fn()).toBe('offline');
   });
 
+  it('a refused write is a conflict when the stored version is not the one it replaced', async () => {
+    const stored = (ver: string) => mockFetch((c) => (c.method === 'PATCH' ? { status: 401 }
+      : { status: 200, data: { save: JSON.stringify(s), touch: T0, ver } }));
+    expect(await new RestCloud({ fetch: stored(V2).fetch }).writeSave(s, H, hex('3').slice(0, 16), V1)).toBe('conflict');
+    expect(await new RestCloud({ fetch: stored(V2).fetch }).writeSave(s, H, V1, null)).toBe('conflict');
+    // The stored version is the one named: the refusal was for something else.
+    expect(await new RestCloud({ fetch: stored(V1).fetch }).writeSave(s, H, V2, V1)).toBe('refused');
+    const gone = mockFetch((c) => (c.method === 'PATCH' ? { status: 401 } : { status: 200, data: null }));
+    expect(await new RestCloud({ fetch: gone.fetch }).writeSave(s, H, V2, V1)).toBe('refused');
+  });
+
+  it('a stored record without a version is unreadable, not nothing', async () => {
+    const m = mockFetch(() => ({ status: 200, data: { save: JSON.stringify(s), touch: T0 } }));
+    expect(await new RestCloud({ fetch: m.fetch }).loadRecord('p01', H)).toBe('refused');
+  });
+
+  it('randomVer gives 16 hex digits, different each time', () => {
+    const a = randomVer();
+    expect(a).toMatch(/^[0-9a-f]{16}$/);
+    expect(new Set(Array.from({ length: 50 }, randomVer)).size).toBe(50);
+  });
+
   it('maps HTTP 400 to refused', async () => {
     const m = mockFetch(() => ({ status: 400, data: { error: 'Invalid data' } }));
     const c = new RestCloud({ fetch: m.fetch });
-    expect(await c.writeSave(s, H)).toBe('refused');
+    expect(await c.writeSave(s, H, V2, null)).toBe('refused');
     expect(await c.loadSave('p01', H)).toBe('refused');
   });
 

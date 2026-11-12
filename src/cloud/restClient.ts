@@ -3,7 +3,7 @@ import type { Save, Slot } from '../progress/save';
 // Types only: the fake (which evaluates rule strings with `new Function`) is loaded with a
 // dynamic import, and only when the cloud mode is `fake`.
 import type { FakeDatabase, FakeDatabaseOptions } from './fakeCloud';
-import type { BoardRow, Cloud, CloudError, PublicPlayer } from './types';
+import type { BoardRow, Cloud, CloudError, PublicPlayer, SaveRecord } from './types';
 
 /** The old game's database (tag `old-game-final`, src/firebase/config.ts). */
 export const DATABASE_URL = 'https://lukas-toby-plants-vs-zombies-default-rtdb.firebaseio.com';
@@ -16,6 +16,12 @@ export const FAKE_DATABASE_URL = 'https://fake-rtdb.invalid';
 /** The database's own clock, filled in when the write lands. */
 const SERVER_NOW = Object.freeze({ '.sv': 'timestamp' });
 const HASH = /^[0-9a-f]{64}$/;
+const VER = /^[0-9a-f]{16}$/;
+
+/** A fresh version id: 16 hex digits from `crypto.getRandomValues`. */
+export function randomVer(): string {
+  return [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 /** Shape only — anything that could leave the path (`/`, `..`) is refused before a request is made. */
 const SLOT_SHAPE = /^p[0-9]{2}$/;
 
@@ -24,6 +30,8 @@ export interface RestCloudOptions {
   root?: CloudRoot;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /** Version ids for writes that do not name one (default `randomVer`). */
+  newVer?: () => string;
 }
 
 type Answer = { kind: 'ok'; data: unknown } | { kind: 'offline' } | { kind: 'denied' } | { kind: 'bad' };
@@ -91,8 +99,10 @@ export class RestCloud implements Cloud {
   private readonly base: string;
   private readonly fetch: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly newVer: () => string;
 
   constructor(opts: RestCloudOptions = {}) {
+    this.newVer = opts.newVer ?? randomVer;
     this.base = `${opts.baseUrl ?? DATABASE_URL}/${opts.root ?? 'v2'}`;
     this.fetch = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
@@ -125,12 +135,12 @@ export class RestCloud implements Cloud {
     return a.kind === 'offline' ? 'offline' : 'refused';
   }
 
-  async createPlayer(save: Save, hash: string): Promise<'ok' | CloudError> {
-    if (!SLOT_SHAPE.test(save.slot) || !HASH.test(hash)) return 'refused';
+  async createPlayer(save: Save, hash: string, ver: string = this.newVer()): Promise<'ok' | CloudError> {
+    if (!SLOT_SHAPE.test(save.slot) || !HASH.test(hash) || !VER.test(ver)) return 'refused';
     const slot = save.slot;
     const a = await this.request('PATCH', '', {
       [`secrets/${slot}`]: hash,
-      [`saves/${slot}/${hash}`]: { save: saveToWire(save), touch: SERVER_NOW },
+      [`saves/${slot}/${hash}`]: { save: saveToWire(save), touch: SERVER_NOW, ver },
       [`players/${slot}`]: { name: save.name, picture: save.picture },
       [`board/${slot}`]: boardRowFor(save),
     });
@@ -146,23 +156,36 @@ export class RestCloud implements Cloud {
   }
 
   async loadSave(slot: Slot, hash: string): Promise<Save | null | CloudError> {
+    const r = await this.loadRecord(slot, hash);
+    return r === null || typeof r === 'string' ? r : r.save;
+  }
+
+  async loadRecord(slot: Slot, hash: string): Promise<SaveRecord | null | CloudError> {
     if (!SLOT_SHAPE.test(slot) || !HASH.test(hash)) return 'refused';
     const a = await this.request('GET', `saves/${slot}/${hash}`);
     if (a.kind === 'denied') return 'wrong-pin';
     if (a.kind !== 'ok') return a.kind === 'offline' ? 'offline' : 'refused';
     if (a.data === null) return null;
     const s = isObj(a.data) ? saveFromWire(a.data.save) : null;
+    const ver = isObj(a.data) ? a.data.ver : undefined;
     // Something is stored but unreadable (a newer game's save?): never treat it as "nothing".
-    return s && s.slot === slot ? s : 'refused';
+    return s && s.slot === slot && typeof ver === 'string' && VER.test(ver) ? { save: s, ver } : 'refused';
   }
 
-  async writeSave(save: Save, hash: string): Promise<'ok' | CloudError> {
-    if (!SLOT_SHAPE.test(save.slot) || !HASH.test(hash)) return 'refused';
+  async writeSave(save: Save, hash: string, ver: string, prev: string | null): Promise<'ok' | 'conflict' | CloudError> {
+    if (!SLOT_SHAPE.test(save.slot) || !HASH.test(hash) || !VER.test(ver) || (prev !== null && !VER.test(prev))) return 'refused';
     const a = await this.request('PATCH', '', {
-      [`saves/${save.slot}/${hash}`]: { save: saveToWire(save), touch: SERVER_NOW },
+      [`saves/${save.slot}/${hash}`]: { save: saveToWire(save), touch: SERVER_NOW, ver, ...(prev === null ? {} : { prev }) },
       [`board/${save.slot}`]: boardRowFor(save),
     });
-    return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';
+    if (a.kind === 'ok') return 'ok';
+    if (a.kind === 'offline') return 'offline';
+    if (a.kind === 'bad') return 'refused';
+    // The database says only "permission denied": a wrong pin, or someone else wrote first.
+    const there = await this.loadRecord(save.slot, hash);
+    if (there === 'wrong-pin' || there === 'offline') return there;
+    if (there !== null && typeof there === 'object' && there.ver !== prev) return 'conflict';
+    return 'refused';
   }
 
   async board(): Promise<BoardRow[] | CloudError> {
@@ -199,12 +222,12 @@ export class RestCloud implements Cloud {
     return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';
   }
 
-  async resetPin(slot: Slot, grownUpHash: string, newHash: string, save: Save): Promise<'ok' | CloudError> {
-    if (!SLOT_SHAPE.test(slot) || save.slot !== slot || !HASH.test(grownUpHash) || !HASH.test(newHash)) return 'refused';
+  async resetPin(slot: Slot, grownUpHash: string, newHash: string, save: Save, ver: string = this.newVer()): Promise<'ok' | CloudError> {
+    if (!SLOT_SHAPE.test(slot) || save.slot !== slot || !HASH.test(grownUpHash) || !HASH.test(newHash) || !VER.test(ver)) return 'refused';
     const a = await this.request('PATCH', '', {
       [`secrets/${slot}`]: newHash,
       // Replaces the slot's saves wholesale, so the save under the old hash goes too.
-      [`saves/${slot}`]: { [newHash]: { save: saveToWire(save), touch: SERVER_NOW } },
+      [`saves/${slot}`]: { [newHash]: { save: saveToWire(save), touch: SERVER_NOW, ver } },
       [`players/${slot}`]: { name: save.name, picture: save.picture },
       [`board/${slot}`]: boardRowFor(save),
       [`admin/proof/${grownUpHash}`]: { touch: SERVER_NOW },

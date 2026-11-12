@@ -41,12 +41,18 @@
           "$hash": {
             ".read": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2/secrets/' + $slot).val() === $hash",
             ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && newData.exists() && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
-            ".validate": "newData.hasChildren(['save', 'touch']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
+            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val())",
             "save": {
               ".validate": "newData.isString() && newData.val().length <= 20000"
             },
             "touch": {
               ".validate": "newData.val() === now"
+            },
+            "ver": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/) && newData.val() !== data.val()"
+            },
+            "prev": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/)"
             },
             "$other": {
               ".validate": false
@@ -90,7 +96,7 @@
       },
       "admin": {
         "secret": {
-          ".write": "!data.exists() || (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now)",
+          ".write": "newData.exists() && (!data.exists() || (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
           ".validate": "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)"
         },
         "proof": {
@@ -142,12 +148,18 @@
           "$hash": {
             ".read": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2test/secrets/' + $slot).val() === $hash",
             ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && newData.exists() && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
-            ".validate": "newData.hasChildren(['save', 'touch']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
+            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val())",
             "save": {
               ".validate": "newData.isString() && newData.val().length <= 20000"
             },
             "touch": {
               ".validate": "newData.val() === now"
+            },
+            "ver": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/) && newData.val() !== data.val()"
+            },
+            "prev": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/)"
             },
             "$other": {
               ".validate": false
@@ -191,7 +203,7 @@
       },
       "admin": {
         "secret": {
-          ".write": "!data.exists() || (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now)",
+          ".write": "newData.exists() && (!data.exists() || (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
           ".validate": "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)"
         },
         "proof": {

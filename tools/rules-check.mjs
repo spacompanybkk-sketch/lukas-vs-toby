@@ -15,7 +15,7 @@
  * No SDK; plain fetch to the REST API. Never touches `v2`, `presence`, `rooms` or `challenges`
  * except the read-only check of `presence`.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 const DATABASE_URL = 'https://lukas-toby-plants-vs-zombies-default-rtdb.firebaseio.com';
 const R = 'v2test';
@@ -32,9 +32,9 @@ if (!code) {
   console.error('Set LVT_TEST_GROWNUP_CODE (the grown-up code used for v2test).');
   process.exit(2);
 }
-// As src/cloud/hash.ts grownUpHash: four digits, SHA-256 of `lvt2|grown-up|<code>`.
-if (!/^\d{4}$/.test(code)) {
-  console.error('LVT_TEST_GROWNUP_CODE must be four digits.');
+// As src/cloud/hash.ts grownUpHash: six digits, SHA-256 of `lvt2|grown-up|<code>`.
+if (!/^\d{6}$/.test(code)) {
+  console.error('LVT_TEST_GROWNUP_CODE must be six digits.');
   process.exit(2);
 }
 const G = sha(`lvt2|grown-up|${code}`);
@@ -61,7 +61,28 @@ async function call(method, path, body) {
 }
 const get = (p) => call('GET', p);
 const put = (p, b) => call('PUT', p, b);
-const patch = (b) => call('PATCH', R, b);
+/** The version id stored in each slot's save record, as far as this run knows. */
+const cur = {};
+const fresh = () => randomBytes(8).toString('hex');
+/** A save record replacing the slot's current version (`prev`), unless told otherwise. */
+const rec = (slot, saveValue, opts = {}) => {
+  const prev = 'prev' in opts ? opts.prev : cur[slot];
+  return { save: saveValue, touch: opts.touch ?? SV, ver: opts.ver ?? fresh(), ...(prev ? { prev } : {}) };
+};
+/** PATCH at the root; when it lands, remember the versions it stored. */
+async function patch(b) {
+  const res = await call('PATCH', R, b);
+  if (res.status === 200) {
+    for (const [k, v] of Object.entries(b)) {
+      const m = /^saves\/(p\d\d)(?:\/[0-9a-f]{64})?$/.exec(k);
+      if (!m) continue;
+      if (v === null) delete cur[m[1]];
+      else if (typeof v.ver === 'string') cur[m[1]] = v.ver;
+      else for (const r of Object.values(v)) if (r && typeof r.ver === 'string') cur[m[1]] = r.ver;
+    }
+  }
+  return res;
+}
 
 const save = (slot, name, extra = {}) => ({
   v: 1, slot, name, picture: 'peashooter', coins: 0, upgrades: {},
@@ -74,12 +95,12 @@ const row = (slot, name, extra = {}) => ({
 });
 const createBody = (slot, name, hash) => ({
   [`secrets/${slot}`]: hash,
-  [`saves/${slot}/${hash}`]: { save: JSON.stringify(save(slot, name)), touch: SV },
+  [`saves/${slot}/${hash}`]: rec(slot, JSON.stringify(save(slot, name))),
   [`players/${slot}`]: { name, picture: 'peashooter' },
   [`board/${slot}`]: row(slot, name),
 });
 const ownerWrite = (slot, name, hash, rowExtra = {}) => ({
-  [`saves/${slot}/${hash}`]: { save: JSON.stringify(save(slot, name)), touch: SV },
+  [`saves/${slot}/${hash}`]: rec(slot, JSON.stringify(save(slot, name))),
   [`board/${slot}`]: row(slot, name, rowExtra),
 });
 const removeBody = (slot) => ({
@@ -116,11 +137,11 @@ const ROWS = [
   ['read the grown-up proofs', () => get(`${R}/admin/proof`), 401],
 
   // Forged writes (review focus 3).
-  ['save under a wrong hash', () => patch({ [`saves/${A}/${WRONG}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV } }), 401],
+  ['save under a wrong hash', () => patch({ [`saves/${A}/${WRONG}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { prev: null }) }), 401],
   ['board row without the pin proof', () => put(`${R}/board/${A}`, row(A, 'CheckA', { stars: 240 })), 401],
   ['player row without the pin proof', () => put(`${R}/players/${A}`, { name: 'Hacked', picture: 'peashooter' }), 401],
   ['another player\'s board row with your own proof', () => patch({ ...ownerWrite(B, 'CheckB', hB), [`board/${A}`]: row(A, 'CheckA') }), 401],
-  ['stale touch (not this update\'s time)', () => patch({ [`saves/${A}/${hA}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: 1 }, [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['stale touch (not this update\'s time)', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { touch: 1 }), [`board/${A}`]: row(A, 'CheckA') }), 401],
   ['stars 241', () => patch(ownerWrite(A, 'CheckA', hA, { stars: 241 })), 401],
   ['stars 1.5', () => patch(ownerWrite(A, 'CheckA', hA, { stars: 1.5 })), 401],
   ['wave 10000', () => patch(ownerWrite(A, 'CheckA', hA, { wave: 10000 })), 401],
@@ -142,16 +163,25 @@ const ROWS = [
   ['write anything else under v2test', () => put(`${R}/notes`, 'hi'), 401],
 
   // Fix round 1.
-  ['owner deletes own player row (would leave a ghost)', () => patch({ [`saves/${A}/${hA}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV }, [`players/${A}`]: null }), 401],
-  ['owner deletes own board row', () => patch({ [`saves/${A}/${hA}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV }, [`board/${A}`]: null }), 401],
+  ['owner deletes own player row (would leave a ghost)', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA'))), [`players/${A}`]: null }), 401],
+  ['owner deletes own board row', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA'))), [`board/${A}`]: null }), 401],
   ['owner deletes own save', () => call('DELETE', `${R}/saves/${A}/${hA}`), 401],
   ['delete a slot\'s saves without the grown-up proof', () => call('DELETE', `${R}/saves/${A}`), 401],
-  ['save as an object, not a string', () => patch({ [`saves/${A}/${hA}`]: { save: save(A, 'CheckA'), touch: SV }, [`board/${A}`]: row(A, 'CheckA') }), 401],
-  ['save string over 20,000 characters', () => patch({ [`saves/${A}/${hA}`]: { save: 'x'.repeat(20001), touch: SV }, [`board/${A}`]: row(A, 'CheckA') }), 401],
-  ['save string of exactly 20,000 characters', () => patch({ [`saves/${A}/${hA}`]: { save: 'x'.repeat(20000), touch: SV }, [`board/${A}`]: row(A, 'CheckA') }), 200],
+  ['save as an object, not a string', () => patch({ [`saves/${A}/${hA}`]: rec(A, save(A, 'CheckA')), [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['save string over 20,000 characters', () => patch({ [`saves/${A}/${hA}`]: rec(A, 'x'.repeat(20001)), [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['save string of exactly 20,000 characters', () => patch({ [`saves/${A}/${hA}`]: rec(A, 'x'.repeat(20000)), [`board/${A}`]: row(A, 'CheckA') }), 200],
   ['put the honest save back', () => patch(ownerWrite(A, 'CheckA', hA)), 200],
   ['change the grown-up code with the current proof', () => patch({ 'admin/secret': G2, [`admin/proof/${G}`]: { touch: SV } }), 200],
   ['change it back with the new proof', () => patch({ 'admin/secret': G, [`admin/proof/${G2}`]: { touch: SV } }), 200],
+
+  // Fix round 2: compare-and-swap on the version id; the grown-up code is never deleted.
+  ['write naming a stale version (prev)', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { prev: fresh() }), [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['write with no prev over a stored record', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { prev: null }), [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['write keeping the stored version id', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { ver: cur[A] }), [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['write with a malformed version id', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { ver: 'XYZ' }), [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['write naming the current version', () => patch(ownerWrite(A, 'CheckA', hA)), 200],
+  ['delete the grown-up code', () => call('DELETE', `${R}/admin/secret`), 401],
+  ['delete the grown-up code with its proof', () => patch({ 'admin/secret': null, [`admin/proof/${G}`]: { touch: SV } }), 401],
 
   // The old paths stay as they are (read-only check: nothing is written there).
   ['old presence path still readable', () => get('presence'), 200],
@@ -159,7 +189,7 @@ const ROWS = [
   // Grown-up reset, then cleanup.
   ['reset p29\'s pin with the grown-up proof', () => patch({
     [`secrets/${A}`]: pinHash(A, '999'),
-    [`saves/${A}`]: { [pinHash(A, '999')]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV } },
+    [`saves/${A}`]: { [pinHash(A, '999')]: rec(A, JSON.stringify(save(A, 'CheckA')), { prev: null }) },
     [`board/${A}`]: row(A, 'CheckA'),
     [`admin/proof/${G}`]: { touch: SV },
   }), 200],

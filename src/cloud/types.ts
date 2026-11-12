@@ -18,14 +18,23 @@ export interface BoardRow extends PublicPlayer {
  */
 export type CloudError = 'offline' | 'wrong-pin' | 'taken' | 'full' | 'refused';
 
+/** A stored save with its version id (`ver`: 16 hex digits, new with every write). */
+export interface SaveRecord { save: Save; ver: string }
+
 export interface Cloud {
   listPlayers(): Promise<PublicPlayer[] | CloudError>;
-  /** Claims the slot, stores its pin hash, the save and the board row in ONE multi-path update. */
-  createPlayer(save: Save, hash: string): Promise<'ok' | CloudError>;
+  /** Claims the slot, stores its pin hash, the save (as version `ver`) and the board row in ONE multi-path update. */
+  createPlayer(save: Save, hash: string, ver?: string): Promise<'ok' | CloudError>;
   /** The save at the player's hash; null = right hash, nothing stored; wrong hash → `wrong-pin`. */
   loadSave(slot: Slot, hash: string): Promise<Save | null | CloudError>;
-  /** The save and its board row, in one update. */
-  writeSave(save: Save, hash: string): Promise<'ok' | CloudError>;
+  /** `loadSave` with the stored version id. */
+  loadRecord(slot: Slot, hash: string): Promise<SaveRecord | null | CloudError>;
+  /**
+   * The save (as the new version `ver`) and its board row, in one update — a compare-and-swap:
+   * it lands only if the stored version is `prev` (null: nothing stored yet). `conflict`: someone
+   * else wrote first; reload, merge, try again.
+   */
+  writeSave(save: Save, hash: string, ver: string, prev: string | null): Promise<'ok' | 'conflict' | CloudError>;
   board(): Promise<BoardRow[] | CloudError>;
   /** Sets the grown-up code, only when none is set yet. */
   setGrownUpCode(hash: string): Promise<'ok' | CloudError>;
@@ -33,7 +42,7 @@ export interface Cloud {
   changeGrownUpCode(oldHash: string, newHash: string): Promise<'ok' | CloudError>;
   deletePlayer(slot: Slot, grownUpHash: string): Promise<'ok' | CloudError>;
   /** A new pin for a player, behind the grown-up code; `save` becomes the player's save. */
-  resetPin(slot: Slot, grownUpHash: string, newHash: string, save: Save): Promise<'ok' | CloudError>;
+  resetPin(slot: Slot, grownUpHash: string, newHash: string, save: Save, ver?: string): Promise<'ok' | CloudError>;
 }
 
 export const isCloudError = (v: unknown): v is CloudError =>
