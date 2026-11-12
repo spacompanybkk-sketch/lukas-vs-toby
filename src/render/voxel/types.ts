@@ -54,7 +54,11 @@ export interface PartDef {
   boxes: Box[];
 }
 
-export type ClipName = 'idle' | 'walk' | 'shoot' | 'melee' | 'hit' | 'spawn' | 'die' | 'cheer';
+/**
+ * `ability` is a unit's own trick, played on its `abilityUsed` event: a mine popping up armed, a
+ * cherry's fuse, a pumpkin's leap, a lasso throw, a staff raised to heal or to raise the dead.
+ */
+export type ClipName = 'idle' | 'walk' | 'shoot' | 'melee' | 'hit' | 'spawn' | 'die' | 'cheer' | 'ability';
 
 /**
  * Where a clip moves one part, as offsets from its rest pose: turns in radians, shifts in

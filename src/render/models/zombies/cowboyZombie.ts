@@ -1,4 +1,4 @@
-import { lassoThrow, pistolPop, zombieIdle } from '../../voxel/clips';
+import { lassoThrow, pistolPop, zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
 import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
@@ -168,7 +168,8 @@ export const cowboyZombie = bipedModel({
   clips: {
     idle: zombieIdle(['pistol']),
     shoot: pistolPop(),
+    melee: zombieBite(),
     // The lasso throw, with the left arm.
-    melee: lassoThrow({ arm: 'armL' }),
+    ability: lassoThrow({ arm: 'armL' }),
   },
 });

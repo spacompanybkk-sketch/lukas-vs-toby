@@ -1,22 +1,28 @@
 import {
-  BackSide, Color, DirectionalLight, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster, Vector2, Vector3,
-  type Camera, type Object3D, type Scene,
+  BackSide, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
+  Vector2, Vector3, type Camera, type Object3D, type Scene,
 } from 'three';
 import { factionOf } from '../../data/units';
-import type { Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../../sim/types';
-import { BASE_STOP_X, ZOMBIE_SPAWN_X } from '../../sim/types';
+import type { Faction, Flight, ProjectileKind, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
+import { BASE_STOP_X, COLS, MAX_LEVEL, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
+import { MATTE_PLASTIC } from '../look';
 import { BaseView } from '../models/bases';
-import { PEA_COLORS, makeGravestone, makeMergeMarker, makeProjectile, makeToken, spinToken, type TokenKind } from '../models/props';
+import {
+  BURNING_TRAIL, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeGravestone, makeMergeMarker, makeProjectile, makeToken, spinToken,
+  type TokenKind,
+} from '../models/props';
 import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
 import { PALETTE } from '../palette';
 import { modelColors } from '../voxel/build';
 import { ModelInstance } from '../voxel/rig';
 import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
 import type { Lawn } from '../world/Lawn';
+import { Hazards } from './Hazards';
 import { HealthBars } from './HealthBars';
+import { StatusMarks } from './StatusMarks';
 import type { Feel, PlacementPreview } from './types';
-import { RELEASE_SECONDS, UnitView, type UnitHooks } from './UnitView';
+import { GROW_PER_STACK, RELEASE_SECONDS, UnitView, type UnitHooks } from './UnitView';
 
 export type { Feel, PlacementPreview } from './types';
 
@@ -70,7 +76,7 @@ const BAR_LIFT = 0.19;
 const ZOMBIE_BAR_FLOOR = 1.1;
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
 const PROJECTILE_SCALE: Record<ProjectileKind, number> = {
-  pea: 1.2, brain: 1.1, // the phase-2 kinds borrow the pea's (plants) or the brain's (zombies) until they get their own
+  pea: 1.2, brain: 1.1,
   kernel: 1.2, butter: 1.2, mango: 1.2, sand: 1.1, arrow: 1.1, bullet: 1.1, trident: 1.1, rot: 1.1,
 };
 /** Sudden death warms the sun and sky towards this over two seconds. */
@@ -88,16 +94,49 @@ const MARKER_STEP_SCALE = 1.18;
 const CONFETTI_EVERY = 0.14;
 const LEVEL_COLOR = [0, hex('#FFFFFF'), hex('#FFFFFF'), hex(PALETTE.levelIron), hex(PALETTE.levelCrystal), hex(PALETTE.levelGold)];
 const STONE = [hex(PALETTE.stone), hex(PALETTE.stoneDark), hex(PALETTE.graveRock), hex(PALETTE.graveSoil)];
-const TRAIL: Record<ProjectileKind, number> = {
-  pea: hex(PEA_COLORS.body), brain: hex(PALETTE.brainPink),
-  kernel: hex(PEA_COLORS.body), butter: hex(PEA_COLORS.body), mango: hex(PEA_COLORS.body),
-  sand: hex(PALETTE.brainPink), arrow: hex(PALETTE.brainPink), bullet: hex(PALETTE.brainPink),
-  trident: hex(PALETTE.brainPink), rot: hex(PALETTE.brainPink),
+const FIRE = hex(PALETTE.fire);
+const HEAL = hex(PALETTE.heal);
+/** The Necromancer's raise: a ring of graveyard violet, brighter than the graveyard itself. */
+const RAISE = hex('#9B6BFF');
+const SOIL = hex('#8A5A2B');
+
+/** The statuses a unit can carry, each with its bit in `UnitView.statusBits`. */
+const STATUSES: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn'];
+const TIED_BIT = 1 << STATUSES.indexOf('tied');
+
+/** A lobbed shot comes down to this height over its target (about a unit's middle). */
+const LOB_LAND_Y = 0.45;
+/** A pea that has passed a Torchwood is drawn this much larger: a fireball, not a pea. */
+const BURNING_SCALE = 1.35;
+/** Turns per second to radians per second. */
+const TURN = Math.PI * 2;
+
+/** Lasso ropes: segments per rope, how long one takes to fly out, how far it sags. */
+const ROPE_SEGMENTS = 14;
+const ROPE_THROW_SECONDS = 0.22;
+const ROPE_SAG = 0.18;
+const ROPE_THICK = 0.06;
+const VOXEL = 1 / 16;
+const ROPE_COLOR = '#A8743E';
+
+/** How hard each kind of blast is felt: a Cherry Bomber shakes the most (plan Task 5: 80 ms hit-stop). */
+const BLAST_FEEL: Partial<Record<UnitKey, Feel>> = {
+  cherryBomber: { shake: 0.9, hitStop: 0.08, punch: 0.07 },
+  potatoMine: { shake: 0.6, hitStop: 0.06, punch: 0.05 },
 };
+const BLAST_DEFAULT: Feel = { shake: 0.5, hitStop: 0.08, punch: 0.04 };
 
 interface ProjectileView {
   id: number;
   kind: ProjectileKind;
+  faction: Faction;
+  flight: Flight;
+  /** Set alight by a Torchwood: drawn as a fireball with a fire trail. */
+  burning: boolean;
+  /** A lobbed shot's landing x, which follows its target (from the state each step). */
+  targetX: number | null;
+  /** The step the state last listed it in: one missing from the state has gone. */
+  stamp: number;
   lane: number;
   object: Object3D;
   prevX: number;
@@ -121,11 +160,14 @@ interface ProjectileView {
 }
 
 interface TokenView { object: Object3D; kind: TokenKind; age: number; at: Vector3; active: boolean }
+/** A lasso rope from a Cowboy to the plant it has tied, shown while the plant is tied. */
+interface Rope { group: Group; segments: Mesh[]; from: number; to: number; age: number; active: boolean }
 interface GraveView { object: Object3D; age: number; active: boolean }
-interface PendingBlast { at: Vector3; radius: number; delay: number; active: boolean }
+interface PendingBlast { at: Vector3; radius: number; delay: number; active: boolean; feel: Feel }
 
 const v1 = new Vector3();
 const v2 = new Vector3();
+const v3 = new Vector3();
 const ndc = new Vector2();
 const client = { width: 1, height: 1 };
 
@@ -162,6 +204,15 @@ export class BattleView {
   private readonly spare: Record<ProjectileKind, Object3D[]> = {
     pea: [], brain: [], kernel: [], butter: [], mango: [], sand: [], arrow: [], bullet: [], trident: [], rot: [],
   };
+  /** Burning peas waiting to be used again. */
+  private readonly spareBurning: Object3D[] = [];
+  private stamp = 0;
+  /** What the units' statuses look like (stars, sand, rope, bubbles, flames), and Brain Rot's puddles. */
+  readonly marks = new StatusMarks();
+  readonly puddles = new Hazards();
+  private readonly ropes: Rope[] = [];
+  private readonly ropeGeometry = new BoxGeometry(1, ROPE_THICK, ROPE_THICK);
+  private readonly ropeMaterial = new MeshStandardMaterial({ ...MATTE_PLASTIC, color: ROPE_COLOR });
   private readonly tokens: TokenView[] = [];
   private readonly graves: GraveView[] = [];
   private readonly blasts: PendingBlast[] = [];
@@ -200,10 +251,11 @@ export class BattleView {
     this.fx = fx;
     this.playerFaction = playerFaction;
     this.bases = { plants: new BaseView('plants'), zombies: new BaseView('zombies') };
-    scene.add(this.bases.plants.group, this.bases.zombies.group, this.bars.mesh);
+    scene.add(this.bases.plants.group, this.bases.zombies.group, this.bars.mesh, this.marks.group, this.puddles.group);
     this.hooks = {
       mergePeak: (view) => this.mergePeak(view),
       burst: (view) => this.burst(view),
+      landed: (view) => this.slam(view),
     };
     // The ghost writes depth, so its outline (drawn after it) shows only round its silhouette.
     this.ghostMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: 0.5, depthWrite: true });
@@ -214,7 +266,7 @@ export class BattleView {
       const kind: TokenKind = i % 2 === 0 ? 'sun' : 'brain';
       this.tokens.push({ object: makeToken(kind), kind, age: 0, at: new Vector3(), active: false });
     }
-    for (let i = 0; i < 6; i++) this.blasts.push({ at: new Vector3(), radius: 1, delay: 0, active: false });
+    for (let i = 0; i < 6; i++) this.blasts.push({ at: new Vector3(), radius: 1, delay: 0, active: false, feel: BLAST_DEFAULT });
   }
 
   /** Units on the lawn, those still falling apart included. */
@@ -225,6 +277,13 @@ export class BattleView {
   /** How many level-up markers are showing, for tests. */
   get mergeMarkers(): number {
     return this.markersShown;
+  }
+
+  /** How many lasso ropes are showing, for tests. */
+  get ropesShown(): number {
+    let n = 0;
+    for (let i = 0; i < this.ropes.length; i++) if ((this.ropes[i] as Rope).active) n++;
+    return n;
   }
 
   /**
@@ -253,10 +312,17 @@ export class BattleView {
 
     // Positions and health from the state, then where each zombie stands in its stack.
     const units = state.units;
-    for (const u of units) {
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i] as Unit;
       let view = this.views.get(u.id);
       if (!view) view = this.addUnit(u.id, u.key, u.faction, u.lane, u.x, u.level); // joined mid-match
       view.setSim(u.x, u.hp, u.maxHp, u.blocked);
+      this.syncUnit(view, u);
+    }
+    // Puddles the view has not been told about (it joined late).
+    for (let i = 0; i < state.hazards.length; i++) {
+      const h = state.hazards[i];
+      if (h && !this.puddles.has(h.id)) this.puddles.add(h.id, h.lane, h.x, h.radius, h.ticksLeft / TICKS_PER_SECOND);
     }
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
@@ -277,12 +343,48 @@ export class BattleView {
       // five at one spot read as five.
       view.targetX = (u.blocked && u.x > BASE_STOP_X + 0.01 ? BITE_STEP_BACK : 0) + STACK_X * Math.min(place, 4);
     }
-    for (const p of state.projectiles) {
-      const view = this.projectiles.get(p.id);
-      if (!view) continue;
+    const stamp = ++this.stamp;
+    for (let i = 0; i < state.projectiles.length; i++) {
+      const p = state.projectiles[i];
+      const view = p && this.projectiles.get(p.id);
+      if (!p || !view) continue;
+      view.stamp = stamp;
       view.prevX = view.currX;
       view.currX = p.x;
+      view.targetX = p.targetX;
+      if (p.burning && !view.burning) this.ignite(view);
     }
+    // One the state no longer lists left with no hit to show (one still to be seen is kept).
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      const view = this.flying[i] as ProjectileView;
+      if (view.stamp !== stamp && !view.doomed) this.release(view);
+    }
+  }
+
+  /** Statuses, the armed light and growth, from the unit's state (so a late view shows them too). */
+  private syncUnit(view: UnitView, u: Unit): void {
+    if (view.dying) return;
+    let bits = 0;
+    for (let i = 0; i < STATUSES.length; i++) if (u[STATUSES[i] as StatusKind] > 0) bits |= 1 << i;
+    this.showStatuses(view, bits);
+    if (u.key === 'potatoMine' && view.armed !== u.stacks > 0) {
+      view.armed = u.stacks > 0;
+      view.showPart('armed', view.armed);
+    }
+    if (u.key === 'hotTopic') view.setBulk(1 + GROW_PER_STACK * u.stacks);
+  }
+
+  /** Puts on and takes off status marks until the unit shows exactly `bits`, at its current height. */
+  private showStatuses(view: UnitView, bits: number): void {
+    const moved = view.marksHeight !== view.height;
+    if (bits === view.statusBits && !(moved && bits !== 0)) return;
+    for (let i = 0; i < STATUSES.length; i++) {
+      const on = (bits & (1 << i)) !== 0;
+      const was = (view.statusBits & (1 << i)) !== 0;
+      if (on !== was || (on && moved)) this.marks.set(view.id, view.wrapper, STATUSES[i] as StatusKind, on, view.height);
+    }
+    view.statusBits = bits;
+    view.marksHeight = view.height;
   }
 
   /** Call once per animation frame. `dtSeconds` is game time (0 while paused). */
@@ -300,13 +402,16 @@ export class BattleView {
         this.list.pop();
         if (this.pulseTarget === view) this.pulseTarget = null;
         view.dispose();
-      } else if (view.level === 5 && !view.dying) {
+      } else if (view.level === MAX_LEVEL && !view.dying) {
         view.model.root.updateMatrixWorld();
-        this.fx.aura(view.model.root, LEVEL_COLOR[5] as number);
+        this.fx.aura(view.model.root, LEVEL_COLOR[MAX_LEVEL] as number);
       }
     }
 
     this.placeMarkers(timeSeconds);
+    this.marks.update(dt);
+    this.puddles.update(dt);
+    this.moveRopes(dt);
 
     // The winners' confetti, on real frames even while the game clock is slowed for the finale.
     if (this.cheerLeft > 0 && this.cheerSide !== null) {
@@ -322,7 +427,8 @@ export class BattleView {
     // Health bars, back lane first so nearer bars are drawn over farther ones.
     this.bars.begin(this.camera);
     for (let lane = 0; lane < 5; lane++) {
-      for (const view of this.list) {
+      for (let i = 0; i < this.list.length; i++) {
+        const view = this.list[i] as UnitView;
         if (view.lane !== lane || view.dying || !(view.hp < view.maxHp)) continue;
         v1.copy(view.wrapper.position);
         v1.x += view.faction === 'plants' ? -BAR_SHIFT : BAR_SHIFT;
@@ -340,12 +446,13 @@ export class BattleView {
     this.moveProjectiles(dt, a);
     this.moveTokens(dt);
     this.moveGraves(dt);
-    for (const blast of this.blasts) {
+    for (let i = 0; i < this.blasts.length; i++) {
+      const blast = this.blasts[i] as PendingBlast;
       if (!blast.active) continue;
       blast.delay -= dt;
       if (blast.delay <= 0) {
         blast.active = false;
-        this.boom(blast.at, blast.radius);
+        this.boom(blast.at, blast.radius, blast.feel);
       }
     }
 
@@ -356,8 +463,8 @@ export class BattleView {
     if (this.smokeIn <= 0) {
       this.smokeIn += SMOKE_EVERY;
       if (this.smokeIn < 0) this.smokeIn = SMOKE_EVERY;
-      for (const p of this.smokeAt.plants) this.fx.smoke(p);
-      for (const p of this.smokeAt.zombies) this.fx.smoke(p);
+      for (let i = 0; i < this.smokeAt.plants.length; i++) this.fx.smoke(this.smokeAt.plants[i] as Vector3);
+      for (let i = 0; i < this.smokeAt.zombies.length; i++) this.fx.smoke(this.smokeAt.zombies[i] as Vector3);
     }
 
     if (this.tint >= 0 && this.tint < 1) {
@@ -488,8 +595,9 @@ export class BattleView {
     const cue = this.mergeCue;
     if (cue !== null) {
       const up = Math.floor(timeSeconds * MARKER_STEPS_PER_SECOND) % 2 === 1;
-      for (const view of this.list) {
-        if (view.key !== cue || view.faction !== this.playerFaction || view.dying || view.level >= 5) continue;
+      for (let i = 0; i < this.list.length; i++) {
+        const view = this.list[i] as UnitView;
+        if (view.key !== cue || view.faction !== this.playerFaction || view.dying || view.level >= MAX_LEVEL) continue;
         let marker = this.markers[n];
         if (marker === undefined) {
           marker = makeMergeMarker(this.playerFaction);
@@ -558,12 +666,20 @@ export class BattleView {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const marker of this.markers) marker.removeFromParent();
+    this.markersShown = 0;
     for (const view of this.list) view.dispose();
     this.list.length = 0;
     this.views.clear();
     for (const p of this.flying) p.object.removeFromParent();
     this.flying.length = 0;
     this.projectiles.clear();
+    this.marks.dispose();
+    this.puddles.dispose();
+    for (const rope of this.ropes) rope.group.removeFromParent();
+    this.ropes.length = 0;
+    this.ropeGeometry.dispose();
+    this.ropeMaterial.dispose();
     for (const t of this.tokens) (t.active = false), t.object.removeFromParent();
     for (const g of this.graves) (g.active = false), g.object.removeFromParent();
     for (const b of this.blasts) b.active = false;
@@ -651,10 +767,10 @@ export class BattleView {
         break;
       }
       case 'projectileSpawned':
-        this.addProjectile(e.projectileId, e.kind, e.lane, e.x, e.ownerId);
+        this.addProjectile(e.projectileId, e.kind, e.faction, e.flight, e.targetX, e.lane, e.x, e.ownerId);
         break;
       case 'projectileHit':
-        this.hitProjectile(e.projectileId, e.lane, e.x, e.targetId, e.targetBase, e.blocked);
+        this.hitProjectile(e.projectileId, e.lane, e.x, e.targetId, e.targetBase, e.blocked, stillFlying(state, e.projectileId));
         break;
       case 'unitDamaged':
         this.views.get(e.unitId)?.hurt();
@@ -666,20 +782,23 @@ export class BattleView {
           v1.set(view.currX, 0.2, view.lane + 0.5);
           this.fx.puff(v1);
         }
-        view.die();
+        this.marks.forget(view.id);
+        view.statusBits = 0;
+        view.die(e.cause === 'spent');
         break;
       }
       case 'explosion': {
         // A Walnut Bomb swells first; its blast waits for the swell.
         let delay = 0;
         for (const view of this.list) {
-          if (view.dying && view.key === e.sourceKey && view.lane === e.lane && Math.abs(view.currX - e.x) < 0.01) {
+          if (view.dying && !view.spent && view.key === e.sourceKey && view.lane === e.lane && Math.abs(view.currX - e.x) < 0.01) {
             const swell = view.def.clips.die?.duration ?? 0;
             delay = Math.max(0, Math.min(swell, 0.35) - view.dyingFor);
           }
         }
         v1.set(e.x, 0, e.lane + 0.5);
-        if (delay <= 0) this.boom(v1, e.radius);
+        const feel = BLAST_FEEL[e.sourceKey] ?? BLAST_DEFAULT;
+        if (delay <= 0) this.boom(v1, e.radius, feel);
         else {
           const slot = this.blasts.find((b) => !b.active);
           if (slot) {
@@ -687,7 +806,8 @@ export class BattleView {
             slot.at.copy(v1);
             slot.radius = e.radius;
             slot.delay = delay;
-          } else this.boom(v1, e.radius);
+            slot.feel = feel;
+          } else this.boom(v1, e.radius, feel);
         }
         break;
       }
@@ -728,14 +848,40 @@ export class BattleView {
       case 'matchEnded':
         this.onFeel({ slowMo: 1.5 });
         break;
-      case 'commandRejected':
-      case 'statusApplied': // the phase-2 events are drawn from Task 5 on
-      case 'statusEnded':
-      case 'attackMissed':
-      case 'unitHealed':
+      case 'statusApplied':
+      case 'statusEnded': {
+        const view = this.views.get(e.unitId);
+        if (!view || view.dying) break;
+        const bit = 1 << STATUSES.indexOf(e.status);
+        this.showStatuses(view, e.type === 'statusApplied' ? view.statusBits | bit : view.statusBits & ~bit);
+        break;
+      }
+      case 'attackMissed': {
+        const view = this.views.get(e.unitId);
+        if (!view || view.dying) break;
+        v1.copy(view.wrapper.position);
+        v1.y = view.height + 0.2;
+        this.fx.miss(v1);
+        break;
+      }
+      case 'unitHealed': {
+        const view = this.views.get(e.unitId);
+        if (!view || view.dying) break;
+        v1.copy(view.wrapper.position);
+        v1.y = view.height * 0.7;
+        this.fx.healPlus(v1);
+        break;
+      }
       case 'hazardSpawned':
+        this.puddles.add(e.hazardId, e.lane, e.x, e.radius, e.ticks / TICKS_PER_SECOND);
+        break;
       case 'hazardEnded':
+        this.puddles.remove(e.hazardId);
+        break;
       case 'abilityUsed':
+        this.ability(e.unitId, e.ability, e.targetId);
+        break;
+      case 'commandRejected':
         break;
       default: {
         const unhandled: never = e;
@@ -779,9 +925,148 @@ export class BattleView {
     this.fx.debris(v1, colors, view.level);
   }
 
-  private boom(at: Vector3, radius: number): void {
+  private boom(at: Vector3, radius: number, feel: Feel = BLAST_DEFAULT): void {
     this.fx.explosion(at, radius);
-    this.onFeel({ shake: 0.5, hitStop: 0.08, punch: 0.04 });
+    this.onFeel(feel);
+  }
+
+  /** A unit's own trick (`abilityUsed`): its ability clip and the effect that says what it did. */
+  private ability(unitId: number, ability: Extract<SimEvent, { type: 'abilityUsed' }>['ability'], targetId: number | null): void {
+    const view = this.views.get(unitId);
+    if (!view || view.dying) return;
+    v1.set(view.wrapper.position.x, 0, view.lane + 0.5);
+    switch (ability) {
+      case 'arm':
+        // It pops up out of the ground, its light on.
+        view.play('ability');
+        view.armed = true;
+        view.showPart('armed', true);
+        this.fx.dirt(v1);
+        break;
+      case 'trigger':
+        this.fx.dirt(v1); // the blast that follows is the show
+        break;
+      case 'fuse':
+        view.play('ability');
+        break;
+      case 'leap': {
+        const target = targetId === null ? undefined : this.views.get(targetId);
+        view.leap(target ? target.currX - view.currX : 1);
+        break;
+      }
+      case 'ignite':
+        // A pea has caught fire passing it: the Torchwood flares.
+        view.flash();
+        v1.y = view.height * 0.8;
+        this.fx.sparkles(v1, FIRE);
+        break;
+      case 'grow':
+        // Hot Topic has grown (its size comes from the state's stacks).
+        view.flash();
+        this.fx.ring(v1, FIRE, 0.6, true);
+        this.fx.sparkles(v1, FIRE);
+        break;
+      case 'lasso':
+        view.play('ability');
+        if (targetId !== null) this.throwRope(unitId, targetId);
+        break;
+      case 'heal':
+        view.play('ability');
+        this.fx.ring(v1, HEAL, 1.5, true);
+        break;
+      case 'raise':
+        // The minion's own spawn brings its gravestone and dirt.
+        view.play('ability');
+        this.fx.ring(v1, RAISE, 0.6, true);
+        break;
+      default: {
+        const unhandled: never = ability;
+        void unhandled;
+      }
+    }
+  }
+
+  /** A leaping Pumpkin comes down on its target: dirt, a ring of soil and a small shake. */
+  private slam(view: UnitView): void {
+    v1.set(view.wrapper.position.x, 0, view.lane + 0.5);
+    this.fx.dirt(v1);
+    this.fx.ring(v1, SOIL, 0.7, true);
+    this.onFeel({ shake: 0.3 });
+  }
+
+  // ---- Lasso ropes -----------------------------------------------------------------------
+
+  private throwRope(from: number, to: number): void {
+    let rope: Rope | undefined;
+    for (let i = 0; i < this.ropes.length; i++) {
+      const r = this.ropes[i] as Rope;
+      if (r.active && r.to === to) rope = r;
+      else if (!rope && !r.active) rope = r;
+    }
+    if (!rope) {
+      const group = new Group();
+      group.name = 'lasso-rope';
+      const segments: Mesh[] = [];
+      for (let i = 0; i < ROPE_SEGMENTS; i++) {
+        const mesh = new Mesh(this.ropeGeometry, this.ropeMaterial);
+        mesh.name = 'lasso-segment';
+        mesh.castShadow = true;
+        group.add(mesh);
+        segments.push(mesh);
+      }
+      rope = { group, segments, from, to, age: 0, active: false };
+      this.ropes.push(rope);
+    }
+    rope.from = from;
+    rope.to = to;
+    rope.age = 0;
+    rope.active = true;
+    rope.group.visible = true;
+    if (!rope.group.parent) this.scene.add(rope.group);
+    this.views.get(from)?.showPart('lasso', false); // the coil has left its hand
+  }
+
+  private endRope(rope: Rope): void {
+    rope.active = false;
+    rope.group.visible = false;
+    const cowboy = this.views.get(rope.from);
+    if (cowboy && !cowboy.dying) cowboy.showPart('lasso', true);
+  }
+
+  /**
+   * Each rope runs from its Cowboy's hand to the tied plant's middle in stepped segments with a
+   * little sag, flying out over its first moments. It goes once the plant is no longer tied, or
+   * either of them has gone.
+   */
+  private moveRopes(dt: number): void {
+    for (let r = 0; r < this.ropes.length; r++) {
+      const rope = this.ropes[r] as Rope;
+      if (!rope.active) continue;
+      const cowboy = this.views.get(rope.from);
+      const plant = this.views.get(rope.to);
+      if (!cowboy || !plant || cowboy.dying || plant.dying || (plant.statusBits & TIED_BIT) === 0) {
+        this.endRope(rope);
+        continue;
+      }
+      rope.age += dt;
+      v2.copy(cowboy.wrapper.position);
+      v2.x -= 0.28;
+      v2.y += cowboy.height * 0.62;
+      v3.copy(plant.wrapper.position);
+      v3.x += 0.12;
+      v3.y += plant.height * 0.42;
+      const reach = Math.min(1, rope.age / ROPE_THROW_SECONDS);
+      const length = Math.abs(v3.x - v2.x) / ROPE_SEGMENTS;
+      for (let i = 0; i < ROPE_SEGMENTS; i++) {
+        const seg = rope.segments[i] as Mesh;
+        const u = (i + 0.5) / ROPE_SEGMENTS;
+        seg.visible = u <= reach;
+        if (!seg.visible) continue;
+        const y = v2.y + (v3.y - v2.y) * u - ROPE_SAG * 4 * u * (1 - u);
+        seg.position.set(v2.x + (v3.x - v2.x) * u, Math.round(y / VOXEL) * VOXEL, v2.z + (v3.z - v2.z) * u);
+        seg.scale.set(length + 0.02, 1, 1);
+      }
+    }
   }
 
   private startTint(): void {
@@ -796,14 +1081,18 @@ export class BattleView {
 
   // ---- Projectiles -----------------------------------------------------------------------
 
-  private addProjectile(id: number, kind: ProjectileKind, lane: number, x: number, ownerId: number): void {
+  private addProjectile(
+    id: number, kind: ProjectileKind, faction: Faction, flight: Flight, targetX: number | null, lane: number, x: number, ownerId: number,
+  ): void {
     const object = this.spare[kind].pop() ?? makeProjectile(kind);
     object.visible = false;
     object.scale.setScalar(PROJECTILE_SCALE[kind]);
+    object.rotation.set(0, 0, 0);
     this.scene.add(object);
     const owner = this.views.get(ownerId);
     const view: ProjectileView = {
-      id, kind, lane, object, prevX: x, currX: x, age: 0,
+      id, kind, faction, flight, burning: false, targetX, stamp: this.stamp,
+      lane, object, prevX: x, currX: x, age: 0,
       // Leaves at the snap of the shot, if the shooter has one to show.
       revealAt: owner && owner.has('shoot') ? RELEASE_SECONDS : 0,
       shown: false, ownerId, fromX: 0, fromY: 0.6, fromZ: 0, flightY: 0.6,
@@ -821,10 +1110,32 @@ export class BattleView {
       this.flying.pop();
     }
     view.object.removeFromParent();
-    this.spare[view.kind].push(view.object);
+    if (view.burning) this.spareBurning.push(view.object);
+    else this.spare[view.kind].push(view.object);
   }
 
-  private hitProjectile(id: number, lane: number, x: number, targetId: number | null, targetBase: Faction | null, blocked: boolean): void {
+  /** A pea has passed a Torchwood: it becomes a glowing fireball in place. */
+  private ignite(view: ProjectileView): void {
+    if (view.kind !== 'pea') return;
+    const plain = view.object;
+    const fire = this.spareBurning.pop() ?? makeProjectile('pea', true);
+    fire.visible = plain.visible;
+    fire.position.copy(plain.position);
+    fire.scale.setScalar(PROJECTILE_SCALE.pea * BURNING_SCALE);
+    plain.removeFromParent();
+    this.spare.pea.push(plain);
+    this.scene.add(fire);
+    view.object = fire;
+    view.burning = true;
+  }
+
+  /**
+   * A projectile hit something. `flying`: it is still in the state after the hit (a trident with
+   * hits left), so the hit shows and it carries on.
+   */
+  private hitProjectile(
+    id: number, lane: number, x: number, targetId: number | null, targetBase: Faction | null, blocked: boolean, flying = false,
+  ): void {
     const view = this.projectiles.get(id);
     const target = targetId === null ? undefined : this.views.get(targetId);
     if (view && view.shown && !view.doomed) v1.copy(view.object.position);
@@ -836,6 +1147,10 @@ export class BattleView {
     } else if (targetBase === 'zombies') v1.x = Math.min(v1.x, 10.1);
     else if (targetBase === 'plants') v1.x = Math.max(v1.x, -0.1);
     if (blocked) v1.y = Math.max(v1.y, 0.5);
+    if (flying) {
+      this.impact(v1, blocked, target);
+      return;
+    }
     if (view && !view.shown) {
       // It struck before the shooter's snap let it go: it is still seen, leaving the mouth
       // at the snap and flying straight to the hit, which lands then.
@@ -898,16 +1213,26 @@ export class BattleView {
       // Out of the muzzle, then onto the lane's centre line.
       const k = Math.max(0, 1 - p.age / SETTLE_SECONDS);
       const settle = k * k;
+      const drawnX = x + p.fromX * settle;
       let y: number;
-      if (p.kind === 'brain') {
+      if (p.flight === 'lobbed') {
+        // A stepped arc from the muzzle down onto where its target stands now (which the state
+        // moves as the target walks), higher the further it goes. With no target it arcs towards
+        // the far base.
+        const end = p.targetX ?? (p.faction === 'plants' ? COLS : 0);
+        const span = end - p.start.x;
+        const t = span === 0 ? 1 : Math.min(1, Math.max(0, (drawnX - p.start.x) / span));
+        y = p.fromY + (LOB_LAND_Y - p.fromY) * t + lobHeight(Math.abs(span), t);
+      } else if (p.kind === 'brain') {
         y = Math.max(LOB_FLOOR, p.fromY + LOB_UP * p.age - LOB_GRAVITY * p.age * p.age);
-        p.object.rotation.set(this.time * 7, this.time * 5, 0);
       } else {
         y = p.flightY + (p.fromY - p.flightY) * settle;
       }
-      p.object.position.set(x + p.fromX * settle, y, p.lane + 0.5 + p.fromZ * settle);
+      const tumble = PROJECTILE_TUMBLE[p.kind];
+      if (tumble > 0) p.object.rotation.set(this.time * tumble * TURN, this.time * tumble * TURN * 0.6, 0);
+      p.object.position.set(drawnX, y, p.lane + 0.5 + p.fromZ * settle);
       p.object.updateMatrixWorld();
-      this.fx.trail(p.object, TRAIL[p.kind]);
+      this.fx.trail(p.object, p.burning ? BURNING_TRAIL : PROJECTILE_TRAIL[p.kind]);
     }
   }
 
@@ -944,7 +1269,8 @@ export class BattleView {
   }
 
   private moveTokens(dt: number): void {
-    for (const t of this.tokens) {
+    for (let i = 0; i < this.tokens.length; i++) {
+      const t = this.tokens[i] as TokenView;
       if (!t.active) continue;
       t.age += dt;
       if (t.age >= TOKEN_SECONDS) {
@@ -967,7 +1293,8 @@ export class BattleView {
   }
 
   private moveGraves(dt: number): void {
-    for (const g of this.graves) {
+    for (let i = 0; i < this.graves.length; i++) {
+      const g = this.graves[i] as GraveView;
       if (!g.active) continue;
       g.age += dt;
       if (g.age >= GRAVE_SECONDS) {
@@ -984,4 +1311,10 @@ export class BattleView {
       g.object.rotation.z = Math.sin(g.age * 40) * 0.06 * Math.min(1, g.age / 0.2);
     }
   }
+}
+
+/** Whether the state still holds projectile `id` (after a hit: a piercing one with hits left). */
+function stillFlying(state: SimState, id: number): boolean {
+  for (let i = 0; i < state.projectiles.length; i++) if ((state.projectiles[i] as { id: number }).id === id) return true;
+  return false;
 }

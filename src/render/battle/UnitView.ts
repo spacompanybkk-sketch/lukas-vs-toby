@@ -21,6 +21,19 @@ export const RELEASE_SECONDS = 0.12;
 const BRAIN_BACK_SECONDS = 0.4;
 /** How fast stacked zombies (and biters stepping back) slide to their place beside each other, per second. */
 const STACK_FOLLOW = 8;
+/**
+ * A Pumpkin's leap (the simulation never moves it): it crouches, flies to its target in the
+ * leap clip's air time, slams down at the clip's impact, sits there a moment and hops home.
+ */
+const LEAP_TAKE_OFF = 0.1;
+const LEAP_IMPACT = 0.4;
+const LEAP_HOME_AT = 0.75;
+const LEAP_SECONDS = 1.1;
+/** Height of the hop home, in tiles, and the step it is cut into (one voxel). */
+const LEAP_HOP = 0.35;
+const VOXEL = 1 / 16;
+/** Hot Topic grows this much per stack (plan Task 5). */
+export const GROW_PER_STACK = 0.06;
 
 const easeInOutCubic = (u: number): number => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2);
 const easeOutCubic = (u: number): number => 1 - (1 - u) ** 3;
@@ -31,6 +44,8 @@ export interface UnitHooks {
   mergePeak(view: UnitView): void;
   /** The dying unit breaks up now: debris, a blast, a puff. */
   burst(view: UnitView): void;
+  /** A leaping unit has come down on its target (see `UnitView.leap`). */
+  landed?(view: UnitView): void;
 }
 
 const box = new Box3();
@@ -52,6 +67,7 @@ function measureHeight(instance: ModelInstance): number {
   return height;
 }
 const scratch = new Vector3();
+const leapAt = { x: 0, y: 0 };
 
 /**
  * Below this size (tiles, the longest side of a mesh's own box) a mesh casts no shadow: eyes,
@@ -112,8 +128,23 @@ export class UnitView {
   /** Lifted this far in a stack (art bible section 6: offset in depth and height). */
   offsetY = 0;
   targetY = 0;
-  /** Height of the top of the model above its feet, in tiles, for the current level. */
+  /** Height of the top of the model above its feet, in tiles, for the current level and growth. */
   height = 1;
+  /** The height at rest size; `height` is this times `bulk`. */
+  private restHeight = 1;
+  /** How much bigger than its level makes it the unit has grown (Hot Topic's stacks). */
+  bulk = 1;
+  /** The statuses its marks show, one bit each (see `BattleView`), and the height they were set for. */
+  statusBits = 0;
+  marksHeight = -1;
+  /** True when it went off rather than died (a mine, a cherry): it vanishes with no crumble. */
+  spent = false;
+  /** A Potato Mine showing its armed light. */
+  armed = false;
+  /** While leaping: seconds in, and how far along the lane its target stands from it. */
+  private leapFor = -1;
+  private leapDX = 0;
+  private leapLanded = false;
   /** Seconds since the unit died, or −1 while it stands. */
   dyingFor = -1;
   /** Seconds the dying unit takes to break up (its `die` clip). */
@@ -145,7 +176,7 @@ export class UnitView {
     this.def = getModelDef(key);
     this.model = new ModelInstance(this.def, level);
     trimShadows(this.model);
-    this.height = measureHeight(this.model);
+    this.restHeight = this.height = measureHeight(this.model);
     this.wrapper.name = `unit-${id}`;
     this.wrapper.add(this.model.root);
     this.wrapper.position.set(x, 0, lane + 0.5);
@@ -219,16 +250,80 @@ export class UnitView {
     this.mergeTo = level;
   }
 
-  die(): void {
+  /**
+   * Dies: the `die` clip, then it breaks up. `spent` (a mine or cherry that went off): it is gone
+   * at once, with no crumble and no debris, for the blast is the show.
+   */
+  die(spent = false): void {
     if (this.dying) return;
     this.dyingFor = 0;
     this.mergeFor = -1;
+    this.leapFor = -1;
     this.model.root.rotation.y = 0;
-    this.model.root.scale.setScalar(1);
+    this.model.root.scale.setScalar(this.bulk);
     this.model.setFlash(0);
+    if (spent) {
+      this.spent = true;
+      this.burst = true;
+      this.model.root.visible = false;
+      return;
+    }
     const clip = this.def.clips.die;
     this.burstAt = clip ? Math.min(clip.duration, 0.35) : 0;
     this.model.play('die');
+  }
+
+  /** Has a part of that name (`ModelInstance.showPart` throws on one it lacks). */
+  hasPart(name: string): boolean {
+    for (let i = 0; i < this.def.parts.length; i++) if ((this.def.parts[i] as { name: string }).name === name) return true;
+    return false;
+  }
+
+  /** Shows or hides a part, if the model has it. It stays so through merges. */
+  showPart(name: string, shown: boolean): void {
+    if (this.hasPart(name)) this.model.showPart(name, shown);
+  }
+
+  /** Grows to `bulk` times its level's size (1 = as built), with its height and marks following. */
+  setBulk(bulk: number): void {
+    if (bulk === this.bulk) return;
+    this.bulk = bulk;
+    this.height = this.restHeight * bulk;
+    if (this.mergeFor < 0 && !this.dying) this.model.root.scale.setScalar(bulk);
+  }
+
+  /**
+   * Leaps to a target `dx` tiles along the lane and back (the simulation leaves the unit where it
+   * is): with its ability clip, landing at the clip's impact (`hooks.landed`) and hopping home.
+   */
+  leap(dx: number): void {
+    if (this.dying) return;
+    this.leapFor = 0;
+    this.leapDX = dx;
+    this.leapLanded = false;
+    this.play('ability');
+  }
+
+  /** The leap's offset along the lane and its hop, at `t` seconds into it. */
+  private leapOffset(t: number, out: { x: number; y: number }): void {
+    const dx = this.leapDX;
+    if (t < LEAP_TAKE_OFF) {
+      out.x = 0;
+      out.y = 0;
+    } else if (t < LEAP_IMPACT) {
+      // Through the air with the clip's jump (the clip lifts the body itself).
+      const u = (t - LEAP_TAKE_OFF) / (LEAP_IMPACT - LEAP_TAKE_OFF);
+      out.x = dx * easeInOutCubic(u);
+      out.y = 0;
+    } else if (t < LEAP_HOME_AT) {
+      out.x = dx;
+      out.y = 0;
+    } else {
+      const u = Math.min(1, (t - LEAP_HOME_AT) / (LEAP_SECONDS - LEAP_HOME_AT));
+      out.x = dx * (1 - easeInOutCubic(u));
+      // A stepped hop, a voxel at a time.
+      out.y = Math.round((LEAP_HOP * Math.sin(Math.PI * u)) / VOXEL) * VOXEL;
+    }
   }
 
   /** Moves the view on by `dt` and places it between its last two steps. True once it should go. */
@@ -250,7 +345,22 @@ export class UnitView {
     this.offsetZ += (this.targetZ - this.offsetZ) * follow;
     this.offsetX += (this.targetX - this.offsetX) * follow;
     this.offsetY += (this.targetY - this.offsetY) * follow;
-    this.wrapper.position.set(x + this.offsetX, this.offsetY, this.lane + 0.5 + this.offsetZ);
+    let leapX = 0;
+    let leapY = 0;
+    if (this.leapFor >= 0) {
+      this.leapFor += dt;
+      if (this.leapFor >= LEAP_SECONDS) this.leapFor = -1;
+      else {
+        this.leapOffset(this.leapFor, leapAt);
+        leapX = leapAt.x;
+        leapY = leapAt.y;
+        if (!this.leapLanded && this.leapFor >= LEAP_IMPACT) {
+          this.leapLanded = true;
+          this.hooks.landed?.(this);
+        }
+      }
+    }
+    this.wrapper.position.set(x + this.offsetX + leapX, this.offsetY + leapY, this.lane + 0.5 + this.offsetZ);
 
     if (this.mergeFor >= 0) this.stepMerge(dt);
 
@@ -291,11 +401,11 @@ export class UnitView {
     const root = this.model.root;
     root.rotation.y = Math.PI * 2 * easeInOutCubic(u);
     const grow = u < 0.5 ? easeOutCubic(u / 0.5) : 1 - easeInOutCubic((u - 0.5) / 0.5);
-    root.scale.setScalar(1 + (MERGE_PEAK - 1) * grow);
+    root.scale.setScalar((1 + (MERGE_PEAK - 1) * grow) * this.bulk);
     if (u >= 1) {
       this.mergeFor = -1;
       root.rotation.y = 0;
-      root.scale.setScalar(1);
+      root.scale.setScalar(this.bulk);
     }
   }
 
@@ -304,7 +414,8 @@ export class UnitView {
     this.level = this.mergeTo;
     this.model = this.model.setLevel(this.mergeTo);
     trimShadows(this.model);
-    this.height = measureHeight(this.model);
+    this.restHeight = measureHeight(this.model);
+    this.height = this.restHeight * this.bulk;
     this.flashFor = 0;
     this.hooks.mergePeak(this);
   }

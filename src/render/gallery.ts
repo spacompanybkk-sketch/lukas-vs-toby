@@ -41,7 +41,7 @@ import { Sky } from './world/Sky';
 //   &quality=low|medium|high
 
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
-const CLIPS: readonly ClipName[] = ['idle', 'walk', 'shoot', 'melee', 'hit', 'spawn', 'die', 'cheer'];
+const CLIPS: readonly ClipName[] = ['idle', 'walk', 'shoot', 'melee', 'hit', 'spawn', 'die', 'cheer', 'ability'];
 
 /**
  * Tiles between neighbouring levels; the depth a row is framed with; the step from one row to

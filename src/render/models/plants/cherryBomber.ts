@@ -179,6 +179,8 @@ export const cherryBomber: ModelDef = {
   clips: {
     idle: pairBob({ body: 'stem', a: 'front', b: 'back', sway: ['leaf'] }),
     shoot: fuseSwell(['front', 'back']),
+    // The fuse: the cherries swell for the second before the blast.
+    ability: fuseSwell(['front', 'back']),
     hit: hitRecoil('stem', -1),
     spawn: spawnRise('root'),
     die: swellBlast('stem'),

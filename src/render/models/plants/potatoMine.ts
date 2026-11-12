@@ -152,6 +152,8 @@ export const potatoMine: ModelDef = {
   clips: {
     idle: breathe({ body: 'body' }),
     shoot: mineTrigger('body'),
+    // Armed: it pops up out of the ground (the view shows the `armed` part with it).
+    ability: mineTrigger('body'),
     hit: hitRecoil('body', -1),
     spawn: spawnRise('root'),
     die: wilt({ body: 'body' }),

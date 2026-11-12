@@ -1182,7 +1182,11 @@ export class BaseView {
     const body = this.body;
 
     // The flag waves; the lamp and the crystals breathe, and flicker once hurt.
-    if (this.flag) for (const cloth of this.flag.cloth) cloth.rotation.y = Math.sin(timeSeconds * 3.2) * 0.22 + Math.sin(timeSeconds * 7.3) * 0.06;
+    if (this.flag) {
+      const cloth = this.flag.cloth;
+      const wave = Math.sin(timeSeconds * 3.2) * 0.22 + Math.sin(timeSeconds * 7.3) * 0.06;
+      for (let i = 0; i < cloth.length; i++) (cloth[i] as Mesh).rotation.y = wave;
+    }
     const flicker = this.state >= 2 && hash2(Math.floor(timeSeconds * 9), this.state, 141) < 0.25 * (this.state - 1) ? 0.55 : 1;
     this.glowing.emissiveIntensity = this.glowBase * (1 + 0.1 * Math.sin(timeSeconds * 2.3)) * flicker;
 

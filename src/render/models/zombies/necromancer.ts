@@ -158,6 +158,7 @@ export const necromancer = bipedModel({
     idle: zombieIdle(['beard', 'skull']),
     // Raising the staff: the heal and summon pulse.
     shoot: staffRaise({ arm: 'armR' }),
+    ability: staffRaise({ arm: 'armR' }),
     melee: zombieBite(),
   },
 });

@@ -153,6 +153,8 @@ export const pumpkinSquash: ModelDef = {
   clips: {
     idle: idleBob({ body: 'body', sway: ['stem'] }),
     melee: leapSlam({ body: 'body' }),
+    // The leap onto a zombie (the view carries it to the target tile and back).
+    ability: leapSlam({ body: 'body' }),
     hit: hitWobble('body', -1),
     spawn: spawnRise('root'),
     die: wilt({ body: 'body', head: 'stem' }),

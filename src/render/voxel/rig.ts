@@ -292,8 +292,9 @@ export class ModelInstance {
       }
       this.flashCopies = copies;
     }
-    for (const copy of this.flashCopies) {
-      const { glow, own } = copy;
+    const copies = this.flashCopies;
+    for (let c = 0; c < copies.length; c++) {
+      const { glow, own } = copies[c] as FlashCopy;
       own.emissive.setRGB(
         glow.r + (Math.max(glow.r, FLASH_PEAK) - glow.r) * flash,
         glow.g + (Math.max(glow.g, FLASH_PEAK) - glow.g) * flash,
@@ -302,7 +303,8 @@ export class ModelInstance {
     }
     for (let i = 0; i < meshes.length; i++) {
       const shared = sharedMaterials[i];
-      for (const copy of this.flashCopies) {
+      for (let c = 0; c < copies.length; c++) {
+        const copy = copies[c] as FlashCopy;
         if (copy.shared === shared) {
           (meshes[i] as Mesh).material = copy.own;
           break;
@@ -406,14 +408,18 @@ export class ModelInstance {
 
   /** Remembers what is on screen, to blend from. */
   private startFade(): void {
-    for (const joint of this.joints) copyPose(joint.from, joint.shown);
+    for (let i = 0; i < this.joints.length; i++) {
+      const joint = this.joints[i] as Joint;
+      copyPose(joint.from, joint.shown);
+    }
     this.fadeLeft = FADE_SECONDS;
   }
 
   /** Samples the playing clip, blends it in if a fade is running, and writes the parts' transforms. */
   private apply(): void {
     const { joints } = this;
-    for (const joint of joints) resetPose(joint.target);
+    // Indexed loops: this runs for every unit on every frame and must allocate nothing.
+    for (let i = 0; i < joints.length; i++) resetPose((joints[i] as Joint).target);
     const clip = this.current ? this.def.clips[this.current] : undefined;
     clip?.sample(this.time, this.pose);
 
@@ -422,7 +428,8 @@ export class ModelInstance {
     const k = u * u * (3 - 2 * u);
     const lid = this.blinkLeft > 0 ? BLINK_HEIGHT : 1;
 
-    for (const joint of joints) {
+    for (let i = 0; i < joints.length; i++) {
+      const joint = joints[i] as Joint;
       const { target, from, shown, object } = joint;
       if (this.fadeLeft > 0) {
         shown.rx = from.rx + (target.rx - from.rx) * k;

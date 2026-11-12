@@ -82,8 +82,9 @@ export class BattleSession implements Director, InputTarget {
     this.controller = new BattleController(opts);
     const cards = this.controller.match.state.config.cards;
     stage.show(this);
+    // The Bone Minion is no card, but a Necromancer raises them: built ahead like the rest.
     this.view = new BattleView(stage.scene, stage.camera, stage.lawn, stage.fx, opts.playerFaction, {
-      units: [...cards.plants, ...cards.zombies],
+      units: [...cards.plants, ...cards.zombies, ...(cards.zombies.includes('necromancer') ? ['boneMinion'] : [])],
     });
     this.view.onFeel = (f) => this.clock.feel(f, stage.rig);
     this.view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);
