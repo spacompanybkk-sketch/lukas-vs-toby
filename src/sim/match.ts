@@ -2,6 +2,7 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO, factionOf, priceOf } from '../data/units';
 import type { UnitInfo } from '../data/units';
+import { abilityTimerAtSpawn, announceSpawn, tickAbilities } from './abilities';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
@@ -57,14 +58,17 @@ export function spawnUnit(
     hp: stats.hp, maxHp: stats.hp, spent: priceOf(key), armor: stats.armor,
     meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
     shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
-    abilityTimer: stats.sun ? seconds(stats.sun.interval) : 0, // a shield is ready from the start
+    abilityTimer: abilityTimerAtSpawn(stats),
     blocked: false,
     stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0,
     stacks: 0, ownerId: null,
   };
   s.nextId += 1;
   s.units.push(unit);
-  events?.push({ type: 'unitSpawned', unitId: unit.id, key, faction, lane, x });
+  if (events) {
+    events.push({ type: 'unitSpawned', unitId: unit.id, key, faction, lane, x });
+    announceSpawn(unit, stats, events);
+  }
   return unit;
 }
 
@@ -127,7 +131,7 @@ export class Match {
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
-   * commands, economy, movement, attacks, the plant base's defence, projectiles, statuses, deaths,
+   * commands, economy, movement, attacks, the plant base's defence, abilities, projectiles, statuses, deaths,
    * endgame, then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
@@ -163,6 +167,7 @@ export class Match {
     tickMovement(s, b);
     tickAttacks(s, b, events);
     tickBaseDefense(s, b, events);
+    tickAbilities(s, b, events);
     tickProjectiles(s, b, events);
     tickStatuses(s, b, events);
     resolveDeaths(s, b, events);

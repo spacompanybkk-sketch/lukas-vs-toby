@@ -14,6 +14,7 @@
 
 import { seconds } from '../data/balance';
 import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
+import { burnOnHit, ignitePea } from './abilities';
 import { payBounty } from './economy';
 import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
 import { nextRandom } from './rng';
@@ -21,7 +22,8 @@ import { applyStatus, canAct } from './status';
 import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
 import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
 
-type DeathBlast = NonNullable<UnitStats['deathBlast']>;
+/** A blast: a death blast, a Potato Mine or a Cherry Bomber going off. */
+type Blast = Pick<NonNullable<UnitStats['deathBlast']>, 'damage' | 'radius'>;
 
 /**
  * Step stage 4: units attack, in ascending id. Attack timers are only read and reset here;
@@ -200,6 +202,7 @@ function advance(p: Projectile): number {
 function flyStraight(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
   const from = advance(p);
   const target = nearestEnemyAhead(s, p.faction, p.lane, from, p.speed + b.hitRadius);
+  if (p.flight === 'straight') ignitePea(s, b, p, from, target ? target.x : p.x, events);
   if (target) {
     if (p.flight === 'lobbed') {
       p.x = target.x; // it comes down on the enemy it met, so the view draws it there
@@ -296,9 +299,13 @@ function hitUnit(s: SimState, b: Balance, p: Projectile, target: Unit, events: S
   else wound(s, b, p, target, events);
 }
 
-/** The projectile's damage, then the status its shot carries, if any (see `ShotStatus`). */
+/**
+ * The projectile's damage, then the burn a Torchwood gave it (see `ignitePea`), then the status its
+ * shot carries, if any (see `ShotStatus`).
+ */
 function wound(s: SimState, b: Balance, p: Projectile, u: Unit, events: SimEvent[]): void {
   damageUnit(s, u, p.damage, events);
+  burnOnHit(s, p, u, events);
   const status = b.units[p.sourceKey]?.shot?.status;
   if (!status) return;
   if (status.chance !== undefined && p.kind !== status.altKind) return; // this one did not roll it
@@ -362,11 +369,12 @@ export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void
 }
 
 /**
- * A death blast: every standing enemy within `radius` (straight-line distance, lanes one tile
- * apart) takes `damage` times the special level curve. Game rule: a unit already down is skipped, as it is
- * for every other attack (see `nearestEnemyAhead`).
+ * A blast (a death blast, a mine, a cherry): `explosion`, then every standing enemy within `radius`
+ * (straight-line distance, lanes one tile apart) takes `damage` times the source's special level
+ * curve, in id order. Game rule: a unit already down is skipped, as it is for every other attack
+ * (see `nearestEnemyAhead`).
  */
-function explode(s: SimState, b: Balance, source: Unit, blast: DeathBlast, events: SimEvent[]): void {
+export function explode(s: SimState, b: Balance, source: Unit, blast: Blast, events: SimEvent[]): void {
   events.push({ type: 'explosion', lane: source.lane, x: source.x, radius: blast.radius, sourceKey: source.key });
   const amount = blast.damage * levelScale(b, source.faction, source.level, 'special');
   for (const u of s.units) {

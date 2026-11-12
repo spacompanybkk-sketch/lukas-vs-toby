@@ -39,7 +39,7 @@ export interface Unit {
   blocked: boolean; // zombie halted by a plant or the base
   stun: number; blind: number; tied: number; // ticks left, 0 = not affected
   poison: number; poisonDps: number; burn: number; burnDps: number; // ticks left, damage per second
-  stacks: number; // Hot Topic growth; 0 for everyone else
+  stacks: number; // Hot Topic growth; 1 on a Potato Mine once it has armed; 0 for everyone else
   ownerId: number | null; // the Necromancer that raised a minion, null for everyone else
 }
 

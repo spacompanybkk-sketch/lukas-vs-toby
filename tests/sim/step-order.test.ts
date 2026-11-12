@@ -25,6 +25,10 @@ vi.mock('../../src/sim/combat', async (importOriginal) => ({
   tickProjectiles: (s: SimState) => { log.push(`projectiles tick=${s.tick}`); },
   resolveDeaths: (s: SimState) => { log.push(`deaths tick=${s.tick}`); },
 }));
+vi.mock('../../src/sim/abilities', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/sim/abilities')>()),
+  tickAbilities: (s: SimState) => { log.push(`abilities tick=${s.tick}`); },
+}));
 vi.mock('../../src/sim/endgame', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/sim/endgame')>()),
   tickEndgame: (s: SimState) => { log.push(`endgame tick=${s.tick}`); },
@@ -35,7 +39,7 @@ beforeEach(() => {
 });
 
 describe('step order', () => {
-  it('runs commands, economy, movement, attacks, base defense, projectiles, deaths, endgame, then the tick', () => {
+  it('runs commands, economy, movement, attacks, base defense, abilities, projectiles, deaths, endgame, then the tick', () => {
     const m = new Match(classicConfig(1));
     m.step([place('plants', 'peashooter', 0, 0)]);
     expect(log).toEqual([
@@ -43,6 +47,7 @@ describe('step order', () => {
       'movement tick=0',
       'attacks tick=0',
       'base defense tick=0',
+      'abilities tick=0',
       'projectiles tick=0',
       'deaths tick=0',
       'endgame tick=0',
@@ -63,6 +68,6 @@ describe('step order', () => {
       'economy tick=2 units=1',
       'economy tick=3 units=1',
     ]);
-    expect(log).toHaveLength(4 * 7);
+    expect(log).toHaveLength(4 * 8);
   });
 });
