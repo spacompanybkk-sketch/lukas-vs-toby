@@ -7,9 +7,11 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { UNIT_INFO, isCard } from '../data/units';
 import { Match } from '../sim/match';
+import { spellArea } from '../sim/spells';
+import type { SpellTile } from '../sim/spells';
 import { isStanding, statsFor } from '../sim/lookup';
 import { TICKS_PER_SECOND } from '../sim/types';
-import type { Command, CommandRejection, Faction, SimEvent, Unit, UnitKey } from '../sim/types';
+import type { Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 
 /** `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). */
@@ -31,7 +33,16 @@ export interface HudSignals {
   result: Signal<BattleResult>;
   denied: Signal<number>; // increments on each refused action, for the shake
   hero: Signal<HeroVM>; // the player's hero power
+  heroSelected: Signal<boolean>; // the hero power is picked and waits for a lane
+  spells: Signal<SpellVM[]>; // the player's dealt spells, in deal order
+  spellSelected: Signal<SpellKey | null>; // the aimed spell picked and waiting for a tile
 }
+
+/** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
+export interface SpellVM { key: SpellKey; ready: boolean; fraction: number }
+
+/** What a tap on `tile` would do with the selected spell: the tiles it would cover, and whether it is allowed. */
+export interface SpellPreview { spell: SpellKey; lane: number; col: number; tiles: SpellTile[]; ok: boolean }
 
 /** The player's hero power: usable now, and how far it has charged (0..1). */
 export interface HeroVM { ready: boolean; fraction: number }
@@ -63,6 +74,8 @@ export class BattleController {
   private queued: Command | null = null;
   /** Ticks of the player's current hero charge: the first one until the hero is first used. */
   private heroPeriod: number;
+  /** The spells the player has cast at least once: their charge is then the cooldown, not the first wait. */
+  private readonly castOnce = new Set<SpellKey>();
 
   constructor(opts: BattleOptions, balance: Balance = BALANCE) {
     this.playerFaction = opts.playerFaction;
@@ -82,6 +95,8 @@ export class BattleController {
       selected: signal<UnitKey | null>(null), shovel: signal(false),
       result: signal<BattleResult>(null), denied: signal(0),
       hero: signal<HeroVM>({ ready: false, fraction: 0 }),
+      heroSelected: signal(false),
+      spells: signal<SpellVM[]>([]), spellSelected: signal<SpellKey | null>(null),
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
@@ -103,6 +118,7 @@ export class BattleController {
       if (e.type === 'heroUsed' && e.faction === this.playerFaction) {
         this.heroPeriod = seconds(this.match.balance.hero[this.playerFaction].chargeSeconds);
       }
+      if (e.type === 'spellCast' && e.faction === this.playerFaction) this.castOnce.add(e.spell);
     }
     this.refresh();
     const winner = this.match.state.winner;
@@ -116,7 +132,10 @@ export class BattleController {
     if (this.hud.paused.peek() || this.over()) return;
     if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
     this.hud.selected.value = unit;
-    if (unit !== null) this.hud.shovel.value = false;
+    if (unit !== null) {
+      this.hud.shovel.value = false;
+      this.clearPowers();
+    }
   }
 
   toggleShovel(): void {
@@ -124,10 +143,82 @@ export class BattleController {
     if (this.playerFaction !== 'plants') return;
     const on = !this.hud.shovel.peek();
     this.hud.shovel.value = on;
-    if (on) this.hud.selected.value = null;
+    if (on) {
+      this.hud.selected.value = null;
+      this.clearPowers();
+    }
   }
 
-  hover(tile: Tile | null, unitId: number | null): PlacementPreview | null {
+  /**
+   * Picks the hero power (it then waits for a lane: a tap goes to `heroLane`) or puts it down.
+   * Picking it clears the card, the shovel and any spell; a hero still charging is refused
+   * (counted as a denial) and not picked.
+   */
+  selectHero(on: boolean): void {
+    if (this.hud.paused.peek() || this.over()) return;
+    if (!on) {
+      this.hud.heroSelected.value = false;
+      return;
+    }
+    const reason = this.match.check({ type: 'hero', faction: this.playerFaction, lane: 0 });
+    if (reason !== null) {
+      this.deny(reason);
+      return;
+    }
+    this.hud.selected.value = null;
+    this.hud.shovel.value = false;
+    this.hud.spellSelected.value = null;
+    this.hud.heroSelected.value = true;
+  }
+
+  /**
+   * A tap on a spell's button. An aimed spell is picked (the next lawn tap casts it), which clears
+   * the card, the shovel and the hero; tapping the picked one again puts it down. An un-aimed spell
+   * (size 0: Sun Shower, Brain Feast) is cast there and then, queued like a click. A spell that is
+   * not dealt is ignored; one still charging is refused (counted as a denial). Null puts any spell down.
+   */
+  selectSpell(key: SpellKey | null): void {
+    if (this.hud.paused.peek() || this.over()) return;
+    if (key === null || key === this.hud.spellSelected.peek()) {
+      this.hud.spellSelected.value = null;
+      return;
+    }
+    if (!this.match.state.players[this.playerFaction].spells.some((x) => x.key === key)) return;
+    const aimed = this.match.balance.spells[key].size > 0;
+    const slot = this.match.state.players[this.playerFaction].spells.find((x) => x.key === key);
+    if (aimed) {
+      if (slot !== undefined && slot.timer > 0) {
+        this.deny('spell-charging');
+        return;
+      }
+      this.hud.selected.value = null;
+      this.hud.shovel.value = false;
+      this.hud.heroSelected.value = false;
+      this.hud.spellSelected.value = key;
+      return;
+    }
+    if (this.queued !== null) return;
+    const cmd: Command = { type: 'spell', faction: this.playerFaction, spell: key, lane: 0, col: 0 };
+    const reason = this.match.check(cmd);
+    if (reason !== null) this.deny(reason);
+    else this.queued = cmd;
+  }
+
+  /**
+   * What a tap here would do: with a spell picked, the area it would cover (and whether the cast
+   * would be allowed); with a card, the placement or merge preview; otherwise null.
+   */
+  hover(tile: Tile | null, unitId: number | null): PlacementPreview | SpellPreview | null {
+    const spell = this.hud.spellSelected.peek();
+    if (spell !== null) {
+      if (tile === null) return null;
+      const cmd: Command = { type: 'spell', faction: this.playerFaction, spell, lane: tile.lane, col: tile.col };
+      const size = this.match.balance.spells[spell].size;
+      return {
+        spell, lane: tile.lane, col: tile.col, tiles: spellArea(this.playerFaction, size, tile.lane, tile.col),
+        ok: this.match.check(cmd) === null,
+      };
+    }
     const unit = this.hud.selected.peek();
     if (unit === null) return null;
     const target = this.resolveTile(tile, unitId);
@@ -148,6 +239,9 @@ export class BattleController {
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.hud.heroSelected.peek()) return tile === null ? this.deny('bad-lane') : this.heroLane(tile.lane);
+    const spell = this.hud.spellSelected.peek();
+    if (spell !== null) return this.castAt(spell, tile);
     const target = this.resolveTile(tile, unitId);
     const cmd = this.buildClickCommand(target);
     if (cmd === 'no-selection') return this.deny('not-in-hand');
@@ -171,6 +265,7 @@ export class BattleController {
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
+    this.hud.heroSelected.value = false;
     return null;
   }
 
@@ -183,6 +278,7 @@ export class BattleController {
     if (key === 'Escape') {
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
+      this.clearPowers();
       return;
     }
     const index = HOTKEYS.indexOf(key);
@@ -192,6 +288,22 @@ export class BattleController {
 
   setPaused(paused: boolean): void {
     this.hud.paused.value = paused;
+  }
+
+  /** Casts the picked spell at the tapped tile, as `click` answers; on success the spell is put down. */
+  private castAt(spell: SpellKey, tile: Tile | null): CommandRejection | null {
+    if (tile === null) return this.deny('bad-lane');
+    const cmd: Command = { type: 'spell', faction: this.playerFaction, spell, lane: tile.lane, col: tile.col };
+    const reason = this.match.check(cmd);
+    if (reason !== null) return this.deny(reason);
+    this.queued = cmd;
+    this.hud.spellSelected.value = null;
+    return null;
+  }
+
+  private clearPowers(): void {
+    this.hud.heroSelected.value = false;
+    this.hud.spellSelected.value = null;
   }
 
   private over(): boolean {
@@ -284,5 +396,17 @@ export class BattleController {
     };
     const oldHero = this.hud.hero.peek();
     if (oldHero.ready !== hero.ready || oldHero.fraction !== hero.fraction) this.hud.hero.value = hero;
+
+    const spells: SpellVM[] = me.spells.map(({ key, timer }) => {
+      const stats = this.match.balance.spells[key];
+      const period = seconds(this.castOnce.has(key) ? stats.cooldown : stats.firstReady);
+      return { key, ready: timer === 0, fraction: period > 0 ? Math.min(1, Math.max(0, 1 - timer / period)) : 1 };
+    });
+    const oldSpells = this.hud.spells.peek();
+    const same = oldSpells.length === spells.length && oldSpells.every((o, i) => {
+      const n = spells[i];
+      return n !== undefined && o.key === n.key && o.ready === n.ready && o.fraction === n.fraction;
+    });
+    if (!same) this.hud.spells.value = spells;
   }
 }

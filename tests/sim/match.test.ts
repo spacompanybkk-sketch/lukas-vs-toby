@@ -20,6 +20,7 @@ describe('defaultConfig', () => {
       incomeMultiplier: { plants: 1, zombies: 1 },
       suddenDeath: true,
       heroes: { plants: true, zombies: true },
+      spells: { plants: 2, zombies: 2 },
     });
   });
 
@@ -40,20 +41,21 @@ describe('defaultConfig', () => {
 
 describe('new Match', () => {
   it('starts from the config', () => {
-    const m = new Match(defaultConfig(42));
+    const config = { ...defaultConfig(42), spells: { plants: 0, zombies: 0 } }; // no deal: the deal has tests of its own (spells.test.ts)
+    const m = new Match(config);
     const { startEnergy: energy, baseHp: hp } = BALANCE;
     expect(m.balance).toBe(BALANCE);
     expect(m.state).toEqual({
       tick: 0, rng: 42, nextId: 1, units: [], projectiles: [], hazards: [],
       players: {
-        plants: { energy, carry: 0, recharge: {}, heroTimer: seconds(45) },
-        zombies: { energy, carry: 0, recharge: {}, heroTimer: seconds(45) },
+        plants: { energy, carry: 0, recharge: {}, heroTimer: seconds(45), spells: [] },
+        zombies: { energy, carry: 0, recharge: {}, heroTimer: seconds(45), spells: [] },
       },
       baseHp: { plants: hp, zombies: hp },
       baseMaxHp: { plants: hp, zombies: hp },
       baseDefenseTimers: [0, 0, 0, 0, 0],
       suddenDeath: false, winner: null,
-      config: defaultConfig(42),
+      config,
     });
   });
 

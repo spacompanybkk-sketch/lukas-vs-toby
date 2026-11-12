@@ -7,6 +7,7 @@ import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectil
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { checkHero, useHero } from './hero';
+import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
 import { isStanding, levelScale, statsFor } from './lookup';
 import { tickMovement } from './movement';
@@ -23,7 +24,7 @@ type PlaceCommand = Extract<Command, { type: 'place' }>;
 type MergeCommand = Extract<Command, { type: 'merge' }>;
 type RemoveCommand = Extract<Command, { type: 'remove' }>;
 
-/** A fresh match setup: both sides alike, the Phase 1 cards, sudden death on, both hero powers on. */
+/** A fresh match setup: both sides alike, the Phase 1 cards, sudden death on, both hero powers on, two spells a side. */
 export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchConfig {
   return {
     seed,
@@ -33,6 +34,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     incomeMultiplier: { plants: 1, zombies: 1 },
     suddenDeath: true,
     heroes: { plants: true, zombies: true },
+    spells: { plants: 2, zombies: 2 },
   };
 }
 
@@ -45,6 +47,7 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     incomeMultiplier: { ...c.incomeMultiplier },
     suddenDeath: c.suddenDeath,
     heroes: { ...c.heroes },
+    spells: { ...c.spells },
   };
 }
 
@@ -61,14 +64,15 @@ export class Match {
       tick: 0, rng: own.seed >>> 0, nextId: 1,
       units: [], projectiles: [], hazards: [],
       players: {
-        plants: { energy: own.startEnergy.plants, carry: 0, recharge: {}, heroTimer: heroTimer('plants') },
-        zombies: { energy: own.startEnergy.zombies, carry: 0, recharge: {}, heroTimer: heroTimer('zombies') },
+        plants: { energy: own.startEnergy.plants, carry: 0, recharge: {}, heroTimer: heroTimer('plants'), spells: [] },
+        zombies: { energy: own.startEnergy.zombies, carry: 0, recharge: {}, heroTimer: heroTimer('zombies'), spells: [] },
       },
       baseHp: { ...own.baseHp }, baseMaxHp: { ...own.baseHp },
       baseDefenseTimers: new Array<number>(LANES).fill(0),
       suddenDeath: false, winner: null,
       config: own,
     };
+    dealSpells(this.state, balance); // the deal is the first thing the state rng draws
   }
 
   /** Rebuilds a match from `snapshot()` output; it shares nothing with the match it came from. */
@@ -90,6 +94,8 @@ export class Match {
    *   `wrong-type`, `max-level`, `recharging`, `no-energy`.
    * - remove: `plants-only`, `no-target`, `not-yours`.
    * - hero: `hero-off`, `bad-lane`, `hero-charging` (see `checkHero`).
+   * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `occupied`, `spell-charging`
+   *   (see `checkSpell`).
    */
   check(cmd: Command): CommandRejection | null {
     if (this.state.winner !== null) return 'match-over';
@@ -102,6 +108,8 @@ export class Match {
         return this.checkRemove(cmd);
       case 'hero':
         return checkHero(this.state, cmd);
+      case 'spell':
+        return checkSpell(this.state, this.balance, cmd);
       default: {
         const unhandled: never = cmd;
         throw new Error(`Unhandled command ${JSON.stringify(unhandled)}`);
@@ -139,6 +147,9 @@ export class Match {
           break;
         case 'hero':
           useHero(s, b, cmd, events);
+          break;
+        case 'spell':
+          castSpell(s, b, cmd, events);
           break;
         default: {
           const unhandled: never = cmd;

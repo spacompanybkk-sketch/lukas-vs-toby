@@ -430,3 +430,130 @@ describe('BattleController hero power', () => {
     expect(c.hud.hero.value).toBe(ready);
   });
 });
+
+describe('BattleController spells', () => {
+  /** A plants player dealt Thunderbolt and Sun Shower, both ready, the hud caught up. */
+  const dealt = (side: Faction = 'plants'): BattleController => {
+    const c = make(side);
+    c.match.state.players[side].spells = side === 'plants'
+      ? [{ key: 'thunderbolt', timer: 1 }, { key: 'sunShower', timer: 1 }]
+      : [{ key: 'meteor', timer: 1 }, { key: 'brainFeast', timer: 1 }];
+    c.step();
+    return c;
+  };
+
+  it('hud.spells shows the dealt two, charging over the first 20 s, then over the cooldown after a cast', () => {
+    const c = make();
+    const keys = c.match.state.players.plants.spells.map((x) => x.key);
+    expect(c.hud.spells.value).toEqual(keys.map((key) => ({ key, ready: false, fraction: 0 })));
+    for (let i = 0; i < seconds(10); i++) c.step();
+    expect(c.hud.spells.value[0]?.fraction).toBeCloseTo(0.5, 9);
+    const before = c.hud.spells.value;
+    c.setPaused(true);
+    c.step();
+    expect(c.hud.spells.value).toBe(before); // only written when it changes
+    c.setPaused(false);
+    for (let i = 0; i < seconds(10); i++) c.step();
+    expect(c.hud.spells.value.every((x) => x.ready && x.fraction === 1)).toBe(true);
+
+    const d = dealt();
+    d.selectSpell('thunderbolt');
+    d.click({ lane: 0, col: 5 }, null);
+    d.step();
+    expect(d.hud.spells.value[0]).toMatchObject({ key: 'thunderbolt', ready: false });
+    expect(d.hud.spells.value[0]?.fraction).toBeCloseTo(1 / seconds(50), 12);
+  });
+
+  it('picking an aimed spell clears the card, the shovel and the hero; a tap casts it and puts it down', () => {
+    const c = dealt();
+    c.toggleShovel();
+    c.selectSpell('thunderbolt');
+    expect(c.hud.spellSelected.value).toBe('thunderbolt');
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.hud.shovel.value).toBe(false);
+    expect(c.click({ lane: 2, col: 6 }, null)).toBeNull();
+    expect(c.hud.spellSelected.value).toBeNull();
+    const events = c.step();
+    expect(events).toContainEqual({ type: 'spellCast', faction: 'plants', spell: 'thunderbolt', lane: 2, col: 6, size: 2 });
+  });
+
+  it('a card, the shovel, the hero or Escape puts the spell down, and tapping the picked spell again does too', () => {
+    const c = dealt();
+    c.selectSpell('thunderbolt');
+    c.select('peashooter');
+    expect(c.hud.spellSelected.value).toBeNull();
+    c.selectSpell('thunderbolt');
+    c.toggleShovel();
+    expect(c.hud.spellSelected.value).toBeNull();
+    c.toggleShovel();
+    c.selectSpell('thunderbolt');
+    c.hotkey('Escape');
+    expect(c.hud.spellSelected.value).toBeNull();
+    c.selectSpell('thunderbolt');
+    c.selectSpell('thunderbolt');
+    expect(c.hud.spellSelected.value).toBeNull();
+    c.match.state.players.plants.heroTimer = 0;
+    c.selectSpell('thunderbolt');
+    c.selectHero(true);
+    expect(c.hud.spellSelected.value).toBeNull();
+    expect(c.hud.heroSelected.value).toBe(true);
+    c.selectSpell('thunderbolt');
+    expect(c.hud.heroSelected.value).toBe(false);
+    expect(c.hud.spellSelected.value).toBe('thunderbolt');
+  });
+
+  it('the hero, once picked, clears card and shovel, and a lawn tap fires it down that lane', () => {
+    const c = make();
+    c.match.state.players.plants.heroTimer = 0;
+    c.selectHero(true);
+    expect(c.hud.heroSelected.value).toBe(true);
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.click({ lane: 3, col: 2 }, null)).toBeNull();
+    expect(c.hud.heroSelected.value).toBe(false);
+    expect(c.step()).toContainEqual({ type: 'heroUsed', faction: 'plants', lane: 3 });
+  });
+
+  it('a charging hero or spell is refused when picked, counted as a denial', () => {
+    const c = make();
+    const key = c.match.state.players.plants.spells[0]?.key;
+    if (key === undefined) throw new Error('no spell dealt');
+    const denied = c.hud.denied.value;
+    c.selectSpell(key);
+    c.selectHero(true);
+    expect(c.hud.spellSelected.value).toBeNull();
+    expect(c.hud.heroSelected.value).toBe(false);
+    expect(c.hud.denied.value).toBe(denied + 2);
+    expect(c.hud.selected.value).not.toBeNull(); // the card stays picked
+  });
+
+  it('an un-aimed spell casts on the button tap itself', () => {
+    const c = dealt('zombies');
+    const brains = c.match.state.players.zombies.energy;
+    c.selectSpell('brainFeast');
+    expect(c.hud.spellSelected.value).toBeNull();
+    const events = c.step();
+    expect(events).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'brainFeast', size: 0 }));
+    expect(c.match.state.players.zombies.energy).toBeGreaterThanOrEqual(brains + 200);
+  });
+
+  it('a spell not dealt is ignored, and paused or over nothing is picked', () => {
+    const c = dealt();
+    c.selectSpell('vines');
+    expect(c.hud.spellSelected.value).toBeNull();
+    c.setPaused(true);
+    c.selectSpell('thunderbolt');
+    expect(c.hud.spellSelected.value).toBeNull();
+  });
+
+  it('hover shows the area of the picked spell and whether the tap would cast', () => {
+    const c = dealt();
+    c.selectSpell('thunderbolt');
+    expect(c.hover({ lane: 4, col: 9 }, null)).toEqual({
+      spell: 'thunderbolt', lane: 4, col: 9, ok: true,
+      tiles: [{ lane: 3, col: 8 }, { lane: 3, col: 9 }, { lane: 4, col: 8 }, { lane: 4, col: 9 }],
+    });
+    expect(c.hover(null, null)).toBeNull();
+    c.match.state.players.plants.spells[0]!.timer = 5;
+    expect(c.hover({ lane: 0, col: 0 }, null)).toMatchObject({ ok: false });
+  });
+});

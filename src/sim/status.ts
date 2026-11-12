@@ -5,6 +5,8 @@
  *   an ability, and its own attack and ability timers stand still.
  * - blind: it attacks on schedule but every attack misses (`attackMissed`, nothing dealt).
  * - poison, burn: it loses `poisonDps` / `burnDps` health once a second, armor or not.
+ * - haste (Frenzy): it walks `factor` times as fast and its bite and shot timers count down that
+ *   much faster (see `tickMovement` and `tickEconomy`).
  *
  * A status of `n` ticks put on a unit during tick T keeps it from acting on ticks T+1 .. T+n-1;
  * it acts again on tick T+n, `n` ticks after the one it was struck on.
@@ -17,7 +19,7 @@ import { TICKS_PER_SECOND } from './types';
 import type { SimEvent, SimState, StatusKind, Unit } from './types';
 
 /** The statuses in the fixed order `tickStatuses` handles them on each unit. */
-const KINDS: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn'];
+const KINDS: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn', 'haste'];
 
 /**
  * Puts `kind` on `u` for `ticks` ticks. A unit already affected keeps the longer of the two
@@ -41,7 +43,7 @@ export function applyStatus(
 
 /**
  * Step stage, after projectiles and before deaths: every status on every unit, in ascending id and
- * the order stun, blind, tied, poison, burn, counts down by one, and `statusEnded` is emitted when
+ * the order stun, blind, tied, poison, burn, haste, counts down by one, and `statusEnded` is emitted when
  * one reaches 0 (a poison or burn then forgets its dps). Before counting down, a poison or burn
  * deals its dps through `damageUnit`, ignoring armor, on every tick that is a whole second
  * (`tick % 30 === 0`), so `n` seconds of it deal `n` times its dps whenever it was put on. A unit

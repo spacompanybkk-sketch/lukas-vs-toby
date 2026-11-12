@@ -15,24 +15,45 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
  * (a) every timer counts down, never below 0 (the only place any of these do; statuses count down
  *     in `tickStatuses`): each unit's attack, ability and aura timers, unless the unit cannot act (see
  *     `canAct`), each card's recharge, the plant base's defence timer in each lane, and each side's
- *     hero timer while the setup has that hero on (`heroReady` on the step it reaches 0);
+ *     hero timer while the setup has that hero on (`heroReady` on the step it reaches 0), and each
+ *     dealt spell's timer (`spellReady` on the step it reaches 0). A hasted unit's bite and shot
+ *     timers count down `frenzy.factor` times as fast: the share above 1 is carried in whole
+ *     thousandths of a tick (`hasteCarry`) and each whole tick of it takes one more off both;
+ * (a2) every unit with `expires` counts it down, whether it can act or not, and leaves the lawn
+ *     on reaching 0 (`unitDied`, cause `'spent'`, no bounty);
  * (b) trickle income is added to each side's carry and paid out in whole energy;
  * (c) every ready Sunflower that can act pays.
  */
 export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
-  countDownTimers(s);
+  countDownTimers(s, b);
   chargeHeroes(s, events);
+  chargeSpells(s, events);
+  expireUnits(s, events);
   payTrickle(s, b);
   paySunflowers(s, b, events);
 }
 
-function countDownTimers(s: SimState): void {
+/** A whole tick of hasted countdown, in `hasteCarry` units. */
+const HASTE_CARRY_PER_TICK = 1000;
+
+function countDownTimers(s: SimState, b: Balance): void {
+  const hasteExtra = Math.round(((b.spells.frenzy.factor ?? 1) - 1) * HASTE_CARRY_PER_TICK);
   for (const u of s.units) {
     if (!canAct(u)) continue;
     u.meleeTimer = Math.max(0, u.meleeTimer - 1);
     u.shotTimer = Math.max(0, u.shotTimer - 1);
     u.abilityTimer = Math.max(0, u.abilityTimer - 1);
     u.auraTimer = Math.max(0, u.auraTimer - 1);
+    if (u.haste <= 0) {
+      u.hasteCarry = 0;
+      continue;
+    }
+    u.hasteCarry += hasteExtra;
+    while (u.hasteCarry >= HASTE_CARRY_PER_TICK) {
+      u.hasteCarry -= HASTE_CARRY_PER_TICK;
+      u.meleeTimer = Math.max(0, u.meleeTimer - 1);
+      u.shotTimer = Math.max(0, u.shotTimer - 1);
+    }
   }
   for (const faction of FACTIONS) {
     const recharge = s.players[faction].recharge;
@@ -53,6 +74,34 @@ function chargeHeroes(s: SimState, events: SimEvent[]): void {
     player.heroTimer -= 1;
     if (player.heroTimer === 0) events.push({ type: 'heroReady', faction });
   }
+}
+
+function chargeSpells(s: SimState, events: SimEvent[]): void {
+  for (const faction of FACTIONS) {
+    for (const slot of s.players[faction].spells) {
+      if (slot.timer <= 0) continue;
+      slot.timer -= 1;
+      if (slot.timer === 0) events.push({ type: 'spellReady', faction, spell: slot.key });
+    }
+  }
+}
+
+function expireUnits(s: SimState, events: SimEvent[]): void {
+  if (!s.units.some((u) => u.expires > 0)) return;
+  const kept: Unit[] = [];
+  for (const u of s.units) {
+    if (u.expires > 0) {
+      u.expires -= 1;
+      if (u.expires === 0) {
+        events.push({
+          type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level, cause: 'spent',
+        });
+        continue;
+      }
+    }
+    kept.push(u);
+  }
+  s.units = kept;
 }
 
 function payTrickle(s: SimState, b: Balance): void {

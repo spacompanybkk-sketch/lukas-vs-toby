@@ -39,6 +39,7 @@ export function classicBalance(): Balance {
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
     },
+    rock: { recharge: 1, hp: 800, armor: 0, speed: 0 }, // phase 2: Rock Wall's rock, which only stands
   };
   const linear = [0, 1, 2, 3, 4, 5];
   b.levelCurves = {
@@ -71,13 +72,14 @@ export function withBaseDefense(damage = 60, interval = 1): Balance {
 /**
  * The default setup with the energy and base health these tests were written for, 200 and 3000 a
  * side, so a test of the rules keeps testing them whatever the tuner does to the shipped starting
- * values in `BALANCE`; and, as in phase 1, with no hero powers.
+ * values in `BALANCE`; and, as in phase 1, with no hero powers and no spells.
  */
 export function classicConfig(seed: number, balance: Balance = classicBalance()): MatchConfig {
   const config = defaultConfig(seed, balance);
   config.startEnergy = { plants: 200, zombies: 200 };
   config.baseHp = { plants: 3000, zombies: 3000 };
   config.heroes = { plants: false, zombies: false };
+  config.spells = { plants: 0, zombies: 0 };
   return config;
 }
 

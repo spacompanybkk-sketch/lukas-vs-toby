@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from '../sim/types';
-import type { Faction, Flight, ProjectileKind, StatusKind, UnitKey } from '../sim/types';
+import type { Faction, Flight, ProjectileKind, SpellKey, SpellSize, StatusKind, UnitKey } from '../sim/types';
 
 /** A close-range attack. Interval in seconds, reach in tiles. */
 export interface MeleeStats { damage: number; interval: number; reach: number }
@@ -71,6 +71,18 @@ export interface UnitStats {
   raise?: { key: 'boneMinion'; interval: number };
 }
 
+/**
+ * A spell's numbers (spec 21): `cooldown` seconds after each cast until it is ready again, ready
+ * `firstReady` seconds into the match, covering an area of `size` (see `SpellSize`). What else it
+ * has depends on the spell: `damage` (Thunderbolt, Meteor), `seconds` of a status or of a rock's
+ * life (Vines, Fog, Frenzy, Rock Wall), `amount` of energy or healing (Sun Shower, Brain Feast,
+ * Healing Rain), the rock's `hp`, Frenzy's speed `factor`, Grave Rise's `count` of minions.
+ */
+export interface SpellStats {
+  cooldown: number; firstReady: number; size: SpellSize;
+  damage?: number; seconds?: number; amount?: number; hp?: number; factor?: number; count?: number;
+}
+
 /** Every tunable number of the game. The simulation reads these and nothing else. */
 export interface Balance {
   units: Partial<Record<UnitKey, UnitStats>>;
@@ -110,6 +122,7 @@ export interface Balance {
    * `chargeSeconds` after each use.
    */
   hero: Record<Faction, { damage: number; chargeSeconds: number; firstChargeSeconds: number }>;
+  spells: Record<SpellKey, SpellStats>;
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -250,6 +263,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       recharge: 1, hp: 150, armor: 0, speed: 0.6,
       melee: { damage: 20, interval: 0.8, reach: 0.6 },
     },
+    // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
+    rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
   },
   trickle: { plants: 1.8, zombies: 9.3 },
   bountyShare: { plants: 0.2, zombies: 0.5 },
@@ -269,6 +284,18 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   hero: {
     plants: { damage: 400, chargeSeconds: 60, firstChargeSeconds: 45 }, // Mega Mower
     zombies: { damage: 250, chargeSeconds: 60, firstChargeSeconds: 45 }, // Bone Storm
+  },
+  spells: {
+    thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
+    vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
+    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
+    healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
+    rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
+    meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
+    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
+    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
+    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
+    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3 },
   },
 });
 

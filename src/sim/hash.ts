@@ -108,6 +108,7 @@ const UNIT: Fields<Unit> = {
   blocked: bool,
   stun: num, blind: num, tied: num, poison: num, poisonDps: num, burn: num, burnDps: num,
   stacks: num, ownerId: nullableNum,
+  expires: num, haste: num, hasteCarry: num,
 };
 
 const PROJECTILE: Fields<Projectile> = {
@@ -138,6 +139,7 @@ const PLAYER: Fields<PlayerState> = {
     }
   },
   heroTimer: num,
+  spells: list<PlayerState['spells'][number]>({ key: str, timer: num }),
 };
 
 const CONFIG: Fields<MatchConfig> = {
@@ -151,6 +153,7 @@ const CONFIG: Fields<MatchConfig> = {
   incomeMultiplier: perFaction(num),
   suddenDeath: bool,
   heroes: perFaction(bool),
+  spells: perFaction(num),
 };
 
 const STATE: Fields<SimState> = {

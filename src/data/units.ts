@@ -61,9 +61,12 @@ function buildInfo(): Record<CardKey, UnitInfo> {
 /** Name, price, role and unlock order of every card. The Bone Minion is not a card and has none. */
 export const UNIT_INFO: Record<CardKey, UnitInfo> = buildInfo();
 
-/** Which side a unit fights for: a card's own side, and the zombies' for a Bone Minion. */
+/** The side of each unit that is not a card. */
+const NON_CARD_FACTION: Record<Exclude<UnitKey, CardKey>, Faction> = { boneMinion: 'zombies', rock: 'plants' };
+
+/** Which side a unit fights for: a card's own side, the zombies' for a Bone Minion, the plants' for a rock. */
 export function factionOf(key: UnitKey): Faction {
-  return key === 'boneMinion' ? 'zombies' : UNIT_INFO[key].faction;
+  return isCard(key) ? UNIT_INFO[key].faction : NON_CARD_FACTION[key];
 }
 
 /** What a unit costs to play: a card's price, and 0 for a unit that is not a card. */

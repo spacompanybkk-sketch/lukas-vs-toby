@@ -15,8 +15,19 @@ export type ZombieKey =
   | 'skeletonArcher' | 'hotTopic' | 'cowboyZombie' | 'necromancer' | 'tridentZombie' | 'brainRot';
 /** A unit a player can play from the hand. */
 export type CardKey = PlantKey | ZombieKey;
-/** Every unit that can stand on the lawn: the cards, and the Bone Minion, which is never a card. */
-export type UnitKey = CardKey | 'boneMinion';
+/**
+ * Every unit that can stand on the lawn: the cards, and two that are never cards: the Bone Minion
+ * (a zombie) and the rock of the Rock Wall spell (a plant: no attack, no merge, no bounty).
+ */
+export type UnitKey = CardKey | 'boneMinion' | 'rock';
+/** The spells (spec 21), five a side. */
+export type PlantSpell = 'thunderbolt' | 'vines' | 'sunShower' | 'healingRain' | 'rockWall';
+export type ZombieSpell = 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise';
+export type SpellKey = PlantSpell | ZombieSpell;
+/**
+ * The area a spell covers: 0 none (not aimed), 1 the tapped tile, 2 a 2×2, 3 a 3×3 (see `spellArea`).
+ */
+export type SpellSize = 0 | 1 | 2 | 3;
 export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot';
 /**
  * How a projectile travels. `straight` hits the first enemy it meets; `lobbed` arcs over everyone
@@ -24,10 +35,11 @@ export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | '
  */
 export type Flight = 'straight' | 'lobbed' | 'piercing';
 /**
- * What can be wrong with a unit, each a count of ticks left (see `src/sim/status.ts`). Stunned or
- * tied, a unit cannot act; blind, its attacks miss; poisoned or burning, it loses health every second.
+ * What can be wrong (or right) with a unit, each a count of ticks left (see `src/sim/status.ts`).
+ * Stunned or tied, a unit cannot act; blind, its attacks miss; poisoned or burning, it loses health
+ * every second; hasted (Frenzy), it walks and attacks faster.
  */
-export type StatusKind = 'stun' | 'blind' | 'tied' | 'poison' | 'burn';
+export type StatusKind = 'stun' | 'blind' | 'tied' | 'poison' | 'burn' | 'haste';
 /** What a unit's `abilityUsed` event says it did. */
 export type AbilityName = 'arm' | 'trigger' | 'fuse' | 'leap' | 'ignite' | 'grow' | 'lasso' | 'heal' | 'raise';
 
@@ -42,6 +54,9 @@ export interface Unit {
   poison: number; poisonDps: number; burn: number; burnDps: number; // ticks left, damage per second
   stacks: number; // Hot Topic growth; 1 on a Potato Mine once it has armed; 0 for everyone else
   ownerId: number | null; // the Necromancer that raised a minion, null for everyone else
+  expires: number; // ticks until it leaves the lawn (cause 'spent'), 0 = never; a Rock Wall's rock
+  haste: number; // ticks left of Frenzy's haste, 0 = not hasted
+  hasteCarry: number; // hasted timer countdown not yet taken, in 1/1000 of a tick; always whole
 }
 
 export interface Projectile {
@@ -68,6 +83,7 @@ export interface PlayerState {
   carry: number; // income not yet paid out, in 1/30000 of an energy
   recharge: Partial<Record<CardKey, number>>; // ticks left per card
   heroTimer: number; // ticks until the hero power is ready; it stands still while the setup has it off
+  spells: { key: SpellKey; timer: number }[]; // the spells dealt, in deal order, each with its ticks until ready
 }
 
 export interface MatchConfig {
@@ -78,6 +94,7 @@ export interface MatchConfig {
   incomeMultiplier: Record<Faction, number>;
   suddenDeath: boolean;
   heroes: Record<Faction, boolean>; // whether each side has its hero power
+  spells: Record<Faction, number>; // how many spells each side is dealt (0 = no spells)
 }
 
 export interface SimState {
@@ -94,12 +111,14 @@ export type Command =
   | { type: 'place'; faction: Faction; unit: CardKey; lane: number; col: number }
   | { type: 'merge'; faction: Faction; unit: CardKey; targetId: number }
   | { type: 'remove'; faction: Faction; targetId: number }
-  | { type: 'hero'; faction: Faction; lane: number };
+  | { type: 'hero'; faction: Faction; lane: number }
+  | { type: 'spell'; faction: Faction; spell: SpellKey; lane: number; col: number };
 
 export type CommandRejection =
   | 'match-over' | 'not-in-hand' | 'wrong-side' | 'no-energy'
   | 'recharging' | 'bad-lane' | 'bad-column' | 'occupied' | 'no-target' | 'wrong-type'
-  | 'max-level' | 'not-yours' | 'plants-only' | 'hero-charging' | 'hero-off';
+  | 'max-level' | 'not-yours' | 'plants-only' | 'hero-charging' | 'hero-off'
+  | 'spell-charging' | 'spell-not-dealt' | 'spells-off';
 
 export type SimEvent =
   | { type: 'commandRejected'; command: Command; reason: CommandRejection }
@@ -132,5 +151,7 @@ export type SimEvent =
   | { type: 'abilityUsed'; unitId: number; ability: AbilityName; lane: number; x: number; targetId: number | null }
   | { type: 'heroUsed'; faction: Faction; lane: number }
   | { type: 'heroReady'; faction: Faction }
+  | { type: 'spellCast'; faction: Faction; spell: SpellKey; lane: number; col: number; size: SpellSize }
+  | { type: 'spellReady'; faction: Faction; spell: SpellKey }
   | { type: 'suddenDeath' }
   | { type: 'matchEnded'; winner: Faction | 'draw' };

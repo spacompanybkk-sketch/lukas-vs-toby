@@ -36,6 +36,7 @@ function fresh(balance: Balance, seed = 1): Match {
   config.startEnergy = { plants: 1000, zombies: 1000 };
   config.baseHp = { plants: 3000, zombies: 3000 };
   config.incomeMultiplier = { plants: 0, zombies: 0 };
+  config.spells = { plants: 0, zombies: 0 }; // phase 2: no deal, so the shots are the only thing drawing the rng
   return new Match(config, balance);
 }
 

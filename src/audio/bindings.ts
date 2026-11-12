@@ -82,6 +82,8 @@ export function playEventSounds(audio: AudioEngine, events: readonly SimEvent[],
       case 'abilityUsed':
       case 'heroUsed':
       case 'heroReady':
+      case 'spellCast':
+      case 'spellReady':
         break;
       default: {
         const unhandled: never = e;

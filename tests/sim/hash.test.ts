@@ -4,8 +4,10 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1232 bytes). Re-pinned in phase 2
- * for the Task 3 review, when hazards gained `poisonTicks`; in Task 4 it was 3625389926 over 1224
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1404 bytes). Re-pinned in phase 2,
+ * Task 4b, when units gained `expires`, `haste` and `hasteCarry`, players their dealt spells and
+ * the setup its `spells`; for the Task 3 review it was 3875909580 over 1232 bytes, when hazards
+ * gained `poisonTicks`; in Task 4 it was 3625389926 over 1224
  * bytes, when players gained their hero timers (`heroTimer`) and the setup its `heroes`; in Task 3
  * it was 3963315096 over 1206 bytes, when units gained the Necromancer's heal timer (`auraTimer`); in Task 2 it was
  * 972736984 over 1190 bytes, from when projectiles gained the burn a Torchwood gives them
@@ -14,7 +16,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 3875909580;
+const GOLDEN_HASH = 1072679369;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -27,11 +29,13 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
+        expires: 0, haste: 0, hasteCarry: 0,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
+        expires: 0, haste: 45, hasteCarry: 1,
       },
     ],
     projectiles: [
@@ -45,8 +49,11 @@ function makeState(): SimState {
       { id: 2, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15, poisonTicks: 30 },
     ],
     players: {
-      plants: { energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 }, heroTimer: 0 },
-      zombies: { energy: 125, carry: 0, recharge: { brainEater: 15 }, heroTimer: 700 },
+      plants: {
+        energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 }, heroTimer: 0,
+        spells: [{ key: 'thunderbolt', timer: 0 }, { key: 'rockWall', timer: 300 }],
+      },
+      zombies: { energy: 125, carry: 0, recharge: { brainEater: 15 }, heroTimer: 700, spells: [{ key: 'fog', timer: 12 }] },
     },
     baseHp: { plants: 500, zombies: 480 },
     baseMaxHp: { plants: 500, zombies: 500 },
@@ -64,6 +71,7 @@ function makeState(): SimState {
       incomeMultiplier: { plants: 1, zombies: 1.25 },
       suddenDeath: true,
       heroes: { plants: true, zombies: false },
+      spells: { plants: 2, zombies: 1 },
     },
   };
 }
@@ -194,6 +202,16 @@ describe('hashState', () => {
     ['a heroTimer of 0 becoming 1', (s) => { s.players.plants.heroTimer = 1; }],
     ['config heroes.plants', (s) => { s.config.heroes.plants = false; }],
     ['config heroes.zombies', (s) => { s.config.heroes.zombies = true; }],
+    // Spells.
+    ['a unit expires', (s) => { unit(s, 0).expires = 1; }],
+    ['a unit haste', (s) => { unit(s, 1).haste -= 1; }],
+    ['a unit hasteCarry', (s) => { unit(s, 1).hasteCarry = 0; }],
+    ['a dealt spell key', (s) => { s.players.plants.spells[0]!.key = 'vines'; }],
+    ['a dealt spell timer', (s) => { s.players.plants.spells[1]!.timer -= 1; }],
+    ['the order of the dealt spells', (s) => { s.players.plants.spells.reverse(); }],
+    ['the number of dealt spells', (s) => { s.players.zombies.spells.pop(); }],
+    ['config spells.plants', (s) => { s.config.spells.plants = 1; }],
+    ['config spells.zombies', (s) => { s.config.spells.zombies = 2; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -207,8 +225,11 @@ describe('hashState', () => {
     const a = makeState();
     const b = makeState();
     b.players = {
-      zombies: { heroTimer: 700, recharge: { brainEater: 15 }, carry: 0, energy: 125 },
-      plants: { heroTimer: 0, recharge: { sunflower: 0, peashooter: 60 }, carry: 1234, energy: 175 },
+      zombies: { spells: [{ timer: 12, key: 'fog' }], heroTimer: 700, recharge: { brainEater: 15 }, carry: 0, energy: 125 },
+      plants: {
+        spells: [{ timer: 0, key: 'thunderbolt' }, { timer: 300, key: 'rockWall' }],
+        heroTimer: 0, recharge: { sunflower: 0, peashooter: 60 }, carry: 1234, energy: 175,
+      },
     };
     b.baseHp = { zombies: 480, plants: 500 };
     b.config.incomeMultiplier = { zombies: 1.25, plants: 1 };

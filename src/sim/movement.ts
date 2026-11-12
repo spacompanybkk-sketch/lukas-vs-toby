@@ -17,6 +17,8 @@ import type { SimState } from './types';
  * Two more things keep a zombie where it is without making it `blocked`: it cannot act (stunned or
  * tied, see `canAct`), or it `holds` and a standing plant is ahead within `holdRange`, or its
  * shot's range when it has no `holdRange`, so it stays and shoots.
+ *
+ * A hasted zombie (Frenzy) walks `Balance.spells.frenzy.factor` times its speed.
  */
 export function tickMovement(s: SimState, b: Balance): void {
   for (const z of s.units) {
@@ -29,6 +31,7 @@ export function tickMovement(s: SimState, b: Balance): void {
       const holdRange = stats.holdRange ?? stats.shot?.range ?? 0;
       if (nearestEnemyAhead(s, z.faction, z.lane, z.x, holdRange) !== null) continue;
     }
-    z.x = Math.max(BASE_STOP_X, z.x - stats.speed / TICKS_PER_SECOND);
+    const speed = z.haste > 0 ? stats.speed * (b.spells.frenzy.factor ?? 1) : stats.speed;
+    z.x = Math.max(BASE_STOP_X, z.x - speed / TICKS_PER_SECOND);
   }
 }
