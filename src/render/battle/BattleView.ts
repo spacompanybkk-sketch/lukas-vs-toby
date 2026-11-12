@@ -1,5 +1,5 @@
 import {
-  BackSide, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
+  BackSide, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
   Vector2, Vector3, type Camera, type Object3D, type Scene,
 } from 'three';
 import { factionOf } from '../../data/units';
@@ -17,6 +17,7 @@ import { PALETTE } from '../palette';
 import { modelColors } from '../voxel/build';
 import { ModelInstance } from '../voxel/rig';
 import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
+import { BoxBatch } from '../world/boxes';
 import type { Lawn } from '../world/Lawn';
 import { Hazards } from './Hazards';
 import { HealthBars } from './HealthBars';
@@ -95,7 +96,8 @@ const CONFETTI_EVERY = 0.14;
 const LEVEL_COLOR = [0, hex('#FFFFFF'), hex('#FFFFFF'), hex(PALETTE.levelIron), hex(PALETTE.levelCrystal), hex(PALETTE.levelGold)];
 const STONE = [hex(PALETTE.stone), hex(PALETTE.stoneDark), hex(PALETTE.graveRock), hex(PALETTE.graveSoil)];
 const FIRE = hex(PALETTE.fire);
-const HEAL = hex(PALETTE.heal);
+/** The heal ring: a deeper green than the plusses, so a ring the width of the aura does not wash the lawn white. */
+const HEAL = hex('#2FAF5E');
 /** The Necromancer's raise: a ring of graveyard violet, brighter than the graveyard itself. */
 const RAISE = hex('#9B6BFF');
 const SOIL = hex('#8A5A2B');
@@ -115,9 +117,10 @@ const TURN = Math.PI * 2;
 const ROPE_SEGMENTS = 14;
 const ROPE_THROW_SECONDS = 0.22;
 const ROPE_SAG = 0.18;
-const ROPE_THICK = 0.06;
+const ROPE_THICK = 0.085;
 const VOXEL = 1 / 16;
 const ROPE_COLOR = '#A8743E';
+const ROPE_LIGHT = '#C99560';
 
 /** How hard each kind of blast is felt: a Cherry Bomber shakes the most (plan Task 5: 80 ms hit-stop). */
 const BLAST_FEEL: Partial<Record<UnitKey, Feel>> = {
@@ -211,8 +214,8 @@ export class BattleView {
   readonly marks = new StatusMarks();
   readonly puddles = new Hazards();
   private readonly ropes: Rope[] = [];
-  private readonly ropeGeometry = new BoxGeometry(1, ROPE_THICK, ROPE_THICK);
-  private readonly ropeMaterial = new MeshStandardMaterial({ ...MATTE_PLASTIC, color: ROPE_COLOR });
+  private readonly ropeGeometry = ropeSegment();
+  private readonly ropeMaterial = new MeshStandardMaterial(MATTE_PLASTIC);
   private readonly tokens: TokenView[] = [];
   private readonly graves: GraveView[] = [];
   private readonly blasts: PendingBlast[] = [];
@@ -1317,4 +1320,11 @@ export class BattleView {
 function stillFlying(state: SimState, id: number): boolean {
   for (let i = 0; i < state.projectiles.length; i++) if ((state.projectiles[i] as { id: number }).id === id) return true;
   return false;
+}
+
+/** One segment of a lasso rope: a tile long along x (scaled to its length), rope brown with a lighter top. */
+function ropeSegment(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  b.box(-0.5, -ROPE_THICK / 2, -ROPE_THICK / 2, 1, ROPE_THICK, ROPE_THICK, ROPE_COLOR, ROPE_LIGHT);
+  return b.build();
 }

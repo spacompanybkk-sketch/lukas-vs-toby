@@ -331,6 +331,37 @@ const SCENARIOS = [
       },
     })),
   })),
+  // The whole roster at work (`?scene=roster-demo`, a scripted match): each scenario frozen at
+  // the moments that show its units and abilities, on the full lawn and closed in.
+  ...[
+    // Every plant on the lawn: the Pumpkin's leap, the mine armed, the Cherry's fuse.
+    ['roster-plants', [9.45, 12.1, 24.5]],
+    // Every zombie on the lawn: the Cowboy's lasso, the Necromancer's minion, the Archer, Trident and Brain Rot.
+    ['roster-zombies', [2.3, 13.4, 14.6]],
+    // Statuses: tied Pumpkin, burning Warrior, stunned Desert Zombie; then blind Kernel-pult, poisoned Bunker, stunned Hot Topic.
+    ['statuses', [12.6, 18.9]],
+    ['statuses-close', [12.6], '4,5.6,1.8'],
+    ['statuses-close2', [12.6], '0,5.8,1.8'],
+    ['statuses-close3', [18.9], '1,3,1.8'],
+    // The Pumpkin's leap and the Cowboy's lasso, close.
+    ['roster-leap', [9.2, 9.35, 9.5, 9.8], '4,5,1.8'],
+    ['roster-lasso', [11.1, 11.4], '4,6,2.2'],
+    // The Potato Mine arming, then going off under the Brain Eater; Hot Topic growing; the Necromancer's raise.
+    ['roster-mine', [12.05, 12.95], '3,6.5,1.6'],
+    ['roster-grow', [28.2, 28.6], '1,2.5,1.6'],
+    ['roster-raise', [13.05, 13.4], '2,8.3,1.6'],
+    // Brain Rot's puddle on the Bunker's tile, close.
+    ['puddle', [17.6, 19.5], '2,5,2'],
+    // The Cherry Bomber goes off in lane 2.
+    ['cherry-blast', [24.9, 25.05, 25.2]],
+  ].map(([name, times, focus]) => {
+    const url = (t) => `/?scene=roster-demo&seed=7${focus ? `&focus=${focus}` : ''}&t=${t}`;
+    return {
+      name,
+      url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
   // ---- The game: menus, HUD, pause and result (Tasks 14 and 15, wired) ----
   { name: 'title', url: '/', steps: (page) => demoAt(page, 45) },
   { name: 'portrait', url: '/', viewport: { width: 768, height: 1024 }, steps: (page) => demoAt(page, 20) },

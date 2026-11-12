@@ -8,6 +8,7 @@ import * as fx from './scenes/fx';
 import * as hudGallery from './scenes/hudGallery';
 import * as fxGallery from './scenes/fxGallery';
 import * as lawn from './scenes/lawn';
+import * as rosterDemo from './scenes/rosterDemo';
 import * as stress from './scenes/stress';
 import { App } from './ui/App';
 import './ui/theme.css';
@@ -30,6 +31,7 @@ const SCENES = new Map<string, SceneModule>([
   ['fx', fx],
   ['fx-gallery', fxGallery],
   ['battle-demo', battleDemo],
+  ['roster-demo', rosterDemo],
   ['stress', stress],
   ['hud-gallery', hudGallery],
 ]);
