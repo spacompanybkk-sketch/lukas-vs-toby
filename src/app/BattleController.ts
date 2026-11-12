@@ -5,7 +5,7 @@ import type { Bot, Skill } from '../ai/bot';
 import { DIFFICULTY, battleConfig, computerTable } from '../ai/difficulty';
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { UNIT_INFO, isCard, priceOf } from '../data/units';
+import { ALL_CARDS, UNIT_INFO, isCard, priceOf } from '../data/units';
 import { Match } from '../sim/match';
 import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
@@ -66,7 +66,11 @@ export class BattleController {
     this.opponent = opts.playerFaction === 'plants' ? 'zombies' : 'plants';
     // The difficulty sets the computer's skill and both sides' income: the very match the balance
     // checks measure for this side and difficulty.
-    this.match = new Match(battleConfig(opts.seed, opts.playerFaction, opts.skill, balance), balance);
+    // Both sides are dealt all ten of their cards (ruling R52). The computer's strategy may know
+    // only some of them; its random moves (`randomLegal`) play any card in its hand.
+    const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
+    config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
+    this.match = new Match(config, balance);
     const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
     this.bot = createBasicBot(
       this.opponent, computerSkill, (Math.imul(opts.seed, 2654435761) + 1) >>> 0,
@@ -178,7 +182,8 @@ export class BattleController {
     const u = this.match.state.units.find((x) => x.id === unitId);
     if (u === undefined || u.faction !== this.playerFaction || !isStanding(u)) return null;
     const shovel = this.hud.shovel.peek();
-    if (!shovel && this.hud.selected.peek() !== u.key) return null;
+    // A unit at the top level cannot take its card: the tap falls through to the ground under it.
+    if (!shovel && (this.hud.selected.peek() !== u.key || u.level >= MAX_LEVEL)) return null;
     return { lane: u.lane, col: Math.floor(u.x) };
   }
 
@@ -228,8 +233,10 @@ export class BattleController {
       ? named : undefined;
     if (tile === null) return own === undefined ? null : { tile: { lane: own.lane, col: Math.floor(own.x) }, unit: own };
     if (this.playerFaction === 'plants') return { tile, unit: this.plantAt(tile) ?? null };
-    if (own !== undefined && own.key === card) return { tile, unit: own };
-    return { tile, unit: (card === null ? undefined : this.zombieNear(tile, card)) ?? own ?? null };
+    // A named zombie of the card's type at the top level cannot take the card: a nearby one may, or a new one goes.
+    const full = own !== undefined && own.key === card && own.level >= MAX_LEVEL;
+    if (own !== undefined && own.key === card && !full) return { tile, unit: own };
+    return { tile, unit: (card === null ? undefined : this.zombieNear(tile, card)) ?? (full ? undefined : own) ?? null };
   }
 
   /** The player's own standing zombie of type `key` below the top level nearest the tile's middle, within reach. */

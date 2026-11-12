@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BattleController } from '../../src/app/BattleController';
 import { DIFFICULTY, battleConfig } from '../../src/ai/difficulty';
 import { seconds } from '../../src/data/balance';
+import { ALL_CARDS } from '../../src/data/units';
 import { spawnUnit } from '../../src/sim/match';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import type { Faction } from '../../src/sim/types';
@@ -196,7 +197,8 @@ describe('BattleController setup', () => {
     'as %s on %s, plays the difficulty\'s match: its config and income multipliers', (side, skill) => {
       const c = new BattleController({ playerFaction: side, skill, seed: 11 });
       const config = c.match.state.config;
-      expect(config).toEqual(battleConfig(11, side, skill));
+      // The difficulty's match, with all ten cards of each side dealt (ruling R52).
+      expect(config).toEqual({ ...battleConfig(11, side, skill), cards: ALL_CARDS });
       const income = DIFFICULTY[skill][side].income;
       const computer: Faction = side === 'plants' ? 'zombies' : 'plants';
       expect(config.incomeMultiplier[side]).toBe(income.human);
@@ -255,7 +257,7 @@ describe('BattleController merge, shovel, hotkeys, hover', () => {
     const c = make();
     c.select('peashooter');
     c.hotkey('x');
-    c.hotkey('9');
+    c.hotkey('-'); // with ten cards every digit names one; these keys name none
     expect(c.hud.selected.value).toBe('peashooter');
   });
 
@@ -468,5 +470,106 @@ describe('BattleController merging, as a child plays it', () => {
     c.toggleShovel();
     expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
     expect(c.aimAt(99999)).toBeNull();
+  });
+
+  it('aimAt: the player\'s own unit at the top level names no tile for its card (the ground decides), only for the shovel', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const p = playerUnits(c)[0];
+    if (p === undefined) throw new Error('no peashooter');
+    p.level = 5;
+    expect(c.aimAt(p.id)).toBeNull();
+    c.toggleShovel();
+    expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
+  });
+
+  it('zombies: a direct tap on the player\'s own level-5 zombie of the selected card merges into a nearby one instead', () => {
+    const { c, made } = zombieScene([{ key: 'brainEater', lane: 2, x: 4.5, level: 5 }, { key: 'brainEater', lane: 2, x: 4.9 }]);
+    c.select('brainEater');
+    expect(c.hover({ lane: 2, col: 4 }, made[0]?.id ?? null)).toMatchObject({ ok: true, mergeTargetId: made[1]?.id });
+    const denied = c.hud.denied.value;
+    expect(c.click({ lane: 2, col: 4 }, made[0]?.id ?? null)).toBeNull();
+    c.step();
+    expect(made[1]?.level).toBe(2);
+    expect(made[0]?.level).toBe(5);
+    expect(c.hud.denied.value).toBe(denied);
+  });
+
+  it('zombies: a direct tap on the player\'s own level-5 zombie with none nearby sends a new one', () => {
+    const { c, made } = zombieScene([{ key: 'brainEater', lane: 2, x: 4.5, level: 5 }]);
+    c.select('brainEater');
+    expect(c.hover({ lane: 2, col: 4 }, made[0]?.id ?? null)).toMatchObject({ ok: true, mergeTargetId: null });
+    expect(c.click({ lane: 2, col: 4 }, made[0]?.id ?? null)).toBeNull();
+    const events = c.step();
+    expect(events.some((e) => e.type === 'unitSpawned' && e.key === 'brainEater' && e.lane === 2)).toBe(true);
+  });
+
+  it('zombies: the merge reach is exactly 0.75 tile from the tapped tile\'s middle', () => {
+    const { c, made } = zombieScene([{ key: 'brainEater', lane: 2, x: 5.25 }]);
+    c.select('brainEater');
+    expect(c.hover({ lane: 2, col: 4 }, null)?.mergeTargetId).toBe(made[0]?.id); // 0.75: in reach
+    if (made[0]) made[0].x = 5.26;
+    expect(c.hover({ lane: 2, col: 4 }, null)?.mergeTargetId).toBeNull(); // 0.76: out of reach
+    if (made[0]) made[0].x = 3.75;
+    expect(c.hover({ lane: 2, col: 4 }, null)?.mergeTargetId).toBe(made[0]?.id); // 0.75 on the other side
+  });
+
+  it('zombies: a direct tap on the player\'s own zombie in another lane is ignored for the tapped lane', () => {
+    const { c, made } = zombieScene([{ key: 'brainEater', lane: 1, x: 4.5 }]);
+    c.select('brainEater');
+    expect(c.hover({ lane: 2, col: 4 }, made[0]?.id ?? null)).toMatchObject({ ok: true, lane: 2, mergeTargetId: null });
+  });
+});
+
+describe('BattleController with the full roster', () => {
+  it.each(['plants', 'zombies'] as const)('as %s deals all ten cards to both sides, hotkeys 1 to 0', (side) => {
+    const c = make(side);
+    const opponent: Faction = side === 'plants' ? 'zombies' : 'plants';
+    expect(c.match.state.config.cards[side]).toEqual(ALL_CARDS[side]);
+    expect(c.match.state.config.cards[opponent]).toEqual(ALL_CARDS[opponent]);
+    expect(c.hud.cards.value.map((card) => card.unit)).toEqual(ALL_CARDS[side]);
+    expect(c.hud.cards.value.map((card) => card.hotkey)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+    c.hotkey('0');
+    expect(c.hud.selected.value).toBe(ALL_CARDS[side][9]);
+  });
+
+  it('places every card of each side by tap', () => {
+    for (const side of ['plants', 'zombies'] as const) {
+      const c = make(side);
+      ALL_CARDS[side].forEach((key, i) => {
+        c.match.state.players[side].energy = 9999;
+        c.select(key);
+        expect(c.hud.selected.value).toBe(key);
+        expect(c.click({ lane: i % 5, col: side === 'plants' ? Math.floor(i / 5) : 9 }, null), key).toBeNull();
+        c.step();
+      });
+      const placed = new Set(c.match.state.units.filter((u) => u.faction === side).map((u) => u.key));
+      for (const key of ALL_CARDS[side]) {
+        // A Cherry Bomber goes off a second after it is placed, so it may already be spent.
+        if (key !== 'cherryBomber') expect(placed.has(key), key).toBe(true);
+      }
+    }
+  });
+
+  it.each([
+    ['plants', 'easy'], ['plants', 'medium'], ['plants', 'hard'],
+    ['zombies', 'easy'], ['zombies', 'medium'], ['zombies', 'hard'],
+  ] as const)('as %s on %s the computer holding ten cards plays a whole match without throwing', { timeout: 60_000 }, (side, skill) => {
+    for (const seed of [1, 2]) {
+      const c = new BattleController({ playerFaction: side, skill, seed });
+      for (let i = 0; i < 30 * 60 * 8 && c.hud.result.value === null; i++) {
+        // The player taps a random-ish card now and then, so every unit and ability comes up.
+        if (i % 45 === 0) {
+          const cards = ALL_CARDS[side];
+          c.select(cards[(i / 45) % cards.length] ?? null);
+          c.click({ lane: (i / 45) % 5, col: side === 'plants' ? (i / 45) % 8 : 9 }, null);
+        }
+        expect(() => c.step()).not.toThrow();
+      }
+      expect(c.match.state.tick).toBeGreaterThan(0);
+    }
   });
 });
