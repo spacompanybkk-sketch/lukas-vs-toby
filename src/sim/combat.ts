@@ -201,8 +201,12 @@ function flyStraight(s: SimState, b: Balance, p: Projectile, events: SimEvent[])
   const from = advance(p);
   const target = nearestEnemyAhead(s, p.faction, p.lane, from, p.speed + b.hitRadius);
   if (target) {
-    if (p.flight === 'lobbed') land(s, b, p, target, target.x, events);
-    else hitUnit(s, b, p, target, events);
+    if (p.flight === 'lobbed') {
+      p.x = target.x; // it comes down on the enemy it met, so the view draws it there
+      land(s, b, p, target, target.x, events);
+    } else {
+      hitUnit(s, b, p, target, events);
+    }
     return true;
   }
   return reachBase(s, b, p, events);

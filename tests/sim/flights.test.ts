@@ -171,6 +171,22 @@ describe('a lobbed shot', () => {
     expect(only(eventsOf(landing, 'projectileHit'))).toMatchObject({ targetBase: 'zombies', x: 10 });
     expect(only(eventsOf(landing, 'baseDamaged'))).toMatchObject({ faction: 'zombies', amount: 12 * 0.5 });
   });
+
+  it('fired with no target, it comes down where the enemy it meets stands, and its x says so', () => {
+    const b = table({ kernelPult: lobber({ interval: 10 }), brainEater: dummy() });
+    const m = fresh(b);
+    const pult = spawnUnit(m.state, b, 'kernelPult', 3, 0.5);
+    pult.shotTimer = 0;
+    m.step();
+    const p = only(m.state.projectiles);
+    expect(p.targetId).toBeNull();
+    const z = spawnUnit(m.state, b, 'brainEater', 3, 4.1); // appears after the shot was fired
+
+    const landing = stepUntil(m, hit);
+
+    expect(only(eventsOf(landing, 'projectileHit'))).toMatchObject({ targetId: z.id, x: 4.1 });
+    expect(p.x).toBe(4.1);
+  });
 });
 
 describe('a piercing shot', () => {
