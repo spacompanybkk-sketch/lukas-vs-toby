@@ -223,7 +223,7 @@ function buildUpWant(lawn: readonly LaneView[], rng: BotRng, energy: number): Wa
   for (const lane of shuffledLanes(rng)) {
     const view = lawn[lane] as LaneView;
     const n = shooters(view).length;
-    if (n >= 2 && !view.plants.some((p) => WALLS.has(p.key as CardKey))) {
+    if (n >= 1 && !view.plants.some((p) => WALLS.has(p.key as CardKey))) {
       const col = WALL_COLS.find((c) => view.tiles[c] === undefined);
       const guarded = view.plants.some((p) => p.key === 'torchwood' || (SHOOTERS.has(p.key as CardKey) && p.level >= 2));
       const rich = energy >= RICH_WALL;

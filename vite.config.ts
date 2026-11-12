@@ -21,7 +21,8 @@ export default defineConfig({
   plugins: [preact(), projectRoot()],
   test: {
     // The browser tests in e2e/ belong to Playwright, which Vitest would otherwise try to run too.
-    exclude: [...configDefaults.exclude, 'e2e/**'],
+    // The long balance bands (tests/ai/long) run only with `npm run test:balance`.
+    exclude: [...configDefaults.exclude, 'e2e/**', ...(process.env.LVT_BALANCE ? [] : ['tests/ai/long/**'])],
     // An 8 GB machine running a browser, the dev server and the suite can be slow: a long
     // timeout and a few workers keep load from showing up as false failures.
     testTimeout: 30_000,
