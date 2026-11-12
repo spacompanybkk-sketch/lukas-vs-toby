@@ -534,7 +534,7 @@ describe('BattleView review fixes (wiring A)', () => {
     expect(coil(b.id)).toBe(true);
   });
 
-  it('a plant being tied is not flashed white or sparked by a hit in that moment; later hits flash as ever', () => {
+  it('a tied plant is not flashed white or sparked by hits while the rope holds; once free, hits flash as ever', () => {
     const ctx = setUp();
     const cowboy = ctx.spawn('cowboyZombie', 2, 7.5);
     const plant = ctx.spawn('peashooter', 2, 3.5);
@@ -551,8 +551,15 @@ describe('BattleView review fixes (wiring A)', () => {
     );
     expect(hurt).not.toHaveBeenCalled();
     expect(spark).not.toHaveBeenCalled();
+    // Still tied a while later: hits stay quiet as long as the rope holds.
     ctx.run(0.5);
     ctx.apply({ type: 'unitDamaged', unitId: plant.id, amount: 10, hp: 280 });
+    expect(hurt).not.toHaveBeenCalled();
+    // Untied: hits flash as ever.
+    plant.tied = 0;
+    ctx.apply({ type: 'statusEnded', unitId: plant.id, status: 'tied' });
+    ctx.run(0.5);
+    ctx.apply({ type: 'unitDamaged', unitId: plant.id, amount: 10, hp: 270 });
     expect(hurt).toHaveBeenCalledTimes(1);
   });
 

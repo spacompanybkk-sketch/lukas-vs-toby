@@ -111,7 +111,7 @@ const TIED_BIT = 1 << STATUSES.indexOf('tied');
 const POISON_BIT = 1 << STATUSES.indexOf('poison');
 /** Stars and flames on a zombie are drawn this much bigger: on a busy lawn they are the ones that get lost. */
 const ZOMBIE_MARK_SIZE = 1.45;
-/** For this long after a unit is tied, hits on it do not flash it white: the rope wrapping it is the show. */
+/** Hits on a tied unit (and for this long after the tie) do not flash it white: the rope wrapping it is the show. */
 const TIE_QUIET_SECONDS = 0.35;
 
 /** A lobbed shot comes down to this height over its target (about a unit's middle). */
@@ -1032,9 +1032,12 @@ export class BattleView {
     }
   }
 
-  /** Tied a moment ago: hits on it stay quiet so the rope reads as a tie, not a blow. */
+  /**
+   * Tied (or tied a moment ago, before its status bit is in): hits on it stay quiet, no white
+   * flash and no spark, so the rope reads as a tie and not as a blow. Its health bar still drops.
+   */
   private justTied(view: UnitView): boolean {
-    return view.tiedAt >= 0 && this.time - view.tiedAt < TIE_QUIET_SECONDS;
+    return (view.statusBits & TIED_BIT) !== 0 || (view.tiedAt >= 0 && this.time - view.tiedAt < TIE_QUIET_SECONDS);
   }
 
   /**
