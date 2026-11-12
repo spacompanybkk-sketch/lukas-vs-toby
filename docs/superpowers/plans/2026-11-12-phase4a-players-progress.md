@@ -27,7 +27,7 @@ Everything in `.superpowers/sdd/2026-11-12-phase2-full-roster/parallel-rules.md`
 
 ## Review Focus
 
-1. Two devices saving the same player (the iPad and the computer): the newer save wins whole, nothing is merged field by field, and a stale device never overwrites newer progress. Test in Task 2.
+1. Two devices saving the same player (the iPad and the computer): progress is never lost — when both changed, the saves are merged by taking the higher of each progress field; writes are compare-and-swap on a version id. Test in Task 2. (Changed 2026-11-12 after review: was "newer wins whole".)
 2. The connection dropping in the middle of create, log-in or save: no half-made player, no lost coins, a clear picture-level message, and a retry that works. Tests in Tasks 2 and 3.
 3. A forged write (wrong hash, a 31st slot, another player's leaderboard row, absurd numbers): refused by the rules. Test in Task 7 against `v2test`.
 4. A five-year-old at the number pad: wrong digits, double taps, backing out halfway — never stuck, never locked out for more than 30 s. Test in Task 3.
@@ -165,7 +165,7 @@ admin/proof/{hash}/touch          proof of knowing the grown-up code     read: n
 - [ ] CreatePlayer: pick a picture from the 20 (taken pictures allowed), type a name on a boxy on-screen keyboard (A–Z, 0–9, backspace; the device keyboard also works), choose the number twice. A slot is assigned automatically (lowest free).
 - [ ] PinPad: keys 0–9 and backspace, each ≥ 72 px on an iPad, three boxes filling as digits arrive, a sound per key; the third digit submits. Wrong: the boxes shake, clear, and the deny sound plays; three wrong in a row lock that picture for 30 s with a boxy hourglass counting down (kept per slot on the device, survives reload). Back arrow always works (review-focus 4).
 - [ ] Offline: Players shows the players known on this device (those with a device copy) with a small "no connection" cloud icon; log-in then checks the pin against the device copy's stored hash; creating a player needs a connection and says so with a picture (cloud crossed out) and a retry button (review-focus 2).
-- [ ] GrownUp (reached by holding the small lock on Players for 2 s): first use sets the grown-up code (4 digits, twice); afterwards the code opens a list where a player can be deleted (confirm by typing the code again) or given a new number.
+- [ ] GrownUp (reached by holding the small lock on Players for 2 s): first use sets the grown-up code (6 digits, twice); afterwards the code opens a list where a player can be deleted (confirm by typing the code again) or given a new number.
 - [ ] After a battle, `applyBattleResult` runs through `session.update`; the result screen shows the coins earned as falling coin blocks.
 - [ ] Unit tests for each screen's states with the fake cloud; e2e on both projects with `?cloud=fake`: create a player by taps only, log out, log in with the wrong number three times (lock shows), wait out the lock with a fast clock, log in, win a fast-forwarded battle, see coins; reload and the player is still first in the grid.
 - [ ] Typecheck, unit suite, e2e; commit.

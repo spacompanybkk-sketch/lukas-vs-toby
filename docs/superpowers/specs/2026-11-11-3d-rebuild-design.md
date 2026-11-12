@@ -516,7 +516,9 @@ Calls made by the builder (Michal can reverse any):
   number pad. Toby logs in without reading: his picture, then three digits.
 - Progress is kept online so it loads on any device (the computer and the iPad), with a
   copy in the browser so the game still plays without a connection and syncs when it
-  returns. The newer save wins, per player.
+  returns. A sync never loses progress: when two devices both changed a player, the
+  saves are merged (the higher of stars, wins, upgrades and coins) (changed 2026-11-12
+  from "the newer save wins").
 - Every player can play both Adventures, as plants and as zombies; progress is kept per
   side. (Confirmed by Michal 2026-11-12: "any campaign for both sides with progress".) Lukas opens on plants and Toby on zombies, as today.
 - The leaderboard has four tables, each showing picture, name and number: Adventure
@@ -526,7 +528,7 @@ Calls made by the builder (Michal can reverse any):
 - Three wrong passwords lock that player for 30 seconds. The password is stored as a
   salted hash, never in the clear.
 - Deleting a player or resetting a forgotten password is behind a grown-up gate (a
-  separate code Michal sets), so a full list or a forgotten number is never a dead end.
+  separate six-digit code Michal sets), so a full list or a forgotten number is never a dead end.
 - The whole feature keeps the Minecraft look: boxy panels, pixel digits on the pad.
 
 Limits to be honest about:
