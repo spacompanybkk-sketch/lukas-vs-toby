@@ -3,7 +3,7 @@ import { createRef, render } from 'preact';
 import type { Skill } from '../ai/bot';
 import { AudioEngine } from '../audio/AudioEngine';
 import { createPortraitPainter, renderPortraits, setPortraitPainter } from '../render/portraits';
-import { defaultConfig } from '../sim/match';
+import { ALL_CARDS } from '../data/units';
 import type { Faction } from '../sim/types';
 import { App } from '../ui/App';
 import type { BoyPortraits } from '../ui/hud/BaseBars';
@@ -86,7 +86,8 @@ export function mountGame(
         lvt.portraitPaintMs = Math.round(paintMs); // drawing time alone, for the report
       }
     });
-    const cards = defaultConfig(0).cards;
+    // Every card a battle deals (all ten a side), so none shows a bare letter.
+    const cards = ALL_CARDS;
     const startedAt = performance.now();
     lvt.portraits = renderPortraits([...cards.plants, ...cards.zombies], PORTRAIT_SIZE).then((p) => {
       portraits.value = p;

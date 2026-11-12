@@ -413,7 +413,87 @@ const SCENARIOS = [
   cheer('result-cheer-zombies', 'plants', 'plants'),
   // The phase-2 HUD pieces (?scene=hud-gallery) at the iPad, iPad Air and laptop sizes.
   ...hudGallery(),
+  // ---- Hero powers and spells, wired (wiring B) ----
+  // A real battle 46 s in (the hero is ready at 45 s): the hero picked by a tap on its button,
+  // the lane aimed, then tapped; stills while the power plays, the banner up.
+  heroShot('hero-plants', 'plants', 2),
+  heroShot('hero-zombies', 'zombies', 2),
+  // Every spell from the roster demo's powers part (frozen stills just after each cast).
+  ...[
+    // Rock Wall heaving up, then bitten, then crumbling; Sun Shower; Vines; Thunderbolt; Healing Rain.
+    ['spells-plants', [35.3, 38.5, 40.4, 42.2, 44.45, 46.2, 47.2]],
+    // Frenzy; Brain Feast; Fog; Meteor falling, landing; Grave Rise.
+    ['spells-zombies', [37.3, 39.5, 41.4, 43.4, 43.8, 45.5, 45.9]],
+    // Close: the rock in lane 0, the Frenzy pack in lane 3, the fog over lane 0's plants.
+    ['spells-rock-close', [35.4, 40, 46.9], '0,6.5,1.8'],
+    ['spells-frenzy-close', [37.4, 38.2], '3,7.5,2'],
+    ['spells-fog-close', [41.6], '0,2.5,2'],
+  ].map(([name, times, focus]) => {
+    const url = (t) => `/?scene=roster-demo&seed=7${focus ? `&focus=${focus}` : ''}&t=${t}`;
+    return {
+      name,
+      url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
+  // The battle HUD at the iPad window (1024x704): hero and both spells ready, an aimed spell
+  // picked and its area under the mouse.
+  hudBattle('hud-battle-plants-1024', 'plants', [2, 5]),
+  hudBattle('hud-battle-zombies-1024', 'zombies', [2, 6]),
 ];
+
+/** A real battle as `side`, 46 s in: tap the hero button, aim at `lane`, tap; stills of the power playing. */
+function heroShot(name, side, lane) {
+  const aimAndFire = async (page) => {
+    await battleAt(page, 46);
+    await page.click('[data-hero]');
+    const at = await page.evaluate((l) => window.__lvt.tileToClient(l, 5), lane);
+    await page.mouse.move(at.x, at.y, { steps: 4 });
+    await nextFrames(page, 3);
+  };
+  return {
+    name,
+    url: `/?scene=battle&side=${side}&skill=medium&seed=7`,
+    viewport: { width: 1024, height: 704 },
+    frames: [
+      { suffix: 'aim', run: aimAndFire },
+      {
+        suffix: 'fire1',
+        run: async (page) => {
+          await page.mouse.down();
+          await page.mouse.up();
+          await page.waitForTimeout(260);
+        },
+      },
+      { suffix: 'fire2', run: (page) => page.waitForTimeout(260) },
+      { suffix: 'fire3', run: (page) => page.waitForTimeout(400) },
+    ],
+  };
+}
+
+/** The battle HUD as `side` at 1024x704, 46 s in with every power ready, an aimed spell picked and the mouse over `tile`. */
+function hudBattle(name, side, [lane, col]) {
+  return {
+    name,
+    url: `/?scene=battle&side=${side}&skill=medium&seed=7`,
+    viewport: { width: 1024, height: 704 },
+    steps: async (page) => {
+      await page.evaluate(() => window.__lvt.portraits);
+      // Both dealt spells ready, and one of them aimed, so the area shows.
+      await page.evaluate((s) => {
+        const players = window.__lvt.session.controller.match.state.players[s];
+        const aimed = { plants: 'thunderbolt', zombies: 'meteor' }[s];
+        const unaimed = { plants: 'sunShower', zombies: 'brainFeast' }[s];
+        players.spells = [{ key: aimed, timer: 1 }, { key: unaimed, timer: 1 }];
+      }, side);
+      await battleAt(page, 46);
+      await page.click('[data-spell]:first-child');
+      const at = await page.evaluate(([l, c]) => window.__lvt.tileToClient(l, c), [lane, col]);
+      await page.mouse.move(at.x, at.y, { steps: 4 });
+      await settleUi(page);
+    },
+  };
+}
 
 /** hud-gallery-<view>-<size> (screens, and iPad Safari windows with the bars showing): ten and three cards with hero and spells for both sides, and the states sheet. */
 function hudGallery() {

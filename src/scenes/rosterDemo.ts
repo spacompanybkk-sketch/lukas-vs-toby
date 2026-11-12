@@ -62,7 +62,7 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   view.onFeel = (f: Feel) => {
     if (frozenAt !== null) return; // a still has no clock to shake or bend
     if (f.shake) renderer.rig.shake(f.shake, 0.35);
-    if (f.punch) renderer.rig.punch(f.punch, 0.25);
+    if (f.punch) renderer.rig.punch(f.punch, f.punchSeconds ?? 0.25, f.focusZ);
     if (f.hitStop) hitStopLeft = Math.max(hitStopLeft, f.hitStop);
     if (f.slowMo) slowMoLeft = Math.max(slowMoLeft, f.slowMo);
   };

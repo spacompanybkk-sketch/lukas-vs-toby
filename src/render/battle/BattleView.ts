@@ -182,6 +182,8 @@ interface RockView { id: number; lane: number; col: number; hp: number; maxHp: n
 const HERO_PUNCH: Feel = { punch: 0.09, punchSeconds: 0.9 };
 /** Where the "+N" of a spell's income floats: over the middle of the shower, for each side. */
 const SPELL_INCOME_X: Record<Faction, number> = { plants: 4, zombies: 7 };
+/** A spell's income is a big moment: its "+N" is drawn this much larger than a Sunflower's. */
+const SPELL_INCOME_TEXT = 2.2;
 
 interface TokenView { object: Object3D; kind: TokenKind; age: number; at: Vector3; active: boolean }
 /** A lasso rope from a Cowboy to the plant it has tied, shown while the plant is tied. */
@@ -938,7 +940,7 @@ export class BattleView {
         if (e.source === 'spell') {
           // Sun Shower / Brain Feast: the tokens are the shower's; the amount floats over it.
           v1.set(SPELL_INCOME_X[e.faction], 1.4, 2.5);
-          this.fx.floatText(v1, `+${e.amount}`, e.faction === 'plants' ? PALETTE.sun : PALETTE.brains);
+          this.fx.floatText(v1, `+${e.amount}`, e.faction === 'plants' ? PALETTE.sun : PALETTE.brains, SPELL_INCOME_TEXT);
           if (e.faction === this.playerFaction) this.onEnergyToken(e.faction, v1.clone(), e.amount);
           break;
         }

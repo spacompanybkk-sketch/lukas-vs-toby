@@ -37,3 +37,28 @@ describe('the roster demo script', () => {
     expect(want.filter((w) => !seen.has(w))).toEqual([]);
   });
 });
+
+describe('the roster demo\'s powers part', () => {
+  it.each([1, 2, 3, 7, 42])('with seed %i fires both heroes and all ten spells within 60 s; the rock stands, is bitten and goes; nothing is refused', (seed) => {
+    const match = rosterMatch(seed);
+    const seen = new Set<string>();
+    const scratch: Command[] = [];
+    let rockId = -1;
+    for (let i = 0; i < 60 * 30; i++) {
+      for (const e of stepRoster(match, scratch)) {
+        if (e.type === 'commandRejected') throw new Error(`refused at ${match.state.tick}: ${JSON.stringify(e)}`);
+        if (e.type === 'heroUsed') seen.add(`hero:${e.faction}`);
+        if (e.type === 'spellCast') seen.add(`spell:${e.spell}`);
+        if (e.type === 'statusApplied' && e.status === 'haste') seen.add('status:haste');
+        if (e.type === 'unitSpawned' && e.key === 'rock') rockId = e.unitId;
+        if (e.type === 'unitDamaged' && e.unitId === rockId) seen.add('rock:bitten');
+        if (e.type === 'unitDied' && e.unitId === rockId) seen.add('rock:gone');
+      }
+    }
+    const want = [
+      'hero:plants', 'hero:zombies', 'status:haste', 'rock:bitten', 'rock:gone',
+      ...['thunderbolt', 'vines', 'sunShower', 'healingRain', 'rockWall', 'meteor', 'fog', 'brainFeast', 'frenzy', 'graveRise'].map((s) => `spell:${s}`),
+    ];
+    expect(want.filter((w) => !seen.has(w))).toEqual([]);
+  });
+});

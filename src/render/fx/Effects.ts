@@ -545,7 +545,7 @@ export class Effects {
    * a dark outline, drawn pixel-hard in the 5 × 7 pixel font (digits, + - ! ? and A–Z; at
    * most 8 characters). Does nothing where there is no 2D canvas (tests in node).
    */
-  floatText(at: Vector3, text: string, color: string): void {
+  floatText(at: Vector3, text: string, color: string, size = 1): void {
     if (this.texts.length === 0) return;
     const slot = this.texts[this.nextText] as FloatingText;
     this.nextText = (this.nextText + 1) % this.texts.length;
@@ -567,7 +567,7 @@ export class Effects {
     slot.texture.needsUpdate = true;
     slot.texture.repeat.set(used / width, 1);
     slot.texture.offset.set(left / width, 0);
-    slot.sprite.scale.set((TEXT_HEIGHT * used) / height, TEXT_HEIGHT, 1);
+    slot.sprite.scale.set((TEXT_HEIGHT * size * used) / height, TEXT_HEIGHT * size, 1);
     slot.start.copy(at);
     slot.age = 0;
     slot.active = true;

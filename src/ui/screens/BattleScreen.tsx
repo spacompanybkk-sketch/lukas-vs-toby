@@ -271,7 +271,7 @@ function HeroBanner({ banner, boys }: { banner: ReadonlySignal<{ side: Faction; 
   if (now === null || gone === now.n) return null;
   const face = now.side === 'plants' ? boys.lukas : boys.toby;
   return (
-    <div key={now.n} class={`hero-banner px side-${now.side}`} data-banner="hero" aria-live="polite">
+    <div key={now.n} class={`hero-banner side-${now.side}`} data-banner="hero" aria-live="polite">
       {face !== undefined && <img class="hero-banner__face" src={face} alt="" draggable={false} />}
       <span class="hero-banner__name inked">{HERO_NAMES[now.side]}</span>
     </div>
