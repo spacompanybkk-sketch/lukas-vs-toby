@@ -534,8 +534,8 @@ Limits to be honest about:
 - Three digits is 1,000 combinations. It keeps brothers and friends out of each other's
   games; it does not stop a determined stranger. So a player holds a nickname, a picture
   and game numbers only: no surname, email, photo or anything personal.
-- Online storage needs two new database paths (`players/v2`, `leaderboard/v2`) with
-  their own rules: anyone may read the leaderboard; a save may be written only with its
+- Online storage needs new database paths under `v2/` (`players`, `secrets`, `saves`,
+  `board`, `admin`; mirrored under `v2test/` for automated checks) with their own rules: anyone may read the leaderboard; a save may be written only with its
   player's password hash; the 30-player cap is enforced by the rules, not just the screen.
   This is a rules deploy on `lukas-toby-plants-vs-zombies` and overrides the "no rules
   deploy" line in section 4. It happens only on Michal's go-ahead.
