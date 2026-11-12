@@ -13,15 +13,15 @@
  */
 
 import { seconds } from '../data/balance';
-import type { Balance, MeleeStats, ShotStats } from '../data/balance';
-import { burnOnHit, ignitePea } from './abilities';
+import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
+import { burnOnHit, grow, grownBite, ignitePea } from './abilities';
 import { damageBase, damageUnit, explode } from './damage';
 import { payBounty } from './economy';
 import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
 import { nextRandom } from './rng';
 import { applyStatus, canAct } from './status';
 import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
-import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
+import type { Faction, Hazard, Projectile, SimEvent, SimState, Unit } from './types';
 
 export { damageBase, damageUnit, explode } from './damage'; // where the tests and older callers look for them
 
@@ -31,7 +31,8 @@ export { damageBase, damageUnit, explode } from './damage'; // where the tests a
  * neither.
  *
  * - Melee: a blocked zombie with its bite ready hits the plant blocking it, or the plant base it
- *   stands at, for `melee.damage` times the damage level curve.
+ *   stands at, for `melee.damage` times the damage level curve (times `grownBite` for a Hot Topic,
+ *   which grows when its bite brings a plant to 0, see `grow`).
  * - Shots: a unit with its shot ready fires when it has something to shoot. A plant always has
  *   (it fires down an empty lane at the zombie base). A zombie needs a living plant ahead within
  *   range, or the plant base close enough (`x <= min(range, zombieBaseShotRange)`), and never
@@ -46,13 +47,13 @@ export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
     if (!canAct(u)) continue;
     const stats = statsFor(b, u.key);
-    if (stats.melee && u.blocked && u.meleeTimer === 0) bite(s, b, u, stats.melee, events);
+    if (stats.melee && u.blocked && u.meleeTimer === 0) bite(s, b, u, stats, stats.melee, events);
     if (stats.shot && !u.blocked && u.shotTimer === 0) shoot(s, b, u, stats.shot, events);
   }
 }
 
-function bite(s: SimState, b: Balance, z: Unit, melee: MeleeStats, events: SimEvent[]): void {
-  const amount = melee.damage * levelScale(b, z.faction, z.level, 'damage');
+function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeStats, events: SimEvent[]): void {
+  const amount = melee.damage * levelScale(b, z.faction, z.level, 'damage') * grownBite(stats, z);
   const plant = nearestEnemyAhead(s, z.faction, z.lane, z.x, melee.reach);
   if (!plant && z.x > BASE_STOP_X) return; // its plant fell earlier this tick; the bite stays ready for the next one
   z.meleeTimer = seconds(melee.interval);
@@ -61,6 +62,7 @@ function bite(s: SimState, b: Balance, z: Unit, melee: MeleeStats, events: SimEv
   } else if (plant) {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: plant.id, targetBase: null });
     damageUnit(s, plant, amount, events);
+    if (stats.grow && !isStanding(plant)) grow(b, z, stats.grow, events); // only a standing plant is bitten
   } else {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
     damageBase(s, 'plants', amount, z.lane, events);
@@ -280,12 +282,62 @@ function land(s: SimState, b: Balance, p: Projectile, primary: Unit | null, x: n
     targetId: primary ? primary.id : null, targetBase: null, blocked: false, burning: p.burning,
   });
   if (primary) wound(s, b, p, primary, events);
-  const splash = b.units[p.sourceKey]?.shot?.splash ?? 0;
-  if (!(splash > 0)) return;
-  for (const u of s.units) {
-    if (u === primary || u.faction === p.faction || u.lane !== p.lane || !isStanding(u)) continue;
-    if (Math.abs(u.x - x) <= splash) wound(s, b, p, u, events);
+  const shot = b.units[p.sourceKey]?.shot;
+  const splash = shot?.splash ?? 0;
+  if (splash > 0) {
+    for (const u of s.units) {
+      if (u === primary || u.faction === p.faction || u.lane !== p.lane || !isStanding(u)) continue;
+      if (Math.abs(u.x - x) <= splash) wound(s, b, p, u, events);
+    }
   }
+  if (shot?.puddle) leavePuddle(s, b, p, x, shot.puddle, events);
+}
+
+/**
+ * A Brain Rot lands: a `Hazard` of its side at `x` in its lane, for `seconds`, hurting the other
+ * side with `dps` times the special level curve of the thrower's level (see `tickHazards`).
+ */
+function leavePuddle(
+  s: SimState, b: Balance, p: Projectile, x: number, puddle: NonNullable<ShotStats['puddle']>, events: SimEvent[],
+): void {
+  const h: Hazard = {
+    id: s.nextId, kind: 'rot', faction: p.faction, lane: p.lane, x, radius: puddle.radius,
+    ticksLeft: seconds(puddle.seconds), dps: puddle.dps * levelScale(b, p.faction, p.level, 'special'),
+  };
+  s.nextId += 1;
+  s.hazards.push(h);
+  events.push({ type: 'hazardSpawned', hazardId: h.id, kind: h.kind, lane: h.lane, x, radius: h.radius, ticks: h.ticksLeft });
+}
+
+/** How long a puddle keeps poisoning a unit after it steps out, in ticks: one whole second. */
+const PUDDLE_POISON_TICKS = TICKS_PER_SECOND;
+
+/**
+ * Step stage, after projectiles and before statuses: every hazard, in ascending id. Each standing
+ * unit of the other side in its lane within `radius` of its x is poisoned for at least
+ * `PUDDLE_POISON_TICKS` at the hazard's `dps` (the larger dps wins). Only the start of the poison
+ * is reported (`statusApplied`, no source); topping it up each tick a unit stands in the puddle is
+ * silent. Then the hazard counts down; the tick it was laid counts as its first, and on reaching 0
+ * it ends (`hazardEnded`) and leaves the lawn.
+ */
+export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void {
+  if (s.hazards.length === 0) return;
+  const left: Hazard[] = [];
+  for (const h of s.hazards) {
+    for (const u of s.units) {
+      if (u.faction === h.faction || u.lane !== h.lane || !isStanding(u) || Math.abs(u.x - h.x) > h.radius) continue;
+      if (u.poison > 0) {
+        u.poison = Math.max(u.poison, PUDDLE_POISON_TICKS);
+        u.poisonDps = Math.max(u.poisonDps, h.dps);
+      } else {
+        applyStatus(s, u, 'poison', PUDDLE_POISON_TICKS, h.dps, null, events);
+      }
+    }
+    h.ticksLeft -= 1;
+    if (h.ticksLeft > 0) left.push(h);
+    else events.push({ type: 'hazardEnded', hazardId: h.id });
+  }
+  s.hazards = left;
 }
 
 function hitUnit(s: SimState, b: Balance, p: Projectile, target: Unit, events: SimEvent[]): void {

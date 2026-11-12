@@ -2,8 +2,8 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
 import type { UnitInfo } from '../data/units';
-import { tickAbilities } from './abilities';
-import { resolveDeaths, tickAttacks, tickBaseDefense, tickProjectiles } from './combat';
+import { grownHealth, tickAbilities } from './abilities';
+import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { restoreState, hashState, snapshotState } from './hash';
@@ -104,7 +104,7 @@ export class Match {
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
-   * commands, economy, movement, attacks, the plant base's defence, abilities, projectiles, statuses, deaths,
+   * commands, economy, movement, attacks, the plant base's defence, abilities, projectiles, hazards, statuses, deaths,
    * endgame, then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
@@ -142,6 +142,7 @@ export class Match {
     tickBaseDefense(s, b, events);
     tickAbilities(s, b, events);
     tickProjectiles(s, b, events);
+    tickHazards(s, b, events);
     tickStatuses(s, b, events);
     resolveDeaths(s, b, events);
     tickEndgame(s, b, events);
@@ -230,7 +231,7 @@ export class Match {
   /**
    * Carries out a merge that `check` has passed: pays and starts the card's recharge, then the
    * target goes up one level. Its max health becomes `hp` times the balance table's `hp` level
-   * curve, rounded, and its health keeps its share of the max, rounded, at least 1 and never above
+   * curve (times `grownHealth`, so a Hot Topic keeps its stacks and what they give), rounded, and its health keeps its share of the max, rounded, at least 1 and never above
    * the max: both stay whole even when a tuned table has fractional level multipliers. `spent`
    * grows by the price (bounties pay a share of it). Position, timers and everything else stay.
    */
@@ -241,7 +242,8 @@ export class Match {
     const oldHp = target.hp;
     const oldMaxHp = target.maxHp;
     target.level += 1;
-    const maxHp = Math.round(statsFor(this.balance, target.key).hp * levelScale(this.balance, target.faction, target.level, 'hp'));
+    const stats = statsFor(this.balance, target.key);
+    const maxHp = Math.round(stats.hp * levelScale(this.balance, target.faction, target.level, 'hp') * grownHealth(stats, target));
     target.maxHp = maxHp;
     target.hp = Math.min(maxHp, Math.max(1, Math.round(maxHp * oldHp / oldMaxHp)));
     target.spent += UNIT_INFO[cmd.unit].price;

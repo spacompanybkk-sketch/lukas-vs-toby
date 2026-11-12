@@ -6,15 +6,20 @@
 import { seconds } from '../data/balance';
 import type { Balance, UnitStats } from '../data/balance';
 import { factionOf, priceOf } from '../data/units';
-import { statsFor } from './lookup';
+import { levelScale, statsFor } from './lookup';
 import type { AbilityName, SimEvent, SimState, Unit, UnitKey } from './types';
 
-/** The `abilityTimer` a unit is placed with: its Sun interval, a mine's arming time, a fuse. */
+/**
+ * The `abilityTimer` a unit is placed with: its Sun interval, a mine's arming time, a fuse, a
+ * Necromancer's first raise. No shipped unit has two of these; a shield, a
+ * leap and a lasso are ready from the start, and so is a heal (`auraTimer` starts at 0).
+ */
 export function abilityTimerAtSpawn(stats: UnitStats): number {
   if (stats.sun) return seconds(stats.sun.interval);
   if (stats.mine) return seconds(stats.mine.armSeconds);
   if (stats.fuse) return seconds(stats.fuse.seconds);
-  return 0; // a shield, a leap: ready from the start
+  if (stats.raise) return seconds(stats.raise.interval);
+  return 0;
 }
 
 /** What a unit announces the moment it is placed: a Cherry Bomber lights its fuse. */
@@ -52,6 +57,22 @@ export function spawnUnit(
   return unit;
 }
 
+/**
+ * A Bone Minion at `level`, raised at `lane` and `x`: its health and max are its base health times
+ * the zombies' `hp` level curve, rounded; it has spent nothing (so it pays no bounty) and belongs
+ * to `ownerId` (a Necromancer, or null for one no Necromancer raised). Emits `unitSpawned`.
+ */
+export function spawnMinion(
+  s: SimState, b: Balance, lane: number, x: number, level: number, ownerId: number | null, events: SimEvent[],
+): Unit {
+  const minion = spawnUnit(s, b, 'boneMinion', lane, x, events);
+  minion.level = level;
+  minion.maxHp = Math.round(minion.maxHp * levelScale(b, minion.faction, level, 'hp'));
+  minion.hp = minion.maxHp;
+  minion.spent = 0;
+  minion.ownerId = ownerId;
+  return minion;
+}
 
 /** Reports that `u` used `ability` (on `targetId`, or on nobody). */
 export function abilityUsed(u: Unit, ability: AbilityName, targetId: number | null, events: SimEvent[]): void {

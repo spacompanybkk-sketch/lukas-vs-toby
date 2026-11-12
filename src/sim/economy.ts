@@ -13,7 +13,7 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
 /**
  * One tick of the economy, in this order:
  * (a) every timer counts down, never below 0 (the only place any of these do; statuses count down
- *     in `tickStatuses`): each unit's attack and ability timers, unless the unit cannot act (see
+ *     in `tickStatuses`): each unit's attack, ability and aura timers, unless the unit cannot act (see
  *     `canAct`), each card's recharge, and the plant base's defence timer in each lane;
  * (b) trickle income is added to each side's carry and paid out in whole energy;
  * (c) every ready Sunflower that can act pays.
@@ -30,6 +30,7 @@ function countDownTimers(s: SimState): void {
     u.meleeTimer = Math.max(0, u.meleeTimer - 1);
     u.shotTimer = Math.max(0, u.shotTimer - 1);
     u.abilityTimer = Math.max(0, u.abilityTimer - 1);
+    u.auraTimer = Math.max(0, u.auraTimer - 1);
   }
   for (const faction of FACTIONS) {
     const recharge = s.players[faction].recharge;
