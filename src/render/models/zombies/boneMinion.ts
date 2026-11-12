@@ -49,10 +49,10 @@ export const boneMinion: ModelDef = {
     legR: mirrorZ(legL),
     hips: [{ at: [-0.5, 2, -1], size: [1, 0.5, 2], color: 'bone' }],
     joints: { torso: [0, 2.5, 0], head: [0, 4.5, 0], armL: [-0.25, 3.75, 1.75], armR: [-0.25, 3.75, -1.75], legL: [0, 2, 0.75], legR: [0, 2, -0.75] },
-    // Half a zombie: 6 wide, 8 tall, 5 deep. Its big skull turns a little less than a zombie's
-    // head, or the back of it swings out of that envelope.
-    envelope: [6, 8, 5],
-    headRot: headTurn(10, 32),
+    // Half a zombie: 6 wide, 8 tall, and 6 deep, as a zombie's envelope is two voxels deeper
+    // than a plant's, for its head turned round to look at the player.
+    envelope: [6, 8, 6],
+    headRot: headTurn(10),
     walk: { legs: 30, arms: 20, bob: 0.5, roll: 6 },
     extra: [
       {

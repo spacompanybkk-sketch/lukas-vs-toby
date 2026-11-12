@@ -33,8 +33,8 @@ and interface art is pixel-crisp. What is already built stays as it is.
   bigger than the other, a tooth or tongue showing.
 - Faces turn to the player. The body faces along its lane, but the head is turned towards
   the camera and tipped back, so both eyes and the mouth show from the lawn camera. About
-  14° and 6° is enough for the Peashooter; zombies and several plants need 30–45° to show
-  their faces (zombies 38° and 12° by default, `HEAD_TURN`/`HEAD_TIP` in `biped.ts`); use
+  14° and 6° is enough for the Peashooter; zombies and several plants need 30–60° to show
+  their faces (zombies 60° and 12° by default, in a level-1 envelope 12 deep instead of 10, `HEAD_TURN`/`HEAD_TIP` in `biped.ts`); use
   what the camera needs. Where a face sits in shade or on a dark body, put a light plate
   behind the eyes and mouth so they read. The Peashooter (`src/render/models/plants/peashooter.ts`) is the
   reference for how a unit is built and how its five levels escalate.

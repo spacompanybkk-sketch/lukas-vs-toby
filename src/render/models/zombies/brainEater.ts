@@ -7,7 +7,7 @@ import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 // up in its right hand, which is what it throws (the view hides `brain` when it leaves and
 // shows it again on the next idle). Its trim is the shoulder pads.
 //
-//   2  rusty shoulder pads with a stud, standing up off both shoulders; an arrow through the head
+//   2  rusty shoulder pads with a stud, standing up off both shoulders; a plastered bump on the head
 //   3  an iron spiked helmet; iron pads
 //   4  a crystal skull cap with shards and a brain floating above it; crystal pads
 //   5  a gold crown with points, a brain still floating over it, gold pads, eyes alight
@@ -34,12 +34,12 @@ const head: Box[] = [
   { at: [0, 14.5, 1.5], size: [1, 0.5, 1], color: 'trouserDark', maxLevel: 2 },
   { at: [1.5, 13.5, -1], size: [0.5, 1, 1.5], color: 'trouserDark', maxLevel: 2 },
 
-  // Level 2 up: an arrow clean through the head, sticking out both sides (a joke that the
-  // lawn camera sees from above): the head on the far side, the purple flights near.
-  ...atLevels(2, 5, [
-    { at: [-1.5, 12.5, -4.5], size: [1, 1, 8.5], color: 'hatBrown' },
-    { at: [-2, 12, -5.5], size: [2, 2, 1], color: 'iron' },
-    { at: [-2.5, 12, 4], size: [3, 2, 0.5], color: 'clothPurple' },
+  // Level 2: a big pink bump on top of its head, stuck over with a white plaster cross, where
+  // the lawn camera looks straight at it (the helmet, cap and crown cover it from 3).
+  ...atLevels(2, 2, [
+    { at: [-2.5, 15, -1.5], size: [3, 1.5, 3], color: 'brainPink' },
+    { at: [-3, 16.5, -0.5], size: [4, 0.5, 1], color: 'bone' },
+    { at: [-1.5, 16.5, -2], size: [1, 0.5, 4], color: 'bone' },
   ]),
 
   // Level 3: an iron helmet with a brim and a spike.
@@ -60,18 +60,16 @@ const head: Box[] = [
   ]),
 
   // Level 5: a gold crown, a band with a point at each corner and a tall one in front.
+  // Level 5: a small gold crown perched on the hair, three points and a pink jewel; its
+  // green head and purple shirt still do most of the talking.
   ...atLevels(5, 5, [
-    { at: [-5, 14, -3], size: [7, 1, 1], color: 'levelGold' },
-    { at: [-5, 14, 2], size: [7, 1, 1], color: 'levelGold' },
-    { at: [-5, 14, -2], size: [1, 1, 4], color: 'levelGold' },
-    { at: [1, 14, -2], size: [1, 1, 4], color: 'levelGold' },
-    { at: [-5, 15, -3], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [-5, 15, 2], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [1, 15, -3], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [1, 15, 2], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [-5, 15, -0.5], size: [1, 2, 1], color: 'levelGold' },
-    { at: [-5.5, 14.5, -0.5], size: [0.5, 1, 1], color: 'brainPink', emissive: 1.6 },
-    { at: [-4, 14.5, -2], size: [5, 0.5, 4], color: 'clothPurple' },
+    { at: [-3, 14, -1.5], size: [3, 0.5, 3], color: 'levelGold' },
+    { at: [-3, 14.5, -1.5], size: [1, 1, 1], color: 'levelGold' },
+    { at: [-3, 14.5, 0.5], size: [1, 1, 1], color: 'levelGold' },
+    { at: [-1, 14.5, -0.5], size: [1, 1, 1], color: 'levelGold' },
+    { at: [-3.5, 14, -0.5], size: [0.5, 0.5, 1], color: 'brainPink', emissive: 1.6 },
+    { at: [-3, 14, -2.5], size: [4.5, 0.5, 1], color: 'trouserDark' },
+    { at: [0, 14, -1.5], size: [1.5, 0.5, 3], color: 'trouserDark' },
   ]),
 ];
 

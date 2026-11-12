@@ -351,7 +351,7 @@ describe('the zombies', () => {
 
   it('the Bone Minion is half a zombie with one look, and says so', () => {
     const def = getModelDef('boneMinion');
-    expect(def.envelope).toEqual([6, 8, 5]);
+    expect(def.envelope).toEqual([6, 8, 6]);
     // What one look means is checked for every flagged model in models.test.ts.
     expect(def.singleLevel).toBe(true);
     expect(modelKeys().filter((key) => getModelDef(key).singleLevel)).toEqual(['boneMinion']);

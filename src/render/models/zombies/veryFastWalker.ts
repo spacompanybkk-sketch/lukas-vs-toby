@@ -1,6 +1,6 @@
 import { zombieBite, zombieWalk } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
+import { atLevels, bipedModel, facePlate, headTurn, mirrorZ, zombieEyes } from './biped';
 
 // Very Fast Walker, the rush. Faces −X. Skinny and long-legged, leaning 25° into a sprint
 // with its arms bent and pumping, a red-flushed face, a red sweatband whose tails stream out
@@ -105,6 +105,9 @@ export const veryFastWalker = bipedModel({
   legR: mirrorZ(legL),
   hips: [{ at: [-1.25, 5, -1.75], size: [2.5, 1.5, 3.5], color: 'speedRed' }],
   slouch: 25,
+  // Leaning into the sprint, it tips its head back further than most so that its face, not
+  // the top of its sweatband, is what the lawn camera sees.
+  headRot: headTurn(25, 60, 30),
   joints: {
     torso: [0, 6, 0],
     head: [0, 8.5, 0],
@@ -132,7 +135,6 @@ export const veryFastWalker = bipedModel({
       boxes: [
         { at: [3, 12.5, -1], size: [1, 1.5, 2], color: 'speedRed' },
         { at: [4, 12, 0.5], size: [1, 1, 1], color: 'speedRed', maxLevel: 1 },
-        { at: [4, 12.5, -1.5], size: [1, 1, 1], color: 'speedRed', maxLevel: 1 },
         { at: [4, 12, 0.5], size: [4, 1, 1], color: 'speedRed', minLevel: 2 },
         { at: [4, 12.5, -1.5], size: [3.5, 1, 1], color: 'speedRed', minLevel: 2 },
         { at: [8, 11.5, 0.5], size: [1, 1, 1], color: 'speedRed', minLevel: 2 },

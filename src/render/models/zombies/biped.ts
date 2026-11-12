@@ -7,7 +7,7 @@ import type { Box, Clip, ClipName, ColorRef, ModelDef, Muzzle, PartDef } from '.
 //
 //   root    the hips; moves everything (bob, roll, rise, recoil). Pivot at the feet.
 //   torso   on the hips, slouched forward (10° unless the spec says otherwise)
-//   head    on the torso, turned HEAD_TURN (38°) to the camera and tipped back HEAD_TIP
+//   head    on the torso, turned HEAD_TURN (60°) to the camera and tipped back HEAD_TIP
 //           (12°) overall, whatever the slouch; a spec may set its own (`headRot`)
 //   armL    on the torso at the left shoulder (+Z, the side the lawn camera sees)
 //   armR    on the torso at the right shoulder (−Z)
@@ -24,15 +24,22 @@ import type { Box, Clip, ClipName, ColorRef, ModelDef, Muzzle, PartDef } from '.
 
 /**
  * How far the head turns to the camera, and how far back it tips overall, in degrees. The
- * lawn camera looks along −Z, so a zombie walking along −X shows it its left side; at the
- * art bible's 14° its face is edge-on and the head reads as a green box, and at 30° the two
- * eyes still crowd into one corner. At 38°, tipped back 12°, the front of the face shows
- * about as much as the side of the head, so both eyes and the mouth read from the lawn
- * while the body still faces down its lane. (Hats wider than 6 voxels lose their back
- * corner to stay in the envelope.)
+ * lawn camera looks along −Z from high up, so a zombie walking along −X shows it the top
+ * and the left side of its head. At 30–38° the face was still a sliver on the left edge
+ * (one dark stripe from the lawn); at 60°, tipped back 12°, the face is the head's most
+ * visible side, so both eyes and the mouth read from the lawn while the body still walks
+ * down its lane: the zombie glances at the player. The turned head's corners need the
+ * zombie envelope's extra depth (`ZOMBIE_ENVELOPE`).
  */
-export const HEAD_TURN = 38;
+export const HEAD_TURN = 60;
 export const HEAD_TIP = 12;
+
+/**
+ * The size a level-1 zombie fits, in voxels: the unit's 12 × 16, and 12 deep instead of 10.
+ * Its head is turned well round to look at the player (`HEAD_TURN`), and a turned head's back
+ * corners swing out across the lane; the body itself still fits 10.
+ */
+export const ZOMBIE_ENVELOPE: [number, number, number] = [12, 16, 12];
 
 /** The seven parts every biped has, in the order they are listed. */
 export const BIPED_PARTS = ['root', 'torso', 'head', 'armL', 'armR', 'legL', 'legR'] as const;
@@ -136,7 +143,7 @@ export function bipedModel(spec: BipedSpec): ModelDef {
   };
   const def: ModelDef = { key: spec.key, parts, trim: spec.trim, eyes: spec.eyes, clips };
   if (spec.muzzle) def.muzzle = spec.muzzle;
-  if (spec.envelope) def.envelope = spec.envelope;
+  def.envelope = spec.envelope ?? ZOMBIE_ENVELOPE;
   return def;
 }
 
@@ -153,14 +160,14 @@ export function walkFor(stepSeconds: number): { bob: number; roll: number } {
 
 /**
  * The head's turn relative to a torso slouched `slouch` degrees, such that the head itself
- * is turned `turnDeg` (default `HEAD_TURN`) about the vertical and then tipped back `HEAD_TIP`: undoing the
+ * is turned `turnDeg` (default `HEAD_TURN`) about the vertical and then tipped back `tipDeg` (default `HEAD_TIP`): undoing the
  * slouch, then turning, then tipping.
  */
-export function headTurn(slouch: number, turnDeg: number = HEAD_TURN): Vec3 {
+export function headTurn(slouch: number, turnDeg: number = HEAD_TURN, tipDeg: number = HEAD_TIP): Vec3 {
   const rad = MathUtils.degToRad;
   const undo = new Quaternion().setFromEuler(new Euler(0, 0, rad(-slouch)));
   const turn = new Quaternion().setFromEuler(new Euler(0, rad(turnDeg), 0));
-  const tip = new Quaternion().setFromEuler(new Euler(0, 0, rad(-HEAD_TIP)));
+  const tip = new Quaternion().setFromEuler(new Euler(0, 0, rad(-tipDeg)));
   const euler = new Euler().setFromQuaternion(undo.multiply(turn).multiply(tip), 'XYZ');
   const round = (value: number): number => Math.round(MathUtils.radToDeg(value) * 100) / 100;
   return [round(euler.x), round(euler.y), round(euler.z)];

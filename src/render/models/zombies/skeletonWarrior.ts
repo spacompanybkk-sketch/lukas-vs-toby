@@ -27,8 +27,8 @@ const head: Box[] = [
   { at: [-4, 10, -3], size: [6, 5, 6], color: 'bone' },
   { at: [-3, 15, -2], size: [4, 0.5, 4], color: 'bone' },
   { at: [-4, 9, -2], size: [4, 1, 4], color: 'boneShadow' },
-  // A nose hole, and a grin: a dark line with the teeth standing in it.
-  { at: [-4, 11, -0.5], size: [0.5, 1, 1], color: 'socket' },
+  // A nose notch low in the bone bridge, and a grin: a dark line with the teeth standing in it.
+  { at: [-4, 10.5, -0.5], size: [0.5, 1, 1], color: 'socket' },
   { at: [-4, 10, -2], size: [0.5, 0.5, 4], color: 'socket' },
   { at: [-4.5, 9.5, -1.5], size: [0.5, 1, 1], color: 'tooth' },
   { at: [-4.5, 9.5, 0.5], size: [0.5, 1, 1], color: 'tooth' },
@@ -110,7 +110,9 @@ export const skeletonWarrior = bipedModel({
       parent: 'head',
       pivot: [-4.25, 12, 0],
       // Two dark sockets with bone between, the near one bigger, each with a red light and a glint.
-      boxes: zombieEyes({ face: -4, y: 10.5, near: [2.5, 3], far: [2, 2.5], color: 'socket', light: { color: 'eyeRed', emissive: 2.5 } }),
+      // Two dark sockets in the pale skull with a bridge of bone two voxels wide between them
+      // (the nose notch is in the skull), the near one taller, a red light in each.
+      boxes: zombieEyes({ face: -4, y: 10.5, near: [2, 3], far: [2, 2.5], gap: 2, color: 'socket', light: { color: 'eyeRed', emissive: 2.5 } }),
     },
     {
       // The shield on the left forearm, its face to the camera. Round at levels 1 and 2 (a

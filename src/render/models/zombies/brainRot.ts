@@ -121,9 +121,9 @@ export const brainRot = bipedModel({
       parent: 'head',
       pivot: [-3.75, 11, 0],
       boxes: [
-        // Droopy: the big eye half shut under a heavy lid, the small one lower.
-        ...zombieEyes({ face: -3.5, y: 10, near: [2.5, 2.5], far: [2, 1.5], farLift: 0 }),
-        { at: [-4, 12, 0.5], size: [0.5, 0.5, 2.5], color: 'sickSkinDark' },
+        // Dopey: a big eye and a smaller one (no heavy lid: from above it hid the
+        // eye's glint and the two eyes ran together).
+        ...zombieEyes({ face: -3.5, y: 10, near: [2, 2.5], far: [2, 2], farLift: 0, gap: 1.5 }),
       ],
     },
     {
