@@ -4,13 +4,15 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1190 bytes). Re-pinned in phase 2,
- * Task 2, when projectiles gained the burn a Torchwood gives them (`burnDps`, `burnTicks`); in
- * Task 1 it was 628692134 over 1174 bytes, from when units gained statuses, stacks and an owner,
- * projectiles their flight fields, and the state its hazards. Before that it was 3642874464 over
- * 841 bytes, and before the base defence timers were added 1810640202 over 793 bytes.
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1206 bytes). Re-pinned in phase 2,
+ * Task 3, when units gained the Necromancer's heal timer (`auraTimer`); in Task 2 it was
+ * 972736984 over 1190 bytes, from when projectiles gained the burn a Torchwood gives them
+ * (`burnDps`, `burnTicks`); in Task 1 628692134 over 1174 bytes, from when units gained statuses,
+ * stacks and an owner, projectiles their flight fields, and the state its hazards. Before that it
+ * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
+ * 793 bytes.
  */
-const GOLDEN_HASH = 972736984;
+const GOLDEN_HASH = 3963315096;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -21,12 +23,12 @@ function makeState(): SimState {
     units: [
       {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
-        hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, blocked: false,
+        hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
-        hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, blocked: true,
+        hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
       },
     ],
@@ -155,6 +157,7 @@ describe('hashState', () => {
     ['a unit burn', (s) => { unit(s, 0).burn -= 1; }],
     ['a unit burnDps', (s) => { unit(s, 0).burnDps += 1; }],
     ['a unit stacks', (s) => { unit(s, 1).stacks += 1; }],
+    ['a unit auraTimer', (s) => { unit(s, 1).auraTimer -= 1; }],
     ['a unit ownerId', (s) => { unit(s, 1).ownerId = 8; }],
     ['a unit ownerId null versus 0', (s) => { unit(s, 0).ownerId = 0; }],
     ['a unit ownerId set to null', (s) => { unit(s, 1).ownerId = null; }],
@@ -257,7 +260,7 @@ describe('snapshotState / restoreState', () => {
     const s = makeState();
     const restored = restoreState(snapshotState(s));
     expect(restored.units[0]).toMatchObject({ blind: 15, burn: 40, burnDps: 10, ownerId: null });
-    expect(restored.units[1]).toMatchObject({ stun: 20, tied: 7, poison: 60, poisonDps: 15, stacks: 2, ownerId: 9 });
+    expect(restored.units[1]).toMatchObject({ stun: 20, tied: 7, poison: 60, poisonDps: 15, stacks: 2, ownerId: 9, auraTimer: 33 });
     expect(restored.projectiles[0]).toMatchObject({
       flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
     });

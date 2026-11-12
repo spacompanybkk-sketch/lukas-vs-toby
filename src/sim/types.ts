@@ -36,6 +36,7 @@ export interface Unit {
   hp: number; maxHp: number; spent: number;
   armor: number; // taken off every hit it takes; a hit always lands at least 1
   meleeTimer: number; shotTimer: number; abilityTimer: number; // ticks until ready
+  auraTimer: number; // ticks until a Necromancer's heal is ready; 0 for everyone else
   blocked: boolean; // zombie halted by a plant or the base
   stun: number; blind: number; tied: number; // ticks left, 0 = not affected
   poison: number; poisonDps: number; burn: number; burnDps: number; // ticks left, damage per second

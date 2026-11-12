@@ -115,7 +115,7 @@ describe('spawnUnit', () => {
     expect(u).toEqual({
       id: 1, key: 'skeletonWarrior', faction: 'zombies', lane: 3, x: 5.5, level: 1,
       hp: 700, maxHp: 700, spent: 125, armor: 0,
-      meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, blocked: false, // its shield is ready at once
+      meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, auraTimer: 0, blocked: false, // its shield is ready at once
       stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0, stacks: 0, ownerId: null,
     });
     expect(m.state.nextId).toBe(2);

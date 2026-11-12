@@ -104,7 +104,7 @@ function record<T>(f: Fnv1a, fields: Fields<T>, value: T): void {
 const UNIT: Fields<Unit> = {
   id: num, key: str, faction: str, lane: num, x: num, level: num,
   hp: num, maxHp: num, spent: num, armor: num,
-  meleeTimer: num, shotTimer: num, abilityTimer: num,
+  meleeTimer: num, shotTimer: num, abilityTimer: num, auraTimer: num,
   blocked: bool,
   stun: num, blind: num, tied: num, poison: num, poisonDps: num, burn: num, burnDps: num,
   stacks: num, ownerId: nullableNum,

@@ -38,7 +38,7 @@ export function spawnUnit(
     hp: stats.hp, maxHp: stats.hp, spent: priceOf(key), armor: stats.armor,
     meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
     shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
-    abilityTimer: abilityTimerAtSpawn(stats),
+    abilityTimer: abilityTimerAtSpawn(stats), auraTimer: 0,
     blocked: false,
     stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0,
     stacks: 0, ownerId: null,
