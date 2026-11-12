@@ -89,6 +89,7 @@ export function playEventSounds(
   for (const e of events) {
     switch (e.type) {
       case 'unitSpawned':
+        if (e.key === 'rock') break; // heard as its Rock Wall
         audio.play(e.faction === 'plants' ? 'place' : 'spawnZombie', at(e.x));
         break;
       case 'projectileSpawned':
@@ -115,7 +116,21 @@ export function playEventSounds(
         audio.play('baseStrike', at(0));
         break;
       case 'energyGained':
-        if (e.faction === playerFaction) audio.play(e.source === 'sunflower' ? 'sun' : 'bounty', at(e.x));
+        // A spell's income is heard as the spell itself (cast in the same step).
+        if (e.faction === playerFaction && e.source !== 'spell') audio.play(e.source === 'sunflower' ? 'sun' : 'bounty', at(e.x));
+        break;
+      case 'heroUsed':
+        audio.play(e.faction === 'plants' ? 'megaMower' : 'boneStorm'); // the whole lane: centred
+        break;
+      case 'heroReady':
+        if (e.faction === playerFaction) audio.play('heroReady');
+        break;
+      case 'spellCast':
+        // Each spell has a sound of its own; an aimed one is heard where it lands, an income spell centred.
+        audio.play(e.spell, e.size > 0 ? at(e.col + 0.5) : undefined);
+        break;
+      case 'spellReady':
+        if (e.faction === playerFaction) audio.play('spellReady');
         break;
       case 'unitMerged':
         audio.play('merge', { pitch: mergePitch(e.level) });
@@ -163,10 +178,6 @@ export function playEventSounds(
       case 'statusEnded':
       case 'hazardSpawned': // the rot's landing splat is the shot's own sound
       case 'hazardEnded':
-      case 'heroUsed':
-      case 'heroReady':
-      case 'spellCast':
-      case 'spellReady':
         break;
       default: {
         const unhandled: never = e;
