@@ -378,7 +378,7 @@ test('settings: volume and quality are kept across a reload', async ({ page }) =
 
 for (const [asked, expected] of [[60, 60], [61, 60], [40, 40]] as const) {
   test(`stress scene with units=${asked}: ${expected} units fighting, the clock moving, projectiles flying`, async ({ page }) => {
-    await page.goto(`/?scene=stress&units=${asked}`);
+    await page.goto(`/?scene=stress&debug&units=${asked}`);
     await page.evaluate(() => window.__lvt.ready);
     const seen = await page.evaluate(() => new Promise<{ tick0: number; tick1: number; maxProjectiles: number; counts: number[] }>((resolve) => {
       const stress = (window.__lvt as any).stress;

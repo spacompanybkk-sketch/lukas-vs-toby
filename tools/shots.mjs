@@ -785,8 +785,13 @@ function portraitUrl(level, model = 'peashooter', yaw = 32) {
 }
 
 /** Loads a scene and waits until it has drawn and its fonts are in. */
+/** `url` with `debug` added, which a production build needs before it shows `window.__lvt`. */
+function withDebug(url) {
+  return url.includes('?') ? url.replace('?', '?debug&') : `${url}?debug`;
+}
+
 async function open(page, url) {
-  await page.goto(ORIGIN + url, { waitUntil: 'load' });
+  await page.goto(ORIGIN + withDebug(url), { waitUntil: 'load' });
   await page
     .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
     .catch((error) => {
