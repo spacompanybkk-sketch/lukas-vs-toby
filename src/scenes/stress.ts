@@ -13,12 +13,16 @@ import { Sky } from '../render/world/Sky';
 import { Match, defaultConfig, spawnUnit } from '../sim/match';
 import { MAX_LEVEL, PLANT_COLS } from '../sim/types';
 import type { Faction, SimEvent, UnitKey } from '../sim/types';
+import { mixMatch, stepMix } from './stressMix';
 
 // A crowded battle for the performance tool and for judging the worst case by eye: the real
 // lawn, bases and battle view, with a real `Match` kept full of units.
 //
 //   ?scene=stress&units=<n>    n units alive at any time, half per side (default 60)
 //   &quality=low|medium|high
+//   &mix                       the mixed roster instead (see stressMix.ts): all 21 kinds, every
+//                              shot kind, puddles, statuses on a third, two rocks, and a spell
+//                              and a hero power always firing
 //
 // No bots and no player: plants and zombies of mixed types and levels are placed by the scene
 // itself and fight where they stand (zombies walk in, plants shoot and bite back). A unit that
@@ -46,11 +50,18 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const total = Number.isFinite(asNumber) && params.has('units') ? Math.min(MAX_UNITS, Math.max(2, Math.trunc(asNumber))) : DEFAULT_UNITS;
   const perSide = Math.floor(total / 2);
   const random = seededRandom(7);
-  const match = new Match(defaultConfig(7));
+  const mix = params.has('mix') ? mixMatch(total) : null;
+  const match = mix ? mix.match : new Match(defaultConfig(7));
   const state = match.state;
-  const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, 'plants', {
+  // The mix can show every model (the default); the phase-1 crowd builds only its own.
+  const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, 'plants', mix ? {} : {
     units: [...state.config.cards.plants, ...state.config.cards.zombies],
   });
+  // The mix's hero and spell shows move the camera as in a battle (hit-stop is left out).
+  if (mix) view.onFeel = (f) => {
+    if (f.shake) renderer.rig.shake(f.shake, 0.35);
+    if (f.punch) renderer.rig.punch(f.punch, f.punchSeconds ?? 0.25, f.focusZ);
+  };
   // The units the first level has (the balance table has numbers for no others), the shooters twice
   // over so that there are always projectiles in the air.
   const plantMix: UnitKey[] = [...state.config.cards.plants, 'peashooter'];
@@ -77,10 +88,17 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
     }
   };
   const first: SimEvent[] = [];
-  fill(first);
+  if (!mix) fill(first);
   view.applyEvents(first, state);
 
+  const mixEvents: SimEvent[] = [];
   const step = (): void => {
+    if (mix) {
+      mixEvents.length = 0;
+      stepMix(mix, mixEvents);
+      view.applyEvents(mixEvents, state);
+      return;
+    }
     state.baseHp.plants = state.baseMaxHp.plants;
     state.baseHp.zombies = state.baseMaxHp.zombies;
     state.winner = null;
@@ -109,7 +127,26 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const lvt = installDebug();
   lvt.renderer = renderer;
   lvt.lawn = lawn;
-  const debug = { match, view, get count() { return state.units.length; }, stepsPerSecond: STEPS_PER_SECOND };
+  const debug = {
+    match, view, mix: mix !== null, stepsPerSecond: STEPS_PER_SECOND,
+    get count() { return state.units.length; },
+    /** What is on the lawn now, for the perf tool's report. */
+    contents() {
+      const kinds = new Set<string>();
+      let statused = 0;
+      for (const u of state.units) {
+        kinds.add(u.key);
+        if (u.stun || u.blind || u.tied || u.poison || u.burn || u.haste) statused += 1;
+      }
+      return {
+        units: state.units.length, kinds: kinds.size, projectiles: state.projectiles.length,
+        projectileKinds: new Set(state.projectiles.map((p) => p.kind)).size,
+        lobbed: state.projectiles.filter((p) => p.flight === 'lobbed').length,
+        burning: state.projectiles.filter((p) => p.burning).length,
+        puddles: state.hazards.length, statused, rocks: state.units.filter((u) => u.key === 'rock').length,
+      };
+    },
+  };
   lvt.stress = debug;
   loop.start();
 
