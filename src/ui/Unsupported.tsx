@@ -13,7 +13,7 @@ export function Unsupported({ reason, onReload = () => location.reload() }: Unsu
       <div class="unsupported panel px pal-slate stack" role="alert">
         <span class="unsupported__mark inked" aria-hidden="true">!</span>
         {reason === 'webgl2'
-          ? <p class="unsupported__text">This game needs a newer browser. Try Safari or Chrome on a computer.</p>
+          ? <p class="unsupported__text">This game needs a newer browser. Try Safari on an iPad, or Safari or Chrome on a computer.</p>
           : (
             <>
               <p class="unsupported__text">Graphics stopped. Reload to continue.</p>

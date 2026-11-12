@@ -73,6 +73,10 @@ const wobble = (t: number, seed: number): number =>
 const euler = new Euler(0, 0, 0, 'YXZ');
 const scratch = new Vector3();
 
+/** The victory shot's pitch (degrees down) and distance (share of the framed shot's). */
+const VICTORY_PITCH_DEG = 52;
+const VICTORY_DISTANCE = 0.62;
+
 /** Frames the lawn for any window shape and layers intro, parallax, punch, shake and the victory orbit on top. */
 export class CameraRig {
   private readonly camera: PerspectiveCamera;
@@ -101,6 +105,8 @@ export class CameraRig {
 
   private victory: Faction | null = null;
   private victoryClock = 0;
+  /** Where the victory shot looks, along the lawn (see `orbitVictory`). */
+  private victoryPivotX = 0;
 
   constructor(camera: PerspectiveCamera) {
     this.camera = camera;
@@ -260,11 +266,23 @@ export class CameraRig {
     return done;
   }
 
-  /** Swings round to the winner's base and keeps drifting about it. */
-  orbitVictory(side: Faction): void {
+  /**
+   * Swings round to the winner's side and keeps drifting about it. The shot takes in the winner's
+   * base and, when `focusX` (world x) says where the winners stand, them too, looking down onto
+   * the lawn so it fills the frame rather than the sky beyond the island's edge.
+   */
+  orbitVictory(side: Faction, focusX?: number): void {
     this.finishIntro();
     this.victory = side;
     this.victoryClock = 0;
+    const range = side === 'plants' ? PLANT_BASE_X : ZOMBIE_BASE_X;
+    const baseX = (range[0] + range[1]) / 2;
+    const inward = side === 'plants' ? 1 : -1;
+    // Most of the way from the base to the winners, but always some way onto the lawn and never past half
+    // of it, so the base stays in the shot.
+    const toward = focusX === undefined || !Number.isFinite(focusX) ? baseX + inward * 2.4 : focusX;
+    const reach = Math.min(LAWN_COLS / 2, Math.max(1.6, ((toward - baseX) * inward) * 0.6));
+    this.victoryPivotX = baseX + inward * reach;
   }
 
   /**
@@ -331,15 +349,15 @@ export class CameraRig {
 
     if (this.victory) {
       const sign = this.victory === 'plants' ? -1 : 1;
-      const range = this.victory === 'plants' ? PLANT_BASE_X : ZOMBIE_BASE_X;
       const k = easeInOutCubic(Math.min(this.victoryClock / 1.8, 1));
-      // Look at the base from the lawn side and sway about it.
-      const yaw = -sign * MathUtils.degToRad(12 + 9 * Math.sin(this.victoryClock * 0.5));
-      scratch.set((range[0] + range[1]) / 2, 0.7, LAWN_LANES / 2);
+      // Look down at the winners' side from the lawn and sway gently about it: steep enough that
+      // the lawn, not the sky past the island's edge, fills the frame.
+      const yaw = -sign * MathUtils.degToRad(10 + 6 * Math.sin(this.victoryClock * 0.5));
+      scratch.set(this.victoryPivotX, 0.5, LAWN_LANES / 2);
       pose.pivot.lerp(scratch, k);
       pose.yaw = MathUtils.lerp(pose.yaw, yaw, k);
-      pose.pitch = MathUtils.lerp(pose.pitch, MathUtils.degToRad(34), k);
-      pose.distance = MathUtils.lerp(pose.distance, home.distance * (LAWN_COLS / 18), k);
+      pose.pitch = MathUtils.lerp(pose.pitch, MathUtils.degToRad(VICTORY_PITCH_DEG), k);
+      pose.distance = MathUtils.lerp(pose.distance, home.distance * VICTORY_DISTANCE, k);
     }
 
     pose.yaw += MathUtils.degToRad(1.4) * this.parallax.x;

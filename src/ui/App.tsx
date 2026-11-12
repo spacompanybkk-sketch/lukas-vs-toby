@@ -10,6 +10,8 @@ import { go, screen } from '../app/store';
 import { TICKS_PER_SECOND } from '../sim/types';
 import { SettingsPanel } from './SettingsPanel';
 import { Unsupported } from './Unsupported';
+import { FpsReadout } from './hud/FpsReadout';
+import type { FpsStats } from './hud/FpsReadout';
 import type { BoyPortraits } from './hud/BaseBars';
 import { BattleScreen } from './screens/BattleScreen';
 import type { BattleSessionLike, SessionFactory } from './screens/BattleScreen';
@@ -35,6 +37,8 @@ export interface AppProps {
    */
   onGesture?(): boolean | Promise<boolean>;
   energyRef?: Ref<HTMLDivElement>;
+  /** With `?fps`: where the corner readout reads fps, render scale and draw calls. */
+  fpsSource?: () => FpsStats;
 }
 
 /** Production fallback: there is no stand-in, so a missing factory is a loud error. */
@@ -125,7 +129,7 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   }, []);
 }
 
-export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource }: AppProps) {
   const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
@@ -174,6 +178,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
         )}
       </div>
       {portrait && <RotateDevice />}
+      {fpsSource !== undefined && <FpsReadout source={fpsSource} />}
     </>
   );
 }

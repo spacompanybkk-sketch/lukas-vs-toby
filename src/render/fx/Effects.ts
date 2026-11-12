@@ -43,6 +43,9 @@ const C = {
   smokeLight: hex(FX.smokeLight),
 } as const;
 
+/** Party colours for the winners' confetti: sun, leaf, brain pink, gold, sky and white. */
+const CONFETTI = [hex(PALETTE.sun), hex(PALETTE.leafLight), hex(PALETTE.brainPink), hex(PALETTE.levelGold), 0x7fd4ff, 0xffffff];
+
 /** How many of each pooled shape can show at once. The oldest gives way when they run out. */
 const FLASHES = 12;
 const RINGS = 8;
@@ -375,6 +378,19 @@ export class Effects {
       start.z += Math.sin(angle) * reach;
       start.y += this.between(0.05, 0.4);
       this.emit(start, i % 4 === 0 ? C.white : color, this.between(0.035, 0.06), this.between(0.6, 1), 1.2, undefined, true, 0, 0);
+    }
+  }
+
+  /**
+   * A victory pop: flat confetti cubes in party colours thrown high, spinning, then drifting down
+   * slowly, with a few glowing sparks among them.
+   */
+  confetti(at: Vector3): void {
+    for (let i = 0; i < 16; i++) {
+      this.upward(0.7, this.between(2.2, 3.6));
+      const glow = i % 5 === 0;
+      this.emit(this.jitter(at, 0.15, 0.1), glow ? C.white : this.pick(CONFETTI), this.between(0.045, 0.075),
+        this.between(1.3, 1.9), 2.6, undefined, glow, 0, 3);
     }
   }
 

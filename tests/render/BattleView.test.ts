@@ -473,3 +473,28 @@ describe('BattleView details', () => {
     expect(ctx.scene.children).toEqual(ctx.before);
   });
 });
+
+describe('BattleView cheer', () => {
+  it('throws confetti over the winners for the given seconds, then stops; nothing for a draw', () => {
+    const ctx = setUp();
+    spawn(ctx, ['peashooter', 2, 1.5], ['sunflower', 1, 0.5]);
+    const confetti = vi.spyOn(ctx.fx, 'confetti');
+    ctx.view.cheer('draw', 2);
+    ctx.run(0.5);
+    expect(confetti).not.toHaveBeenCalled();
+    expect(ctx.view.cheering).toBe(false);
+
+    ctx.view.cheer('plants', 1);
+    expect(ctx.view.cheering).toBe(true);
+    ctx.run(1.1);
+    expect(ctx.view.cheering).toBe(false);
+    const pops = confetti.mock.calls.length;
+    expect(pops).toBeGreaterThanOrEqual(5); // about one every 0.14 s
+    for (const [at] of confetti.mock.calls) {
+      expect(at.y).toBeGreaterThan(0.5); // above the winners' heads or over their base
+      expect(at.x).toBeLessThan(3); // the plants' end of the lawn
+    }
+    ctx.run(1);
+    expect(confetti.mock.calls.length).toBe(pops);
+  });
+});

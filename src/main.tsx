@@ -53,5 +53,5 @@ if (scene) {
   });
 } else {
   // The game: the title (or, with `?scene=battle`, straight into a battle that has begun).
-  tearDownOnLeave(mountGame(canvas, ui, name === 'battle' ? battleOptionsFrom(params) : null));
+  tearDownOnLeave(mountGame(canvas, ui, name === 'battle' ? battleOptionsFrom(params) : null, { fps: params.has('fps') }));
 }

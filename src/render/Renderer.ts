@@ -72,7 +72,10 @@ export class Renderer {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(30, 1, 2, 200);
   readonly rig = new CameraRig(this.camera);
-  readonly stats = { fps: 60, scale: 1 };
+  /** For the `?fps` readout and tools: smoothed fps, render scale, draw calls in the last frame. */
+  readonly stats = { fps: 60, scale: 1, drawCalls: 0 };
+  /** Whether `stats.drawCalls` is being counted (see `countDrawCalls`). */
+  private countingCalls = false;
   // The three lights of art bible section 4. Every scene uses them as they are.
 
   /** The warm key light. It casts the only shadows. */
@@ -187,7 +190,22 @@ export class Renderer {
     if ((window.devicePixelRatio || 1) !== this.density) this.handleDensityChange();
 
     this.rig.update(dtSeconds);
-    this.composer.render(dtSeconds);
+    if (this.countingCalls) {
+      const before = this.gl.info.render.calls;
+      this.composer.render(dtSeconds);
+      this.stats.drawCalls = this.gl.info.render.calls - before;
+    } else {
+      this.composer.render(dtSeconds);
+    }
+  }
+
+  /**
+   * Counts the draw calls of each whole frame into `stats.drawCalls` (the composer draws several
+   * passes a frame, so three.js's own per-render reset is turned off while counting).
+   */
+  countDrawCalls(on: boolean): void {
+    this.countingCalls = on;
+    this.gl.info.autoReset = !on;
   }
 
   /**

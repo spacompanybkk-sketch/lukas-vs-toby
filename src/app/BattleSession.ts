@@ -247,8 +247,17 @@ export class BattleSession implements Director, InputTarget {
     void this.view.celebrate(result.winner).then(() => {
       if (this.disposed) return;
       this.fallen = true;
-      if (result.winner !== 'draw') this.stage.rig.orbitVictory(result.winner);
+      if (result.winner !== 'draw') this.stage.rig.orbitVictory(result.winner, this.winnersX(result.winner));
+      // Confetti over the winners while they cheer, and a little on behind the result panel.
+      this.view.cheer(result.winner, CHEER_SECONDS + 1.5);
     });
+  }
+
+  /** Where the winners stand along the lawn (their mean x), or undefined when none is left. */
+  private winnersX(side: Faction): number | undefined {
+    const winners = this.controller.match.state.units.filter((u) => u.faction === side);
+    if (winners.length === 0) return undefined;
+    return winners.reduce((sum, u) => sum + u.x, 0) / winners.length;
   }
 
   private showResult(): void {

@@ -46,8 +46,11 @@ export function watchContextLoss(renderer: { onContextLost?: () => void }): void
  * on it, the Preact app over it, the sound, and the battles the app asks for.
  *
  * With `jumpIn`, the app opens straight on a battle that has already begun (`?scene=battle`).
+ * With `fps` (`?fps`), a small corner readout shows fps, render scale and draw calls.
  */
-export function mountGame(canvas: HTMLCanvasElement, ui: HTMLElement, jumpIn: BattleOptions | null): () => void {
+export function mountGame(
+  canvas: HTMLCanvasElement, ui: HTMLElement, jumpIn: BattleOptions | null, { fps = false }: { fps?: boolean } = {},
+): () => void {
   const lvt = installDebug();
   const audio = new AudioEngine();
   let stage: Stage | null = null;
@@ -146,10 +149,14 @@ export function mountGame(canvas: HTMLCanvasElement, ui: HTMLElement, jumpIn: Ba
   };
   const onGesture = (): Promise<boolean> => audio.unlock().then(() => audio.unlocked);
 
+  const renderer = stage?.renderer;
+  renderer?.countDrawCalls(fps);
+  const fpsSource = fps && renderer !== undefined ? () => renderer.stats : undefined;
+
   const Root = () => (
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
-      onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef}
+      onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
     />
   );
   render(<Root />, ui);

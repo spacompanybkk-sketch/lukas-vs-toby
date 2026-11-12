@@ -402,3 +402,21 @@
   pointer-events: none;
   transform: translate(-50%, -50%);
 }
+
+/* ---- ?fps corner readout (for checking a real iPad) ---- */
+.hud-fps {
+  position: fixed;
+  left: calc(var(--gutter-x) + var(--px-line));
+  bottom: calc(var(--gutter-bottom) + var(--px-line) * 2);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.hud-fps__row b { display: inline-block; min-width: 3.2em; text-align: right; color: var(--c-sun); }

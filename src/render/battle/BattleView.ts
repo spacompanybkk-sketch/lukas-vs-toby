@@ -12,7 +12,7 @@ import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
 import { PALETTE } from '../palette';
 import { modelColors } from '../voxel/build';
 import { ModelInstance } from '../voxel/rig';
-import { worldToClient } from '../coords';
+import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
 import type { Lawn } from '../world/Lawn';
 import { HealthBars } from './HealthBars';
 import type { Feel, PlacementPreview } from './types';
@@ -74,6 +74,8 @@ const PROJECTILE_SCALE: Record<ProjectileKind, number> = { pea: 1.2, brain: 1.1 
 const SUDDEN_DEATH_TINT = new Color('#FF8A3D');
 const SUDDEN_DEATH_SHARE = 0.4;
 
+/** Seconds between the winners' confetti pops. */
+const CONFETTI_EVERY = 0.14;
 const LEVEL_COLOR = [0, hex('#FFFFFF'), hex('#FFFFFF'), hex(PALETTE.levelIron), hex(PALETTE.levelCrystal), hex(PALETTE.levelGold)];
 const STONE = [hex(PALETTE.stone), hex(PALETTE.stoneDark), hex(PALETTE.graveRock), hex(PALETTE.graveSoil)];
 const TRAIL: Record<ProjectileKind, number> = { pea: hex(PEA_COLORS.body), brain: hex(PALETTE.brainPink) };
@@ -128,6 +130,10 @@ export class BattleView {
   private readonly camera: Camera;
   private readonly lawn: Lawn;
   private readonly fx: Effects;
+  private cheerSide: Faction | null = null;
+  private cheerLeft = 0;
+  private cheerClock = 0;
+  private pops = 0;
   private readonly playerFaction: Faction;
   private readonly bases: Record<Faction, BaseView>;
   private readonly smokeAt: Record<Faction, Vector3[]> = { plants: [], zombies: [] };
@@ -261,6 +267,17 @@ export class BattleView {
       } else if (view.level === 5 && !view.dying) {
         view.model.root.updateMatrixWorld();
         this.fx.aura(view.model.root, LEVEL_COLOR[5] as number);
+      }
+    }
+
+    // The winners' confetti, on real frames even while the game clock is slowed for the finale.
+    if (this.cheerLeft > 0 && this.cheerSide !== null) {
+      const step = Math.min(0.25, Math.max(dt, 1 / 60));
+      this.cheerLeft -= step;
+      this.cheerClock += step;
+      while (this.cheerClock >= CONFETTI_EVERY) {
+        this.cheerClock -= CONFETTI_EVERY;
+        this.popConfetti(this.cheerSide);
       }
     }
 
@@ -411,6 +428,37 @@ export class BattleView {
       }
     }
     return best;
+  }
+
+  /**
+   * Confetti over the winners for `seconds`: a pop over a cheering winner (or the winners' base)
+   * every `CONFETTI_EVERY` seconds. Nothing for a draw.
+   */
+  cheer(winner: Faction | 'draw', seconds: number): void {
+    if (winner === 'draw' || this.disposed) return;
+    this.cheerSide = winner;
+    this.cheerLeft = seconds;
+    this.cheerClock = 0;
+  }
+
+  /** True while the winners' confetti is still going. */
+  get cheering(): boolean {
+    return this.cheerLeft > 0;
+  }
+
+  /** One confetti pop: over a random standing winner, every third pop over the winners' base. */
+  private popConfetti(side: Faction): void {
+    const winners = this.list.filter((v) => v.faction === side && !v.dying);
+    this.pops += 1;
+    const view = this.pops % 3 === 0 ? undefined : winners[Math.floor(Math.random() * winners.length)];
+    if (view !== undefined) {
+      v1.copy(view.wrapper.position);
+      v1.y += 0.9;
+    } else {
+      const range = side === 'plants' ? PLANT_BASE_X : ZOMBIE_BASE_X;
+      v1.set(range[0] + Math.random() * (range[1] - range[0]), 1.4, 0.5 + Math.random() * 4);
+    }
+    this.fx.confetti(v1);
   }
 
   /** The end of the match: the loser's base falls and the winners cheer. Resolves when it has fallen (or the view is disposed). */

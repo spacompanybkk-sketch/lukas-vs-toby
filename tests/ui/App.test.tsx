@@ -369,3 +369,24 @@ describe('hudOnlySession (development stand-in)', () => {
     expect(q('[data-hud="energy"]')?.className).toContain('side-zombies');
   });
 });
+
+describe('?fps readout', () => {
+  it('shows the ?fps corner readout only when given a source, and refreshes it', () => {
+    vi.useFakeTimers();
+    try {
+      act(() => render(<App />, root));
+      expect(q('[data-hud="fps"]')).toBeNull();
+      const stats = { fps: 59.6, scale: 0.85, drawCalls: 212 };
+      act(() => render(<App fpsSource={() => stats} />, root));
+      const readout = need('[data-hud="fps"]');
+      expect(readout.textContent).toContain('60 fps');
+      expect(readout.textContent).toContain('0.85 scale');
+      expect(readout.textContent).toContain('212 calls');
+      stats.fps = 31.2;
+      act(() => { vi.advanceTimersByTime(600); });
+      expect(need('[data-hud="fps"]').textContent).toContain('31 fps');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -235,10 +235,15 @@ describe('BattleSession', () => {
     expect(session.live).toBe(false);
     expect(play).toHaveBeenCalledWith('collapse');
     expect(stop).toHaveBeenCalledTimes(1);
+    const confetti = vi.spyOn(session.view, 'cheer');
     const took = await untilResult(stage, session);
     expect(session.resultReady.value).toBe(true);
     expect(took).toBeGreaterThanOrEqual(CHEER_SECONDS); // the fall itself plus the cheering
     expect(play).toHaveBeenCalledWith('win');
+    // Confetti over the winners from the fall until after the panel shows.
+    expect(confetti).toHaveBeenCalledTimes(1);
+    expect(confetti.mock.calls[0]?.[0]).toBe('plants');
+    expect(confetti.mock.calls[0]?.[1]).toBeGreaterThan(CHEER_SECONDS);
   });
 
   it('a loss plays the lose sting', async () => {

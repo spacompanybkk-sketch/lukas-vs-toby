@@ -358,6 +358,8 @@ const SCENARIOS = [
   },
   result('result-win', 'zombies'),
   result('result-lose', 'plants'),
+  cheer('result-cheer-plants', 'zombies', 'zombies'),
+  cheer('result-cheer-zombies', 'plants', 'plants'),
 ];
 
 /** Waits for the card portraits, then plays the title's demo battle on to `seconds`. */
@@ -408,6 +410,26 @@ function result(name, loser) {
       }, loser);
       await page.waitForFunction(() => window.__lvt.session?.resultReady.value === true, null, { timeout: 15_000 });
       await settleUi(page);
+    },
+  };
+}
+
+/**
+ * The winners' cheer before the result panel: `loser`'s base knocked down 60 s into a battle
+ * played as `side`, shot a second into the confetti, with the camera on the winners' side.
+ */
+function cheer(name, side, loser) {
+  return {
+    name,
+    url: `/?scene=battle&side=${side}&skill=medium&seed=7`,
+    steps: async (page) => {
+      await battleAt(page, 60);
+      await page.evaluate((l) => {
+        window.__lvt.damageBase(l, 1e9);
+        window.__lvt.fastForward(1);
+      }, loser);
+      await page.waitForFunction(() => window.__lvt.session?.view.cheering === true, null, { timeout: 15_000 });
+      await page.waitForTimeout(1000);
     },
   };
 }
