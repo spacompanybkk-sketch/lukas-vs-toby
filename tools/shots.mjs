@@ -240,6 +240,26 @@ const SCENARIOS = [
   },
   // The same in the side-by-side layout, as `?scene=fx` opens.
   { name: 'fx-states', url: '/?scene=fx&t=0.15' },
+  // Phase 2 visuals on the lawn (`?scene=fx-gallery`), each page frozen at a few points of its timeline.
+  ...[
+    ['fx-projectiles', 'projectiles', [0.5, 1.4]],
+    ['fx-statuses', 'statuses', [0.5, 3.4]],
+    ['fx-spells-plants', 'spells-plants', [0.12, 0.45, 1.2, 3.2, 4.5]],
+    ['fx-spells-zombies', 'spells-zombies', [0.35, 0.62, 0.9, 3]],
+    ['fx-heroes', 'heroes', [0.25, 0.5, 0.75]],
+    ['fx-props', 'props', [0.5]],
+    // Close-ups, to judge the details the lawn shots are too small to show.
+    ['fx-statuses-close', 'statuses', [0.5, 1.3], '1,4,-0.2,5.2'],
+    ['fx-statuses-close2', 'statuses', [0.5, 1.3], '5,9,-0.2,5.2'],
+    ['fx-props-close', 'props', [0.5], '0,5,0.5,5.2'],
+  ].map(([name, show, times, focus]) => {
+    const url = (t) => `/?scene=fx-gallery&show=${show}&labels=${show === 'props' ? 1 : 0}${focus ? `&focus=${focus}` : ''}&t=${t}`;
+    return {
+      name,
+      url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
   // A Medium bot against a Medium bot through the battle view, frozen early, mid-match and busy.
   { name: 'battle-early', url: '/?scene=battle-demo&seed=7&t=25' },
   { name: 'battle-mid', url: '/?scene=battle-demo&seed=7&t=80' },
