@@ -52,6 +52,11 @@ const PRIORITY: Record<SfxName, number> = {
   place: 1, spawnZombie: 1, pea: 1, brainThrow: 1, hit: 1, chomp: 1, block: 1, sun: 1, bounty: 1, baseStrike: 1,
   explode: 2, merge: 2, baseHit: 2, click: 2, deny: 2,
   suddenDeath: 3, win: 3, lose: 3, collapse: 3,
+  kernel: 1, butter: 1, mango: 1, sand: 1, arrow: 1, bullet: 1, trident: 1, rot: 1, stun: 1, blind: 1, lasso: 1,
+  poison: 1, burn: 1, heal: 1, raise: 1, miss: 1, grow: 1, fuse: 1, mineArm: 1,
+  mineBoom: 2, cherryBoom: 2, squash: 2, heroReady: 2, spellReady: 2, vines: 2, sunShower: 2, healingRain: 2,
+  rockWall: 2, fog: 2, brainFeast: 2, frenzy: 2, graveRise: 2,
+  megaMower: 3, boneStorm: 3, thunderbolt: 3, meteor: 3,
 };
 
 interface Graph { master: GainNode; sfx: GainNode; music: GainNode; noise: AudioBuffer }
