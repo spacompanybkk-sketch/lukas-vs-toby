@@ -44,6 +44,11 @@ const FIRST_BAR_DELAY = 0.1;
 const SWITCH_FADE = 0.6;
 /** `unlock` stops waiting for `resume()` after this long; a later gesture tries again. */
 const RESUME_TIMEOUT_MS = 300;
+/**
+ * A call that arrives this long after the pending attempt began is taken for a new tap (one tap's
+ * pointerup, click and keyup all arrive within a few milliseconds) and asks the browser itself.
+ */
+const NEW_GESTURE_MS = 50;
 /** Musical effects stay at their written pitch unless a pitch is given, so they are in tune. */
 const IN_TUNE: ReadonlySet<SfxName> = new Set<SfxName>(['win', 'lose', 'suddenDeath']);
 
@@ -141,6 +146,8 @@ export class AudioEngine {
   private intensity = { from: 0, to: 0, at: 0 };
   /** The unlock waiting on the browser, shared by every call made meanwhile. */
   private unlocking: Promise<void> | null = null;
+  private unlockingSince = 0;
+  private watchingVisibility = false;
 
   constructor(createContext: () => AudioContext = defaultContext) {
     this.createContext = createContext;
@@ -174,12 +181,40 @@ export class AudioEngine {
    */
   unlock(): Promise<void> {
     if (!this.needsGesture) return Promise.resolve();
-    if (this.unlocking !== null) return this.unlocking;
+    if (this.unlocking !== null) {
+      // Safari only honours resume() made inside the gesture that calls it: a tap that comes
+      // while an earlier attempt still waits must ask for itself, not rely on the old one.
+      if (Date.now() - this.unlockingSince >= NEW_GESTURE_MS) this.resumeNow();
+      return this.unlocking;
+    }
+    this.unlockingSince = Date.now();
     const attempt = this.tryUnlock().finally(() => {
       if (this.unlocking === attempt) this.unlocking = null;
     });
     this.unlocking = attempt;
     return attempt;
+  }
+
+  /** A fire-and-forget resume() inside the caller's gesture; the pending attempt sees the result. */
+  private resumeNow(): void {
+    const ctx = this.ctx;
+    if (ctx === null || isRunning(ctx)) return;
+    try {
+      ctx.resume().catch(() => undefined);
+    } catch {
+      // refused outright: the pending attempt carries on
+    }
+  }
+
+  /** Back on the page after Safari suspended the audio: try to resume (it may need a tap instead). */
+  private watchVisibility(): void {
+    if (this.watchingVisibility) return;
+    const doc = (globalThis as { document?: Pick<Document, 'addEventListener' | 'visibilityState'> }).document;
+    if (doc === undefined || typeof doc.addEventListener !== 'function') return;
+    this.watchingVisibility = true;
+    doc.addEventListener('visibilitychange', () => {
+      if (doc.visibilityState === 'visible' && this.ctx !== null && this.needsGesture) void this.unlock();
+    });
   }
 
   private async tryUnlock(): Promise<void> {
@@ -318,6 +353,7 @@ export class AudioEngine {
     }
     this.ctx = ctx;
     this.watchState(ctx);
+    this.watchVisibility();
     return ctx;
   }
 
