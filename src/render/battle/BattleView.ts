@@ -1,5 +1,5 @@
 import {
-  Color, DirectionalLight, HemisphereLight, Mesh, MeshStandardMaterial, Raycaster, Vector2, Vector3,
+  BackSide, Color, DirectionalLight, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster, Vector2, Vector3,
   type Camera, type Object3D, type Scene,
 } from 'three';
 import { UNIT_INFO } from '../../data/units';
@@ -42,6 +42,10 @@ const LATE_FLIGHT = 0.08;
 export const PICK_TOLERANCE_PX = 28;
 /** The placement ghost draws after the lawn's highlight marks. */
 export const GHOST_RENDER_ORDER = 10;
+const GHOST_OPACITY = 0.85;
+const GHOST_OUTLINE_SCALE = 1.09;
+const GHOST_OUTLINE_OK = 0xffffff;
+const GHOST_OUTLINE_BAD = 0xff3b3b;
 /** Flight height of a projectile once it has left the muzzle, and how long it takes to get there. */
 const SETTLE_SECONDS = 0.14;
 /** A brain is lobbed: up at this speed, pulled down at this rate, never below the floor. */
@@ -153,6 +157,11 @@ export class BattleView {
   /** One see-through material for every ghost; only one ghost shows at a time. */
   private readonly ghostMaterial: MeshStandardMaterial;
   private ghost: ModelInstance | null = null;
+  /** A slightly larger back-face copy of each ghost in one bright colour: its outline. */
+  private readonly outlines = new Map<UnitKey, ModelInstance>();
+  private readonly outlineMaterial = new MeshBasicMaterial({ color: GHOST_OUTLINE_OK, side: BackSide, transparent: true, opacity: 0.95, depthWrite: false });
+  private outline: ModelInstance | null = null;
+  private ghostClock = 0;
   private pulseTarget: UnitView | null = null;
   private readonly raycaster = new Raycaster();
   private readonly pickables: Object3D[] = [];
@@ -169,7 +178,8 @@ export class BattleView {
       mergePeak: (view) => this.mergePeak(view),
       burst: (view) => this.burst(view),
     };
-    this.ghostMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: 0.5, depthWrite: false });
+    // The ghost writes depth, so its outline (drawn after it) shows only round its silhouette.
+    this.ghostMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: 0.5, depthWrite: true });
     // Every model that can appear is built now, so a first spawn or a merge mid-match has nothing left to build.
     prewarmModels([...(options.units ?? modelKeys())]);
     for (let i = 0; i < 8; i++) this.graves.push({ object: makeGravestone(), age: 0, active: false });
@@ -302,7 +312,13 @@ export class BattleView {
       }
     }
 
-    if (this.ghost) this.ghost.update(dt);
+    if (this.ghost) {
+      this.ghost.update(dt);
+      this.outline?.update(dt);
+      // A slow glow pulse, so the ghost reads as "this is where it goes", not as a unit.
+      this.ghostClock += dt;
+      this.ghostMaterial.emissiveIntensity = 0.1 + 0.07 * Math.sin(this.ghostClock * 5);
+    }
   }
 
   /** Shows where a card would go, or clears it with null. */
@@ -310,7 +326,9 @@ export class BattleView {
     if (this.pulseTarget) this.pulseTarget.pulsing = false;
     this.pulseTarget = null;
     if (this.ghost) this.ghost.root.visible = false;
+    if (this.outline) this.outline.root.visible = false;
     this.ghost = null;
+    this.outline = null;
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
     if (!p) return;
@@ -331,12 +349,20 @@ export class BattleView {
     else this.lawn.highlightLane(p.lane, state, 'zombies');
 
     const ghost = this.ghostFor(p.unit);
-    // Only one ghost shows at a time, so they all share one material, tinted red on a bad spot.
+    const outline = this.outlines.get(p.unit) as ModelInstance;
+    // Only one ghost shows at a time, so they all share one material, tinted red on a bad spot:
+    // nearly solid, lit from within, with a bright outline (white, or red when not allowed).
     this.ghostMaterial.color.setHex(p.ok ? 0xffffff : 0xff7070);
-    this.ghostMaterial.opacity = p.ok ? 0.72 : 0.6; // strong enough to read under the post chain
-    ghost.root.position.set(isPlant ? p.col + 0.5 : ZOMBIE_SPAWN_X, 0, p.lane + 0.5);
+    this.ghostMaterial.emissive.setHex(p.ok ? 0xffffff : 0xff3030);
+    this.ghostMaterial.opacity = GHOST_OPACITY;
+    this.outlineMaterial.color.setHex(p.ok ? GHOST_OUTLINE_OK : GHOST_OUTLINE_BAD);
+    const x = isPlant ? p.col + 0.5 : ZOMBIE_SPAWN_X;
+    ghost.root.position.set(x, 0, p.lane + 0.5);
+    outline.root.position.set(x, 0, p.lane + 0.5);
     ghost.root.visible = true;
+    outline.root.visible = true;
     this.ghost = ghost;
+    this.outline = outline;
   }
 
   /**
@@ -412,8 +438,12 @@ export class BattleView {
     for (const g of this.graves) (g.active = false), g.object.removeFromParent();
     for (const b of this.blasts) b.active = false;
     for (const ghost of this.ghosts.values()) ghost.dispose();
+    for (const outline of this.outlines.values()) outline.dispose();
     this.ghosts.clear();
+    this.outlines.clear();
     this.ghost = null;
+    this.outline = null;
+    this.outlineMaterial.dispose();
     this.pulseTarget = null;
     this.ghostMaterial.dispose();
     for (const side of ['plants', 'zombies'] as const) {
@@ -446,6 +476,21 @@ export class BattleView {
       ghost.root.visible = false;
       this.ghosts.set(key, ghost);
       this.scene.add(ghost.root);
+
+      const outline = new ModelInstance(getModelDef(key), 1);
+      outline.root.name = `ghost-outline-${key}`;
+      outline.root.scale.multiplyScalar(GHOST_OUTLINE_SCALE);
+      outline.root.traverse((o) => {
+        if (o instanceof Mesh) {
+          o.material = this.outlineMaterial;
+          o.castShadow = false;
+          o.receiveShadow = false;
+          o.renderOrder = GHOST_RENDER_ORDER + 1; // after the ghost, whose depth hides all but the rim
+        }
+      });
+      outline.root.visible = false;
+      this.outlines.set(key, outline);
+      this.scene.add(outline.root);
     }
     return ghost;
   }

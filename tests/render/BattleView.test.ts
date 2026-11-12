@@ -257,6 +257,28 @@ describe('BattleView placement preview', () => {
     expect(GHOST_RENDER_ORDER).toBeGreaterThan(2); // the tile mark's
   });
 
+  it('outlines the ghost in white on a free spot and red on a refused one', () => {
+    const ctx = setUp();
+    ctx.view.setPreview({ unit: 'peashooter', lane: 1, col: 4, ok: true, mergeTargetId: null });
+    const outline = ctx.scene.getObjectByName('ghost-outline-peashooter') as Object3D;
+    expect(outline.visible).toBe(true);
+    expect(outline.position.toArray()).toEqual([4.5, 0, 1.5]);
+    let material: { color: { getHex(): number }; side: number } | null = null;
+    outline.traverse((o) => {
+      if ((o as { isMesh?: boolean }).isMesh) {
+        material = (o as unknown as { material: typeof material }).material;
+        expect(o.renderOrder).toBe(GHOST_RENDER_ORDER + 1);
+      }
+    });
+    expect(material!.color.getHex()).toBe(0xffffff);
+    ctx.view.setPreview({ unit: 'peashooter', lane: 1, col: 4, ok: false, mergeTargetId: null });
+    expect(material!.color.getHex()).toBe(0xff3b3b);
+    ctx.view.setPreview(null);
+    expect(outline.visible).toBe(false);
+    ctx.view.dispose();
+    expect(ctx.scene.getObjectByName('ghost-outline-peashooter')).toBeUndefined();
+  });
+
   it('marks a zombie lane with its ghost at the spawn point', () => {
     const ctx = setUp();
     const lane = vi.spyOn(ctx.lawn, 'highlightLane');

@@ -71,6 +71,9 @@ export class BattleInput {
     this.doc.addEventListener('pointerout', this.onOut, true);
     this.canvas.addEventListener('contextmenu', this.onContextMenu);
     this.win.addEventListener('keydown', this.onKey);
+    this.win.addEventListener('keyup', this.onKeyUp);
+    this.win.addEventListener('blur', this.onLost);
+    this.doc.addEventListener('visibilitychange', this.onLost);
   }
 
   /** Shows the preview again at the last known point (after a step, or a change of card). */
@@ -88,6 +91,9 @@ export class BattleInput {
     this.doc.removeEventListener('pointerout', this.onOut, true);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     this.win.removeEventListener('keydown', this.onKey);
+    this.win.removeEventListener('keyup', this.onKeyUp);
+    this.win.removeEventListener('blur', this.onLost);
+    this.doc.removeEventListener('visibilitychange', this.onLost);
     this.active = null;
     this.last = null;
   }
@@ -144,8 +150,24 @@ export class BattleInput {
 
   private readonly onContextMenu = (e: Event): void => e.preventDefault();
 
+  /**
+   * The window lost focus or the tab was hidden mid-press: the pointer's up may never come, so
+   * the press is forgotten (otherwise every later press would be taken for a second finger).
+   */
+  private readonly onLost = (): void => {
+    if (this.active === null && this.last === null) return;
+    this.active = null;
+    this.clearPreview();
+  };
+
+  /** A focused button presses itself on Space's keyup; the game has already used that Space. */
+  private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (e.key === ' ' && this.target.isLive()) e.preventDefault();
+  };
+
   private readonly onKey = (e: KeyboardEvent): void => {
     if (!HOTKEYS.has(e.key) || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!this.target.isLive()) return; // the menus have keys of their own (a focused button)
     // Space pauses; it must not also scroll or press whichever button last had focus.
     if (e.key === ' ') {
       e.preventDefault();

@@ -38,3 +38,13 @@ describe('renderPortraits', () => {
     expect(await renderPortraits(['peashooter'], 80)).toEqual({});
   });
 });
+
+describe('anyAlpha', () => {
+  it('tells an empty read (all alpha 0, as a failed float read leaves it) from a picture', async () => {
+    const { anyAlpha } = await import('../../src/render/portraits');
+    expect(anyAlpha(new Float32Array(16))).toBe(false);
+    const px = new Uint8Array(16);
+    px[11] = 255;
+    expect(anyAlpha(px)).toBe(true);
+  });
+});

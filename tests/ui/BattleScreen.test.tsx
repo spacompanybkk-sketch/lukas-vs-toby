@@ -189,4 +189,13 @@ describe('BattleScreen', () => {
     act(() => { ready.value = true; });
     expect(need('[data-screen="result"]').textContent).toContain('VICTORY!');
   });
+
+  it('hides the card tray and the pause button once the match is decided', () => {
+    const s = fakeSession();
+    mount(s);
+    expect(root.querySelector('[data-hud="tray"]')).not.toBeNull();
+    act(() => { s.controller.hud.result.value = { winner: 'zombies', playerWon: false }; });
+    expect(root.querySelector('[data-hud="tray"]')).toBeNull();
+    expect(root.querySelector('[data-hud="pause"]')).toBeNull();
+  });
 });

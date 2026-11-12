@@ -39,12 +39,18 @@ export function setPortraitPainter(p: PortraitPainter | null): void {
  */
 export async function renderPortraits(keys: readonly UnitKey[], size: number): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
+  let since = now();
   for (const key of keys) {
     const id = `${key}@${size}`;
     let job = cache.get(id);
     if (job === undefined) {
       const p = painter;
       if (p === null) continue;
+      // A few per frame: never hold the page for more than about a frame and a half at once.
+      if (now() - since > FRAME_BUDGET_MS) {
+        await nextFrame();
+        since = now();
+      }
       job = Promise.resolve().then(() => p(key, size));
       cache.set(id, job);
       job.catch(() => cache.delete(id));
@@ -58,10 +64,31 @@ export async function renderPortraits(keys: readonly UnitKey[], size: number): P
   return out;
 }
 
+/** Milliseconds of portrait drawing allowed before waiting for the next frame. */
+const FRAME_BUDGET_MS = 24;
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+const nextFrame = (): Promise<void> =>
+  new Promise((resolve) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(() => resolve()) : setTimeout(resolve, 0)));
+
 /** The filmic curve of the post chain (postprocessing's Cineon, after the exposure): scene to display. */
 function toDisplay(v: number): number {
   const x = Math.max(0, v * EXPOSURE - 0.004);
   return (x * (6.2 * x + 0.5)) / (x * (6.2 * x + 1.7) + 0.06);
+}
+
+/** True when the context can render to and read back 32-bit float colour. */
+function floatReadable(gl: WebGLRenderer): boolean {
+  try {
+    return gl.extensions.has('EXT_color_buffer_float');
+  } catch {
+    return false;
+  }
+}
+
+/** True when any pixel has some alpha (a read that failed leaves every alpha at 0). */
+export function anyAlpha(pixels: ArrayLike<number>): boolean {
+  for (let i = 3; i < pixels.length; i += 4) if ((pixels[i] as number) > 0) return true;
+  return false;
 }
 
 /** Supersampling: drawn at this many times the size, then scaled down for clean edges. */
@@ -97,38 +124,39 @@ export function createPortraitPainter(renderer: Renderer): PortraitPainter {
     rig.frameSubject(envelopeAround([{ key, level: 1, x: 0, z: 0 }]), {
       pitchDeg: 20, yawDeg: faction === 'plants' ? 32 : -32, side: 0.06, top: 0.1, bottom: 0.04,
     });
-    // Linear float pixels where the browser can read them back, else bytes (a little banding).
-    let float = true;
-    let target = new WebGLRenderTarget(draw, draw, { type: FloatType, format: RGBAFormat, depthBuffer: true, minFilter: NearestFilter, magFilter: NearestFilter });
+    // Linear float pixels where the context can draw and read them (three's read does not
+    // throw when it cannot; it logs and leaves the buffer as it was), else bytes, which band a
+    // little in the darks. A float read that came back with nothing in it is redone in bytes.
     const before = gl.getRenderTarget();
     const clearAlpha = gl.getClearAlpha();
     const shadows = gl.shadowMap.enabled;
+    const read = (type: typeof FloatType | typeof UnsignedByteType): Float32Array | Uint8Array => {
+      const target = new WebGLRenderTarget(draw, draw, { type, format: RGBAFormat, depthBuffer: true, minFilter: NearestFilter, magFilter: NearestFilter });
+      try {
+        gl.setRenderTarget(target);
+        gl.clear(true, true, true);
+        gl.render(scene, camera);
+        const out = type === FloatType ? new Float32Array(draw * draw * 4) : new Uint8Array(draw * draw * 4);
+        gl.readRenderTargetPixels(target, 0, 0, draw, draw, out);
+        return out;
+      } finally {
+        target.dispose();
+      }
+    };
+    let float = floatReadable(gl);
     let pixels: Float32Array | Uint8Array;
     try {
       gl.shadowMap.enabled = false;
       gl.setClearAlpha(0);
-      const render = (): void => {
-        gl.setRenderTarget(target);
-        gl.clear(true, true, true);
-        gl.render(scene, camera);
-      };
-      try {
-        render();
-        pixels = new Float32Array(draw * draw * 4);
-        gl.readRenderTargetPixels(target, 0, 0, draw, draw, pixels);
-      } catch {
+      pixels = float ? read(FloatType) : read(UnsignedByteType);
+      if (float && !anyAlpha(pixels)) {
         float = false;
-        target.dispose();
-        target = new WebGLRenderTarget(draw, draw, { type: UnsignedByteType, format: RGBAFormat, depthBuffer: true });
-        render();
-        pixels = new Uint8Array(draw * draw * 4);
-        gl.readRenderTargetPixels(target, 0, 0, draw, draw, pixels);
+        pixels = read(UnsignedByteType);
       }
     } finally {
       gl.setRenderTarget(before);
       gl.setClearAlpha(clearAlpha);
       gl.shadowMap.enabled = shadows;
-      target.dispose();
       scene.remove(model.root);
       model.dispose();
     }

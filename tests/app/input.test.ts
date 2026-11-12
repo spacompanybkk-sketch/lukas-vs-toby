@@ -223,4 +223,47 @@ describe('BattleInput', () => {
     input.refresh();
     expect(target.setPreview).toHaveBeenCalledWith(expect.objectContaining({ lane: 1, col: 4 }));
   });
+
+  it('a press whose release was lost (window blur) is forgotten, so the next tap works', () => {
+    const { target } = fakeTarget();
+    input = new BattleInput(target, { canvas, isOverLawn });
+    ptr('pointerdown', { x: 150, y: 150, id: 7, kind: 'touch' }, canvas);
+    window.dispatchEvent(new Event('blur'));
+    expect(target.setPreview).toHaveBeenLastCalledWith(null);
+    ptr('pointerdown', { x: 250, y: 250, id: 8, kind: 'touch' }, canvas);
+    ptr('pointerup', { x: 250, y: 250, id: 8, kind: 'touch' }, canvas);
+    expect(target.click).toHaveBeenCalledTimes(1);
+  });
+
+  it('the tab being hidden mid-press forgets the press too', () => {
+    const { target } = fakeTarget();
+    input = new BattleInput(target, { canvas, isOverLawn });
+    ptr('pointerdown', { x: 150, y: 150, id: 3, kind: 'touch' }, canvas);
+    document.dispatchEvent(new Event('visibilitychange'));
+    ptr('pointerup', { x: 150, y: 150, id: 3, kind: 'touch' }, canvas);
+    expect(target.click).not.toHaveBeenCalled();
+    ptr('pointerdown', { x: 150, y: 150, id: 4, kind: 'touch' }, canvas);
+    ptr('pointerup', { x: 150, y: 150, id: 4, kind: 'touch' }, canvas);
+    expect(target.click).toHaveBeenCalledTimes(1);
+  });
+
+  it('keys do nothing while the battle is not live', () => {
+    const { target } = fakeTarget(false);
+    input = new BattleInput(target, { canvas, isOverLawn });
+    for (const key of ['1', ' ', 'Escape']) window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+    expect(target.hotkey).not.toHaveBeenCalled();
+  });
+
+  it('Space blurs a focused button and stops its keyup from pressing it', () => {
+    const { target } = fakeTarget();
+    input = new BattleInput(target, { canvas, isOverLawn });
+    card.focus();
+    expect(document.activeElement).toBe(card);
+    card.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+    expect(document.activeElement).not.toBe(card);
+    const up = new KeyboardEvent('keyup', { key: ' ', bubbles: true, cancelable: true });
+    card.dispatchEvent(up);
+    expect(up.defaultPrevented).toBe(true);
+    expect(target.hotkey).toHaveBeenCalledWith(' ');
+  });
 });

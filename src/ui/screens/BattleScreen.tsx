@@ -92,12 +92,7 @@ export function BattleScreen(props: BattleScreenProps) {
         </div>
         <LiveClock hud={hud} />
         <div class="battle__right">
-          <button
-            type="button" data-hud="pause" class="btn btn--square btn--small pal-stone hud-pause"
-            aria-label="Pause" onClick={() => { if (hud.result.peek() === null) ctl.setPaused(true); }}
-          >
-            <span class="ico ico--pause" aria-hidden="true" />
-          </button>
+          <LivePause ctl={ctl} />
         </div>
       </div>
       <div class="battle__bases">
@@ -128,9 +123,25 @@ function LiveBase({ hud, faction, playerFaction, portrait }: { hud: HudSignals; 
   return <BaseBar faction={faction} vm={hud.base.value[faction]} you={playerFaction === faction} portrait={portrait} />;
 }
 
+/** The pause button; gone once the match is decided. */
+function LivePause({ ctl }: { ctl: Controller }) {
+  const hud = ctl.hud;
+  if (hud.result.value !== null) return null;
+  return (
+    <button
+      type="button" data-hud="pause" class="btn btn--square btn--small pal-stone hud-pause"
+      aria-label="Pause" onClick={() => { if (hud.result.peek() === null) ctl.setPaused(true); }}
+    >
+      <span class="ico ico--pause" aria-hidden="true" />
+    </button>
+  );
+}
+
+/** The card tray; gone once the match is decided, so the end plays out on a clear lawn. */
 function LiveTray({ ctl, portraits }: { ctl: Controller; portraits: Record<string, string> }) {
   const hud = ctl.hud;
   const side = ctl.playerFaction;
+  if (hud.result.value !== null) return null;
   return (
     <CardTray
       cards={hud.cards.value} selected={hud.selected.value} portraits={portraits} side={side}

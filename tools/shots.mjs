@@ -332,6 +332,16 @@ const SCENARIOS = [
       await settleUi(page);
     },
   },
+  {
+    name: 'sidepick-chosen',
+    url: '/',
+    steps: async (page) => {
+      await demoAt(page, 45);
+      await page.click('[data-action="play"]');
+      await page.click('[data-side="zombies"]');
+      await settleUi(page);
+    },
+  },
   hud('hud-plants', 'plants', 'peashooter', [2, 4]),
   hud('hud-zombies', 'zombies', 'brainEater', [2, 6]),
   { ...hud('hud-ipad', 'plants', 'peashooter', [2, 4]), viewport: { width: 1024, height: 768 } },

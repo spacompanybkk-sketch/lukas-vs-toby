@@ -26,7 +26,7 @@ export function ResultOverlay({ result, playerFaction, seconds, portraits = {}, 
   const winners: Faction[] = result.winner === 'draw' ? ['plants', 'zombies'] : [result.winner];
   return (
     <div data-screen="result" class={`layer layer--dim result result--${tone}`} role="dialog" aria-label={word}>
-      <div class={`result__panel panel px pal-side side-${playerFaction} stack`}>
+      <div class={`result__panel panel px pal-side side-${playerFaction}`}>
         <h2 class="result__word inked">{word}</h2>
         <div class="row result__winners">
           {winners.map((f) => {

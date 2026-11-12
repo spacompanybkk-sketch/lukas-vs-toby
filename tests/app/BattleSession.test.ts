@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { PerspectiveCamera, Scene } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BattleSession } from '../../src/app/BattleSession';
+import { BattleSession, CHEER_SECONDS } from '../../src/app/BattleSession';
 import type { BattleSessionOptions } from '../../src/app/BattleSession';
 import type { Director, StageLike } from '../../src/app/Stage';
 import { TitleDemo } from '../../src/app/TitleDemo';
@@ -29,13 +29,14 @@ function fakeStage(): StageLike & { handOvers: number } {
       if (d === stage.director) return;
       const old = stage.director;
       stage.director = null;
-      if (old) (old.detach(), stage.handOvers++);
+      if (old) (old.detach(), stage.rig.reset(), stage.handOvers++);
       stage.director = d;
     },
     release(d: Director) {
       if (stage.director !== d) return;
       stage.director = null;
       d.detach();
+      stage.rig.reset(); // as the real stage does on every hand-over
       stage.handOvers++;
     },
   };
@@ -204,23 +205,34 @@ describe('BattleSession', () => {
     expect(session.controller.match.state.tick).toBe(tick);
   });
 
-  it('at the end: the result waits for the base to fall, then shows with the win sting', async () => {
+  /** Frames (with steps) until the result may show, letting the celebrate promise settle. */
+  async function untilResult(stage: StageLike, session: BattleSession, seconds = 10): Promise<number> {
+    let t = 0;
+    while (t < seconds && !session.resultReady.value) {
+      run(stage, 0.25);
+      t += 0.25;
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    return t;
+  }
+
+  it('at the end (live): collapse sound, the base falls, the winners cheer 2 s, then the result with the win sting', async () => {
     const stage = fakeStage();
-    const { session, play } = make(stage);
+    const { session, play, audio } = make(stage);
+    const stop = vi.spyOn(audio, 'stopMusic');
     session.begin();
     session.fastForward(60);
     session.damageBase('zombies', 1e9);
-    session.fastForward(1);
+    run(stage, 0.05); // the step that decides it is a live one
     expect(session.controller.hud.result.value).toMatchObject({ winner: 'plants', playerWon: true });
     expect(session.resultReady.value).toBe(false);
     expect(session.live).toBe(false);
     expect(play).toHaveBeenCalledWith('collapse');
-    for (let i = 0; i < 8 && !session.resultReady.value; i++) {
-      run(stage, 1);
-      await Promise.resolve();
-      await Promise.resolve();
-    }
+    expect(stop).toHaveBeenCalledTimes(1);
+    const took = await untilResult(stage, session);
     expect(session.resultReady.value).toBe(true);
+    expect(took).toBeGreaterThanOrEqual(CHEER_SECONDS); // the fall itself plus the cheering
     expect(play).toHaveBeenCalledWith('win');
   });
 
@@ -229,14 +241,64 @@ describe('BattleSession', () => {
     const { session, play } = make(stage);
     session.begin();
     session.damageBase('plants', 1e9);
-    session.fastForward(1);
-    for (let i = 0; i < 8 && !session.resultReady.value; i++) {
-      run(stage, 1);
-      await Promise.resolve();
-      await Promise.resolve();
-    }
+    run(stage, 0.05);
+    await untilResult(stage, session);
     expect(session.controller.hud.result.value).toMatchObject({ winner: 'zombies', playerWon: false });
     expect(play).toHaveBeenCalledWith('lose');
+  });
+
+  it('a match decided inside fastForward makes no end sounds and leaves the music alone', async () => {
+    const stage = fakeStage();
+    const { session, play, audio } = make(stage);
+    const stop = vi.spyOn(audio, 'stopMusic');
+    session.begin();
+    session.damageBase('zombies', 1e9);
+    session.fastForward(1);
+    await untilResult(stage, session);
+    expect(session.resultReady.value).toBe(true);
+    expect(play).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('disposing never stops the music, so the menu tune started on Quit keeps playing', () => {
+    const stage = fakeStage();
+    const { session, audio } = make(stage);
+    const calls: string[] = [];
+    vi.spyOn(audio, 'startMusic').mockImplementation((t) => { calls.push(`start ${t}`); });
+    vi.spyOn(audio, 'stopMusic').mockImplementation(() => { calls.push('stop'); });
+    session.begin();
+    // Quit: the app goes to the title (menu music) and only then unmounts the battle.
+    audio.startMusic('menu');
+    session.dispose();
+    expect(calls).toEqual(['start backyard', 'start menu']);
+  });
+
+  it('can be disposed during the opening camera move', async () => {
+    const stage = fakeStage();
+    const { session } = make(stage, 'plants', { introSeconds: 1.8 });
+    const intro = session.start();
+    run(stage, 0.3);
+    session.dispose();
+    expect(stage.director).toBeNull();
+    expect(unitsInScene(stage)).toBe(0);
+    await expect(intro).resolves.toBeUndefined(); // the stage's reset lands the camera move
+    session.begin(); // the banners' timer firing late does nothing
+    expect(session.live).toBe(false);
+  });
+
+  it('can be disposed while the base is falling; the result never shows', async () => {
+    const stage = fakeStage();
+    const { session, play } = make(stage);
+    session.begin();
+    session.damageBase('zombies', 1e9);
+    run(stage, 0.3);
+    session.dispose();
+    await Promise.resolve();
+    await Promise.resolve();
+    run(stage, 3);
+    expect(session.resultReady.value).toBe(false);
+    expect(play).not.toHaveBeenCalledWith('win');
+    expect(stage.director).toBeNull();
   });
 
   it('flies a token from where the player earned energy', () => {

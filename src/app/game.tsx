@@ -36,6 +36,11 @@ export function battleOptionsFrom(params: URLSearchParams): BattleOptions {
   };
 }
 
+/** When the browser takes the graphics away, the app shows "Graphics stopped" with a Reload button. */
+export function watchContextLoss(renderer: { onContextLost?: () => void }): void {
+  renderer.onContextLost = () => go({ name: 'unsupported', reason: 'context-lost' });
+}
+
 /**
  * The game itself: one stage (one WebGL context for the whole page) with the title's demo battle
  * on it, the Preact app over it, the sound, and the battles the app asks for.
@@ -65,12 +70,24 @@ export function mountGame(canvas: HTMLCanvasElement, ui: HTMLElement, jumpIn: Ba
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
-    s.renderer.onContextLost = () => go({ name: 'unsupported', reason: 'context-lost' });
+    watchContextLoss(s.renderer);
     s.onFirstFrames = markReady;
-    setPortraitPainter(createPortraitPainter(s.renderer));
+    const paint = createPortraitPainter(s.renderer);
+    let paintMs = 0;
+    setPortraitPainter((key, size) => {
+      const t = performance.now();
+      try {
+        return paint(key, size);
+      } finally {
+        paintMs += performance.now() - t;
+        lvt.portraitPaintMs = Math.round(paintMs); // drawing time alone, for the report
+      }
+    });
     const cards = defaultConfig(0).cards;
+    const startedAt = performance.now();
     lvt.portraits = renderPortraits([...cards.plants, ...cards.zombies], PORTRAIT_SIZE).then((p) => {
       portraits.value = p;
+      lvt.portraitMs = Math.round(performance.now() - startedAt);
     });
     lvt.renderer = s.renderer;
     lvt.lawn = s.lawn;

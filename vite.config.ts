@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 
 /** Lets tools/shots.mjs confirm that the server on the dev port serves this checkout. */
@@ -19,6 +19,13 @@ function projectRoot(): Plugin {
 
 export default defineConfig({
   plugins: [preact(), projectRoot()],
+  test: {
+    // An 8 GB machine running a browser, the dev server and the suite can be slow: a long
+    // timeout and a few workers keep load from showing up as false failures.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
+    maxWorkers: 4,
+  },
   build: {
     target: 'es2022',
     // Three.js alone is ~540 kB minified, so it gets a chunk of its own, as do the

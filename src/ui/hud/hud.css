@@ -149,7 +149,7 @@
   box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.2);
   transition: width 160ms steps(2, end);
 }
-.hud-base--zombies .hud-base__fill { margin-left: auto; }
+.hud-base--zombies .hud-base__fill { margin-left: auto; background: var(--c-purple-hi); }
 .hud-base__bar--mid .hud-base__fill { background: var(--c-hp-mid); }
 .hud-base__bar--low .hud-base__fill { background: var(--c-hp-low); }
 .hud-base__ticks {
@@ -161,7 +161,12 @@
 /* ---- Pause button ---- */
 .hud-pause { --ico-size: calc(max(var(--tap-min), var(--hud-h)) * 0.52); }
 
-/* ---- Card tray ---- */
+/* ---- Card tray ----
+ * No panning or zooming may start on the tray or a card: the browser would claim the touch and
+ * cancel the drag of a card onto the lawn (the button reset elsewhere says `manipulation`). */
+.hud-tray,
+.hud-tray [data-card],
+.hud-tray [data-shovel] { touch-action: none; }
 .hud-tray {
   --lo: var(--c-wood-lo);
   display: inline-flex;
@@ -341,18 +346,37 @@
   .pause__grid { grid-template-columns: 1fr; }
 }
 
-/* ---- Result ---- */
-.result__panel { min-width: clamp(320px, 46vw, 640px); }
+/* ---- Result ----
+ * Low on the screen, compact and on a light dim, so the fallen base and the cheering winners stay
+ * in view above it. */
+.layer.result {
+  place-items: end center;
+  background: rgba(26, 16, 8, 0.28);
+  padding-bottom: calc(var(--gutter-bottom) + 8px);
+}
+.result__panel {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: 'chip word' 'chip time' 'buttons buttons';
+  align-items: center;
+  justify-items: center;
+  column-gap: clamp(14px, 2vw, 28px);
+  row-gap: clamp(8px, 1.4vh, 16px);
+  padding: clamp(12px, 2vh, 22px) clamp(16px, 2.4vw, 30px);
+}
 .result__word {
+  grid-area: word;
   margin: 0;
-  font-size: var(--fs-huge);
+  font-size: calc(var(--fs-huge) * 0.72);
   line-height: 1;
   color: var(--c-sun);
   animation: px-drop 520ms steps(6, end) both;
 }
 .result--lose .result__word { color: var(--c-red); }
 .result--draw .result__word { color: var(--c-cream); }
-.result__winners { --chip-size: clamp(84px, 17vh, 170px); }
+.result__winners { grid-area: chip; --chip-size: clamp(72px, 13vh, 132px); }
+.result__panel > .result__time { grid-area: time; }
+.result__panel > .row:last-child { grid-area: buttons; }
 .result__chip { --lip: var(--px-lip); }
 .result__chip.side-plants { --fill: var(--c-leaf); --hi: var(--c-leaf-hi); --lo: var(--c-leaf-lo); color: var(--white); }
 .result__chip.side-zombies { --fill: var(--c-purple); --hi: var(--c-purple-hi); --lo: var(--c-purple-lo); color: var(--white); }

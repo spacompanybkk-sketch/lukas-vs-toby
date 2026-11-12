@@ -17,6 +17,9 @@ import type { Director, StageLike } from './Stage';
 /** Seconds of the opening camera move, before the READY and FIGHT! banners. */
 export const INTRO_SECONDS = 1.8;
 
+/** Seconds the winners cheer, after the loser's base has fallen, before the result panel shows. */
+export const CHEER_SECONDS = 2;
+
 /** Where an energy token flies from (client pixels) when the player's side earns energy. */
 export type TokenSink = (from: { x: number; y: number }, side: Faction, amount: number) => void;
 
@@ -64,6 +67,10 @@ export class BattleSession implements Director, InputTarget {
   private detached = false;
   private disposed = false;
   private time = 0;
+  /** The loser's base has finished falling; seconds of cheering since. */
+  private fallen = false;
+  private cheerFor = 0;
+  private endSounds = false;
   private readonly offEffects: (() => void)[] = [];
 
   constructor(stage: StageLike, audio: AudioEngine, opts: BattleOptions, options: BattleSessionOptions = {}) {
@@ -124,6 +131,10 @@ export class BattleSession implements Director, InputTarget {
     this.time += gameDt;
     this.view.frame(state, alpha, gameDt, this.time);
     if (!this.ended) this.audio.setIntensity(battleIntensity(state));
+    else if (this.fallen && !this.ready.peek()) {
+      this.cheerFor += realDt > 0 ? realDt : 0;
+      if (this.cheerFor >= CHEER_SECONDS) this.showResult();
+    }
   }
 
   detach(): void {
@@ -133,7 +144,11 @@ export class BattleSession implements Director, InputTarget {
     this.view.dispose();
   }
 
-  /** Takes the battle off the stage and stops its music; the stage stays for the next one. */
+  /**
+   * Takes the battle off the stage; the stage stays for the next one. The music is left alone:
+   * the app has already started the menu tune when Quit or Menu is pressed (the battle unmounts
+   * after that), and a restart keeps the backyard tune going.
+   */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -141,7 +156,6 @@ export class BattleSession implements Director, InputTarget {
     this.offEffects.length = 0;
     this.stage.release(this);
     this.detach();
-    this.audio.stopMusic(0.4);
   }
 
   // ---- Test hooks ----------------------------------------------------------------------------
@@ -210,28 +224,38 @@ export class BattleSession implements Director, InputTarget {
     const events: SimEvent[] = this.controller.step();
     this.view.applyEvents(events, this.controller.match.state);
     if (withSound) playEventSounds(this.audio, events, this.playerFaction);
-    if (this.controller.hud.result.peek() !== null) this.finish();
+    if (this.controller.hud.result.peek() !== null) this.finish(withSound);
     else if (withSound) this.input.refresh(); // energy or the lawn changed: the ghost may turn red or green
   }
 
-  /** The loser's base falls and the camera swings to the winner; then the result may show. */
-  private finish(): void {
+  /**
+   * The end: the loser's base falls with the camera holding still, so the fall is seen; then the
+   * camera swings round to the winner's base and the winners cheer for `CHEER_SECONDS` before the
+   * result panel shows. A match decided inside `fastForward` (a test hook) makes no sound and
+   * leaves the music alone.
+   */
+  private finish(withSound: boolean): void {
     const result = this.controller.hud.result.peek();
     if (this.ended || result === null) return;
     this.ended = true;
+    this.endSounds = withSound;
     this.view.setPreview(null);
-    this.audio.stopMusic(0.8);
-    this.audio.play('collapse');
-    // The camera holds still while the loser's base falls, so the fall is seen; then it swings
-    // round to the winner's base behind the result panel.
+    if (withSound) {
+      this.audio.stopMusic(0.8);
+      this.audio.play('collapse');
+    }
     void this.view.celebrate(result.winner).then(() => {
       if (this.disposed) return;
-      if (result.winner !== 'draw') {
-        this.stage.rig.orbitVictory(result.winner);
-        this.audio.play(result.playerWon ? 'win' : 'lose');
-      }
-      this.ready.value = true;
+      this.fallen = true;
+      if (result.winner !== 'draw') this.stage.rig.orbitVictory(result.winner);
     });
+  }
+
+  private showResult(): void {
+    const result = this.controller.hud.result.peek();
+    if (result === null || this.disposed) return;
+    if (this.endSounds && result.winner !== 'draw') this.audio.play(result.playerWon ? 'win' : 'lose');
+    this.ready.value = true;
   }
 
   /**
