@@ -28,6 +28,23 @@ export const test = base.extend<{ problems: Problems }, { launchOptions: LaunchO
   problems: [
     async ({ page }, use) => {
       const problems: Problems = { errors: [], contextWarnings: [] };
+      // Counts the WebGL contexts the page creates (one per canvas and kind), so a leaked one shows.
+      await page.addInitScript(() => {
+        const made = new WeakSet<object>();
+        const w = window as unknown as { __glContexts: number };
+        w.__glContexts = 0;
+        for (const proto of [HTMLCanvasElement.prototype, OffscreenCanvas.prototype] as { getContext: (...a: unknown[]) => unknown }[]) {
+          const original = proto.getContext;
+          proto.getContext = function (this: object, kind: unknown, ...rest: unknown[]) {
+            const context = original.call(this, kind, ...rest);
+            if (context && /webgl/.test(String(kind)) && !made.has(context as object)) {
+              made.add(context as object);
+              w.__glContexts += 1;
+            }
+            return context;
+          } as never;
+        }
+      });
       page.on('pageerror', (e) => problems.errors.push(`pageerror: ${e.message}`));
       page.on('console', (m) => {
         if (m.type() === 'error') problems.errors.push(`console.error: ${m.text()}`);

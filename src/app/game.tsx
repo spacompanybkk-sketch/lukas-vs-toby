@@ -125,6 +125,8 @@ export function mountGame(canvas: HTMLCanvasElement, ui: HTMLElement, jumpIn: Ba
   lvt.fastForward = (ticks: number) => current?.fastForward(ticks);
   lvt.damageBase = (side: Faction, amount: number) => current?.damageBase(side, amount);
   lvt.audio = audio;
+  // The screen the app is on (battle options included), for end-to-end tests.
+  Object.defineProperty(lvt, 'screen', { configurable: true, get: () => screen.value });
 
   if (jumpIn) go({ name: 'battle', options: jumpIn });
   // The menus have the demo battle behind them and their own tune.

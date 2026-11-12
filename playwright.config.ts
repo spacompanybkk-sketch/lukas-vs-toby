@@ -30,10 +30,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
+      testIgnore: /touch\.spec/,
       use: { browserName: 'chromium', viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
     },
     {
       name: 'ipad',
+      testMatch: /\.spec\.ts$/, // everything, the touch specs included
       use: {
         browserName: 'chromium', viewport: { width: 1024, height: 768 },
         hasTouch: true, isMobile: false, deviceScaleFactor: 2,
