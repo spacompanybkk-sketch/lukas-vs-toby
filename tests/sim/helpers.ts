@@ -41,6 +41,50 @@ export function classicBalance(): Balance {
     },
     rock: { recharge: 1, hp: 800, armor: 0, speed: 0 }, // phase 2: Rock Wall's rock, which only stands
   };
+  // Phase 2: the plan's starting numbers for the phase-2 rows that Task 8 retuned, and the spell
+  // table of spec 21, so the rules tests keep the figures they were written for (plants.test.ts
+  // and zombies.test.ts take the other phase-2 rows from BALANCE, where they are still as first set).
+  const firstSet: Balance['units'] = {
+    kernelPult: {
+      recharge: 5, hp: 300, armor: 0, speed: 0,
+      shot: {
+        kind: 'kernel', damage: 12, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
+        status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
+      },
+    },
+    pumpkinSquash: {
+      recharge: 20, hp: 900, armor: 0, speed: 0,
+      leap: { range: 2, damage: 350, radius: 0.5, recoverSeconds: 6 },
+    },
+    desertZombie: {
+      recharge: 6, hp: 380, armor: 0, speed: 0.35,
+      melee: { damage: 30, interval: 1.0, reach: 0.6 },
+      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 3 } },
+    },
+    hotTopic: {
+      recharge: 6, hp: 300, armor: 0, speed: 0.5,
+      melee: { damage: 25, interval: 0.5, reach: 0.6 },
+      grow: { hpShare: 0.2, damageShare: 0.2, maxStacks: 5 },
+    },
+    tridentZombie: {
+      recharge: 12, hp: 500, armor: 0, speed: 0.2,
+      melee: { damage: 40, interval: 1.2, reach: 0.6 },
+      shot: { kind: 'trident', damage: 70, interval: 3.5, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
+    },
+  };
+  Object.assign(b.units, firstSet);
+  b.spells = {
+    thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
+    vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
+    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
+    healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
+    rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
+    meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
+    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
+    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
+    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
+    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
+  };
   const linear = [0, 1, 2, 3, 4, 5];
   b.levelCurves = {
     hp: { plants: [...linear], zombies: [...linear] },

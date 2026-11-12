@@ -23,7 +23,7 @@ const DUMMY: UnitStats = { recharge: 5, hp: 1000, armor: 0, speed: 0 };
 function table(): Balance {
   const b = classicBalance();
   const shipped = cloneBalance(BALANCE);
-  for (const key of NEW_PLANTS) b.units[key] = shipped.units[key];
+  for (const key of NEW_PLANTS) b.units[key] = b.units[key] ?? shipped.units[key]; // retuned rows: as first set (classicBalance)
   b.units.desertZombie = { ...DUMMY };
   return b;
 }
@@ -66,7 +66,8 @@ describe('the shipped starting numbers', () => {
     expect(u.kernelPult).toEqual({
       recharge: 5, hp: 300, armor: 0, speed: 0,
       shot: {
-        kind: 'kernel', damage: 12, interval: 1, range: 10, speed: 7, flight: 'lobbed',
+        kind: 'kernel', damage: 14, interval: 1, range: 10, // Task 8: 12 -> 14 (merge value)
+        speed: 7, flight: 'lobbed',
         status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
       },
     });
@@ -82,7 +83,8 @@ describe('the shipped starting numbers', () => {
       recharge: 30, hp: 300, armor: 0, speed: 0, fuse: { seconds: 1, damage: 600, radius: 1.6 },
     });
     expect(u.pumpkinSquash).toEqual({
-      recharge: 20, hp: 900, armor: 0, speed: 0, leap: { range: 2, damage: 350, radius: 0.5, recoverSeconds: 6 },
+      // Task 8: recharge 20 -> 15 (pick share), leap range 2 -> 3 (merge value)
+      recharge: 15, hp: 900, armor: 0, speed: 0, leap: { range: 3, damage: 350, radius: 0.5, recoverSeconds: 6 },
     });
   });
 });

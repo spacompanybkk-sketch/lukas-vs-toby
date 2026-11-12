@@ -59,18 +59,21 @@ describe('the spell table', () => {
   });
 
   it('has the starting values of spec 21 and the plan\'s cooldowns, first ready at 20 s', () => {
+    // Task 8 retuned these (no one spell may move Medium v Medium more than 6 points); the rules
+    // tests below use spec 21's starting values through classicBalance().
     expect(BALANCE.spells).toEqual({
-      thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
-      vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
-      sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
-      healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
-      rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
-      meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
-      fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
-      brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
-      frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
-      graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
+      thunderbolt: { cooldown: 60, firstReady: 20, size: 2, damage: 20 },
+      vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 1.5 },
+      sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 5 },
+      healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 100 },
+      rockWall: { cooldown: 60, firstReady: 20, size: 1, hp: 200, seconds: 6 },
+      meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 15 },
+      fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 3 },
+      brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },
+      frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 5, factor: 2 },
+      graveRise: { cooldown: 60, firstReady: 20, size: 1, count: 1, minCol: 9 },
     });
+    expect(classicBalance().spells.thunderbolt.damage).toBe(300); // spec 21's starting values, for the rules tests
   });
 
   it('deals two a side in the default setup and none in the classic one', () => {

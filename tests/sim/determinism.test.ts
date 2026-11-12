@@ -526,7 +526,7 @@ describe('crowded moments', () => {
   });
 
   it("a level-2 Walnut Bomb's blast fells all 30 walkers in one step, and a merge aimed at one of them next step finds nothing", () => {
-    const m = new Match(classicConfig(9)); // enough energy for the merge
+    const m = new Match(classicConfig(9), classicBalance()); // enough energy for the merge; phase-1 bounty share
     const nut = spawnUnit(m.state, BALANCE, 'walnutBomb', 2, 3.5);
     checkedStep(m, [merge('plants', 'walnutBomb', nut.id)]);
     expect(nut).toMatchObject({ level: 2, hp: 2400, maxHp: 2400, spent: 150 });
