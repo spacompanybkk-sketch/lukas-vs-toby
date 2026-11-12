@@ -5,7 +5,7 @@ import type { Bot, Skill } from '../ai/bot';
 import { DIFFICULTY, battleConfig, computerTable } from '../ai/difficulty';
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { UNIT_INFO } from '../data/units';
+import { UNIT_INFO, isCard } from '../data/units';
 import { Match } from '../sim/match';
 import { isStanding, statsFor } from '../sim/lookup';
 import { TICKS_PER_SECOND } from '../sim/types';
@@ -101,7 +101,7 @@ export class BattleController {
 
   select(unit: UnitKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
-    if (unit !== null && !this.match.state.config.cards[this.playerFaction].includes(unit)) return;
+    if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
     this.hud.selected.value = unit;
     if (unit !== null) this.hud.shovel.value = false;
   }
@@ -199,6 +199,7 @@ export class BattleController {
   }
 
   private commandFor(unit: UnitKey, tile: Tile, under: Unit | null): Command {
+    if (!isCard(unit)) throw new Error(`"${unit}" is not a card`); // select() only ever keeps a card
     const faction = this.playerFaction;
     if (under !== null && under.faction === faction && under.key === unit) {
       return { type: 'merge', faction, unit, targetId: under.id };

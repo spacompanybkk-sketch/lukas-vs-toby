@@ -16,6 +16,8 @@ import { seconds } from '../data/balance';
 import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
 import { payBounty } from './economy';
 import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
+import { nextRandom } from './rng';
+import { applyStatus, canAct } from './status';
 import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
 import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
 
@@ -23,20 +25,24 @@ type DeathBlast = NonNullable<UnitStats['deathBlast']>;
 
 /**
  * Step stage 4: units attack, in ascending id. Attack timers are only read and reset here;
- * `tickEconomy` counts them down.
+ * `tickEconomy` counts them down. A unit that cannot act (stunned or tied, see `canAct`) does
+ * neither.
  *
  * - Melee: a blocked zombie with its bite ready hits the plant blocking it, or the plant base it
  *   stands at, for `melee.damage` times the damage level curve.
  * - Shots: a unit with its shot ready fires when it has something to shoot. A plant always has
  *   (it fires down an empty lane at the zombie base). A zombie needs a living plant ahead within
- *   range, or the plant base within range (`x <= range`), and never shoots while it is blocked:
- *   it throws on the approach and only bites once it stands at a plant or the base. (`blocked`
- *   comes from the movement stage, so a zombie whose plant fell earlier this tick holds both its
- *   bite and its shot for that one tick.) The projectile appears at the shooter's x and first
- *   moves on the next tick.
+ *   range, or the plant base close enough (`x <= min(range, zombieBaseShotRange)`), and never
+ *   shoots while it is blocked: it throws on the approach and only bites once it stands at a plant
+ *   or the base. (`blocked` comes from the movement stage, so a zombie whose plant fell earlier
+ *   this tick holds both its bite and its shot for that one tick.) The projectile appears at the
+ *   shooter's x and first moves on the next tick.
+ * - Blind: a blind unit attacks on the same schedule, but each bite or shot is only an
+ *   `attackMissed`: no damage, no projectile, no roll of the rng.
  */
 export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
+    if (!canAct(u)) continue;
     const stats = statsFor(b, u.key);
     if (stats.melee && u.blocked && u.meleeTimer === 0) bite(s, b, u, stats.melee, events);
     if (stats.shot && !u.blocked && u.shotTimer === 0) shoot(s, b, u, stats.shot, events);
@@ -46,37 +52,57 @@ export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
 function bite(s: SimState, b: Balance, z: Unit, melee: MeleeStats, events: SimEvent[]): void {
   const amount = melee.damage * levelScale(b, z.faction, z.level, 'damage');
   const plant = nearestEnemyAhead(s, z.faction, z.lane, z.x, melee.reach);
-  if (plant) {
+  if (!plant && z.x > BASE_STOP_X) return; // its plant fell earlier this tick; the bite stays ready for the next one
+  z.meleeTimer = seconds(melee.interval);
+  if (z.blind > 0) {
+    events.push({ type: 'attackMissed', unitId: z.id });
+  } else if (plant) {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: plant.id, targetBase: null });
     damageUnit(s, plant, amount, events);
-  } else if (z.x <= BASE_STOP_X) {
+  } else {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
     damageBase(s, 'plants', amount, z.lane, events);
-  } else {
-    return; // its plant fell earlier this tick; the bite stays ready for the next one
   }
-  z.meleeTimer = seconds(melee.interval);
 }
 
+/**
+ * Fires one shot. A shot with a `status.chance` rolls the state rng once here; on success the
+ * projectile is of kind `status.altKind` and carries the status. A lobbed shot aimed at a unit
+ * remembers it (`targetId`, `targetX`); one with no unit to aim at flies on like a pea.
+ */
 function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEvent[]): void {
   const target = nearestEnemyAhead(s, u.faction, u.lane, u.x, shot.range);
   let targetBase: Faction | null = null;
   if (!target) {
     if (u.faction === 'plants') targetBase = 'zombies';
-    else if (u.x <= shot.range) targetBase = 'plants';
+    else if (u.x <= Math.min(shot.range, b.zombieBaseShotRange)) targetBase = 'plants';
     else return; // a zombie holds its shot until something is in range
   }
+  u.shotTimer = seconds(shot.interval);
+  if (u.blind > 0) {
+    events.push({ type: 'attackMissed', unitId: u.id });
+    return;
+  }
+  let kind = shot.kind;
+  const status = shot.status;
+  if (status?.chance !== undefined && nextRandom(s) < status.chance) kind = status.altKind ?? shot.kind;
+  const flight = shot.flight ?? 'straight';
+  const aimedAt = flight === 'lobbed' ? target : null;
   const p: Projectile = {
-    id: s.nextId, kind: shot.kind, faction: u.faction, lane: u.lane, x: u.x,
+    id: s.nextId, kind, faction: u.faction, lane: u.lane, x: u.x,
     speed: shot.speed / TICKS_PER_SECOND, damage: shot.damage * levelScale(b, u.faction, u.level, 'damage'),
     ownerId: u.id, spawnTick: s.tick,
+    flight, sourceKey: u.key, level: u.level,
+    targetId: aimedAt ? aimedAt.id : null, targetX: aimedAt ? aimedAt.x : null,
+    pierceLeft: flight === 'piercing' ? (shot.pierce ?? 1) : 0, hitIds: [],
+    burning: false,
   };
   s.nextId += 1;
   s.projectiles.push(p);
-  u.shotTimer = seconds(shot.interval);
   events.push({ type: 'unitAttacked', unitId: u.id, attack: 'shot', targetId: target ? target.id : null, targetBase });
   events.push({
     type: 'projectileSpawned', projectileId: p.id, kind: p.kind, faction: p.faction, lane: p.lane, x: p.x, ownerId: u.id,
+    flight: p.flight, targetX: p.targetX,
   });
 }
 
@@ -119,14 +145,26 @@ function biterAtBase(s: SimState, lane: number): Unit | null {
 
 /**
  * Step stage 5: projectiles fly and hit, in ascending id. One fired this tick waits for the next.
+ * Each moves `speed` tiles (plants' right, zombies' left), then by its flight:
  *
- * A projectile moves `speed` tiles (plants' right, zombies' left). The stretch it swept, widened
- * by `hitRadius` past where it ended but never behind where it started, is searched for the
- * living enemy in its lane nearest its starting point. A Skeleton Warrior (any unit with a
- * shield) whose shield is ready blocks a pea and the shield recharges; any other hit deals the
- * projectile's damage. Failing a unit, a plant projectile reaching x >= COLS hits the zombie base
- * for `damage × baseShotFactor` and a zombie projectile reaching x <= 0 hits the plant base for
- * its full damage. A projectile that hits anything is removed.
+ * - straight: the stretch it swept, widened by `hitRadius` past where it ended but never behind
+ *   where it started, is searched for the living enemy in its lane nearest its starting point. A
+ *   Skeleton Warrior (any unit with a shield) whose shield is ready blocks a pea and the shield
+ *   recharges; any other hit deals the projectile's damage. Failing a unit, a plant projectile
+ *   reaching x >= COLS hits the zombie base for `damage × baseShotFactor` and a zombie projectile
+ *   reaching x <= 0 hits the plant base for its full damage. A projectile that hits anything is
+ *   removed.
+ * - lobbed at a unit: while its target stands, `targetX` follows the target's x. Once its own x
+ *   reaches `targetX` it lands there: it damages the target, or if the target fell, the standing
+ *   enemy in the lane nearest the landing point within `hitRadius`, and every other standing enemy
+ *   in the lane within the shot's `splash` of it. It is never blocked by a shield. A lobbed shot
+ *   fired with no unit to aim at flies like a straight one, and lands the same way on what it meets.
+ * - piercing: every living enemy in the swept stretch (as for straight) that it has not hit yet
+ *   takes its damage, nearest first, until it has hit `pierce` units; then it vanishes. Its
+ *   `hitIds` keep it from hitting a unit twice. One with hits left hits a base as a straight one does.
+ *
+ * Whoever a shot damages also gets the status of the shot that fired it, if it carries one (see
+ * `ShotStatus`).
  */
 export function tickProjectiles(s: SimState, b: Balance, events: SimEvent[]): void {
   const flying: Projectile[] = [];
@@ -139,13 +177,68 @@ export function tickProjectiles(s: SimState, b: Balance, events: SimEvent[]): vo
 
 /** Moves one projectile and resolves what it hits. Returns true when it is spent. */
 function fly(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
+  switch (p.flight) {
+    case 'straight':
+      return flyStraight(s, b, p, events);
+    case 'lobbed':
+      return p.targetId === null ? flyStraight(s, b, p, events) : flyLobbed(s, b, p, p.targetId, events);
+    case 'piercing':
+      return flyPiercing(s, b, p, events);
+    default: {
+      const unhandled: never = p.flight;
+      throw new Error(`Unhandled flight ${String(unhandled)}`);
+    }
+  }
+}
+
+function advance(p: Projectile): number {
   const from = p.x;
   p.x = p.faction === 'plants' ? from + p.speed : from - p.speed;
+  return from;
+}
+
+function flyStraight(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
+  const from = advance(p);
   const target = nearestEnemyAhead(s, p.faction, p.lane, from, p.speed + b.hitRadius);
   if (target) {
-    hitUnit(s, b, p, target, events);
+    if (p.flight === 'lobbed') land(s, b, p, target, target.x, events);
+    else hitUnit(s, b, p, target, events);
     return true;
   }
+  return reachBase(s, b, p, events);
+}
+
+function flyLobbed(s: SimState, b: Balance, p: Projectile, targetId: number, events: SimEvent[]): boolean {
+  const target = s.units.find((u) => u.id === targetId && isStanding(u)) ?? null;
+  if (target) p.targetX = target.x;
+  const landAt = p.targetX ?? p.x;
+  advance(p);
+  const arrived = p.faction === 'plants' ? p.x >= landAt : p.x <= landAt;
+  if (!arrived) return false;
+  p.x = landAt;
+  land(s, b, p, target ?? nearestTo(s, p, landAt, b.hitRadius), landAt, events);
+  return true;
+}
+
+function flyPiercing(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
+  const from = advance(p);
+  const reach = p.speed + b.hitRadius;
+  const met = s.units
+    .filter((u) => u.faction !== p.faction && u.lane === p.lane && isStanding(u) && !p.hitIds.includes(u.id))
+    .map((u) => ({ u, distance: p.faction === 'plants' ? u.x - from : from - u.x }))
+    .filter(({ distance }) => distance >= 0 && distance <= reach)
+    .sort((a, c) => a.distance - c.distance || a.u.id - c.u.id);
+  for (const { u } of met) {
+    hitUnit(s, b, p, u, events);
+    p.hitIds.push(u.id);
+    p.pierceLeft -= 1;
+    if (p.pierceLeft <= 0) return true;
+  }
+  return reachBase(s, b, p, events);
+}
+
+/** A projectile past the far edge hits that side's base. Returns true when it did. */
+function reachBase(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
   if (p.faction === 'plants' && p.x >= COLS) {
     hitBase(s, p, 'zombies', COLS, p.damage * b.baseShotFactor, events);
     return true;
@@ -157,25 +250,72 @@ function fly(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolea
   return false;
 }
 
+/** The standing enemy of `p` in its lane nearest `x`, within `radius`; ties go to the lower id. */
+function nearestTo(s: SimState, p: Projectile, x: number, radius: number): Unit | null {
+  let nearest: Unit | null = null;
+  let nearestDistance = 0;
+  for (const u of s.units) {
+    if (u.faction === p.faction || u.lane !== p.lane || !isStanding(u)) continue;
+    const distance = Math.abs(u.x - x);
+    if (distance > radius) continue;
+    if (nearest === null || distance < nearestDistance) {
+      nearest = u;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+/** A lobbed shot comes down at `x` on `primary` (or on nobody) and splashes the rest of the lane. */
+function land(s: SimState, b: Balance, p: Projectile, primary: Unit | null, x: number, events: SimEvent[]): void {
+  events.push({
+    type: 'projectileHit', projectileId: p.id, lane: p.lane, x,
+    targetId: primary ? primary.id : null, targetBase: null, blocked: false, burning: p.burning,
+  });
+  if (primary) wound(s, b, p, primary, events);
+  const splash = b.units[p.sourceKey]?.shot?.splash ?? 0;
+  if (!(splash > 0)) return;
+  for (const u of s.units) {
+    if (u === primary || u.faction === p.faction || u.lane !== p.lane || !isStanding(u)) continue;
+    if (Math.abs(u.x - x) <= splash) wound(s, b, p, u, events);
+  }
+}
+
 function hitUnit(s: SimState, b: Balance, p: Projectile, target: Unit, events: SimEvent[]): void {
   const shield = statsFor(b, target.key).shield;
   const blocked = shield !== undefined && p.kind === 'pea' && target.abilityTimer === 0;
   events.push({
     type: 'projectileHit', projectileId: p.id, lane: p.lane, x: target.x,
-    targetId: target.id, targetBase: null, blocked,
+    targetId: target.id, targetBase: null, blocked, burning: p.burning,
   });
   if (blocked) target.abilityTimer = seconds(shield.interval);
-  else damageUnit(s, target, p.damage, events);
+  else wound(s, b, p, target, events);
+}
+
+/** The projectile's damage, then the status its shot carries, if any (see `ShotStatus`). */
+function wound(s: SimState, b: Balance, p: Projectile, u: Unit, events: SimEvent[]): void {
+  damageUnit(s, u, p.damage, events);
+  const status = b.units[p.sourceKey]?.shot?.status;
+  if (!status) return;
+  if (status.chance !== undefined && p.kind !== status.altKind) return; // this one did not roll it
+  const dps = (status.dps ?? 0) * levelScale(b, p.faction, p.level, 'special');
+  applyStatus(s, u, status.kind, seconds(status.seconds), dps, p.ownerId, events);
 }
 
 function hitBase(s: SimState, p: Projectile, side: Faction, x: number, amount: number, events: SimEvent[]): void {
-  events.push({ type: 'projectileHit', projectileId: p.id, lane: p.lane, x, targetId: null, targetBase: side, blocked: false });
+  events.push({
+    type: 'projectileHit', projectileId: p.id, lane: p.lane, x, targetId: null, targetBase: side, blocked: false,
+    burning: p.burning,
+  });
   damageBase(s, side, amount, p.lane, events);
 }
 
-/** Takes `amount` less the unit's armor off its health, at least 1, and reports it. */
-export function damageUnit(s: SimState, u: Unit, amount: number, events: SimEvent[]): void {
-  const dealt = Math.max(1, amount - u.armor);
+/**
+ * Takes `amount` less the unit's armor off its health, at least 1, and reports it. With
+ * `ignoreArmor` (poison, burn) the armor takes nothing off.
+ */
+export function damageUnit(s: SimState, u: Unit, amount: number, events: SimEvent[], ignoreArmor = false): void {
+  const dealt = Math.max(1, amount - (ignoreArmor ? 0 : u.armor));
   u.hp -= dealt;
   events.push({ type: 'unitDamaged', unitId: u.id, amount: dealt, hp: u.hp });
 }

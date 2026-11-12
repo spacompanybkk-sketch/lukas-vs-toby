@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, seconds } from '../../src/data/balance';
+import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { PHASE1_CARDS, PLANT_KEYS, ZOMBIE_KEYS } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import { nextRandom, randomInt } from '../../src/sim/rng';
 import { BASE_STOP_X, COLS, LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import type {
-  Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, UnitKey,
+  CardKey, Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState,
 } from '../../src/sim/types';
-import { classicConfig, eventsOf, merge, remove, withBaseDefense } from './helpers';
+import { classicBalance, classicConfig, eventsOf, merge, remove, withBaseDefense } from './helpers';
 
 /**
  * Review Focus 5: crowded and simultaneous moments, and determinism.
@@ -30,7 +30,7 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
 
 type Rng = { rng: number };
 
-const ALL_KEYS: readonly UnitKey[] = [...PLANT_KEYS, ...ZOMBIE_KEYS];
+const ALL_KEYS: readonly CardKey[] = [...PLANT_KEYS, ...ZOMBIE_KEYS];
 const BAD_LANES: readonly number[] = [-1, LANES, 2.5, Number.NaN];
 const BAD_COLS: readonly number[] = [-1, PLANT_COLS, COLS - 1, 3.5, Number.NaN, Number.POSITIVE_INFINITY];
 const IMPOSSIBLE_IDS: readonly number[] = [0, -1, 1.5, Number.NaN];
@@ -46,7 +46,7 @@ function otherSide(f: Faction): Faction {
 }
 
 /** Mostly the side's own cards; sometimes the other side's, or one that is in no hand. */
-function pickUnit(r: Rng, faction: Faction): UnitKey {
+function pickUnit(r: Rng, faction: Faction): CardKey {
   const roll = randomInt(r, 10);
   if (roll < 8) return pick(r, PHASE1_CARDS[faction]);
   if (roll < 9) return pick(r, PHASE1_CARDS[otherSide(faction)]);
@@ -85,7 +85,7 @@ function ownMerge(r: Rng, s: Readonly<SimState>, faction: Faction): Command | nu
   if (randomInt(r, 2) === 0) {
     for (const u of own) if (u.level > target.level || (u.level === target.level && u.id < target.id)) target = u;
   }
-  return merge(faction, target.key, target.id);
+  return merge(faction, target.key as CardKey, target.id); // a Bone Minion is refused, as a player's would be
 }
 
 function randomCommand(r: Rng, s: Readonly<SimState>): Command {
@@ -552,5 +552,47 @@ describe('crowded moments', () => {
     // Nothing was spent: energy only grew by the trickle.
     expect(m.state.players.plants.energy).toBeGreaterThanOrEqual(energy.plants);
     expect(m.state.players.zombies.energy).toBeGreaterThanOrEqual(energy.zombies);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Phase 2: statuses and flights survive a snapshot
+
+describe('snapshot and restore mid-flight and mid-poison (review focus 2)', () => {
+  it('a 3-unit match with a lobbed shot in flight and a poisoned unit, restored at tick 40, reaches the unbroken hash at tick 400', () => {
+    const balance = cloneBalance(classicBalance());
+    balance.units.kernelPult = { // synthetic until Task 2: a poisoning lob
+      recharge: 5, hp: 300, armor: 0, speed: 0,
+      shot: {
+        kind: 'kernel', damage: 12, interval: 1, range: 10, speed: 6, flight: 'lobbed', splash: 0.5,
+        status: { kind: 'poison', seconds: 20, dps: 3 },
+      },
+    };
+    const unbroken = new Match(classicConfig(5, balance), balance);
+    const pult = spawnUnit(unbroken.state, balance, 'kernelPult', 2, 0.5);
+    const eater = spawnUnit(unbroken.state, balance, 'brainEater', 2, 5);
+    spawnUnit(unbroken.state, balance, 'skeletonWarrior', 2, 9.5);
+    pult.shotTimer = 0;
+
+    for (let i = 0; i < 40; i++) checkedStep(unbroken);
+    expect(unbroken.state.tick).toBe(40);
+    const inFlight = unbroken.state.projectiles.filter((p) => p.flight === 'lobbed' && p.targetId !== null);
+    expect(inFlight).toHaveLength(1);
+    expect(eater.poison).toBeGreaterThan(0);
+    expect(eater.poisonDps).toBe(3);
+    const snapshot = unbroken.snapshot();
+
+    const restored = Match.restore(snapshot, balance);
+    expect(restored.hash()).toBe(unbroken.hash());
+    for (let i = 0; i < 360; i++) {
+      checkedStep(unbroken);
+      restored.step();
+    }
+
+    expect(unbroken.state.tick).toBe(400);
+    expect(restored.hash()).toBe(unbroken.hash());
+    expect(restored.state).toEqual(unbroken.state);
+    // The poison really ran across the snapshot: the Brain Eater lost health to it after tick 40.
+    expect(eater.hp).toBeLessThan(400);
   });
 });

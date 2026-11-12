@@ -16,7 +16,10 @@ export type { ProjectileKind };
 export type TokenKind = 'sun' | 'brain';
 
 /** Edge of a projectile, in tiles (art bible section 6: at least 0.2). */
-export const PROJECTILE_SIZE: Record<ProjectileKind, number> = { pea: 0.22, brain: 0.26 };
+export const PROJECTILE_SIZE: Record<ProjectileKind, number> = {
+  pea: 0.22, brain: 0.26, // the phase-2 kinds borrow the pea's (plants) or the brain's (zombies) until they get their own
+  kernel: 0.22, butter: 0.22, mango: 0.22, sand: 0.26, arrow: 0.26, bullet: 0.26, trident: 0.26, rot: 0.26,
+};
 /** Emissive intensity of a token: past the bloom threshold, so it glows. */
 export const TOKEN_GLOW = 2;
 

@@ -1,5 +1,6 @@
 import type { Balance } from '../data/balance';
 import { nearestEnemyAhead, statsFor } from './lookup';
+import { canAct } from './status';
 import { BASE_STOP_X, TICKS_PER_SECOND } from './types';
 import type { SimState } from './types';
 
@@ -12,6 +13,10 @@ import type { SimState } from './types';
  * speed / 30 tiles left, never past BASE_STOP_X. One that walks into reach is blocked from the
  * next tick. Shooting plays no part here: a zombie throws while it walks, and `tickAttacks`
  * reads `blocked` to keep a blocked zombie to its bite.
+ *
+ * Two more things keep a zombie where it is without making it `blocked`: it cannot act (stunned or
+ * tied, see `canAct`), or it `holds` and a standing plant is ahead within `holdRange`, or its
+ * shot's range when it has no `holdRange`, so it stays and shoots.
  */
 export function tickMovement(s: SimState, b: Balance): void {
   for (const z of s.units) {
@@ -19,6 +24,11 @@ export function tickMovement(s: SimState, b: Balance): void {
     const stats = statsFor(b, z.key);
     const reach = stats.melee?.reach ?? 0;
     z.blocked = z.x <= BASE_STOP_X || nearestEnemyAhead(s, z.faction, z.lane, z.x, reach) !== null;
-    if (!z.blocked) z.x = Math.max(BASE_STOP_X, z.x - stats.speed / TICKS_PER_SECOND);
+    if (z.blocked || !canAct(z)) continue;
+    if (stats.holds) {
+      const holdRange = stats.holdRange ?? stats.shot?.range ?? 0;
+      if (nearestEnemyAhead(s, z.faction, z.lane, z.x, holdRange) !== null) continue;
+    }
+    z.x = Math.max(BASE_STOP_X, z.x - stats.speed / TICKS_PER_SECOND);
   }
 }

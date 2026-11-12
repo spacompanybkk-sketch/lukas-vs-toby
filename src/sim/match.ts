@@ -1,15 +1,17 @@
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
+import { PHASE1_CARDS, UNIT_INFO, factionOf, priceOf } from '../data/units';
+import type { UnitInfo } from '../data/units';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { restoreState, hashState, snapshotState } from './hash';
 import { isStanding, levelScale, statsFor } from './lookup';
 import { tickMovement } from './movement';
+import { tickStatuses } from './status';
 import { LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
-  Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit, UnitKey,
+  CardKey, Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit, UnitKey,
 } from './types';
 
 type PlaceCommand = Extract<Command, { type: 'place' }>;
@@ -41,24 +43,28 @@ function cloneConfig(c: MatchConfig): MatchConfig {
 
 /**
  * Creates a level-1 unit and adds it to the state. It checks no placement rule and charges
- * nobody: `Match.place` does both of those first, and tests use this to set a scene.
+ * nobody: `Match.place` does both of those first, and tests use this to set a scene. A card's
+ * `spent` is its price; a unit that is not a card (the Bone Minion) has spent nothing. It starts
+ * with no status, no stacks and no owner.
  */
 export function spawnUnit(
   s: SimState, b: Balance, key: UnitKey, lane: number, x: number, events?: SimEvent[],
 ): Unit {
   const stats = statsFor(b, key);
-  const info = UNIT_INFO[key];
+  const faction = factionOf(key);
   const unit: Unit = {
-    id: s.nextId, key, faction: info.faction, lane, x, level: 1,
-    hp: stats.hp, maxHp: stats.hp, spent: info.price, armor: stats.armor,
+    id: s.nextId, key, faction, lane, x, level: 1,
+    hp: stats.hp, maxHp: stats.hp, spent: priceOf(key), armor: stats.armor,
     meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
     shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
     abilityTimer: stats.sun ? seconds(stats.sun.interval) : 0, // a shield is ready from the start
     blocked: false,
+    stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0,
+    stacks: 0, ownerId: null,
   };
   s.nextId += 1;
   s.units.push(unit);
-  events?.push({ type: 'unitSpawned', unitId: unit.id, key, faction: info.faction, lane, x });
+  events?.push({ type: 'unitSpawned', unitId: unit.id, key, faction, lane, x });
   return unit;
 }
 
@@ -72,7 +78,7 @@ export class Match {
     this.balance = balance;
     this.state = {
       tick: 0, rng: own.seed >>> 0, nextId: 1,
-      units: [], projectiles: [],
+      units: [], projectiles: [], hazards: [],
       players: {
         plants: { energy: own.startEnergy.plants, carry: 0, recharge: {} },
         zombies: { energy: own.startEnergy.zombies, carry: 0, recharge: {} },
@@ -121,8 +127,8 @@ export class Match {
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
-   * commands, economy, movement, attacks, the plant base's defence, projectiles, deaths, endgame,
-   * then the tick count.
+   * commands, economy, movement, attacks, the plant base's defence, projectiles, statuses, deaths,
+   * endgame, then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
   step(commands: readonly Command[] = []): SimEvent[] {
@@ -158,6 +164,7 @@ export class Match {
     tickAttacks(s, b, events);
     tickBaseDefense(s, b, events);
     tickProjectiles(s, b, events);
+    tickStatuses(s, b, events);
     resolveDeaths(s, b, events);
     tickEndgame(s, b, events);
     s.tick += 1;
@@ -206,15 +213,17 @@ export class Match {
   }
 
   /** `wrong-side` and `not-in-hand`: may this side play this card at all? */
-  private checkCard(faction: Faction, unit: UnitKey): CommandRejection | null {
-    if (UNIT_INFO[unit].faction !== faction) return 'wrong-side';
+  private checkCard(faction: Faction, unit: CardKey): CommandRejection | null {
+    const info = UNIT_INFO[unit] as UnitInfo | undefined; // a command from outside may name a unit that is not a card
+    if (info === undefined) return 'not-in-hand';
+    if (info.faction !== faction) return 'wrong-side';
     // A card with no numbers in the balance table cannot be played, so it is not really in the hand.
     const inHand = this.state.config.cards[faction].includes(unit) && this.balance.units[unit] !== undefined;
     return inHand ? null : 'not-in-hand';
   }
 
   /** `recharging` and `no-energy`: can this side pay for this card now? */
-  private checkPayment(faction: Faction, unit: UnitKey): CommandRejection | null {
+  private checkPayment(faction: Faction, unit: CardKey): CommandRejection | null {
     const player = this.state.players[faction];
     if ((player.recharge[unit] ?? 0) > 0) return 'recharging';
     if (player.energy < UNIT_INFO[unit].price) return 'no-energy';
@@ -227,7 +236,7 @@ export class Match {
   }
 
   /** Pays a card's price and starts its recharge. */
-  private payFor(faction: Faction, unit: UnitKey): void {
+  private payFor(faction: Faction, unit: CardKey): void {
     const player = this.state.players[faction];
     player.energy -= UNIT_INFO[unit].price;
     player.recharge[unit] = seconds(statsFor(this.balance, unit).recharge);

@@ -4,11 +4,12 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 841 bytes). Before the base
- * defence timers were added it was 1810640202 over 793 bytes; the same separate implementation
- * reproduces that value without the timers.
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1174 bytes). Re-pinned once in
+ * phase 2, Task 1, when units gained statuses, stacks and an owner, projectiles their flight
+ * fields, and the state its hazards. Before that it was 3642874464 over 841 bytes, and before the
+ * base defence timers were added 1810640202 over 793 bytes.
  */
-const GOLDEN_HASH = 3642874464;
+const GOLDEN_HASH = 628692134;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -20,14 +21,23 @@ function makeState(): SimState {
       {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, blocked: false,
+        stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, blocked: true,
+        stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
       },
     ],
     projectiles: [
-      { id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1, spawnTick: 118 },
+      {
+        id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1, spawnTick: 118,
+        flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25,
+        pierceLeft: 2, hitIds: [2], burning: true,
+      },
+    ],
+    hazards: [
+      { id: 2, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15 },
     ],
     players: {
       plants: { energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 } },
@@ -124,6 +134,51 @@ describe('hashState', () => {
     ['config incomeMultiplier', (s) => { s.config.incomeMultiplier.zombies = 1.5; }],
     ['config suddenDeath', (s) => { s.config.suddenDeath = false; }],
     ['unit array order', (s) => { s.units.reverse(); }],
+    // The phase-1 fields the table above left out.
+    ['a unit id', (s) => { unit(s, 0).id = 2; }],
+    ['a projectile id', (s) => { s.projectiles[0]!.id += 1; }],
+    ['a projectile faction', (s) => { s.projectiles[0]!.faction = 'zombies'; }],
+    ['a projectile lane', (s) => { s.projectiles[0]!.lane = 3; }],
+    ['a projectile speed', (s) => { s.projectiles[0]!.speed = 0.25; }],
+    ['players.zombies.energy', (s) => { s.players.zombies.energy += 1; }],
+    ['baseMaxHp.plants', (s) => { s.baseMaxHp.plants += 1; }],
+    ['config.baseHp.zombies', (s) => { s.config.baseHp.zombies += 1; }],
+    ['config.startEnergy.plants', (s) => { s.config.startEnergy.plants += 1; }],
+    ['config.incomeMultiplier.plants', (s) => { s.config.incomeMultiplier.plants = 2; }],
+    // The phase-2 unit fields.
+    ['a unit stun', (s) => { unit(s, 1).stun -= 1; }],
+    ['a unit blind', (s) => { unit(s, 0).blind -= 1; }],
+    ['a unit tied', (s) => { unit(s, 1).tied -= 1; }],
+    ['a unit poison', (s) => { unit(s, 1).poison -= 1; }],
+    ['a unit poisonDps', (s) => { unit(s, 1).poisonDps += 1; }],
+    ['a unit burn', (s) => { unit(s, 0).burn -= 1; }],
+    ['a unit burnDps', (s) => { unit(s, 0).burnDps += 1; }],
+    ['a unit stacks', (s) => { unit(s, 1).stacks += 1; }],
+    ['a unit ownerId', (s) => { unit(s, 1).ownerId = 8; }],
+    ['a unit ownerId null versus 0', (s) => { unit(s, 0).ownerId = 0; }],
+    ['a unit ownerId set to null', (s) => { unit(s, 1).ownerId = null; }],
+    // The phase-2 projectile fields.
+    ['a projectile flight', (s) => { s.projectiles[0]!.flight = 'lobbed'; }],
+    ['a projectile sourceKey', (s) => { s.projectiles[0]!.sourceKey = 'kernelPult'; }],
+    ['a projectile level', (s) => { s.projectiles[0]!.level = 3; }],
+    ['a projectile targetId', (s) => { s.projectiles[0]!.targetId = 1; }],
+    ['a projectile targetId null', (s) => { s.projectiles[0]!.targetId = null; }],
+    ['a projectile targetX', (s) => { s.projectiles[0]!.targetX = 6.5; }],
+    ['a projectile targetX null', (s) => { s.projectiles[0]!.targetX = null; }],
+    ['a projectile pierceLeft', (s) => { s.projectiles[0]!.pierceLeft = 1; }],
+    ['a projectile hitIds entry', (s) => { s.projectiles[0]!.hitIds = [3]; }],
+    ['the number of projectile hitIds', (s) => { s.projectiles[0]!.hitIds.push(3); }],
+    ['a projectile burning flag', (s) => { s.projectiles[0]!.burning = false; }],
+    // Hazards.
+    ['hazard count', (s) => { s.hazards.pop(); }],
+    ['a hazard id', (s) => { s.hazards[0]!.id = 6; }],
+    ['a hazard kind', (s) => { (s.hazards[0] as { kind: string }).kind = 'mud'; }],
+    ['a hazard faction', (s) => { s.hazards[0]!.faction = 'plants'; }],
+    ['a hazard lane', (s) => { s.hazards[0]!.lane = 2; }],
+    ['a hazard x', (s) => { s.hazards[0]!.x += 0.001; }],
+    ['a hazard radius', (s) => { s.hazards[0]!.radius = 1; }],
+    ['a hazard ticksLeft', (s) => { s.hazards[0]!.ticksLeft -= 1; }],
+    ['a hazard dps', (s) => { s.hazards[0]!.dps += 1; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -193,6 +248,26 @@ describe('snapshotState / restoreState', () => {
     expected.baseDefenseTimers = [0, 0, 0, 0, 0];
     expect(restored).toEqual(expected);
     expect(hashState(restored)).toBe(hashState(expected));
+  });
+
+  it('round-trips every status, the flight fields of a projectile and the hazards', () => {
+    const s = makeState();
+    const restored = restoreState(snapshotState(s));
+    expect(restored.units[0]).toMatchObject({ blind: 15, burn: 40, burnDps: 10, ownerId: null });
+    expect(restored.units[1]).toMatchObject({ stun: 20, tied: 7, poison: 60, poisonDps: 15, stacks: 2, ownerId: 9 });
+    expect(restored.projectiles[0]).toMatchObject({
+      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true,
+    });
+    expect(restored.hazards).toEqual(s.hazards);
+    expect(restored.hazards).not.toBe(s.hazards);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
+  });
+
+  const topLevelKeys = Object.keys(makeState()).filter((key) => key !== 'baseDefenseTimers');
+  it.each(topLevelKeys)('refuses a snapshot with no %s', (key) => {
+    const old = JSON.parse(snapshotState(makeState())) as Record<string, unknown>;
+    delete old[key];
+    expect(() => restoreState(JSON.stringify(old))).toThrow(key);
   });
 
   it('round-trips a finished match', () => {

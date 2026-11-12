@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance, UnitStats } from '../../src/data/balance';
-import { PHASE1_CARDS, UNIT_INFO } from '../../src/data/units';
+import { ALL_CARDS, PHASE1_CARDS, UNIT_INFO, factionOf } from '../../src/data/units';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../../src/sim/types';
-import type { Faction, UnitKey } from '../../src/sim/types';
+import type { Faction, ProjectileKind, UnitKey } from '../../src/sim/types';
 
 // These tests check the shape and sanity of the table, never the tuned values themselves,
 // so retuning BALANCE does not mean editing this file.
 
 const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
+const PROJECTILE_KINDS: readonly ProjectileKind[] = [
+  'pea', 'brain', 'kernel', 'butter', 'mango', 'sand', 'arrow', 'bullet', 'trident', 'rot',
+];
 
 function entries(): Array<[UnitKey, UnitStats]> {
   return (Object.keys(BALANCE.units) as UnitKey[]).map((key) => {
@@ -45,7 +48,7 @@ describe('BALANCE units', () => {
   });
 
   it('only describes units that exist in the roster', () => {
-    for (const [key] of entries()) expect(UNIT_INFO[key], key).toBeDefined();
+    for (const [key] of entries()) expect([...ALL_CARDS.plants, ...ALL_CARDS.zombies, 'boneMinion'], key).toContain(key);
   });
 
   it('gives every unit positive health and recharge, and non-negative speed and armor', () => {
@@ -60,7 +63,7 @@ describe('BALANCE units', () => {
 
   it('keeps plants still and sets zombies walking', () => {
     for (const [key, stats] of entries()) {
-      if (UNIT_INFO[key].faction === 'plants') expect(stats.speed, key).toBe(0);
+      if (factionOf(key) === 'plants') expect(stats.speed, key).toBe(0);
       else expect(stats.speed, key).toBeGreaterThan(0);
     }
   });
@@ -73,11 +76,50 @@ describe('BALANCE units', () => {
         expect(seconds(stats.melee.interval), `${key} melee interval`).toBeGreaterThanOrEqual(1);
       }
       if (stats.shot) {
-        expect(['pea', 'brain'], `${key} shot kind`).toContain(stats.shot.kind);
+        expect(PROJECTILE_KINDS, `${key} shot kind`).toContain(stats.shot.kind);
         expect(stats.shot.damage, `${key} shot damage`).toBeGreaterThan(0);
         expect(stats.shot.range, `${key} shot range`).toBeGreaterThan(0);
         expect(stats.shot.speed, `${key} shot speed`).toBeGreaterThan(0);
         expect(seconds(stats.shot.interval), `${key} shot interval`).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
+  it('has sensible flights: splash only when lobbed, pierce of at least 1 only when piercing', () => {
+    for (const [key, stats] of entries()) {
+      const shot = stats.shot;
+      if (!shot) continue;
+      expect(['straight', 'lobbed', 'piercing'], `${key} flight`).toContain(shot.flight ?? 'straight');
+      if (shot.splash !== undefined) {
+        expect(shot.flight, `${key} splash needs a lobbed flight`).toBe('lobbed');
+        expect(shot.splash, `${key} splash`).toBeGreaterThanOrEqual(0);
+      }
+      if (shot.flight === 'piercing') expect(shot.pierce ?? 1, `${key} pierce`).toBeGreaterThanOrEqual(1);
+      else expect(shot.pierce, `${key} pierce needs a piercing flight`).toBeUndefined();
+    }
+  });
+
+  it('has sensible shot statuses: at least a tick long, a chance is a fraction and names the altKind it fires as', () => {
+    for (const [key, stats] of entries()) {
+      const status = stats.shot?.status;
+      if (!status) continue;
+      expect(seconds(status.seconds), `${key} status length`).toBeGreaterThanOrEqual(1);
+      expect(status.dps ?? 0, `${key} status dps`).toBeGreaterThanOrEqual(0);
+      if (status.chance !== undefined) {
+        expect(status.chance, `${key} chance`).toBeGreaterThan(0);
+        expect(status.chance, `${key} chance`).toBeLessThanOrEqual(1);
+        expect(PROJECTILE_KINDS, `${key} altKind`).toContain(status.altKind);
+        expect(status.altKind, `${key} altKind differs from the plain kind`).not.toBe(stats.shot?.kind);
+      }
+    }
+  });
+
+  it('gives holdRange only to a zombie that holds', () => {
+    for (const [key, stats] of entries()) {
+      if (stats.holds || stats.holdRange !== undefined) expect(factionOf(key), key).toBe('zombies');
+      if (stats.holdRange !== undefined) {
+        expect(stats.holds, `${key} holds`).toBe(true);
+        expect(stats.holdRange, `${key} holdRange`).toBeGreaterThan(0);
       }
     }
   });
@@ -128,6 +170,7 @@ describe('BALANCE globals', () => {
     expect(BALANCE.startEnergy).toBeGreaterThan(0);
     expect(Number.isInteger(BALANCE.baseHp)).toBe(true);
     expect(BALANCE.baseHp).toBeGreaterThan(0);
+    expect(BALANCE.zombieBaseShotRange).toBeGreaterThan(0);
   });
 
   it('has a sudden death that starts after the start and grows', () => {

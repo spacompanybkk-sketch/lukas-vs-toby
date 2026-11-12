@@ -1,8 +1,9 @@
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { levelScale } from './lookup';
+import { canAct } from './status';
 import { TICKS_PER_SECOND } from './types';
-import type { Faction, SimEvent, SimState, Unit, UnitKey } from './types';
+import type { CardKey, Faction, SimEvent, SimState, Unit } from './types';
 
 /** Income is counted in 1/30000 of an energy per tick; this much carry buys one whole energy. */
 const CARRY_PER_ENERGY = TICKS_PER_SECOND * 1000;
@@ -11,10 +12,11 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
 
 /**
  * One tick of the economy, in this order:
- * (a) every timer counts down, never below 0 (the only place any timer does): each unit's attack
- *     and ability timers, each card's recharge, and the plant base's defence timer in each lane;
+ * (a) every timer counts down, never below 0 (the only place any of these do; statuses count down
+ *     in `tickStatuses`): each unit's attack and ability timers, unless the unit cannot act (see
+ *     `canAct`), each card's recharge, and the plant base's defence timer in each lane;
  * (b) trickle income is added to each side's carry and paid out in whole energy;
- * (c) every ready Sunflower pays.
+ * (c) every ready Sunflower that can act pays.
  */
 export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
   countDownTimers(s);
@@ -24,13 +26,14 @@ export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
 
 function countDownTimers(s: SimState): void {
   for (const u of s.units) {
+    if (!canAct(u)) continue;
     u.meleeTimer = Math.max(0, u.meleeTimer - 1);
     u.shotTimer = Math.max(0, u.shotTimer - 1);
     u.abilityTimer = Math.max(0, u.abilityTimer - 1);
   }
   for (const faction of FACTIONS) {
     const recharge = s.players[faction].recharge;
-    for (const key of Object.keys(recharge) as UnitKey[]) {
+    for (const key of Object.keys(recharge) as CardKey[]) {
       recharge[key] = Math.max(0, (recharge[key] ?? 0) - 1);
     }
   }
@@ -54,7 +57,7 @@ function payTrickle(s: SimState, b: Balance): void {
 function paySunflowers(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
     const sun = b.units[u.key]?.sun;
-    if (!sun || u.abilityTimer > 0) continue;
+    if (!sun || u.abilityTimer > 0 || !canAct(u)) continue;
     const amount = Math.round(sun.amount * levelScale(b, u.faction, u.level, 'special')); // keeps energy whole if a tuned table is fractional
     s.players[u.faction].energy += amount;
     u.abilityTimer = seconds(sun.interval);

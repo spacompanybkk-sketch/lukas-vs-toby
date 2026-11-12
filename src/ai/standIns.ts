@@ -20,7 +20,7 @@ import { isStanding } from '../sim/lookup';
 import type { Match } from '../sim/match';
 import { randomInt } from '../sim/rng';
 import { LANES, MAX_LEVEL, PLANT_COLS } from '../sim/types';
-import type { Command, Faction, UnitKey } from '../sim/types';
+import type { Command, Faction, CardKey } from '../sim/types';
 import type { Bot } from './bot';
 import { mergeCommand, placeCommand, sendCommand } from './lawn';
 import type { BotRng } from './lawn';
@@ -40,7 +40,7 @@ function rngFor(seed: number, salt: number, faction: Faction): BotRng {
 }
 
 /** One placement of `unit` into `lane`: zombies are sent, a plant goes on the rearmost free tile. */
-function placeIn(match: Match, faction: Faction, unit: UnitKey, lane: number): Command | null {
+function placeIn(match: Match, faction: Faction, unit: CardKey, lane: number): Command | null {
   if (faction === 'zombies') return sendCommand(unit, lane);
   for (let col = 0; col < PLANT_COLS; col++) {
     const cmd = placeCommand(faction, unit, lane, col);
@@ -50,7 +50,7 @@ function placeIn(match: Match, faction: Faction, unit: UnitKey, lane: number): C
 }
 
 /** The first lane, from a random start, where `unit` can be placed right now. */
-function placeAnywhere(match: Match, faction: Faction, unit: UnitKey, rng: BotRng): Command | null {
+function placeAnywhere(match: Match, faction: Faction, unit: CardKey, rng: BotRng): Command | null {
   const start = randomInt(rng, LANES);
   for (let i = 0; i < LANES; i++) {
     const cmd = placeIn(match, faction, unit, (start + i) % LANES);
@@ -60,7 +60,7 @@ function placeAnywhere(match: Match, faction: Faction, unit: UnitKey, rng: BotRn
 }
 
 /** Plays `unit` whenever it can, into a random lane. */
-export function createSpamBot(faction: Faction, unit: UnitKey, seed: number, every = SPAM_EVERY): Bot {
+export function createSpamBot(faction: Faction, unit: CardKey, seed: number, every = SPAM_EVERY): Bot {
   const rng = rngFor(seed, SALT.spam, faction);
   return {
     faction,
@@ -73,7 +73,7 @@ export function createSpamBot(faction: Faction, unit: UnitKey, seed: number, eve
 }
 
 /** Puts every copy of `unit` it can afford into one unit (see the note at the top). */
-export function createMergeSpamBot(faction: Faction, unit: UnitKey, seed: number, every = SPAM_EVERY): Bot {
+export function createMergeSpamBot(faction: Faction, unit: CardKey, seed: number, every = SPAM_EVERY): Bot {
   const rng = rngFor(seed, SALT.merge, faction);
   return {
     faction,

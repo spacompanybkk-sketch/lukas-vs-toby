@@ -35,6 +35,7 @@ function peaAtZombieBase(m: Match, lane = 0): void {
   const p: Projectile = {
     id: m.state.nextId, kind: 'pea', faction: 'plants', lane, x: 9.9, speed: 0.2, damage: 20,
     ownerId: 0, spawnTick: m.state.tick - 1,
+    flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false,
   };
   m.state.nextId += 1;
   m.state.projectiles.push(p);

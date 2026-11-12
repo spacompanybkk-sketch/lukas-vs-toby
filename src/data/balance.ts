@@ -1,11 +1,26 @@
 import { TICKS_PER_SECOND } from '../sim/types';
-import type { Faction, ProjectileKind, UnitKey } from '../sim/types';
+import type { Faction, Flight, ProjectileKind, StatusKind, UnitKey } from '../sim/types';
 
 /** A close-range attack. Interval in seconds, reach in tiles. */
 export interface MeleeStats { damage: number; interval: number; reach: number }
 
+/**
+ * What a shot does to whomever it damages: `kind` for `seconds`, with `dps` damage a second for
+ * poison and burn (times the shooter's special level curve). With `chance`, only that share of
+ * shots carries it, rolled on the state rng at firing; a shot that does is of kind `altKind`
+ * (Kernel-pult butter), and only a shot of that kind carries the status, so `chance` needs `altKind`.
+ */
+export interface ShotStatus { kind: StatusKind; seconds: number; dps?: number; chance?: number; altKind?: ProjectileKind }
+
 /** A ranged attack. Interval in seconds, range in tiles, speed in tiles per second. */
-export interface ShotStats { kind: ProjectileKind; damage: number; interval: number; range: number; speed: number }
+export interface ShotStats {
+  kind: ProjectileKind; damage: number; interval: number; range: number; speed: number;
+  flight?: Flight; // default 'straight'
+  splash?: number; // lobbed: radius hit at landing (0 = the target only)
+  pierce?: number; // piercing: units passed through
+  status?: ShotStatus;
+  puddle?: { seconds: number; radius: number; dps: number }; // left where a lobbed shot lands
+}
 
 export interface UnitStats {
   recharge: number; hp: number; armor: number; speed: number; // seconds, tiles/s
@@ -13,6 +28,11 @@ export interface UnitStats {
   sun?: { amount: number; interval: number };
   deathBlast?: { damage: number; radius: number };
   shield?: { interval: number };
+  /**
+   * A zombie that holds keeps its distance: while a standing plant is ahead within
+   * `holdRange ?? shot.range` it does not walk. It is not `blocked` by that, so it still shoots.
+   */
+  holds?: boolean; holdRange?: number;
 }
 
 /** Every tunable number of the game. The simulation reads these and nothing else. */
@@ -44,6 +64,8 @@ export interface Balance {
    * every `interval` seconds. Damage 0 switches it off.
    */
   baseDefense: { damage: number; interval: number };
+  /** A zombie shoots the plant base only from this close (x <= this), whatever its shot's range. */
+  zombieBaseShotRange: number;
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -118,6 +140,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   startEnergy: 190,
   baseHp: 7000,
   baseDefense: { damage: 100, interval: 2 },
+  zombieBaseShotRange: 3.5,
 });
 
 /** Seconds to whole ticks. */

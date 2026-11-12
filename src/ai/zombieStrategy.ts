@@ -21,7 +21,7 @@
 import type { Balance } from '../data/balance';
 import type { Match } from '../sim/match';
 import { MAX_LEVEL } from '../sim/types';
-import type { Command, Unit, UnitKey } from '../sim/types';
+import type { Command, Unit, CardKey } from '../sim/types';
 import { reckonLane } from './laneModel';
 import { laneOf, mergeCommand, readLawn, sendCommand, shuffledLanes } from './lawn';
 import type { BotRng, LaneView } from './lawn';
@@ -132,7 +132,7 @@ function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng): LaneVi
   return best ?? fallback;
 }
 
-function cardFor(view: LaneView, plan: ZombiePlan): UnitKey {
+function cardFor(view: LaneView, plan: ZombiePlan): CardKey {
   if (shooterLevels(view) >= plan.tankAt) return 'skeletonWarrior';
   return 'brainEater';
 }

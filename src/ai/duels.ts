@@ -17,7 +17,7 @@
 
 import { BALANCE } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { UNIT_INFO } from '../data/units';
+import { factionOf, priceOf } from '../data/units';
 import { isStanding, levelScale } from '../sim/lookup';
 import { Match, defaultConfig, spawnUnit } from '../sim/match';
 import { PLANT_COLS, ZOMBIE_SPAWN_X } from '../sim/types';
@@ -44,7 +44,7 @@ function raise(b: Balance, u: Unit, level: number): void {
   u.level = level;
   u.maxHp = Math.round(stats.hp * levelScale(b, u.faction, level, 'hp'));
   u.hp = u.maxHp;
-  u.spent = UNIT_INFO[u.key].price * level;
+  u.spent = priceOf(u.key) * level;
 }
 
 /**
@@ -90,7 +90,7 @@ function sideHp(units: readonly Unit[]): Record<Faction, number> {
  * A plant enemy is capped by the columns of a lane.
  */
 export function breakEven(group: Group, enemy: UnitKey, balance: Balance = BALANCE, plantFront = 0): number {
-  const groupIsPlants = UNIT_INFO[group.key].faction === 'plants';
+  const groupIsPlants = factionOf(group.key) === 'plants';
   const maxCount = groupIsPlants ? 40 : PLANT_COLS;
   const score = (m: number): number => {
     const other: Group = { key: enemy, level: 1, count: m };

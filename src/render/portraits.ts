@@ -10,7 +10,7 @@ import {
   WebGLRenderTarget,
   type WebGLRenderer,
 } from 'three';
-import { UNIT_INFO } from '../data/units';
+import { factionOf } from '../data/units';
 import type { UnitKey } from '../sim/types';
 import { CameraRig } from './CameraRig';
 import { envelopeAround } from './gallery';
@@ -115,7 +115,7 @@ export function createPortraitPainter(renderer: Renderer): PortraitPainter {
     const gl: WebGLRenderer = renderer.webgl;
     const px = Math.max(8, Math.round(size * Math.min(window.devicePixelRatio || 1, 2)));
     const draw = px * SUPER;
-    const faction = UNIT_INFO[key].faction;
+    const faction = factionOf(key);
     const model = new ModelInstance(getModelDef(key), 1);
     model.play('idle');
     model.seek(0.4);

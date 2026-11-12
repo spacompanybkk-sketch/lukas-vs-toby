@@ -7,7 +7,7 @@ import type { Match } from '../sim/match';
 import { isStanding } from '../sim/lookup';
 import { randomInt } from '../sim/rng';
 import { COLS, LANES, PLANT_COLS } from '../sim/types';
-import type { Command, Faction, SimState, Unit, UnitKey } from '../sim/types';
+import type { CardKey, Command, Faction, SimState, Unit, UnitKey } from '../sim/types';
 
 /** A bot's private random numbers: the same shape as the match's, never the match's own. */
 export type BotRng = { rng: number };
@@ -71,17 +71,18 @@ export function shuffledLanes(rng: BotRng): number[] {
   return lanes;
 }
 
-export function placeCommand(faction: Faction, unit: UnitKey, lane: number, col: number): Command {
+export function placeCommand(faction: Faction, unit: CardKey, lane: number, col: number): Command {
   return { type: 'place', faction, unit, lane, col };
 }
 
 /** Sending a zombie: the column plays no part, so it names the graveyard column. */
-export function sendCommand(unit: UnitKey, lane: number): Command {
+export function sendCommand(unit: CardKey, lane: number): Command {
   return placeCommand('zombies', unit, lane, COLS - 1);
 }
 
 export function mergeCommand(target: Unit): Command {
-  return { type: 'merge', faction: target.faction, unit: target.key, targetId: target.id };
+  // A unit that is not a card (a Bone Minion) cannot be merged into; the match refuses it.
+  return { type: 'merge', faction: target.faction, unit: target.key as CardKey, targetId: target.id };
 }
 
 /**
