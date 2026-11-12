@@ -58,7 +58,7 @@ describe('stand-in players', () => {
     const merges = mine.filter((c) => c.type === 'merge').length;
     expect(merges).toBeGreaterThan(0);
     expect(merges).toBeGreaterThanOrEqual(mine.filter((c) => c.type === 'place').length);
-    expect(mine.every((c) => c.type !== 'remove' && c.unit === unit)).toBe(true);
+    expect(mine.every((c) => 'unit' in c && c.unit === unit)).toBe(true);
     expect(match.state.units.some((u) => u.faction === side && u.level >= 2) || match.state.winner !== null).toBe(true);
   });
 

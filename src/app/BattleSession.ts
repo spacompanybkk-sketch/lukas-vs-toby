@@ -203,7 +203,8 @@ export class BattleSession implements Director, InputTarget {
   }
 
   hover(tile: Tile | null, unitId: number | null): PlacementPreview | null {
-    return this.controller.hover(tile, unitId);
+    const preview = this.controller.hover(tile, unitId);
+    return preview !== null && 'unit' in preview ? preview : null; // a spell's area is not drawn yet (Task 7)
   }
 
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {

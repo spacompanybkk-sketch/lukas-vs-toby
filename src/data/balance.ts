@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from '../sim/types';
-import type { Faction, Flight, ProjectileKind, StatusKind, UnitKey } from '../sim/types';
+import type { Faction, Flight, ProjectileKind, SpellKey, SpellSize, StatusKind, UnitKey } from '../sim/types';
 
 /** A close-range attack. Interval in seconds, reach in tiles. */
 export interface MeleeStats { damage: number; interval: number; reach: number }
@@ -19,13 +19,21 @@ export interface ShotStats {
   splash?: number; // lobbed: radius hit at landing (0 = the target only)
   pierce?: number; // piercing: units passed through
   status?: ShotStatus;
-  puddle?: { seconds: number; radius: number; dps: number }; // left where a lobbed shot lands
+  /**
+   * Left where a lobbed shot lands, for `seconds`: each enemy standing within `radius` is poisoned
+   * at `dps` for at least `poisonSeconds` (so it keeps losing health that long after it steps out).
+   */
+  puddle?: { seconds: number; radius: number; dps: number; poisonSeconds: number };
 }
 
 export interface UnitStats {
   recharge: number; hp: number; armor: number; speed: number; // seconds, tiles/s
   melee?: MeleeStats; shot?: ShotStats;
-  sun?: { amount: number; interval: number };
+  /**
+   * Makes `amount` energy every `interval` s. Hurt (any damage), it makes none for `pauseSeconds`:
+   * its timer stands still that long and then carries on (see `Unit.hurt`).
+   */
+  sun?: { amount: number; interval: number; pauseSeconds: number };
   deathBlast?: { damage: number; radius: number };
   shield?: { interval: number };
   /**
@@ -67,6 +75,21 @@ export interface UnitStats {
   raise?: { key: 'boneMinion'; interval: number };
 }
 
+/**
+ * A spell's numbers (spec 21): `cooldown` seconds after each cast until it is ready again, ready
+ * `firstReady` seconds into the match, covering an area of `size` (see `SpellSize`). What else it
+ * has depends on the spell: `damage` (Thunderbolt, Meteor), `seconds` of a status or of a rock's
+ * life (Vines, Fog, Frenzy, Rock Wall), `amount` of energy or healing (Sun Shower, Brain Feast,
+ * Healing Rain), the rock's `hp`, Frenzy's speed `factor`, Grave Rise's `count` of minions.
+ * `minCol`: an aimed spell may not be cast on a column below it (Grave Rise, kept away from the
+ * plant base).
+ */
+export interface SpellStats {
+  cooldown: number; firstReady: number; size: SpellSize;
+  damage?: number; seconds?: number; amount?: number; hp?: number; factor?: number; count?: number;
+  minCol?: number;
+}
+
 /** Every tunable number of the game. The simulation reads these and nothing else. */
 export interface Balance {
   units: Partial<Record<UnitKey, UnitStats>>;
@@ -95,11 +118,23 @@ export interface Balance {
    * The plant base strikes a zombie biting it: `damage` per strike, at most one strike per lane
    * every `interval` seconds. Damage 0 switches it off.
    */
-  baseDefense: { damage: number; interval: number };
+  /**
+   * `paysBounty`: whether the plants get a bounty for a zombie the strike itself brings to 0 (a
+   * zombie that got past the defences should not pay the defender; when false it dies with cause
+   * `'base'` and pays nothing).
+   */
+  baseDefense: { damage: number; interval: number; paysBounty: boolean };
   /** A zombie shoots the plant base only from this close (x <= this), whatever its shot's range. */
   zombieBaseShotRange: number;
   /** At most this many of a Necromancer's raised minions stand at once. */
   minionCap: number;
+  /**
+   * Each side's hero power (Mega Mower, Bone Storm): `damage` to every standing enemy unit in the
+   * lane it is aimed at, armor and shields ignored; ready `firstChargeSeconds` into the match and
+   * `chargeSeconds` after each use.
+   */
+  hero: Record<Faction, { damage: number; chargeSeconds: number; firstChargeSeconds: number }>;
+  spells: Record<SpellKey, SpellStats>;
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -140,7 +175,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
     sunflower: {
       recharge: 5, hp: 200, armor: 0, speed: 0,
-      sun: { amount: 25, interval: 10 },
+      sun: { amount: 25, interval: 10, pauseSeconds: 2 },
     },
     walnutBomb: {
       recharge: 15, hp: 1200, armor: 0, speed: 0,
@@ -231,7 +266,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       melee: { damage: 20, interval: 1.2, reach: 0.6 },
       shot: {
         kind: 'rot', damage: 30, interval: 4, range: 6, speed: 4, flight: 'lobbed',
-        puddle: { seconds: 4, radius: 0.75, dps: 15 },
+        puddle: { seconds: 4, radius: 0.75, dps: 15, poisonSeconds: 1 },
       },
       holds: true,
     },
@@ -240,6 +275,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       recharge: 1, hp: 150, armor: 0, speed: 0.6,
       melee: { damage: 20, interval: 0.8, reach: 0.6 },
     },
+    // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
+    rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
   },
   trickle: { plants: 1.8, zombies: 9.3 },
   bountyShare: { plants: 0.2, zombies: 0.5 },
@@ -253,9 +290,25 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 190,
   baseHp: 7000,
-  baseDefense: { damage: 100, interval: 2 },
+  baseDefense: { damage: 100, interval: 2, paysBounty: false },
   zombieBaseShotRange: 3.5,
   minionCap: 3,
+  hero: {
+    plants: { damage: 400, chargeSeconds: 60, firstChargeSeconds: 45 }, // Mega Mower
+    zombies: { damage: 250, chargeSeconds: 60, firstChargeSeconds: 45 }, // Bone Storm
+  },
+  spells: {
+    thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
+    vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
+    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
+    healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
+    rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
+    meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
+    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
+    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
+    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
+    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
+  },
 });
 
 /** Seconds to whole ticks. */

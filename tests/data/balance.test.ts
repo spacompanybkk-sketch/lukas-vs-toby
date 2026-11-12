@@ -48,7 +48,7 @@ describe('BALANCE units', () => {
   });
 
   it('only describes units that exist in the roster', () => {
-    for (const [key] of entries()) expect([...ALL_CARDS.plants, ...ALL_CARDS.zombies, 'boneMinion'], key).toContain(key);
+    for (const [key] of entries()) expect([...ALL_CARDS.plants, ...ALL_CARDS.zombies, 'boneMinion', 'rock'], key).toContain(key);
   });
 
   it('gives every unit positive health and recharge, and non-negative speed and armor', () => {

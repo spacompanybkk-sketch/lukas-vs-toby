@@ -61,7 +61,7 @@ function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeSt
     events.push({ type: 'attackMissed', unitId: z.id });
   } else if (plant) {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: plant.id, targetBase: null });
-    damageUnit(s, plant, amount, events);
+    damageUnit(s, b, plant, amount, events);
     if (stats.grow && !isStanding(plant)) grow(b, z, stats.grow, events); // only a standing plant is bitten
   } else {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
@@ -122,22 +122,33 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
  * timer is set to `seconds(baseDefense.interval)`. A lane with nobody to strike keeps its timer at
  * 0. So a zombie held up by a plant is never struck, nor is one still walking, not even on the
  * tick it reaches BASE_STOP_X (it walked that tick, so it is not `blocked` yet). A zombie brought
- * to 0 here is removed by `resolveDeaths` like any other: cause `'damage'`, bounty to the plants.
+ * to 0 here (the strike was its killing blow; one already down is never struck) is removed by
+ * `resolveDeaths`: with `baseDefense.paysBounty` false, cause `'base'` and no bounty, otherwise like any
+ * other, cause `'damage'` and a bounty to the plants.
  * Damage 0 switches the stage off: it then changes nothing and emits nothing. The timers are only
  * read and reset here; `tickEconomy` counts them down.
  */
 export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): void {
-  const { damage, interval } = b.baseDefense;
+  const { damage, interval, paysBounty } = b.baseDefense;
   if (!(damage > 0)) return;
   for (let lane = 0; lane < LANES; lane++) {
     if (s.baseDefenseTimers[lane] !== 0) continue;
     const target = biterAtBase(s, lane);
     if (target === null) continue;
     events.push({ type: 'baseStruck', lane, targetId: target.id });
-    damageUnit(s, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
+    damageUnit(s, b, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
+    if (!paysBounty && !isStanding(target)) felledByBase.add(target); // this strike was the killing blow
     s.baseDefenseTimers[lane] = seconds(interval);
   }
 }
+
+/**
+ * Zombies the plant base's strike brought to 0 this tick while `baseDefense.paysBounty` is false;
+ * `resolveDeaths` removes them with cause `'base'` and no bounty. Only ever holds units that are
+ * down, which nothing can hit or heal again, so it is emptied in the same tick and never needs to
+ * be part of the state, its hash or a snapshot.
+ */
+const felledByBase = new WeakSet<Unit>();
 
 /** The lowest-id zombie in `lane` that is biting the plant base: standing, blocked, at BASE_STOP_X. */
 function biterAtBase(s: SimState, lane: number): Unit | null {
@@ -303,21 +314,19 @@ function leavePuddle(
   const h: Hazard = {
     id: s.nextId, kind: 'rot', faction: p.faction, lane: p.lane, x, radius: puddle.radius,
     ticksLeft: seconds(puddle.seconds), dps: puddle.dps * levelScale(b, p.faction, p.level, 'special'),
+    poisonTicks: seconds(puddle.poisonSeconds),
   };
   s.nextId += 1;
   s.hazards.push(h);
   events.push({ type: 'hazardSpawned', hazardId: h.id, kind: h.kind, lane: h.lane, x, radius: h.radius, ticks: h.ticksLeft });
 }
 
-/** How long a puddle keeps poisoning a unit after it steps out, in ticks: one whole second. */
-const PUDDLE_POISON_TICKS = TICKS_PER_SECOND;
-
 /**
  * Step stage, after projectiles and before statuses: every hazard, in ascending id. Each standing
- * unit of the other side in its lane within `radius` of its x is poisoned for at least
- * `PUDDLE_POISON_TICKS` at the hazard's `dps` (the larger dps wins). Only the start of the poison
- * is reported (`statusApplied`, no source); topping it up each tick a unit stands in the puddle is
- * silent. Then the hazard counts down; the tick it was laid counts as its first, and on reaching 0
+ * unit of the other side in its lane within `radius` of its x is poisoned for at least the
+ * hazard's `poisonTicks` at its `dps` (the larger dps wins), through `applyStatus`. Only the start of
+ * the poison is reported (`statusApplied`, no source); topping it up each tick a unit stands in the
+ * puddle is silent. Then the hazard counts down; the tick it was laid counts as its first, and on reaching 0
  * it ends (`hazardEnded`) and leaves the lawn.
  */
 export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void {
@@ -326,12 +335,7 @@ export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void 
   for (const h of s.hazards) {
     for (const u of s.units) {
       if (u.faction === h.faction || u.lane !== h.lane || !isStanding(u) || Math.abs(u.x - h.x) > h.radius) continue;
-      if (u.poison > 0) {
-        u.poison = Math.max(u.poison, PUDDLE_POISON_TICKS);
-        u.poisonDps = Math.max(u.poisonDps, h.dps);
-      } else {
-        applyStatus(s, u, 'poison', PUDDLE_POISON_TICKS, h.dps, null, events);
-      }
+      applyStatus(s, u, 'poison', h.poisonTicks, h.dps, null, events, true);
     }
     h.ticksLeft -= 1;
     if (h.ticksLeft > 0) left.push(h);
@@ -356,7 +360,7 @@ function hitUnit(s: SimState, b: Balance, p: Projectile, target: Unit, events: S
  * shot carries, if any (see `ShotStatus`).
  */
 function wound(s: SimState, b: Balance, p: Projectile, u: Unit, events: SimEvent[]): void {
-  damageUnit(s, u, p.damage, events);
+  damageUnit(s, b, u, p.damage, events);
   burnOnHit(s, p, u, events);
   const status = b.units[p.sourceKey]?.shot?.status;
   if (!status) return;
@@ -375,7 +379,8 @@ function hitBase(s: SimState, p: Projectile, side: Faction, x: number, amount: n
 
 /**
  * Step stage 6: every unit that is down (hp not above 0, see `isStanding`) is removed, in
- * ascending id, with `unitDied` and then its bounty. A dying unit with a death blast then
+ * ascending id, with `unitDied` and then its bounty (none for one the plant base's strike felled
+ * while `baseDefense.paysBounty` is false: cause `'base'`, see `tickBaseDefense`). A dying unit with a death blast then
  * explodes, damaging every standing enemy within its radius. Repeats until everyone left is
  * standing, so blasts can chain within one step.
  */
@@ -393,10 +398,12 @@ export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void
     }
     s.units = standing;
     for (const u of dying) {
+      const byBase = felledByBase.delete(u);
       events.push({
-        type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level, cause,
+        type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level,
+        cause: byBase ? 'base' : cause,
       });
-      payBounty(s, b, u, events);
+      if (!byBase) payBounty(s, b, u, events);
       const blast = statsFor(b, u.key).deathBlast;
       if (blast) explode(s, b, u, blast, events);
     }

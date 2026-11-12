@@ -885,6 +885,10 @@ export class BattleView {
         this.ability(e.unitId, e.ability, e.targetId);
         break;
       case 'commandRejected':
+      case 'heroUsed':
+      case 'heroReady':
+      case 'spellCast':
+      case 'spellReady':
         break;
       default: {
         const unhandled: never = e;

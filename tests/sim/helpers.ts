@@ -19,7 +19,7 @@ export function classicBalance(): Balance {
     },
     sunflower: {
       recharge: 5, hp: 200, armor: 0, speed: 0,
-      sun: { amount: 25, interval: 10 },
+      sun: { amount: 25, interval: 10, pauseSeconds: 0 }, // phase 2 ships 2: a hurt Sunflower pauses
     },
     walnutBomb: {
       recharge: 15, hp: 1200, armor: 0, speed: 0,
@@ -39,6 +39,7 @@ export function classicBalance(): Balance {
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
     },
+    rock: { recharge: 1, hp: 800, armor: 0, speed: 0 }, // phase 2: Rock Wall's rock, which only stands
   };
   const linear = [0, 1, 2, 3, 4, 5];
   b.levelCurves = {
@@ -52,7 +53,7 @@ export function classicBalance(): Balance {
   b.hitRadius = 0.35;
   b.startEnergy = 190;
   b.baseHp = 7000;
-  b.baseDefense = { damage: 100, interval: 2 };
+  b.baseDefense = { damage: 100, interval: 2, paysBounty: true }; // phase 2 ships false: a strike's kill pays nothing
   b.zombieBaseShotRange = 3.5; // phase 2: what the base-shot rule read before it had a number of its own (the Brain Eater's range)
   b.suddenDeath = { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 };
   return b;
@@ -64,19 +65,21 @@ export function classicBalance(): Balance {
  */
 export function withBaseDefense(damage = 60, interval = 1): Balance {
   const balance = classicBalance();
-  balance.baseDefense = { damage, interval };
+  balance.baseDefense = { damage, interval, paysBounty: true };
   return balance;
 }
 
 /**
  * The default setup with the energy and base health these tests were written for, 200 and 3000 a
  * side, so a test of the rules keeps testing them whatever the tuner does to the shipped starting
- * values in `BALANCE`.
+ * values in `BALANCE`; and, as in phase 1, with no hero powers and no spells.
  */
 export function classicConfig(seed: number, balance: Balance = classicBalance()): MatchConfig {
   const config = defaultConfig(seed, balance);
   config.startEnergy = { plants: 200, zombies: 200 };
   config.baseHp = { plants: 3000, zombies: 3000 };
+  config.heroes = { plants: false, zombies: false };
+  config.spells = { plants: 0, zombies: 0 };
   return config;
 }
 

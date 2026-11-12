@@ -216,7 +216,7 @@ describe('BattleView statuses and puddles', () => {
     const u = spawnUnit(ctx.match.state, BALANCE, 'peashooter', 1, 2.5);
     u.stun = 40;
     u.poison = 30;
-    ctx.match.state.hazards.push({ id: 77, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15 });
+    ctx.match.state.hazards.push({ id: 77, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15, poisonTicks: 30 });
     ctx.apply();
     expect(ctx.view.marks.has(u.id, 'stun')).toBe(true);
     expect(ctx.view.marks.has(u.id, 'poison')).toBe(true);
@@ -240,7 +240,7 @@ describe('BattleView statuses and puddles', () => {
 
   it('lays a puddle on hazardSpawned and takes it away on hazardEnded', () => {
     const ctx = setUp();
-    const h = { id: 42, kind: 'rot' as const, faction: 'zombies' as const, lane: 3, x: 4.2, radius: 0.75, ticksLeft: 120, dps: 15 };
+    const h = { id: 42, kind: 'rot' as const, faction: 'zombies' as const, lane: 3, x: 4.2, radius: 0.75, ticksLeft: 120, dps: 15, poisonTicks: 30 };
     ctx.match.state.hazards.push(h);
     ctx.apply({ type: 'hazardSpawned', hazardId: 42, kind: 'rot', lane: 3, x: 4.2, radius: 0.75, ticks: 120 });
     expect(ctx.view.puddles.has(42)).toBe(true);
@@ -442,7 +442,7 @@ describe('BattleView phase-1 fixes and pools', () => {
     ctx.run(0.6);
     plant.tied = 90;
     plant.stun = 60;
-    ctx.match.state.hazards.push({ id: 5, kind: 'rot', faction: 'zombies', lane: 2, x: 3.5, radius: 0.75, ticksLeft: 90, dps: 15 });
+    ctx.match.state.hazards.push({ id: 5, kind: 'rot', faction: 'zombies', lane: 2, x: 3.5, radius: 0.75, ticksLeft: 90, dps: 15, poisonTicks: 30 });
     ctx.apply({ type: 'abilityUsed', unitId: cowboy.id, ability: 'lasso', lane: 2, x: 7.5, targetId: plant.id });
     shot(ctx, 50, 'kernel', plant, { flight: 'lobbed', targetId: cowboy.id, targetX: 7.5 });
     ctx.run(0.3);
@@ -462,7 +462,7 @@ describe('BattleView phase-1 fixes and pools', () => {
     z.burn = 60;
     ctx.apply({ type: 'abilityUsed', unitId: cowboy.id, ability: 'lasso', lane: 2, x: 7.5, targetId: plant.id });
     shot(ctx, 51, 'mango', mango, { flight: 'lobbed', targetId: z.id, targetX: 7 });
-    ctx.match.state.hazards.push({ id: 6, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15 });
+    ctx.match.state.hazards.push({ id: 6, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15, poisonTicks: 30 });
     ctx.apply();
     ctx.run(0.3);
     const counts = allocationsIn(() => {

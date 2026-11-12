@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seconds } from '../../src/data/balance';
+import { BALANCE, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import { BASE_STOP_X, LANES } from '../../src/sim/types';
@@ -260,5 +260,66 @@ describe('the plant base strikes back', () => {
     expect(copy.state.baseDefenseTimers).toEqual(original.state.baseDefenseTimers);
     expect(strikes(play(copy, 30))).toEqual(strikes(play(original, 30)));
     expect(copy.hash()).toBe(original.hash());
+  });
+});
+
+describe('a zombie the base strike fells pays no bounty (baseDefense.paysBounty false, as shipped)', () => {
+  const noBounty = (): Balance => {
+    const b = withBaseDefense(60, 1);
+    b.baseDefense.paysBounty = false;
+    return b;
+  };
+  const bounties = (log: Array<[number, SimEvent[]]>) =>
+    log.flatMap(([, events]) => eventsOf(events, 'energyGained').filter((e) => e.source === 'bounty'));
+
+  it('is shipped false', () => {
+    expect(BALANCE.baseDefense.paysBounty).toBe(false);
+  });
+
+  it('the strike that brings it to 0 kills it with cause base and pays nothing', () => {
+    const m = fresh(noBounty());
+    const z = spawnUnit(m.state, m.balance, 'veryFastWalker', 2, BASE_STOP_X);
+    const energy = m.state.players.plants.energy;
+    const log = play(m, 200);
+    expect(log.flatMap(([, events]) => eventsOf(events, 'unitDied'))).toEqual([
+      { type: 'unitDied', unitId: z.id, key: 'veryFastWalker', faction: 'zombies', lane: 2, x: BASE_STOP_X, level: 1, cause: 'base' },
+    ]);
+    expect(deathStep(log, z)).toBe(61);
+    expect(bounties(log)).toEqual([]);
+    expect(m.state.players.plants.energy).toBe(energy);
+  });
+
+  it('anything else that kills a zombie biting the base (here poison) pays the bounty as usual', () => {
+    const m = fresh(noBounty());
+    const z = spawnUnit(m.state, m.balance, 'veryFastWalker', 2, BASE_STOP_X);
+    z.hp = 10;
+    z.poison = 60; z.poisonDps = 50;
+    m.state.baseDefenseTimers[2] = 9999; // the base will not strike in time
+    const log = play(m, 60);
+    expect(strikes(log)).toEqual([]);
+    expect(log.flatMap(([, events]) => eventsOf(events, 'unitDied'))).toEqual([expect.objectContaining({ unitId: z.id, cause: 'damage' })]);
+    expect(bounties(log)).toEqual([expect.objectContaining({ faction: 'plants', amount: Math.floor(m.balance.bountyShare.plants * z.spent) })]);
+  });
+
+  it('a zombie already down before the strike (the hero, at the command stage) is not struck and pays as usual', () => {
+    const m = fresh(noBounty());
+    m.state.config.heroes.plants = true;
+    m.state.players.plants.heroTimer = 0;
+    const z = spawnUnit(m.state, m.balance, 'veryFastWalker', 2, BASE_STOP_X);
+    z.blocked = true; // biting the base already
+    const events = m.step([{ type: 'hero', faction: 'plants', lane: 2 }]);
+    expect(eventsOf(events, 'baseStruck')).toEqual([]);
+    expect(eventsOf(events, 'unitDied')).toEqual([expect.objectContaining({ unitId: z.id, cause: 'damage' })]);
+    expect(eventsOf(events, 'energyGained')).toEqual([expect.objectContaining({ source: 'bounty', faction: 'plants' })]);
+  });
+
+  it('with paysBounty true the strike kill is as before: cause damage, bounty paid', () => {
+    const b = withBaseDefense(60, 1);
+    expect(b.baseDefense.paysBounty).toBe(true);
+    const m = fresh(b);
+    const z = spawnUnit(m.state, m.balance, 'veryFastWalker', 2, BASE_STOP_X);
+    const log = play(m, 200);
+    expect(log.flatMap(([, events]) => eventsOf(events, 'unitDied'))).toEqual([expect.objectContaining({ unitId: z.id, cause: 'damage' })]);
+    expect(bounties(log)).toHaveLength(1);
   });
 });

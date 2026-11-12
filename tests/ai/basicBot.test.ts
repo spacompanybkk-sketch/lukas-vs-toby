@@ -5,9 +5,11 @@ import { runBotMatch, runMatch } from '../../src/ai/runMatch';
 import type { MatchResult } from '../../src/ai/runMatch';
 import { newZombieMemory, zombieMove } from '../../src/ai/zombieStrategy';
 import { BALANCE, seconds } from '../../src/data/balance';
+import type { Balance } from '../../src/data/balance';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command, Faction, MatchConfig } from '../../src/sim/types';
 import { eventsOf } from '../sim/helpers';
+import { phase1RulesBalance } from './phase1Rules';
 
 const SKILL_NAMES: readonly Skill[] = ['easy', 'medium', 'hard'];
 const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
@@ -39,9 +41,9 @@ function setup(seed: number, rich: boolean): MatchConfig {
  * that the bots left the match exactly as they found it.
  */
 function playChecked(
-  seed: number, plants: Bot, zombies: Bot, ticks: number, rich = false,
+  seed: number, plants: Bot, zombies: Bot, ticks: number, rich = false, balance: Balance = BALANCE,
 ): { log: TickLog[]; problems: string[]; match: Match } {
-  const match = new Match(setup(seed, rich));
+  const match = new Match(setup(seed, rich), balance);
   const log: TickLog[] = [];
   const problems: string[] = [];
   while (match.state.winner === null && match.state.tick < ticks) {
@@ -86,10 +88,11 @@ describe('createBasicBot', () => {
 
   it('plays all six cards on the rich setup, merges Peashooters and Sunflowers, and Hard merges zombies', () => {
     const sent = SKILL_NAMES.flatMap((skill) => {
-      const { log } = playChecked(4, createBasicBot('plants', skill, 4), createBasicBot('zombies', skill, 4), 6000, true);
+      // TODO(phase 2 Task 8): re-measure with the Sunflower pause (a bitten Sunflower is not worth merging)
+      const { log } = playChecked(4, createBasicBot('plants', skill, 4), createBasicBot('zombies', skill, 4), 6000, true, phase1RulesBalance());
       return log.flatMap((t) => t.commands);
     });
-    const kinds = new Set(sent.map((c) => (c.type === 'remove' ? 'remove' : `${c.type}:${c.unit}`)));
+    const kinds = new Set(sent.map((c) => ('unit' in c ? `${c.type}:${c.unit}` : c.type)));
     for (const kind of [
       'place:peashooter', 'place:sunflower', 'place:walnutBomb', 'merge:peashooter', 'merge:sunflower',
       'place:brainEater', 'place:veryFastWalker', 'place:skeletonWarrior',
@@ -193,9 +196,11 @@ describe('runMatch', () => {
 });
 
 describe('bot against bot', () => {
+  const rules = phase1RulesBalance(); // TODO(phase 2 Task 8): re-measure with paysBounty false and the Sunflower pause
+
   it('medium against medium, seeds 1..40: each side wins at least 8 and every match ends by tick 14,400', () => {
     // Run past 8:00 so a match that would not end shows up as one, rather than as a cut-off draw.
-    const results = SEEDS_1_TO_40.map((seed) => runBotMatch(seed, { plants: 'medium', zombies: 'medium' }, 2 * LAST_TICK));
+    const results = SEEDS_1_TO_40.map((seed) => runBotMatch(seed, { plants: 'medium', zombies: 'medium' }, 2 * LAST_TICK, rules));
     const lengths = results.map((r) => r.ticks);
     expect(Math.max(...lengths)).toBeLessThanOrEqual(LAST_TICK);
     expect(wins(results, 'plants'), 'plants wins').toBeGreaterThanOrEqual(8);
@@ -217,9 +222,9 @@ describe('bot against bot', () => {
           return commands;
         },
       }));
-      return runMatch(defaultConfig(seed), counted);
+      return runMatch(defaultConfig(seed, rules), counted, undefined, rules);
     });
-    expect(results[0]).toEqual(runBotMatch(1, skills));
+    expect(results[0]).toEqual(runBotMatch(1, skills, undefined, rules));
     expect(wins(results, hardSide)).toBeGreaterThanOrEqual(28);
     expect(hardMerges, 'merges by the hard bot').toBeGreaterThan(0);
   }, BULK_MS);

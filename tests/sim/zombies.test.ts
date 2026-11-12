@@ -104,7 +104,7 @@ describe('the shipped starting numbers', () => {
       recharge: 15, hp: 450, armor: 0, speed: 0.25, melee: melee(20, 1.2), holds: true,
       shot: {
         kind: 'rot', damage: 30, interval: 4, range: 6, speed: 4, flight: 'lobbed',
-        puddle: { seconds: 4, radius: 0.75, dps: 15 },
+        puddle: { seconds: 4, radius: 0.75, dps: 15, poisonSeconds: 1 },
       },
     });
     expect(u.boneMinion).toEqual({ recharge: 1, hp: 150, armor: 0, speed: 0.6, melee: melee(20, 0.8) });
@@ -522,13 +522,14 @@ describe('Brain Rot', () => {
     expect(eventsOf(landing, 'projectileHit')).toMatchObject([{ targetId: target.id, x: 3.5 }]);
     const [hit, ...poison] = eventsOf(landing, 'unitDamaged');
     expect(hit).toEqual({ type: 'unitDamaged', unitId: target.id, amount: 30, hp: 970 });
+    expect(poison.length).toBeGreaterThan(0);
     expect(poison.every((e) => e.amount === 15)).toBe(true); // a whole second: the new poison deals at once
     const hazard = m.state.hazards[0];
     if (!hazard) throw new Error('no puddle');
     expect(eventsOf(landing, 'hazardSpawned')).toEqual([
       { type: 'hazardSpawned', hazardId: hazard.id, kind: 'rot', lane: 2, x: 3.5, radius: 0.75, ticks: 120 },
     ]);
-    expect(hazard).toMatchObject({ kind: 'rot', faction: 'zombies', lane: 2, x: 3.5, radius: 0.75, dps: 15, ticksLeft: 119 });
+    expect(hazard).toMatchObject({ kind: 'rot', faction: 'zombies', lane: 2, x: 3.5, radius: 0.75, dps: 15, ticksLeft: 119, poisonTicks: 30 });
     expect(eventsOf(landing, 'statusApplied')).toEqual([
       { type: 'statusApplied', unitId: target.id, status: 'poison', ticks: 30, sourceId: null },
       { type: 'statusApplied', unitId: inside.id, status: 'poison', ticks: 30, sourceId: null },
@@ -660,6 +661,7 @@ describe('fuzz: the whole roster', () => {
           else if (e.type === 'commandRejected') throw new Error(`seed ${seed}: a legal command was refused (${e.reason})`);
           else if (e.type === 'unitDied' && e.key === 'boneMinion') count('minion died');
           else count(e.type);
+          if (e.type === 'unitSpawned') count(`spawned ${e.key}`);
         }
         const s = m.state;
         for (const faction of ['plants', 'zombies'] as const) {
@@ -676,6 +678,10 @@ describe('fuzz: the whole roster', () => {
     // Coverage: every new ability, minions raised and fallen, puddles, statuses and misses all came up.
     for (const key of ['raise', 'heal', 'lasso', 'grow', 'minion died', 'hazardSpawned', 'hazardEnded', 'attackMissed', 'unitHealed', 'unitMerged']) {
       expect(seen.get(key) ?? 0, key).toBeGreaterThan(0);
+    }
+    // Every one of the 20 cards, and the Bone Minion, was on the lawn.
+    for (const key of [...ALL_CARDS.plants, ...ALL_CARDS.zombies, 'boneMinion']) {
+      expect(seen.get(`spawned ${key}`) ?? 0, key).toBeGreaterThan(0);
     }
   });
 });

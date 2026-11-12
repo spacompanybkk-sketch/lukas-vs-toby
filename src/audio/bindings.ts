@@ -163,6 +163,10 @@ export function playEventSounds(
       case 'statusEnded':
       case 'hazardSpawned': // the rot's landing splat is the shot's own sound
       case 'hazardEnded':
+      case 'heroUsed':
+      case 'heroReady':
+      case 'spellCast':
+      case 'spellReady':
         break;
       default: {
         const unhandled: never = e;
