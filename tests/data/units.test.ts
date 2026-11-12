@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cloneBalance, BALANCE } from '../../src/data/balance';
 import { ALL_CARDS, PHASE1_CARDS, PLANT_KEYS, UNIT_INFO, ZOMBIE_KEYS, factionOf, isCard, priceOf } from '../../src/data/units';
 import { statsFor } from '../../src/sim/lookup';
+import type { UnitKey } from '../../src/sim/types';
 
 // Spec section 6.6, written out literally: unit key -> [name, price, role], in unlock order.
 const SPEC_PLANTS = [
@@ -86,6 +87,13 @@ describe('unit roster', () => {
       expect(isCard(key)).toBe(true);
       expect(factionOf(key)).toBe(UNIT_INFO[key].faction);
       expect(priceOf(key)).toBe(UNIT_INFO[key].price);
+    }
+  });
+
+  it('counts as a card only a key of the roster, so a later non-card unit cannot slip through', () => {
+    for (const key of ['rock', 'toString', 'constructor', '']) {
+      expect(isCard(key as UnitKey), key).toBe(false);
+      expect(priceOf(key as UnitKey), key).toBe(0);
     }
   });
 });

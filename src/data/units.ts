@@ -71,9 +71,12 @@ export function priceOf(key: UnitKey): number {
   return isCard(key) ? UNIT_INFO[key].price : 0;
 }
 
-/** Whether a key is a card (anything but the Bone Minion). */
+/**
+ * Whether a key is a card: one of the roster's own keys in `UNIT_INFO` (so the Bone Minion, or
+ * any later unit that is no card, is not).
+ */
 export function isCard(key: UnitKey): key is CardKey {
-  return key !== 'boneMinion';
+  return Object.hasOwn(UNIT_INFO, key);
 }
 
 /** All ten cards of each side, in unlock order. */
