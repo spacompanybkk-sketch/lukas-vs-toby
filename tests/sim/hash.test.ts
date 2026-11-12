@@ -4,12 +4,13 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1174 bytes). Re-pinned once in
- * phase 2, Task 1, when units gained statuses, stacks and an owner, projectiles their flight
- * fields, and the state its hazards. Before that it was 3642874464 over 841 bytes, and before the
- * base defence timers were added 1810640202 over 793 bytes.
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1190 bytes). Re-pinned in phase 2,
+ * Task 2, when projectiles gained the burn a Torchwood gives them (`burnDps`, `burnTicks`); in
+ * Task 1 it was 628692134 over 1174 bytes, from when units gained statuses, stacks and an owner,
+ * projectiles their flight fields, and the state its hazards. Before that it was 3642874464 over
+ * 841 bytes, and before the base defence timers were added 1810640202 over 793 bytes.
  */
-const GOLDEN_HASH = 628692134;
+const GOLDEN_HASH = 972736984;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -33,7 +34,7 @@ function makeState(): SimState {
       {
         id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1, spawnTick: 118,
         flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25,
-        pierceLeft: 2, hitIds: [2], burning: true,
+        pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
       },
     ],
     hazards: [
@@ -169,6 +170,8 @@ describe('hashState', () => {
     ['a projectile hitIds entry', (s) => { s.projectiles[0]!.hitIds = [3]; }],
     ['the number of projectile hitIds', (s) => { s.projectiles[0]!.hitIds.push(3); }],
     ['a projectile burning flag', (s) => { s.projectiles[0]!.burning = false; }],
+    ['a projectile burnDps', (s) => { s.projectiles[0]!.burnDps += 1; }],
+    ['a projectile burnTicks', (s) => { s.projectiles[0]!.burnTicks -= 1; }],
     // Hazards.
     ['hazard count', (s) => { s.hazards.pop(); }],
     ['a hazard id', (s) => { s.hazards[0]!.id = 6; }],
@@ -256,7 +259,7 @@ describe('snapshotState / restoreState', () => {
     expect(restored.units[0]).toMatchObject({ blind: 15, burn: 40, burnDps: 10, ownerId: null });
     expect(restored.units[1]).toMatchObject({ stun: 20, tied: 7, poison: 60, poisonDps: 15, stacks: 2, ownerId: 9 });
     expect(restored.projectiles[0]).toMatchObject({
-      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true,
+      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
     });
     expect(restored.hazards).toEqual(s.hazards);
     expect(restored.hazards).not.toBe(s.hazards);

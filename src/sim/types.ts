@@ -52,6 +52,7 @@ export interface Projectile {
   targetId: number | null; targetX: number | null; // lobbed at a unit only: whom it follows, where it lands
   pierceLeft: number; hitIds: number[]; // piercing only: how many more it may hit, whom it has hit
   burning: boolean; // set alight by a Torchwood
+  burnDps: number; burnTicks: number; // the burn a burning one puts on whom it damages, level-scaled; 0 otherwise
 }
 
 /** Something left on the lawn that hurts the other side's units standing in it (a Brain Rot puddle). */

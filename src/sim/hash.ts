@@ -116,7 +116,7 @@ const PROJECTILE: Fields<Projectile> = {
   flight: str, sourceKey: str, level: num,
   targetId: nullableNum, targetX: nullableNum,
   pierceLeft: num, hitIds: nums,
-  burning: bool,
+  burning: bool, burnDps: num, burnTicks: num,
 };
 
 const HAZARD: Fields<Hazard> = {
