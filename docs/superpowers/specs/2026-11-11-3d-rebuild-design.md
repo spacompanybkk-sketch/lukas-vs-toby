@@ -245,7 +245,7 @@ both computers see.
 
 ## 9. Progress and saves
 
-- One save per boy in the browser: coins, stars, unlocks, Marketplace upgrades,
+- One save per player (section 20; originally one per boy in the browser): coins, stars, unlocks, Marketplace upgrades,
   settings, best Free Play wave, and wins against his brother.
 - Marketplace as today: ten upgrade steps per unit, each adding health and damage.
   Applies in Adventure, Quick Battle and Free Play. Never in Versus.
@@ -428,7 +428,8 @@ Each phase ends playable and gets its own plan, written when the one before land
    effects.
 3. Balance: computer players, harness, tuner, thresholds met.
 4. Adventure and progress: worlds, 80 levels, bosses, map, Marketplace, Almanac, saves,
-   tutorial, Quick Battle, Free Play.
+   tutorial, Quick Battle, Free Play, players with passwords and the leaderboard
+   (section 20).
 5. Versus: one keyboard, then two computers.
 6. Polish and proof: cinematics, replay, performance, end-to-end suite, final review.
 
@@ -490,3 +491,53 @@ What it changes:
   the home network or a preview deployment, with Michal's go-ahead.
 - Proof gains an iPad pass: WebKit in the browser tests with a touch device profile, and
   a hands-on check on the real iPad before each phase is called done.
+
+## 20. Players, passwords and leaderboard (added 2026-11-12)
+
+Michal, after phase 1: add create-player with a 3-digit password, a leaderboard, log in
+with the password, at most 30 players, and people can load their progress. This replaces
+"one save per boy in the browser" in section 9: a save now belongs to a player.
+
+What Michal decided:
+
+- A player is created in the game with a 3-digit password and logs in with it.
+- At most 30 players exist. When the list is full, creating another is refused.
+- A logged-in player loads their own progress.
+- There is a leaderboard.
+
+Calls made by the builder (Michal can reverse any):
+
+- Lukas and Toby exist from the start and take over the old saves (section 9); each sets
+  his password the first time he logs in. The other 28 places are for friends and family.
+- A player is a name (up to 10 letters), a picture chosen from the 20 unit portraits, and
+  the password. The log-in screen shows the pictures in a grid; tapping one opens a big
+  number pad. Toby logs in without reading: his picture, then three digits.
+- Progress is kept online so it loads on any device (the computer and the iPad), with a
+  copy in the browser so the game still plays without a connection and syncs when it
+  returns. The newer save wins, per player.
+- Every player can play both Adventures, as plants and as zombies; progress is kept per
+  side. Lukas opens on plants and Toby on zombies, as today.
+- The leaderboard has three tables, each showing picture, name and number: Adventure
+  stars, best Free Play wave, and Versus wins. The player's own row is highlighted. It
+  is reached from the title screen and shown after a match when a place changes.
+- Three wrong passwords lock that player for 30 seconds. The password is stored as a
+  salted hash, never in the clear.
+- Deleting a player or resetting a forgotten password is behind a grown-up gate (a
+  separate code Michal sets), so a full list or a forgotten number is never a dead end.
+- The whole feature keeps the Minecraft look: boxy panels, pixel digits on the pad.
+
+Limits to be honest about:
+
+- Three digits is 1,000 combinations. It keeps brothers and friends out of each other's
+  games; it does not stop a determined stranger. So a player holds a nickname, a picture
+  and game numbers only: no surname, email, photo or anything personal.
+- Online storage needs two new database paths (`players/v2`, `leaderboard/v2`) with
+  their own rules: anyone may read the leaderboard; a save may be written only with its
+  player's password hash; the 30-player cap is enforced by the rules, not just the screen.
+  This is a rules deploy on `lukas-toby-plants-vs-zombies` and overrides the "no rules
+  deploy" line in section 4. It happens only on Michal's go-ahead.
+
+Delivery: phase 4 (Adventure and progress), since it owns saves. Versus wins are added to
+the leaderboard in phase 5. Proof: tests for create, log in, wrong password and lock-out,
+the 31st player refused, progress saved on one browser and loaded in another, offline play
+then sync, and the rules themselves tested against forged writes.
