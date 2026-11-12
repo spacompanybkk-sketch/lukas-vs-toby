@@ -16,6 +16,7 @@ import { PALETTE } from '../palette';
 import { BoxBatch, hash2, seededRandom } from '../world/boxes';
 import { FX } from './fxPalette';
 import type { Particles } from './Particles';
+import { PIXEL_FONT_HEIGHT, PIXEL_TEXT_MAX, pixelText } from './pixelFont';
 
 // The effects library: bursts, debris, sparks, explosions, rings, sparkles, auras, smoke,
 // trails and floating numbers. Everything keeps the voxel grain: particles are cubes from
@@ -57,8 +58,28 @@ const TRAIL_RATE = 45;
 const TEXT_RISE = 0.6;
 const TEXT_SECONDS = 0.8;
 const TEXT_HEIGHT = 0.34;
-/** Pixels on the canvas a number is drawn on: kept small and scaled up without smoothing, so it is pixel-crisp. */
-const TEXT_CANVAS = { width: 96, height: 32, font: 22 } as const;
+/**
+ * The canvas a number is drawn on, in the 5 × 7 pixel font (`pixelFont.ts`): each font pixel
+ * is `scale` canvas pixels, and the texture is magnified without smoothing, so the digits are
+ * pixel-hard blocks with a hard outline.
+ */
+const TEXT_CANVAS = { scale: 3, width: (PIXEL_TEXT_MAX * 6 + 1) * 3, height: PIXEL_FONT_HEIGHT * 3 } as const;
+/** Pops (the miss cross, the heal pluses) that can show at once. */
+const POPS = 24;
+/** How long a miss cross shows, and how far it rises. */
+const MISS_SECONDS = 0.65;
+const MISS_RISE = 0.3;
+/** How long each heal plus rises, how far, and the gap between the pluses of one heal. */
+const PLUS_SECONDS = 0.85;
+const PLUS_RISE = 0.55;
+const PLUS_GAP = 0.12;
+/**
+ * Brightness of the heal pluses over their painted white: above 1.5, so they bloom green
+ * (art bible section 3: anything meant to glow).
+ */
+export const HEAL_GLOW = 1.8;
+/** The miss cross is a plain grey, under the bloom threshold. */
+const MISS_GREY = 0.62;
 
 // ---- Shapes ----------------------------------------------------------------------------
 
@@ -118,6 +139,39 @@ function steppedRing(): BufferGeometry {
   return batch.build();
 }
 
+/**
+ * A flat sign of voxels facing +Z, 5 × 5 cells of `cell` tiles: the cells `lit` picks are
+ * pale, and each has a dark border cell behind it, so the sign reads on any ground.
+ */
+function voxelSign(lit: (i: number, j: number) => boolean, cell = 0.055): BufferGeometry {
+  const batch = new BoxBatch();
+  const pale = new Color(1, 1, 1);
+  const dark = new Color(0.16, 0.16, 0.18);
+  const n = 5;
+  const o = -(n * cell) / 2;
+  for (let i = -1; i <= n; i++) {
+    for (let j = -1; j <= n; j++) {
+      const on = i >= 0 && i < n && j >= 0 && j < n && lit(i, j);
+      let edge = false;
+      for (let di = -1; di <= 1 && !on; di++) {
+        for (let dj = -1; dj <= 1; dj++) {
+          const a = i + di;
+          const b = j + dj;
+          if (a >= 0 && a < n && b >= 0 && b < n && lit(a, b)) edge = true;
+        }
+      }
+      if (on) batch.box(o + i * cell, o + j * cell, 0, cell, cell, cell, pale);
+      else if (edge) batch.box(o + i * cell, o + j * cell, -cell * 0.5, cell, cell, cell, dark);
+    }
+  }
+  return batch.build();
+}
+
+/** The miss sign: a cross. */
+const crossShape = (): BufferGeometry => voxelSign((i, j) => i === j || i === 4 - j);
+/** The heal sign: a plus, three cells thick in the middle. */
+const plusShape = (): BufferGeometry => voxelSign((i, j) => i === 2 || j === 2);
+
 // ---- Pools -----------------------------------------------------------------------------
 
 interface Flash {
@@ -142,6 +196,18 @@ interface Ring {
   age: number;
   duration: number;
   radius: number;
+  active: boolean;
+}
+
+interface Pop {
+  mesh: Mesh;
+  material: MeshBasicMaterial;
+  start: Vector3;
+  age: number;
+  /** Seconds before it shows. */
+  delay: number;
+  life: number;
+  rise: number;
   active: boolean;
 }
 
@@ -187,7 +253,11 @@ export class Effects {
   private readonly shell = voxelBall(true);
   private readonly plate = voxelPlate();
   private readonly ringShape = steppedRing();
+  private readonly cross = crossShape();
+  private readonly plus = plusShape();
   private readonly flashes: Flash[] = [];
+  private readonly pops: Pop[] = [];
+  private nextPop = 0;
   private readonly rings: Ring[] = [];
   private readonly texts: FloatingText[] = [];
   /** Particles owed to each object that has an aura or a trail, between frames. */
@@ -221,6 +291,15 @@ export class Effects {
       mesh.renderOrder = 3;
       this.group.add(mesh);
       this.rings.push({ mesh, material, color: new Color(), age: 0, duration: 0, radius: 1, active: false });
+    }
+    for (let i = 0; i < POPS; i++) {
+      const material = new MeshBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: true });
+      const mesh = new Mesh(this.cross, material);
+      mesh.name = 'miss';
+      mesh.visible = false;
+      mesh.renderOrder = 9;
+      this.group.add(mesh);
+      this.pops.push({ mesh, material, start: new Vector3(), age: 0, delay: 0, life: 1, rise: 0, active: false });
     }
     for (let i = 0; i < TEXTS; i++) {
       const drawn = canvas2d();
@@ -437,31 +516,49 @@ export class Effects {
     this.owed.set(obj, owed);
   }
 
+  /** An attack that missed (the attacker is blind): a grey voxel cross pops up above `at` and fades. */
+  miss(at: Vector3): void {
+    const slot = this.pop(this.cross, 'miss', at, 0, MISS_SECONDS, MISS_RISE);
+    slot.material.color.setScalar(MISS_GREY);
+  }
+
+  /** A unit healed: three glowing green plus blocks rise from `at`, one after another. */
+  healPlus(at: Vector3): void {
+    const heal = new Color(PALETTE.heal);
+    for (let i = 0; i < 3; i++) {
+      centre.set(at.x + (i - 1) * 0.16, at.y + (i === 1 ? 0.1 : 0), at.z + (i - 1) * 0.04);
+      const slot = this.pop(this.plus, 'heal-plus', centre, i * PLUS_GAP, PLUS_SECONDS, PLUS_RISE);
+      slot.material.color.copy(heal).multiplyScalar(HEAL_GLOW);
+    }
+  }
+
   /**
    * A number or short word that rises 0.6 tile over 0.8 s and fades, in `color` (CSS) with
-   * a dark outline. Does nothing where there is no 2D canvas (tests in node).
+   * a dark outline, drawn pixel-hard in the 5 × 7 pixel font (digits, + - ! ? and A–Z; at
+   * most 8 characters). Does nothing where there is no 2D canvas (tests in node).
    */
   floatText(at: Vector3, text: string, color: string): void {
     if (this.texts.length === 0) return;
     const slot = this.texts[this.nextText] as FloatingText;
     this.nextText = (this.nextText + 1) % this.texts.length;
     const { context } = slot;
-    const { width, height, font } = TEXT_CANVAS;
+    const { width, height, scale } = TEXT_CANVAS;
     context.clearRect(0, 0, width, height);
-    context.font = `${font}px 'Lilita One', system-ui, sans-serif`;
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.lineJoin = 'miter';
-    context.lineWidth = 5;
-    context.strokeStyle = PALETTE.outline;
-    context.fillStyle = color;
-    const shown = text.slice(0, 8);
-    context.strokeText(shown, width / 2, height / 2 + 1);
-    context.fillText(shown, width / 2, height / 2 + 1);
+    // Drawn pixel by pixel in the pixel font: no anti-aliasing anywhere, a hard dark outline.
+    const drawn = pixelText(text);
+    const used = drawn.width * scale;
+    const left = Math.floor((width - used) / 2);
+    for (const [value, style] of [[1, PALETTE.outline], [2, color]] as const) {
+      context.fillStyle = style;
+      for (let y = 0; y < drawn.height; y++) {
+        for (let x = 0; x < drawn.width; x++) {
+          if (drawn.cells[y * drawn.width + x] === value) context.fillRect(left + x * scale, y * scale, scale, scale);
+        }
+      }
+    }
     slot.texture.needsUpdate = true;
-    const used = Math.min(width, context.measureText(shown).width + 12);
     slot.texture.repeat.set(used / width, 1);
-    slot.texture.offset.set((1 - used / width) / 2, 0);
+    slot.texture.offset.set(left / width, 0);
     slot.sprite.scale.set((TEXT_HEIGHT * used) / height, TEXT_HEIGHT, 1);
     slot.start.copy(at);
     slot.age = 0;
@@ -491,6 +588,11 @@ export class Effects {
       slot.age += dt;
       this.applyRing(slot);
     }
+    for (const slot of this.pops) {
+      if (!slot.active) continue;
+      slot.age += dt;
+      this.applyPop(slot, camera);
+    }
     for (const slot of this.texts) {
       if (!slot.active) continue;
       slot.age += dt;
@@ -508,6 +610,7 @@ export class Effects {
   clear(): void {
     for (const slot of this.flashes) (slot.active = false), (slot.mesh.visible = false);
     for (const slot of this.rings) (slot.active = false), (slot.mesh.visible = false);
+    for (const slot of this.pops) (slot.active = false), (slot.mesh.visible = false);
     for (const slot of this.texts) (slot.active = false), (slot.sprite.visible = false);
     this.lastDt = 0;
   }
@@ -518,6 +621,9 @@ export class Effects {
     this.shell.dispose();
     this.plate.dispose();
     this.ringShape.dispose();
+    this.cross.dispose();
+    this.plus.dispose();
+    for (const slot of this.pops) slot.material.dispose();
     for (const slot of this.flashes) slot.material.dispose();
     for (const slot of this.rings) slot.material.dispose();
     for (const slot of this.texts) {
@@ -622,6 +728,42 @@ export class Effects {
       toCamera.copy(camera.position).sub(slot.mesh.position);
       slot.mesh.rotation.set(0, Math.atan2(toCamera.x, toCamera.z), 0);
     }
+  }
+
+  private pop(shape: BufferGeometry, name: string, p: Vector3, delay: number, life: number, rise: number): Pop {
+    const slot = this.pops[this.nextPop] as Pop;
+    this.nextPop = (this.nextPop + 1) % POPS;
+    slot.mesh.geometry = shape;
+    slot.mesh.name = name;
+    slot.start.copy(p);
+    slot.age = 0;
+    slot.delay = delay;
+    slot.life = life;
+    slot.rise = rise;
+    slot.active = true;
+    slot.mesh.visible = false;
+    slot.mesh.position.copy(p);
+    slot.mesh.scale.setScalar(1e-3);
+    return slot;
+  }
+
+  /** A pop springs up (back-out), rises, and shrinks away at the end. It always faces the camera. */
+  private applyPop(slot: Pop, camera: Camera): void {
+    const t = slot.age - slot.delay;
+    if (t >= slot.life) {
+      slot.active = false;
+      slot.mesh.visible = false;
+      return;
+    }
+    if (t < 0) return;
+    slot.mesh.visible = true;
+    const springIn = Math.min(1, t / 0.12);
+    const c1 = 1.70158;
+    const pop = 1 + (c1 + 1) * (springIn - 1) ** 3 + c1 * (springIn - 1) ** 2;
+    const out = Math.min(1, (slot.life - t) / 0.15);
+    slot.mesh.scale.setScalar(Math.max(1e-3, pop * out));
+    slot.mesh.position.set(slot.start.x, slot.start.y + slot.rise * easeOutCubic(t / slot.life), slot.start.z);
+    slot.mesh.quaternion.copy(camera.quaternion);
   }
 
   private applyRing(slot: Ring): void {
