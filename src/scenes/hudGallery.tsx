@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from '../app/settings';
 import { PLANT_KEYS, UNIT_INFO, ZOMBIE_KEYS } from '../data/units';
 import { worldToClient } from '../render/coords';
 import { createPortraitPainter, renderPortraits, setPortraitPainter } from '../render/portraits';
-import type { CardKey, Faction } from '../sim/types';
+import type { CardKey, Faction, UnitKey } from '../sim/types';
 import type { BoyPortraits } from '../ui/hud/BaseBars';
 import { CardTray } from '../ui/hud/CardTray';
 import { HeroButton } from '../ui/hud/HeroButton';

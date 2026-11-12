@@ -157,7 +157,7 @@ export class BattleController {
    */
   mergeCue(): UnitKey | null {
     const unit = this.hud.selected.peek();
-    if (unit === null || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
+    if (unit === null || !isCard(unit) || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
     const me = this.match.state.players[this.playerFaction];
     if ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit)) return null;
     const units = this.match.state.units;
