@@ -1,0 +1,243 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, reviveSave } from '../../src/cloud/restClient';
+import type { Save } from '../../src/progress/save';
+import { T0, hex, saveFor } from './helpers';
+
+type Call = { url: string; method: string; body: unknown };
+
+/** A `fetch` that answers every call with `status` and `data`, and records what it was asked. */
+function mockFetch(answer: (call: Call) => { status: number; data?: unknown } | 'network' | 'hang') {
+  const calls: Call[] = [];
+  const fetch = vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+    const call = {
+      url: String(input),
+      method: init.method ?? 'GET',
+      body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined,
+    };
+    calls.push(call);
+    const a = answer(call);
+    if (a === 'network') throw new TypeError('Failed to fetch');
+    if (a === 'hang') {
+      return new Promise<Response>((_, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+    }
+    return new Response(JSON.stringify(a.data ?? null), { status: a.status });
+  });
+  return { fetch: fetch as unknown as typeof globalThis.fetch, calls };
+}
+
+const H = hex('1');
+const G = hex('9');
+const s: Save = { ...saveFor('p01', 'Lukas'), coins: 50 };
+const SV = { '.sv': 'timestamp' };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('requests', () => {
+  it('uses the old game\'s database and the v2 root by default', async () => {
+    expect(DATABASE_URL).toBe('https://lukas-toby-plants-vs-zombies-default-rtdb.firebaseio.com');
+    const m = mockFetch(() => ({ status: 200, data: null }));
+    await new RestCloud({ fetch: m.fetch }).listPlayers();
+    await new RestCloud({ fetch: m.fetch, root: 'v2test' }).board();
+    expect(m.calls.map((c) => [c.method, c.url])).toEqual([
+      ['GET', `${DATABASE_URL}/v2/players.json`],
+      ['GET', `${DATABASE_URL}/v2test/board.json`],
+    ]);
+  });
+
+  it('creates a player in ONE multi-path PATCH at the root', async () => {
+    const m = mockFetch(() => ({ status: 200, data: {} }));
+    expect(await new RestCloud({ fetch: m.fetch }).createPlayer(s, H)).toBe('ok');
+    expect(m.calls).toEqual([{
+      url: `${DATABASE_URL}/v2.json`,
+      method: 'PATCH',
+      body: {
+        'secrets/p01': H,
+        [`saves/p01/${H}`]: { save: s, touch: SV },
+        'players/p01': { name: 'Lukas', picture: s.picture },
+        'board/p01': { slot: 'p01', name: 'Lukas', picture: s.picture, stars: 0, wave: 0, versusWins: 0, computerWins: 0, updatedAt: SV },
+      },
+    }]);
+  });
+
+  it('writes a save and its board row in one PATCH', async () => {
+    const m = mockFetch(() => ({ status: 200, data: {} }));
+    await new RestCloud({ fetch: m.fetch }).writeSave(s, H);
+    expect(m.calls).toEqual([{
+      url: `${DATABASE_URL}/v2.json`, method: 'PATCH',
+      body: { [`saves/p01/${H}`]: { save: s, touch: SV }, 'board/p01': boardRowFor(s) },
+    }]);
+  });
+
+  it('loads at the exact save path', async () => {
+    const m = mockFetch(() => ({ status: 200, data: { save: s, touch: T0 } }));
+    expect(await new RestCloud({ fetch: m.fetch }).loadSave('p01', H)).toEqual(s);
+    expect(m.calls[0]).toMatchObject({ method: 'GET', url: `${DATABASE_URL}/v2/saves/p01/${H}.json` });
+  });
+
+  it('deletes and resets with the grown-up proof in the same update', async () => {
+    const m = mockFetch(() => ({ status: 200, data: {} }));
+    const c = new RestCloud({ fetch: m.fetch });
+    await c.deletePlayer('p01', G);
+    await c.resetPin('p01', G, H, s);
+    await c.setGrownUpCode(G);
+    expect(m.calls[0]!.body).toEqual({
+      'secrets/p01': null, 'saves/p01': null, 'players/p01': null, 'board/p01': null, [`admin/proof/${G}`]: { touch: SV },
+    });
+    expect(m.calls[1]!.body).toEqual({
+      'secrets/p01': H,
+      'saves/p01': { [H]: { save: s, touch: SV } },
+      'players/p01': { name: 'Lukas', picture: s.picture },
+      'board/p01': boardRowFor(s),
+      [`admin/proof/${G}`]: { touch: SV },
+    });
+    expect(m.calls[2]).toEqual({ url: `${DATABASE_URL}/v2/admin/secret.json`, method: 'PUT', body: G });
+  });
+
+  it('never builds a path from a bad slot or hash', async () => {
+    const m = mockFetch(() => ({ status: 200, data: null }));
+    const c = new RestCloud({ fetch: m.fetch });
+    expect(await c.loadSave('p01', '../admin')).toBe('refused');
+    expect(await c.loadSave('p/../x' as 'p01', H)).toBe('refused');
+    expect(await c.writeSave(s, 'ABC')).toBe('refused');
+    expect(await c.deletePlayer('p01', 'x')).toBe('refused');
+    expect(await c.resetPin('p02', G, H, s)).toBe('refused');
+    expect(await c.setGrownUpCode('nope')).toBe('refused');
+    expect(m.calls).toEqual([]);
+  });
+});
+
+describe('answers', () => {
+  const each = (c: RestCloud) => ({
+    listPlayers: () => c.listPlayers(),
+    createPlayer: () => c.createPlayer(s, H),
+    loadSave: () => c.loadSave('p01', H),
+    writeSave: () => c.writeSave(s, H),
+    board: () => c.board(),
+    setGrownUpCode: () => c.setGrownUpCode(G),
+    deletePlayer: () => c.deletePlayer('p01', G),
+    resetPin: () => c.resetPin('p01', G, H, s),
+  });
+
+  it.each([401, 403])('maps HTTP %i by call', async (status) => {
+    // createPlayer asks the player list why; answer that one with two players.
+    const m = mockFetch((call) => (call.method === 'GET' && call.url.endsWith('/players.json')
+      ? { status: 200, data: { p01: { name: 'A', picture: 'peashooter' } } } : { status }));
+    const calls = each(new RestCloud({ fetch: m.fetch }));
+    const results: Record<string, unknown> = {};
+    for (const [name, fn] of Object.entries(calls)) results[name] = await fn();
+    expect(results).toEqual({
+      listPlayers: [{ slot: 'p01', name: 'A', picture: 'peashooter' }],
+      createPlayer: 'taken',
+      loadSave: 'wrong-pin',
+      writeSave: 'wrong-pin',
+      board: 'refused',
+      setGrownUpCode: 'refused',
+      deletePlayer: 'wrong-pin',
+      resetPin: 'wrong-pin',
+    });
+  });
+
+  it('a refused create is full when 30 players exist, refused when the slot is free', async () => {
+    const thirty = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`p${String(i + 1).padStart(2, '0')}`, { name: 'A', picture: 'peashooter' }]));
+    const full = mockFetch((c) => (c.method === 'GET' ? { status: 200, data: thirty } : { status: 401 }));
+    expect(await new RestCloud({ fetch: full.fetch }).createPlayer(s, H)).toBe('full');
+    const free = mockFetch((c) => (c.method === 'GET' ? { status: 200, data: null } : { status: 401 }));
+    expect(await new RestCloud({ fetch: free.fetch }).createPlayer(s, H)).toBe('refused');
+  });
+
+  it.each<['network' | number]>([['network'], [500], [503], [429]])('maps %s to offline for every call', async (how) => {
+    const m = mockFetch(() => (how === 'network' ? 'network' : { status: how }));
+    for (const fn of Object.values(each(new RestCloud({ fetch: m.fetch })))) expect(await fn()).toBe('offline');
+  });
+
+  it('maps HTTP 400 to refused', async () => {
+    const m = mockFetch(() => ({ status: 400, data: { error: 'Invalid data' } }));
+    const c = new RestCloud({ fetch: m.fetch });
+    expect(await c.writeSave(s, H)).toBe('refused');
+    expect(await c.loadSave('p01', H)).toBe('refused');
+  });
+
+  it('maps a body that is not JSON (a captive portal) to offline', async () => {
+    const fetch = vi.fn(async () => new Response('<html>log in to the wifi</html>', { status: 200 }));
+    expect(await new RestCloud({ fetch: fetch as unknown as typeof globalThis.fetch }).board()).toBe('offline');
+  });
+
+  it('gives up after 5 s and reports offline, leaving no timer behind', async () => {
+    vi.useFakeTimers();
+    expect(TIMEOUT_MS).toBe(5000);
+    const m = mockFetch(() => 'hang');
+    const p = new RestCloud({ fetch: m.fetch }).loadSave('p01', H);
+    let done: unknown = 'not yet';
+    void p.then((v) => { done = v; });
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(done).toBe('not yet');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done).toBe('offline');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('loadSave: null when nothing is stored; refused when what is stored is unreadable or another slot\'s', async () => {
+    const answers: unknown[] = [null, { save: { ...s, coins: -1 }, touch: T0 }, { save: saveFor('p02'), touch: T0 }, 'text'];
+    const m = mockFetch(() => ({ status: 200, data: answers.shift() }));
+    const c = new RestCloud({ fetch: m.fetch });
+    expect(await c.loadSave('p01', H)).toBeNull();
+    expect(await c.loadSave('p01', H)).toBe('refused');
+    expect(await c.loadSave('p01', H)).toBe('refused');
+    expect(await c.loadSave('p01', H)).toBe('refused');
+  });
+
+  it('skips malformed players and board rows instead of failing', async () => {
+    const m = mockFetch((c) => ({
+      status: 200,
+      data: c.url.endsWith('players.json')
+        ? { p02: { name: 'B', picture: 'sunflower' }, p01: { name: 'A', picture: 'peashooter' }, p40: { name: 'X', picture: 'peashooter' }, p03: { name: 'C', picture: 'dragon' } }
+        : { p01: { name: 'A', picture: 'peashooter', stars: 3, wave: 2, versusWins: 1, computerWins: 0, updatedAt: T0 }, p02: { name: 'B', picture: 'sunflower', stars: -1 } },
+    }));
+    const c = new RestCloud({ fetch: m.fetch });
+    expect(await c.listPlayers()).toEqual([
+      { slot: 'p01', name: 'A', picture: 'peashooter' }, { slot: 'p02', name: 'B', picture: 'sunflower' },
+    ]);
+    expect(await c.board()).toEqual([
+      { slot: 'p01', name: 'A', picture: 'peashooter', stars: 3, wave: 2, versusWins: 1, computerWins: 0, updatedAt: T0 },
+    ]);
+  });
+});
+
+describe('reviveSave', () => {
+  it('restores what the database drops: empty upgrades, stars and unlocked lists', () => {
+    const stored: Record<string, unknown> = { ...s };
+    delete stored.upgrades;
+    stored.plants = {};
+    delete stored.zombies;
+    expect(reviveSave(stored)).toEqual(s);
+  });
+
+  it('turns an index-keyed object back into a list', () => {
+    const stored = { ...s, plants: { unlocked: { 1: 'sunflower', 0: 'peashooter' } } };
+    expect(reviveSave(stored)?.plants).toEqual({ stars: {}, unlocked: ['peashooter', 'sunflower'] });
+  });
+
+  it('still rejects a wrong save', () => {
+    expect(reviveSave({ ...s, coins: 1.5 })).toBeNull();
+    expect(reviveSave(null)).toBeNull();
+  });
+});
+
+describe('cloudMode', () => {
+  it('is the fake until the build flag says live', () => {
+    expect(cloudMode('', undefined)).toBe('fake');
+    expect(cloudMode('?cloud=test', undefined)).toBe('fake');
+    expect(cloudMode('', 'fake')).toBe('fake');
+  });
+
+  it('with the flag live: v2 by default, v2test with ?cloud=test, the fake with ?cloud=fake', () => {
+    expect(cloudMode('', 'live')).toBe('live');
+    expect(cloudMode('?cloud=test', 'live')).toBe('test');
+    expect(cloudMode('?x=1&cloud=fake', 'live')).toBe('fake');
+    expect(cloudMode('?cloud=other', 'live')).toBe('live');
+  });
+});
