@@ -203,7 +203,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     kernelPult: {
       recharge: 5, hp: 300, armor: 0, speed: 0,
       shot: {
-        kind: 'kernel', damage: 12, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
+        kind: 'kernel', damage: 14, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
         status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
       },
     },

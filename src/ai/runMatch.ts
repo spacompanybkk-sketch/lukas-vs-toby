@@ -1,5 +1,6 @@
 import { BALANCE } from '../data/balance';
 import type { Balance } from '../data/balance';
+import { ALL_CARDS } from '../data/units';
 import { Match, defaultConfig } from '../sim/match';
 import type { Command, Faction, MatchConfig } from '../sim/types';
 import { createBasicBot } from './basicBot';
@@ -41,7 +42,8 @@ export function runMatch(
 
 /**
  * The standard bot-against-bot match the tests and the smoke tool play: the default setup for
- * `seed`, and a basic bot on each side at the given skill, both seeded with `seed`.
+ * `seed` with all ten cards a side, and a basic bot on each side at the given skill, both seeded
+ * with `seed`.
  */
 export function runBotMatch(
   seed: number, skills: Record<Faction, Skill>, maxTicks: number = MAX_MATCH_TICKS,
@@ -51,5 +53,7 @@ export function runBotMatch(
     createBasicBot('plants', skills.plants, seed),
     createBasicBot('zombies', skills.zombies, seed),
   ];
-  return runMatch(defaultConfig(seed, balance), bots, maxTicks, balance);
+  const config = defaultConfig(seed, balance);
+  config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
+  return runMatch(config, bots, maxTicks, balance);
 }

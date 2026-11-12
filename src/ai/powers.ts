@@ -38,8 +38,8 @@ export const POWER_LINES = {
   fog: 150,
   /** Frenzy: extra bite damage gained. */
   frenzy: 150,
-  /** Healing Rain: health given back. */
-  heal: 450,
+  /** Healing Rain: health given back, × its amount. */
+  heal: 1.5,
   /** Rock Wall: zombie health closing in on the lane. */
   rock: 500,
 } as const;
@@ -194,7 +194,7 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey): P
     }
     case 'healingRain': {
       const amount = stats.amount ?? 0;
-      return bestArea(grid, faction, spell, stats.size, 'plants', POWER_LINES.heal,
+      return bestArea(grid, faction, spell, stats.size, 'plants', POWER_LINES.heal * amount,
         (p) => (p.key === 'rock' ? 0 : Math.min(amount, p.maxHp - p.hp)));
     }
     case 'rockWall':
