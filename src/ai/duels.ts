@@ -125,3 +125,22 @@ export const MERGE_PAIRS: ReadonlyArray<readonly [UnitKey, UnitKey]> = [
   ['peashooter', 'brainEater'], ['peashooter', 'veryFastWalker'], ['peashooter', 'skeletonWarrior'],
   ['brainEater', 'peashooter'], ['veryFastWalker', 'peashooter'], ['skeletonWarrior', 'peashooter'],
 ];
+
+/**
+ * The units that fight on their own (spec 10): their merge value is measured. Each plant against
+ * Brain Eaters, each zombie against Peashooters. Walls, mines, the Cherry, the Torchwood, the
+ * Sunflower and the Necromancer are judged otherwise.
+ */
+export const FIGHTERS: readonly UnitKey[] = [
+  'peashooter', 'kernelPult', 'mangoPult', 'pumpkinSquash',
+  'brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic',
+  'cowboyZombie', 'tridentZombie', 'brainRot',
+];
+
+/** A fighter's merge value at N = 2..5 against its standard enemy, and their mean. */
+export function unitMergeValue(unit: UnitKey, balance: Balance = BALANCE): { enemy: UnitKey; values: number[]; mean: number } {
+  const enemy: UnitKey = factionOf(unit) === 'plants' ? 'brainEater' : 'peashooter';
+  const values: number[] = [];
+  for (let level = 2; level <= 5; level++) values.push(mergeValue(unit, enemy, level, balance).value);
+  return { enemy, values, mean: values.reduce((a, b) => a + b, 0) / values.length };
+}

@@ -8,6 +8,7 @@
 
 import { BALANCE } from '../data/balance';
 import type { Balance } from '../data/balance';
+import { ALL_CARDS } from '../data/units';
 import { defaultConfig } from '../sim/match';
 import type { Faction, MatchConfig } from '../sim/types';
 import { SKILLS } from './basicBot';
@@ -63,13 +64,17 @@ export function opponentOf(faction: Faction): Faction {
   return faction === 'plants' ? 'zombies' : 'plants';
 }
 
-/** The match config for a human on `human` against the computer at `difficulty`. */
+/**
+ * The match config for a human on `human` against the computer at `difficulty`: the default setup
+ * with all ten cards a side (ruling R52), and the difficulty's income.
+ */
 export function battleConfig(
   seed: number, human: Faction, difficulty: Skill, balance: Balance = BALANCE,
   table: DifficultyTable = DIFFICULTY,
 ): MatchConfig {
   const setting = table[difficulty][human];
   const config = defaultConfig(seed, balance);
+  config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
   config.incomeMultiplier = {
     ...config.incomeMultiplier,
     [human]: setting.income.human,

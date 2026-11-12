@@ -16,12 +16,12 @@ const BULK_MS = 120_000;
 const SKILLS: readonly Skill[] = ['easy', 'medium', 'hard'];
 const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false and the Sunflower pause
 
-const BANDS: Record<HumanStandIn, Record<Skill, readonly [number, number]>> = {
+const BANDS: Record<'child' | 'attentive', Record<Skill, readonly [number, number]>> = {
   child: { easy: [0.55, 0.85], medium: [0.15, 0.45], hard: [0, 0.15] },
   attentive: { easy: [0.85, 0.95], medium: [0.4, 0.6], hard: [0.15, 0.35] },
 };
 
-function rates(standIn: HumanStandIn, human: Faction): Record<Skill, number> {
+function rates(standIn: 'child' | 'attentive', human: Faction): Record<Skill, number> {
   const out = {} as Record<Skill, number>;
   for (const skill of SKILLS) out[skill] = winShare(playSeries(humanMatchup(standIn, human, skill), SEEDS, KNOBS), human);
   return out;

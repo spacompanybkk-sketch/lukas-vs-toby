@@ -20,13 +20,15 @@ export const MAX_MATCH_TICKS = 14_400;
  * this match (bots keep private state). Every tick each bot is asked for its commands, plants'
  * bots first, then zombies', whatever order they are passed in, and the commands go to the match
  * in that order in one `step`. Stops when a base falls or after `maxTicks` steps; a match still
- * going then is a draw.
+ * going then is a draw. `prepare` may change the fresh match before the first step (the balance
+ * checks use it to deal fixed spells).
  */
 export function runMatch(
   config: MatchConfig, bots: readonly Bot[], maxTicks: number = MAX_MATCH_TICKS,
-  balance: Balance = BALANCE,
+  balance: Balance = BALANCE, prepare?: (match: Match) => void,
 ): MatchResult {
   const match = new Match(config, balance);
+  prepare?.(match);
   const plantsFirst = (faction: Faction): number => (faction === 'plants' ? 0 : 1);
   const ordered = [...bots].sort((a, b) => plantsFirst(a.faction) - plantsFirst(b.faction));
   while (match.state.winner === null && match.state.tick < maxTicks) {

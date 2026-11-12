@@ -53,6 +53,14 @@ export interface LaneReckoning {
   readonly zombieHp: number;
 }
 
+/** Damage per second a zombie's shot deals to each plant it reaches, at its level (pierce counts once per plant). */
+export function zombieShotDps(b: Balance, u: Unit): number {
+  const shot = b.units[u.key]?.shot;
+  if (shot === undefined) return 0;
+  const puddle = shot.puddle === undefined ? 0 : shot.puddle.dps;
+  return (shot.damage * levelScale(b, u.faction, u.level, 'damage')) / shot.interval + puddle;
+}
+
 /**
  * Reckons the fight in a lane between its plants (plus `extra`, a hypothetical Peashooter-like
  * plant: its dps, shot rate and health) and its zombies at or right of `minX`.
@@ -60,6 +68,9 @@ export interface LaneReckoning {
  * stopping = firepower × (walk time of the nearest zombie to the front plant + time the zombies
  * need to bite through every plant). Plants hold the lane when `stopping` covers `zombieHp`.
  * With no zombie, the walk is reckoned from the graveyard edge for a zombie of `probeSpeed`.
+ * Zombies that shoot wear the plants down from range: their shots count with their bites once
+ * the zombies arrive, and those that reach the front plant from where they stand (a Trident, an
+ * Archer, a Brain Rot) already shoot during the walk, so the plants have less health to chew.
  */
 export function reckonLane(
   b: Balance, view: LaneView, minX: number,
@@ -72,7 +83,7 @@ export function reckonLane(
   for (const z of view.zombies) {
     if (z.x < minX) continue;
     zombieHp += z.hp;
-    bite += biteDps(b, z);
+    bite += biteDps(b, z) + zombieShotDps(b, z);
     if (front === undefined || z.x < front.x) front = z;
   }
   const shooting = view.plants.filter((p) => front === undefined || p.x <= front.x);
@@ -91,7 +102,14 @@ export function reckonLane(
   const speed = front !== undefined ? (b.units[front.key]?.speed ?? 1) : (probe?.speed ?? 1);
   const startX = front !== undefined ? front.x : 9.5;
   const walk = Math.max(0, startX - frontPlantX - 0.6) / speed;
+  let sniping = 0;
+  for (const z of view.zombies) {
+    const range = b.units[z.key]?.shot?.range ?? 0;
+    if (z.x >= minX && z.x - frontPlantX <= range) sniping += zombieShotDps(b, z);
+  }
   const biting = probe !== undefined && front === undefined ? probe.bite : bite;
-  const chew = biting > 0 ? plantHp / biting : 0;
-  return { stopping: dps * (walk + chew), zombieHp };
+  const left = Math.max(0, plantHp - sniping * walk);
+  const chew = biting > 0 ? left / biting : 0;
+  const lasts = sniping > 0 ? Math.min(walk, plantHp / sniping) : walk;
+  return { stopping: dps * (lasts + chew), zombieHp };
 }
