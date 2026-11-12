@@ -147,7 +147,9 @@ export function mountGame(
     audio.setMuted(s.muted);
     stage?.setQuality(s.quality);
   };
-  const onGesture = (): Promise<boolean> => audio.unlock().then(() => audio.unlocked);
+  // Every gesture: cheap while audio runs, and the way back after Safari suspends or interrupts it.
+  const onGesture = (): boolean | Promise<boolean> =>
+    audio.needsGesture ? audio.unlock().then(() => !audio.needsGesture) : true;
 
   const renderer = stage?.renderer;
   renderer?.countDrawCalls(fps);

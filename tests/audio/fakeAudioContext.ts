@@ -296,16 +296,34 @@ export class FakeAudioContext {
     this.destination = new FakeNode(this, 'destination');
   }
 
+  private readonly stateListeners: Array<() => void> = [];
+
+  addEventListener(type: string, listener: () => void): void {
+    if (type === 'statechange') this.stateListeners.push(listener);
+  }
+
+  removeEventListener(type: string, listener: () => void): void {
+    const i = this.stateListeners.indexOf(listener);
+    if (type === 'statechange' && i >= 0) this.stateListeners.splice(i, 1);
+  }
+
+  /** Changes the state as the browser would, firing `statechange` when it really changes. */
+  setState(state: FakeAudioContext['state']): void {
+    if (this.state === state) return;
+    this.state = state;
+    for (const listener of [...this.stateListeners]) listener();
+  }
+
   resume(): Promise<void> {
     this.resumeCalls += 1;
     if (this.resumeMode === 'hang') return new Promise<void>(() => undefined);
     if (this.resumeMode === 'reject') return Promise.reject(new Error('NotAllowedError: resume refused'));
-    if (this.resumeMode === 'run') this.state = 'running';
+    if (this.resumeMode === 'run') this.setState('running');
     return Promise.resolve();
   }
 
   close(): Promise<void> {
-    this.state = 'closed';
+    this.setState('closed');
     return Promise.resolve();
   }
 

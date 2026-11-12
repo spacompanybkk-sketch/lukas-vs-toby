@@ -134,6 +134,8 @@ export class AudioEngine {
   private playback: Playback | null = null;
   private wantedTheme: Theme | null = null;
   private intensity = { from: 0, to: 0, at: 0 };
+  /** The unlock waiting on the browser, shared by every call made meanwhile. */
+  private unlocking: Promise<void> | null = null;
 
   constructor(createContext: () => AudioContext = defaultContext) {
     this.createContext = createContext;
@@ -150,11 +152,32 @@ export class AudioEngine {
   }
 
   /**
-   * Call from every pointerdown, touchend or keydown: the first one starts audio, later ones are
-   * cheap, and one after Safari has suspended or interrupted the audio (a call, Siri, another
-   * app) resumes it. Never throws; if the browser refuses, audio stays off until the next try.
+   * True while sound cannot play until the next gesture: before the first unlock, and whenever the
+   * browser has suspended or interrupted the context since (a call, Siri, another app, the iPad
+   * locked). It follows the context's `statechange`.
    */
-  async unlock(): Promise<void> {
+  get needsGesture(): boolean {
+    return this.ctx === null || !this.ready || !isRunning(this.ctx);
+  }
+
+  /**
+   * Call from every pointerup, touchend, click or keydown, for the whole life of the page: the
+   * first one starts audio, and one after Safari has suspended or interrupted the audio resumes
+   * it. While audio is running it returns at once. Calls made while one is still waiting on the
+   * browser share that one (a single tap fires several of these events). Never throws; if the
+   * browser refuses, audio stays off until the next try.
+   */
+  unlock(): Promise<void> {
+    if (!this.needsGesture) return Promise.resolve();
+    if (this.unlocking !== null) return this.unlocking;
+    const attempt = this.tryUnlock().finally(() => {
+      if (this.unlocking === attempt) this.unlocking = null;
+    });
+    this.unlocking = attempt;
+    return attempt;
+  }
+
+  private async tryUnlock(): Promise<void> {
     preferPlaybackSession();
     const ctx = this.ensureContext();
     if (ctx === null) return;
@@ -289,7 +312,24 @@ export class AudioEngine {
       return null;
     }
     this.ctx = ctx;
+    this.watchState(ctx);
     return ctx;
+  }
+
+  /**
+   * Follows the context's state: when the browser suspends or interrupts it, sound stops until a
+   * gesture resumes it (`needsGesture` turns true, and the page keeps offering every gesture to
+   * `unlock`); when it is closed under us, everything on it is dropped so the next gesture starts
+   * afresh.
+   */
+  private watchState(ctx: AudioContext): void {
+    try {
+      ctx.addEventListener('statechange', () => {
+        if (this.ctx === ctx && ctx.state === 'closed') this.forgetContext();
+      });
+    } catch {
+      // an old browser without the event: `needsGesture` still reads the state directly
+    }
   }
 
   /** The context was closed under us: drop it and everything on it; the next unlock starts afresh. */

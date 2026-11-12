@@ -296,7 +296,7 @@ describe('App flow', () => {
     expect(sessions[0]?.controller.setPaused).not.toHaveBeenCalledWith(false);
   });
 
-  it('offers onGesture on every activation (not pointerdown) until it returns true', () => {
+  it('offers onGesture on every activation (not pointerdown), for the life of the page', () => {
     let ok = false;
     const onGesture = vi.fn(() => ok);
     act(() => render(<App onGesture={onGesture} />, root));
@@ -308,22 +308,31 @@ describe('App flow', () => {
     ok = true;
     document.dispatchEvent(new Event('click'));
     expect(onGesture).toHaveBeenCalledTimes(3);
+    // Still offered after a success: Safari may suspend the audio again at any time.
     document.dispatchEvent(new Event('keydown'));
     document.dispatchEvent(new Event('click'));
-    expect(onGesture).toHaveBeenCalledTimes(3);
+    expect(onGesture).toHaveBeenCalledTimes(5);
   });
 
-  it('stops offering onGesture once its promise resolves true', async () => {
-    const answers = [false, true];
-    const onGesture = vi.fn(() => Promise.resolve(answers.shift() ?? true));
+  it('offers one tap once while its promise is pending, and the next tap again once it settles', async () => {
+    let settle: (ok: boolean) => void = () => {};
+    const onGesture = vi.fn(() => new Promise<boolean>((resolve) => { settle = resolve; }));
     act(() => render(<App onGesture={onGesture} />, root));
-    document.dispatchEvent(new Event('click'));
+    for (const name of ['pointerup', 'touchend', 'click']) document.dispatchEvent(new Event(name)); // one tap
+    expect(onGesture).toHaveBeenCalledTimes(1);
+    settle(true);
     await Promise.resolve();
-    document.dispatchEvent(new Event('keydown'));
     await Promise.resolve();
-    await Promise.resolve();
-    document.dispatchEvent(new Event('click'));
+    for (const name of ['pointerup', 'touchend', 'click']) document.dispatchEvent(new Event(name));
     expect(onGesture).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops offering gestures once unmounted', () => {
+    const onGesture = vi.fn(() => true);
+    act(() => render(<App onGesture={onGesture} />, root));
+    act(() => render(null, root));
+    document.dispatchEvent(new Event('click'));
+    expect(onGesture).not.toHaveBeenCalled();
   });
 
   it('in a production build without createSession it shows Unsupported and logs an error', () => {

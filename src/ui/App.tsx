@@ -31,9 +31,11 @@ export interface AppProps {
   /** Called with the settings once at start and on every change (apply to audio and renderer here). */
   onSettingsChange?(s: Settings): void;
   /**
-   * Called on each user activation (pointerup, touchend, click, keydown) until it returns or
-   * resolves `true`. Safari lets audio start only inside one of these; pass the audio unlock and
-   * report whether the context is now running. `pointerdown` does not count for touch.
+   * Called on every user activation (pointerup, touchend, click, keydown) for the life of the
+   * page. Safari lets audio start, and resume after an interruption (a call, Siri, the iPad
+   * locked), only inside one of these; pass the audio unlock, which is cheap while audio runs.
+   * While a returned promise is pending, the other events of the same tap are not offered.
+   * `pointerdown` does not count for touch.
    */
   onGesture?(): boolean | Promise<boolean>;
   energyRef?: Ref<HTMLDivElement>;
@@ -89,7 +91,8 @@ const ACTIVATION_EVENTS = ['pointerup', 'touchend', 'click', 'keydown'] as const
 /**
  * Touch housekeeping for iPad Safari: an (empty) touchstart listener makes `:active` work, so
  * buttons visibly press; pinch gestures are cancelled so the page never zooms. `onGesture` is
- * offered every activation until it reports success.
+ * offered every activation for as long as the app is mounted: Safari can suspend the audio at any
+ * time, and only a gesture may resume it.
  */
 function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | undefined): void {
   const callback = useRef(onGesture);
@@ -97,14 +100,12 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   useEffect(() => {
     const noop = (): void => {};
     const noGesture = (e: Event): void => e.preventDefault();
-    let done = false;
-    const stop = (): void => {
-      done = true;
-      for (const name of ACTIVATION_EVENTS) document.removeEventListener(name, gesture, true);
-    };
+    // One tap fires pointerup, touchend and click: while an answer is still on its way, the
+    // later events of the same tap are not offered again.
+    let waiting = false;
     const gesture = (): void => {
       const cb = callback.current;
-      if (done || cb === undefined) return;
+      if (waiting || cb === undefined) return;
       let result: boolean | Promise<boolean>;
       try {
         result = cb();
@@ -112,17 +113,19 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
         console.error('onGesture failed', e);
         return;
       }
-      if (result === true) {
-        stop();
-      } else if (result instanceof Promise) {
-        result.then((ok) => { if (ok) stop(); }, (e: unknown) => console.error('onGesture failed', e));
+      if (result instanceof Promise) {
+        waiting = true;
+        result.then(
+          () => { waiting = false; },
+          (e: unknown) => { waiting = false; console.error('onGesture failed', e); },
+        );
       }
     };
     document.addEventListener('touchstart', noop, { passive: true });
     document.addEventListener('gesturestart', noGesture);
     for (const name of ACTIVATION_EVENTS) document.addEventListener(name, gesture, true);
     return () => {
-      stop();
+      for (const name of ACTIVATION_EVENTS) document.removeEventListener(name, gesture, true);
       document.removeEventListener('touchstart', noop);
       document.removeEventListener('gesturestart', noGesture);
     };

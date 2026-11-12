@@ -213,6 +213,63 @@ describe('AudioEngine.unlock', () => {
     expect(fake.sources().length).toBeGreaterThan(before);
   });
 
+  it('after an interruption that fires statechange, needs a gesture, and the next gesture brings sound back', async () => {
+    const { engine, fake } = await unlockedEngine();
+    expect(engine.needsGesture).toBe(false);
+    fake.setState('interrupted'); // a phone call, Siri, the iPad locked
+    expect(engine.needsGesture).toBe(true);
+    const before = fake.sources().length;
+    engine.play('pea');
+    expect(fake.sources().length).toBe(before);
+    fake.setState('suspended'); // Safari after the interruption ends: waits for a gesture
+
+    await engine.unlock(); // the next tap
+    expect(fake.state).toBe('running');
+    expect(engine.needsGesture).toBe(false);
+    engine.play('pea');
+    expect(fake.sources().length).toBeGreaterThan(before);
+  });
+
+  it('while audio runs, unlock is a no-op that asks the browser nothing', async () => {
+    const { engine, fake } = await unlockedEngine();
+    const calls = fake.resumeCalls;
+    await Promise.all([engine.unlock(), engine.unlock(), engine.unlock()]);
+    expect(fake.resumeCalls).toBe(calls);
+  });
+
+  it('shares one attempt among the calls of one tap while the browser is answering', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, fake } = engineWith({ resume: 'hang' });
+      const a = engine.unlock();
+      const b = engine.unlock();
+      const c = engine.unlock();
+      expect(b).toBe(a);
+      expect(c).toBe(a);
+      await vi.advanceTimersByTimeAsync(1000); // the attempt gives up on the hung resume
+      await Promise.all([a, b, c]);
+      expect(fake.resumeCalls).toBe(1);
+      fake.resumeMode = 'run';
+      await engine.unlock(); // a later tap tries again
+      expect(fake.resumeCalls).toBe(2);
+      expect(engine.unlocked).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a context closed under it (statechange) is dropped, and the next gesture makes a new one', async () => {
+    const fakes = [new FakeAudioContext(), new FakeAudioContext()];
+    let made = 0;
+    const engine = new AudioEngine(() => fakes[made++] as unknown as AudioContext);
+    await engine.unlock();
+    void fakes[0]?.close();
+    expect(engine.needsGesture).toBe(true);
+    await engine.unlock();
+    expect(made).toBe(2);
+    expect(engine.unlocked).toBe(true);
+  });
+
   it('starts music that was asked for before the unlock', async () => {
     vi.useFakeTimers();
     const { engine, fake } = engineWith();
