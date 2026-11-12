@@ -298,16 +298,18 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     zombies: { damage: 250, chargeSeconds: 60, firstChargeSeconds: 45 }, // Bone Storm
   },
   spells: {
-    thunderbolt: { cooldown: 60, firstReady: 20, size: 2, damage: 50 },
-    vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
-    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },
+    // Small on purpose: two computers are so evenly matched that ~3% of income moves a match by
+    // 6 points, and no one spell may move Medium v Medium more than that (spec 21).
+    thunderbolt: { cooldown: 60, firstReady: 20, size: 2, damage: 20 },
+    vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 1.5 },
+    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 5 },
     healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 100 },
-    rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
-    meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 20 },
-    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 2.5 },
-    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 25 },
-    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 5, factor: 1.5 },
-    graveRise: { cooldown: 60, firstReady: 20, size: 1, count: 1, minCol: 4 },
+    rockWall: { cooldown: 60, firstReady: 20, size: 1, hp: 200, seconds: 6 },
+    meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 15 },
+    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 3 },
+    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },
+    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 5, factor: 2 },
+    graveRise: { cooldown: 60, firstReady: 20, size: 1, count: 1, minCol: 9 },
   },
 });
 
