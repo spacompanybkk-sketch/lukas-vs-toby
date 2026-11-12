@@ -54,7 +54,7 @@ describe('the fake database enforces the rules file', () => {
 
   it('refuses a save written under a hash that is not the slot\'s secret', async () => {
     const { r } = await world();
-    const res = await r.patch('v2', { [`saves/p01/${hex('0')}`]: { save: saveFor('p01') as unknown as Json, touch: SV } });
+    const res = await r.patch('v2', { [`saves/p01/${hex('0')}`]: { save: JSON.stringify(saveFor('p01')), touch: SV } });
     expect(res.status).toBe(401);
   });
 
@@ -69,7 +69,7 @@ describe('the fake database enforces the rules file', () => {
   it('refuses another player\'s leaderboard row, even with your own proof', async () => {
     const { r, h2 } = await world();
     const res = await r.patch('v2', {
-      [`saves/p02/${h2}`]: { save: saveFor('p02', 'Toby') as unknown as Json, touch: SV },
+      [`saves/p02/${h2}`]: { save: JSON.stringify(saveFor('p02', 'Toby')), touch: SV },
       'board/p01': row('p01', { stars: 0, updatedAt: SV }),
     });
     expect(res.status).toBe(401);
@@ -78,7 +78,7 @@ describe('the fake database enforces the rules file', () => {
   it('refuses a stale touch: the proof must be written in this very update', async () => {
     const { r, h1 } = await world();
     const res = await r.patch('v2', {
-      [`saves/p01/${h1}`]: { save: saveFor('p01', 'Lukas') as unknown as Json, touch: T0 },
+      [`saves/p01/${h1}`]: { save: JSON.stringify(saveFor('p01', 'Lukas')), touch: T0 },
       'board/p01': row('p01', { updatedAt: SV }),
     });
     expect(res.status).toBe(401);
@@ -89,7 +89,7 @@ describe('the fake database enforces the rules file', () => {
   it('accepts the owner\'s honest update', async () => {
     const { r, h1 } = await world();
     const res = await r.patch('v2', {
-      [`saves/p01/${h1}`]: { save: saveFor('p01', 'Lukas') as unknown as Json, touch: SV },
+      [`saves/p01/${h1}`]: { save: JSON.stringify(saveFor('p01', 'Lukas')), touch: SV },
       'board/p01': row('p01', { stars: 12, updatedAt: SV }),
     });
     expect(res.status).toBe(200);
@@ -111,7 +111,7 @@ describe('the fake database enforces the rules file', () => {
   ])('refuses absurd numbers in the owner\'s own row: %s', async (_what, extra) => {
     const { r, h1 } = await world();
     const res = await r.patch('v2', {
-      [`saves/p01/${h1}`]: { save: saveFor('p01', 'Lukas') as unknown as Json, touch: SV },
+      [`saves/p01/${h1}`]: { save: JSON.stringify(saveFor('p01', 'Lukas')), touch: SV },
       'board/p01': row('p01', { updatedAt: SV, ...extra }),
     });
     expect(res.status).toBe(401);
@@ -120,7 +120,7 @@ describe('the fake database enforces the rules file', () => {
   it('refuses a 31st slot even with every proof in place', async () => {
     const { r } = await world();
     const h = await pinHash('p31', '000');
-    const s = saveFor('p31') as unknown as Json;
+    const s = JSON.stringify(saveFor('p31'));
     const res = await r.patch('v2', {
       'secrets/p31': h,
       [`saves/p31/${h}`]: { save: s, touch: SV },
@@ -177,7 +177,7 @@ describe('the fake database enforces the rules file', () => {
     const { r, db, h1 } = await world();
     const res = await r.patch('', {
       'presence/lukas': true,
-      [`v2/saves/p01/${h1}`]: { save: saveFor('p01', 'Lukas') as unknown as Json, touch: SV },
+      [`v2/saves/p01/${h1}`]: { save: JSON.stringify(saveFor('p01', 'Lukas')), touch: SV },
       'v2/board/p02': row('p02', { updatedAt: SV }),
     });
     expect(res.status).toBe(401);
@@ -220,5 +220,89 @@ describe('fake database controls', () => {
     await expect(r.put('presence/a', 1)).rejects.toThrow(TypeError);
     expect(db.peek('presence/a')).toBe(1);
     expect(db.requests.map((q) => q.status)).toEqual(['offline', 'lost']);
+  });
+});
+
+describe('fix round 1: no ghosts, no self-deletes, bounded saves, a changeable grown-up code', () => {
+  it('refuses the owner deleting their own player or board row (it would leave a ghost slot)', async () => {
+    const { r, db, h1 } = await world();
+    for (const path of ['players/p01', 'board/p01']) {
+      const res = await r.patch('v2', {
+        [`saves/p01/${h1}`]: { save: JSON.stringify(saveFor('p01', 'Lukas')), touch: SV },
+        [path]: null,
+      });
+      expect(res.status, path).toBe(401);
+    }
+    expect(db.peek('v2/players/p01')).not.toBeNull();
+    expect(db.peek('v2/board/p01')).not.toBeNull();
+  });
+
+  it('refuses deleting saves without the grown-up proof, even the owner\'s own', async () => {
+    const { r, db, h1 } = await world();
+    expect((await r.del('v2/saves/p01')).status).toBe(401);
+    expect((await r.del(`v2/saves/p01/${h1}`)).status).toBe(401);
+    expect((await r.patch('v2', { 'saves/p01': null, 'players/p01': null })).status).toBe(401);
+    expect(db.peek(`v2/saves/p01/${h1}`)).not.toBeNull();
+    const ok = await r.patch('v2', { 'saves/p01': null, [`admin/proof/${hex('a')}`]: { touch: SV } });
+    expect(ok.status).toBe(200);
+  });
+
+  it('refuses claiming a slot whose player row exists without a secret', async () => {
+    const { r, db } = await world();
+    db.poke('v2/players/p09', { name: 'Orphan', picture: 'peashooter' });
+    const h = await pinHash('p09', '000');
+    const res = await r.patch('v2', {
+      'secrets/p09': h,
+      [`saves/p09/${h}`]: { save: JSON.stringify(saveFor('p09')), touch: SV },
+      'players/p09': { name: 'Thief', picture: 'peashooter' },
+      'board/p09': { ...(row('p01') as Record<string, Json>), slot: 'p09', updatedAt: SV },
+    });
+    expect(res.status).toBe(401);
+    expect(db.peek('v2/players/p09')).toMatchObject({ name: 'Orphan' });
+  });
+
+  it.each<[string, Json]>([
+    ['an object', saveFor('p01', 'Lukas') as unknown as Json],
+    ['a number', 5],
+    ['a string over 20,000 characters', 'x'.repeat(20_001)],
+  ])('refuses a save that is %s', async (_what, save) => {
+    const { r, h1 } = await world();
+    const res = await r.patch('v2', { [`saves/p01/${h1}`]: { save, touch: SV }, 'board/p01': row('p01', { updatedAt: SV }) });
+    expect(res.status).toBe(401);
+  });
+
+  it('accepts a save string of exactly 20,000 characters', async () => {
+    const { r, h1 } = await world();
+    const res = await r.patch('v2', { [`saves/p01/${h1}`]: { save: 'x'.repeat(20_000), touch: SV }, 'board/p01': row('p01', { updatedAt: SV }) });
+    expect(res.status).toBe(200);
+  });
+
+  it('changes the grown-up code only with the current one', async () => {
+    const { db } = await world();
+    const cloud = createFakeCloud(db);
+    expect(await cloud.changeGrownUpCode(hex('b'), hex('c'))).toBe('wrong-pin');
+    expect(await cloud.changeGrownUpCode(hex('a'), hex('c'))).toBe('ok');
+    expect(db.peek('v2/admin/secret')).toBe(hex('c'));
+    expect(await cloud.deletePlayer('p01', hex('a'))).toBe('wrong-pin');
+    expect(await cloud.deletePlayer('p01', hex('c'))).toBe('ok');
+  });
+});
+
+describe('the fake is never more permissive than the real database', () => {
+  it('fails a rule whose child() path has an empty segment', async () => {
+    const rules = { rules: { a: { '.read': true, '.write': "!root.child('x//y').exists()" } } };
+    const db = new FakeDatabase({ now: () => T0, rules });
+    expect((await raw(db).put('a', 1)).status).toBe(401);
+    const ok = new FakeDatabase({ now: () => T0, rules: { rules: { a: { '.write': "!root.child('x/y').exists()" } } } });
+    expect((await raw(ok).put('a', 1)).status).toBe(200);
+  });
+
+  it('refuses at once a rules file whose .matches it cannot evaluate', () => {
+    expect(() => new FakeDatabase({ rules: { rules: { a: { '.write': "data.val().matches(/x/)" } } } })).toThrow();
+  });
+
+  it('does not touch String.prototype', () => {
+    expect(Object.getOwnPropertySymbols(String.prototype).map((s) => s.description)).not.toContain('rules.matches');
+    expect((String.prototype as unknown as Record<string, unknown>).matches).toBeUndefined();
   });
 });

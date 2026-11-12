@@ -1,7 +1,8 @@
 import { isPicture, isSlot, parseSave, totalStars } from '../progress/save';
 import type { Save, Slot } from '../progress/save';
-import { FAKE_DATABASE_URL, FakeDatabase } from './fakeCloud';
-import type { FakeDatabaseOptions } from './fakeCloud';
+// Types only: the fake (which evaluates rule strings with `new Function`) is loaded with a
+// dynamic import, and only when the cloud mode is `fake`.
+import type { FakeDatabase, FakeDatabaseOptions } from './fakeCloud';
 import type { BoardRow, Cloud, CloudError, PublicPlayer } from './types';
 
 /** The old game's database (tag `old-game-final`, src/firebase/config.ts). */
@@ -9,6 +10,8 @@ export const DATABASE_URL = 'https://lukas-toby-plants-vs-zombies-default-rtdb.f
 export type CloudRoot = 'v2' | 'v2test';
 export const TIMEOUT_MS = 5000;
 export const MAX_PLAYERS = 30;
+/** Where the fake database answers (never a real host). */
+export const FAKE_DATABASE_URL = 'https://fake-rtdb.invalid';
 
 /** The database's own clock, filled in when the write lands. */
 const SERVER_NOW = Object.freeze({ '.sv': 'timestamp' });
@@ -28,19 +31,19 @@ type Answer = { kind: 'ok'; data: unknown } | { kind: 'offline' } | { kind: 'den
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
- * A save as read back from the database, which does not store empty objects or arrays (so
- * `upgrades: {}` or `unlocked: []` come back missing) and may hand arrays back as index-keyed
- * objects. Fills those in, then parses strictly.
+ * The save goes into the database as ONE JSON string. The database would otherwise drop empty
+ * objects and lists and turn maps with number-like keys into lists; as a string it comes back
+ * exactly as written and is parsed strictly.
  */
-export function reviveSave(raw: unknown): Save | null {
-  if (!isObj(raw)) return null;
-  const side = (v: unknown): unknown => {
-    const o = isObj(v) ? v : {};
-    const u = o.unlocked;
-    const unlocked = u === undefined ? [] : isObj(u) ? Object.keys(u).sort((a, b) => Number(a) - Number(b)).map((k) => u[k]) : u;
-    return { ...o, stars: o.stars ?? {}, unlocked };
-  };
-  return parseSave({ ...raw, upgrades: raw.upgrades ?? {}, plants: side(raw.plants), zombies: side(raw.zombies) });
+export const saveToWire = (s: Save): string => JSON.stringify(s);
+
+export function saveFromWire(raw: unknown): Save | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    return parseSave(JSON.parse(raw));
+  } catch {
+    return null;
+  }
 }
 
 /** The board row a save publishes, kept inside the rules' bounds; `updatedAt` is the server's clock. */
@@ -127,17 +130,18 @@ export class RestCloud implements Cloud {
     const slot = save.slot;
     const a = await this.request('PATCH', '', {
       [`secrets/${slot}`]: hash,
-      [`saves/${slot}/${hash}`]: { save, touch: SERVER_NOW },
+      [`saves/${slot}/${hash}`]: { save: saveToWire(save), touch: SERVER_NOW },
       [`players/${slot}`]: { name: save.name, picture: save.picture },
       [`board/${slot}`]: boardRowFor(save),
     });
     if (a.kind === 'ok') return 'ok';
     if (a.kind === 'offline') return 'offline';
-    // Refused: say why, from what is public.
+    // Refused: say why, from what is public. The slot's own row first: an earlier attempt whose
+    // answer was lost may have been the one to fill the list.
     const players = await this.listPlayers();
     if (typeof players === 'string') return players === 'offline' ? 'offline' : 'refused';
-    if (players.length >= MAX_PLAYERS) return 'full';
     if (players.some((p) => p.slot === slot)) return 'taken';
+    if (players.length >= MAX_PLAYERS) return 'full';
     return 'refused';
   }
 
@@ -147,7 +151,7 @@ export class RestCloud implements Cloud {
     if (a.kind === 'denied') return 'wrong-pin';
     if (a.kind !== 'ok') return a.kind === 'offline' ? 'offline' : 'refused';
     if (a.data === null) return null;
-    const s = isObj(a.data) ? reviveSave(a.data.save) : null;
+    const s = isObj(a.data) ? saveFromWire(a.data.save) : null;
     // Something is stored but unreadable (a newer game's save?): never treat it as "nothing".
     return s && s.slot === slot ? s : 'refused';
   }
@@ -155,7 +159,7 @@ export class RestCloud implements Cloud {
   async writeSave(save: Save, hash: string): Promise<'ok' | CloudError> {
     if (!SLOT_SHAPE.test(save.slot) || !HASH.test(hash)) return 'refused';
     const a = await this.request('PATCH', '', {
-      [`saves/${save.slot}/${hash}`]: { save, touch: SERVER_NOW },
+      [`saves/${save.slot}/${hash}`]: { save: saveToWire(save), touch: SERVER_NOW },
       [`board/${save.slot}`]: boardRowFor(save),
     });
     return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';
@@ -171,6 +175,16 @@ export class RestCloud implements Cloud {
     if (!HASH.test(hash)) return 'refused';
     const a = await this.request('PUT', 'admin/secret', hash);
     return a.kind === 'ok' ? 'ok' : a.kind === 'offline' ? 'offline' : 'refused';
+  }
+
+  /** A new grown-up code, proven with the current one. */
+  async changeGrownUpCode(oldHash: string, newHash: string): Promise<'ok' | CloudError> {
+    if (!HASH.test(oldHash) || !HASH.test(newHash)) return 'refused';
+    const a = await this.request('PATCH', '', {
+      'admin/secret': newHash,
+      [`admin/proof/${oldHash}`]: { touch: SERVER_NOW },
+    });
+    return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';
   }
 
   async deletePlayer(slot: Slot, grownUpHash: string): Promise<'ok' | CloudError> {
@@ -190,7 +204,7 @@ export class RestCloud implements Cloud {
     const a = await this.request('PATCH', '', {
       [`secrets/${slot}`]: newHash,
       // Replaces the slot's saves wholesale, so the save under the old hash goes too.
-      [`saves/${slot}`]: { [newHash]: { save, touch: SERVER_NOW } },
+      [`saves/${slot}`]: { [newHash]: { save: saveToWire(save), touch: SERVER_NOW } },
       [`players/${slot}`]: { name: save.name, picture: save.picture },
       [`board/${slot}`]: boardRowFor(save),
       [`admin/proof/${grownUpHash}`]: { touch: SERVER_NOW },
@@ -212,13 +226,47 @@ export function cloudMode(search: string, flag: string | undefined): CloudMode {
   return asked === 'fake' ? 'fake' : asked === 'test' ? 'test' : 'live';
 }
 
-/** A cloud over a fake database (in memory, or kept in `storage`), with the real client on top. */
-export function createFakeCloud(db: FakeDatabase = new FakeDatabase(), root: CloudRoot = 'v2', timeoutMs = TIMEOUT_MS): Cloud {
+/** A cloud over a fake database, with the real client on top. */
+export function createFakeCloud(db: FakeDatabase, root: CloudRoot = 'v2', timeoutMs = TIMEOUT_MS): Cloud {
   return new RestCloud({ baseUrl: FAKE_DATABASE_URL, root, fetch: db.fetch, timeoutMs });
 }
 
+/**
+ * A cloud whose implementation is loaded on first use. A load that fails (a missing chunk while
+ * offline) answers `offline`, and is tried again on the next call.
+ */
+export function lazyCloud(load: () => Promise<Cloud>): Cloud {
+  let pending: Promise<Cloud> | null = null;
+  const get = (): Promise<Cloud> => {
+    pending ??= load().catch((e: unknown) => {
+      pending = null;
+      throw e;
+    });
+    return pending;
+  };
+  return new Proxy({} as Cloud, {
+    // Not a promise itself (`then`), and nothing behind symbol keys.
+    get: (_t, key) => (key === 'then' || typeof key === 'symbol' ? undefined : async (...args: unknown[]) => {
+      let cloud: Cloud;
+      try {
+        cloud = await get();
+      } catch {
+        return 'offline';
+      }
+      const fn = (cloud as unknown as Record<PropertyKey, unknown>)[key];
+      if (typeof fn !== 'function') throw new TypeError(`Cloud has no ${String(key)}`);
+      return (fn as (...a: unknown[]) => unknown).apply(cloud, args);
+    }),
+  });
+}
+
 export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cloud {
-  if (mode === 'fake') return createFakeCloud(new FakeDatabase(fake));
+  if (mode === 'fake') {
+    return lazyCloud(async () => {
+      const { FakeDatabase } = await import('./fakeCloud');
+      return createFakeCloud(new FakeDatabase(fake));
+    });
+  }
   return new RestCloud({ root: mode === 'test' ? 'v2test' : 'v2' });
 }
 

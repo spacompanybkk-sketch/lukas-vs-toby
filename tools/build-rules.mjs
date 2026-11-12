@@ -54,6 +54,8 @@ const PICTURE = `newData.isString() && newData.val().matches(/^(${PICTURE_KEYS.j
 const wholeIn = (lo, hi) =>
   `newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= ${lo} && newData.val() <= ${hi}`;
 const NOTHING_ELSE = { '.validate': false };
+/** Longest save string accepted (a full save is about 2,000 characters). */
+export const MAX_SAVE_CHARS = 20000;
 
 /** The player rules for one root. */
 export function block(R) {
@@ -77,7 +79,8 @@ export function block(R) {
     players: {
       '.read': true,
       $slot: {
-        '.write': `${slotOk} && (${pinProof(2)} || ${adminProof(2)})`,
+        // The owner may change the row but never delete it (that would leave a ghost slot).
+        '.write': `${slotOk} && ((newData.exists() && ${pinProof(2)}) || ${adminProof(2)})`,
         '.validate': "newData.hasChildren(['name', 'picture'])",
         name: { '.validate': NAME },
         picture: { '.validate': PICTURE },
@@ -86,9 +89,9 @@ export function block(R) {
     },
     secrets: {
       $slot: {
-        // Create: only when the slot is free, and only together with its player row.
-        // Change or delete: only with the grown-up proof.
-        '.write': `${slotOk} && ((!data.exists() && ${top(2)}.child('players/' + $slot).exists()) || ${adminProof(2)})`,
+        // Create: only when the slot is free (no secret and no player row yet) and this very
+        // update creates its player row. Change or delete: only with the grown-up proof.
+        '.write': `${slotOk} && ((!data.exists() && !data.parent().parent().child('players/' + $slot).exists() && ${top(2)}.child('players/' + $slot).exists()) || ${adminProof(2)})`,
         '.validate': HEX64,
       },
     },
@@ -98,12 +101,11 @@ export function block(R) {
         '.write': `${slotOk} && ${adminProof(2)}`,
         $hash: {
           '.read': `${slotOk} && root.child('${R}/secrets/' + $slot).val() === $hash`,
-          '.write': `${slotOk} && $hash === ${secretAfter(3)}.val()`,
+          // The owner may write the save but never delete it; only the grown-up clears saves.
+          '.write': `${slotOk} && newData.exists() && $hash === ${secretAfter(3)}.val()`,
           '.validate': `newData.hasChildren(['save', 'touch']) && $hash === ${secretAfter(3)}.val()`,
-          save: {
-            '.validate':
-              "newData.hasChildren(['v', 'slot', 'name', 'picture', 'coins', 'updatedAt']) && newData.child('v').val() === 1 && newData.child('slot').val() === $slot",
-          },
+          // The save is ONE JSON string (the client parses it strictly), bounded in size.
+          save: { '.validate': `newData.isString() && newData.val().length <= ${MAX_SAVE_CHARS}` },
           touch: { '.validate': 'newData.val() === now' },
           $other: NOTHING_ELSE,
         },
@@ -112,7 +114,8 @@ export function block(R) {
     board: {
       '.read': true,
       $slot: {
-        '.write': `${slotOk} && (${pinProof(2)} || ${adminProof(2)})`,
+        // The owner may change the row but never delete it (that would leave a ghost slot).
+        '.write': `${slotOk} && ((newData.exists() && ${pinProof(2)}) || ${adminProof(2)})`,
         '.validate':
           "newData.hasChildren(['slot', 'name', 'picture', 'stars', 'wave', 'versusWins', 'computerWins', 'updatedAt'])",
         slot: { '.validate': 'newData.val() === $slot' },
@@ -128,7 +131,8 @@ export function block(R) {
     },
     admin: {
       secret: {
-        '.write': '!data.exists()',
+        // Set once when there is none; changed later only with the current grown-up proof.
+        '.write': `!data.exists() || ${adminProof(2)}`,
         '.validate': HEX64,
       },
       proof: {

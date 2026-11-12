@@ -33,8 +33,11 @@ export interface Save {
 const SKILLS: readonly Skill[] = ['easy', 'medium', 'hard'];
 const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
 const NAME = /^[A-Za-z0-9]{1,10}$/;
-/** Level ids are database keys too, so they keep to letters, digits, `-` and `_`. */
-const LEVEL_ID = /^[A-Za-z0-9_-]{1,32}$/;
+/**
+ * Level ids: a letter, then up to 31 letters, digits, `-` or `_`. Never all digits, so a map of
+ * them can never be mistaken for a list.
+ */
+const LEVEL_ID = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 const SAVE_KEYS = [
   'v', 'slot', 'name', 'picture', 'coins', 'upgrades', 'plants', 'zombies',
   'bestWave', 'versusWins', 'computerWins', 'difficulty', 'importedOld', 'updatedAt',

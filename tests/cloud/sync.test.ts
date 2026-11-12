@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { pinHash } from '../../src/cloud/hash';
 import { createFakeCloud } from '../../src/cloud/restClient';
-import { BACKOFF, SaveSync, reconcile } from '../../src/cloud/sync';
+import { BACKOFF, SaveSync, decide, reconcile } from '../../src/cloud/sync';
 import type { Cloud } from '../../src/cloud/types';
 import { lastSlot, loadLocal, saveLocal } from '../../src/progress/localStore';
 import type { Save } from '../../src/progress/save';
@@ -28,6 +28,21 @@ describe('reconcile', () => {
     const newer: Save = { ...at(T0 + 1), coins: 1, bestWave: 2 };
     expect(reconcile(older, newer).use).toBe(newer);
     expect(reconcile(newer, older).use).toBe(newer);
+  });
+});
+
+describe('decide', () => {
+  const L = (t: number) => at(t, 1);
+  const R = (t: number) => at(t, 2);
+  it.each<[string, Save | null, Save | null, number | null, number | null, { use: Save | null; push: boolean; store: boolean; replaced: boolean }]>([
+    ['never synced here: newer wins', L(T0 + 5), R(T0), null, null, { use: L(T0 + 5), push: true, store: false, replaced: false }],
+    ['cloud still at what we synced: push our change', L(T0 + 5), R(T0), T0, null, { use: L(T0 + 5), push: true, store: false, replaced: false }],
+    ['cloud is what we sent unanswered: nothing to do', L(T0 + 5), at(T0 + 5, 1), T0, T0 + 5, { use: L(T0 + 5), push: false, store: false, replaced: false }],
+    ['cloud moved on, no change waiting here: take it', L(T0), R(T0 + 9), T0, null, { use: R(T0 + 9), push: false, store: true, replaced: false }],
+    ['cloud moved on while a change waited: take it, replaced', L(T0 + 20), R(T0 + 9), T0, null, { use: R(T0 + 9), push: false, store: true, replaced: true }],
+    ['nothing in the cloud: push', L(T0), null, T0, null, { use: L(T0), push: true, store: false, replaced: false }],
+  ])('%s', (_w, local, remote, synced, sent, expected) => {
+    expect(decide(local, remote, synced, sent)).toEqual(expected);
   });
 });
 
@@ -144,14 +159,15 @@ describe('SaveSync', () => {
     clock.t = T0 + 300;
     await vi.advanceTimersByTimeAsync(BACKOFF.firstMs);
     await a.sync.idle();
-    expect(a.sync.state.value).toBe('synced');
+    // A's waiting change is dropped, and the screen is told so.
+    expect(a.sync.state.value).toBe('replaced');
     expect(a.sync.save.value).toMatchObject({ coins: 50, updatedAt: T0 + 200 });
     expect(loadLocal('p01', a.storage)).toMatchObject({ coins: 50, updatedAt: T0 + 200 });
     expect(A.net.writes.filter((w) => w.result === 'ok')).toEqual([]);
     expect(await shared.loadSave('p01', await pinHash('p01', '123'))).toMatchObject({ coins: 50 });
   });
 
-  it('…and when A\'s offline save is the newer one, it wins whole', async () => {
+  it('…even when A\'s offline change carries a later clock: the cloud moved on, so A adopts it', async () => {
     const A = device(shared);
     const a = make(A.cloud);
     const b = make();
@@ -166,8 +182,11 @@ describe('SaveSync', () => {
     await a.sync.idle();
     A.net.down = false;
     await a.sync.flush();
+    expect(a.sync.state.value).toBe('replaced');
+    expect(a.sync.save.value).toMatchObject({ coins: 0, bestWave: 9, updatedAt: T0 + 100 });
+    expect(A.net.writes.filter((w) => w.result === 'ok')).toEqual([]);
     const cloudCopy = await shared.loadSave('p01', await pinHash('p01', '123'));
-    expect(cloudCopy).toMatchObject({ coins: 10, bestWave: 0, updatedAt: T0 + 200 });
+    expect(cloudCopy).toMatchObject({ coins: 0, bestWave: 9, updatedAt: T0 + 100 });
   });
 
   it('review focus 2: a cloud that fails then recovers keeps the device copy, shows offline then synced, and sends only the latest save', async () => {
@@ -182,7 +201,8 @@ describe('SaveSync', () => {
     }
     expect(sync.state.value).toBe('offline');
     expect(loadLocal('p01', storage)).toMatchObject({ coins: 3 });
-    expect(A.net.writes.map((w) => w.result)).toEqual(['offline']);
+    // Nothing was written while offline: every write starts with a read, and the read failed.
+    expect(A.net.writes).toEqual([]);
 
     A.net.down = false;
     await vi.advanceTimersByTimeAsync(BACKOFF.firstMs);
@@ -392,6 +412,121 @@ describe('SaveSync', () => {
       expect(await sync.create(saveFor('p01', 'Lukas'), '999')).toBe('taken');
       expect(loadLocal('p01', storage)).toBeNull();
     });
+  });
+
+  it('review focus 1, both online: A saves, then a stale B saves — B adopts A\'s save', async () => {
+    const B = device(shared);
+    const a = make();
+    const b = make(B.cloud);
+    await a.sync.create(saveFor('p01', 'Lukas'), '123');
+    await b.sync.login('p01', '123');
+    clock.t = T0 + 100;
+    a.sync.update(addCoins(40));
+    await a.sync.idle();
+    expect(a.sync.state.value).toBe('synced');
+    clock.t = T0 + 200; // B's clock is later, but B never saw A's save
+    b.sync.update((s) => ({ ...s, bestWave: 3 }));
+    expect(b.sync.state.value).toBe('pending');
+    await b.sync.idle();
+    expect(b.sync.state.value).toBe('replaced');
+    expect(b.sync.save.value).toMatchObject({ coins: 40, bestWave: 0, updatedAt: T0 + 100 });
+    expect(loadLocal('p01', b.storage)).toMatchObject({ coins: 40, bestWave: 0 });
+    expect(B.net.writes).toEqual([]);
+    expect(await shared.loadSave('p01', await pinHash('p01', '123'))).toMatchObject({ coins: 40, bestWave: 0 });
+    // B's next change builds on A's save and goes up normally.
+    clock.t = T0 + 300;
+    b.sync.update((s) => ({ ...s, bestWave: 4 }));
+    await b.sync.idle();
+    expect(b.sync.state.value).toBe('synced');
+    expect(await shared.loadSave('p01', await pinHash('p01', '123'))).toMatchObject({ coins: 40, bestWave: 4 });
+  });
+
+  it('a write whose answer was lost is recognised as this device\'s own on the next read', async () => {
+    const A = device(shared);
+    const { sync } = make(A.cloud);
+    await sync.create(saveFor('p01', 'Lukas'), '123');
+    clock.t = T0 + 10;
+    db.loseResponses = 1;
+    sync.update(addCoins(7));
+    await sync.idle();
+    expect(sync.state.value).toBe('offline');
+    await vi.advanceTimersByTimeAsync(BACKOFF.firstMs);
+    await sync.idle();
+    expect(sync.state.value).toBe('synced');
+    expect(sync.save.value).toMatchObject({ coins: 7 });
+    expect(A.net.writes.map((w) => w.result)).toEqual(['offline']);
+  });
+
+  it('a write the cloud refuses stops retrying and keeps the device copy', async () => {
+    const A = device(shared);
+    const { sync, storage } = make(new Proxy(A.cloud, {
+      get: (t, k: keyof Cloud) => (k === 'writeSave' ? async () => 'refused' : t[k]),
+    }));
+    await sync.create(saveFor('p01', 'Lukas'), '123');
+    sync.update(addCoins(2));
+    await sync.idle();
+    expect(sync.state.value).toBe('offline');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(loadLocal('p01', storage)).toMatchObject({ coins: 2 });
+    await sync.flush();
+    expect(sync.state.value).toBe('offline');
+  });
+
+  it('a wake while the page is hidden asks the cloud nothing', async () => {
+    const doc = events('hidden');
+    const A = device(shared);
+    const { sync } = make(A.cloud, new MemoryStorage(), { document: doc });
+    await sync.create(saveFor('p01', 'Lukas'), '123');
+    const loads = A.net.loads;
+    doc.fire('visibilitychange');
+    await sync.idle();
+    expect(A.net.loads).toBe(loads);
+  });
+
+  it('log-in when the cloud refuses to answer: a known device plays on from its copy, without retrying', async () => {
+    const first = make();
+    await first.sync.create(saveFor('p01', 'Lukas'), '123');
+    first.sync.dispose();
+    const refusing = new Proxy(shared, { get: (t, k: keyof Cloud) => (k === 'loadSave' ? async () => 'refused' : t[k]) });
+    const { sync } = make(refusing, first.storage);
+    expect(await sync.login('p01', '123')).toEqual(saveFor('p01', 'Lukas'));
+    expect(sync.state.value).toBe('offline');
+    expect(vi.getTimerCount()).toBe(0);
+    // An unknown device gets the refusal itself.
+    expect(await make(refusing).sync.login('p01', '123')).toBe('refused');
+  });
+
+  it('right pin, nothing stored anywhere: no-save, and adopt starts the player afresh', async () => {
+    await make().sync.create(saveFor('p01', 'Lukas'), '123');
+    const h = await pinHash('p01', '123');
+    db.poke(`v2/saves/p01/${h}`, null);
+    const { sync, storage } = make();
+    expect(await sync.login('p01', '123')).toBe('no-save');
+    expect(sync.save.value).toBeNull();
+    const fresh = { ...saveFor('p01', 'Lukas'), updatedAt: T0 + 5 };
+    expect(await sync.adopt(fresh, '999')).toBe('wrong-pin');
+    expect(await sync.adopt(fresh, '123')).toEqual(fresh);
+    expect(loadLocal('p01', storage)).toEqual(fresh);
+    expect(await shared.loadSave('p01', h)).toEqual(fresh);
+  });
+
+  it('create: taken, then the pin does not fit or nothing is stored → taken; full but it is ours → ok', async () => {
+    await make().sync.create(saveFor('p01', 'Lukas'), '123');
+    const h = await pinHash('p01', '123');
+    db.poke(`v2/saves/p01/${h}`, null);
+    expect(await make().sync.create(saveFor('p01', 'Lukas'), '123')).toBe('taken');
+    expect(await make().sync.create(saveFor('p01', 'Lukas'), '555')).toBe('taken');
+
+    const mine = saveFor('p02', 'Toby');
+    const stub = {
+      createPlayer: async () => 'full',
+      loadSave: async () => mine,
+    } as unknown as Cloud;
+    const { sync, storage } = make(stub);
+    expect(await sync.create(mine, '000')).toEqual(mine);
+    expect(loadLocal('p02', storage)).toEqual(mine);
+    const other = { createPlayer: async () => 'full', loadSave: async () => 'wrong-pin' } as unknown as Cloud;
+    expect(await make(other).sync.create(mine, '000')).toBe('full');
   });
 
   it('update with nobody logged in is a programming error', () => {

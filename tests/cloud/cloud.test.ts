@@ -42,7 +42,8 @@ describe('players', () => {
     for (const slot of SLOTS) expect(await cloud.createPlayer(saveFor(slot), await pinHash(slot, '000'))).toBe('ok');
     expect(await cloud.listPlayers()).toHaveLength(30);
     expect(await cloud.createPlayer(saveFor('p31'), await pinHash('p31', '000'))).toBe('full');
-    expect(await cloud.createPlayer(saveFor('p05', 'Late'), await pinHash('p05', '000'))).toBe('full');
+    // A slot that has a player is taken, even when the list is full too.
+    expect(await cloud.createPlayer(saveFor('p05', 'Late'), await pinHash('p05', '000'))).toBe('taken');
     expect(await cloud.listPlayers()).toHaveLength(30);
   });
 
@@ -53,12 +54,12 @@ describe('players', () => {
     expect(db.peek('v2')).toBeNull();
   });
 
-  it('keeps empty upgrades and progress through the database (which drops empty objects)', async () => {
+  it('stores the save as one string, so empty maps and lists come back as written', async () => {
     const { cloud, db } = setup();
     const s = saveFor('p02', 'Toby');
     const h = await pinHash('p02', '777');
     await cloud.createPlayer(s, h);
-    expect(db.peek(`v2/saves/p02/${h}/save/upgrades`)).toBeNull();
+    expect(db.peek(`v2/saves/p02/${h}/save`)).toBe(JSON.stringify(s));
     expect(await cloud.loadSave('p02', h)).toEqual(s);
     const t: Save = { ...s, plants: { stars: { 'w1-1': 2 }, unlocked: ['peashooter', 'sunflower'] }, updatedAt: T0 + 5 };
     expect(await cloud.writeSave(t, h)).toBe('ok');
@@ -175,7 +176,7 @@ describe('failures', () => {
     const { cloud, db } = setup();
     const h = await pinHash('p01', '123');
     await cloud.createPlayer(saveFor('p01'), h);
-    db.poke(`v2/saves/p01/${h}/save/v`, 2);
+    db.poke(`v2/saves/p01/${h}/save`, JSON.stringify({ ...saveFor('p01'), v: 2 }));
     expect(await cloud.loadSave('p01', h)).toBe('refused');
   });
 

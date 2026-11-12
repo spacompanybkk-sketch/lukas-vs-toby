@@ -9,7 +9,8 @@
  * rules must answer. It prints a table and exits 1 on any surprise. It uses slots p29 and p30 of
  * `v2test` and removes them again at the end (and at the start, in case an earlier run stopped
  * half-way) with the grown-up proof. `v2test/admin/secret` is set on the first run and can never
- * be changed by a client afterwards, so keep the same LVT_TEST_GROWNUP_CODE for every run.
+ * be changed afterwards except with the current code (the script changes it and back), so keep
+ * the same four-digit LVT_TEST_GROWNUP_CODE for every run.
  *
  * No SDK; plain fetch to the REST API. Never touches `v2`, `presence`, `rooms` or `challenges`
  * except the read-only check of `presence`.
@@ -31,7 +32,13 @@ if (!code) {
   console.error('Set LVT_TEST_GROWNUP_CODE (the grown-up code used for v2test).');
   process.exit(2);
 }
+// As src/cloud/hash.ts grownUpHash: four digits, SHA-256 of `lvt2|grown-up|<code>`.
+if (!/^\d{4}$/.test(code)) {
+  console.error('LVT_TEST_GROWNUP_CODE must be four digits.');
+  process.exit(2);
+}
 const G = sha(`lvt2|grown-up|${code}`);
+const G2 = sha(`lvt2|grown-up|${code}-next`);
 const WRONG = 'f'.repeat(64);
 
 async function call(method, path, body) {
@@ -67,12 +74,12 @@ const row = (slot, name, extra = {}) => ({
 });
 const createBody = (slot, name, hash) => ({
   [`secrets/${slot}`]: hash,
-  [`saves/${slot}/${hash}`]: { save: save(slot, name), touch: SV },
+  [`saves/${slot}/${hash}`]: { save: JSON.stringify(save(slot, name)), touch: SV },
   [`players/${slot}`]: { name, picture: 'peashooter' },
   [`board/${slot}`]: row(slot, name),
 });
 const ownerWrite = (slot, name, hash, rowExtra = {}) => ({
-  [`saves/${slot}/${hash}`]: { save: save(slot, name), touch: SV },
+  [`saves/${slot}/${hash}`]: { save: JSON.stringify(save(slot, name)), touch: SV },
   [`board/${slot}`]: row(slot, name, rowExtra),
 });
 const removeBody = (slot) => ({
@@ -109,11 +116,11 @@ const ROWS = [
   ['read the grown-up proofs', () => get(`${R}/admin/proof`), 401],
 
   // Forged writes (review focus 3).
-  ['save under a wrong hash', () => patch({ [`saves/${A}/${WRONG}`]: { save: save(A, 'CheckA'), touch: SV } }), 401],
+  ['save under a wrong hash', () => patch({ [`saves/${A}/${WRONG}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV } }), 401],
   ['board row without the pin proof', () => put(`${R}/board/${A}`, row(A, 'CheckA', { stars: 240 })), 401],
   ['player row without the pin proof', () => put(`${R}/players/${A}`, { name: 'Hacked', picture: 'peashooter' }), 401],
   ['another player\'s board row with your own proof', () => patch({ ...ownerWrite(B, 'CheckB', hB), [`board/${A}`]: row(A, 'CheckA') }), 401],
-  ['stale touch (not this update\'s time)', () => patch({ [`saves/${A}/${hA}`]: { save: save(A, 'CheckA'), touch: 1 }, [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['stale touch (not this update\'s time)', () => patch({ [`saves/${A}/${hA}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: 1 }, [`board/${A}`]: row(A, 'CheckA') }), 401],
   ['stars 241', () => patch(ownerWrite(A, 'CheckA', hA, { stars: 241 })), 401],
   ['stars 1.5', () => patch(ownerWrite(A, 'CheckA', hA, { stars: 1.5 })), 401],
   ['wave 10000', () => patch(ownerWrite(A, 'CheckA', hA, { wave: 10000 })), 401],
@@ -134,13 +141,25 @@ const ROWS = [
   ['delete a player with a wrong grown-up code', () => patch({ ...removeBody(A), [`admin/proof/${G}`]: null, [`admin/proof/${WRONG}`]: { touch: SV } }), 401],
   ['write anything else under v2test', () => put(`${R}/notes`, 'hi'), 401],
 
+  // Fix round 1.
+  ['owner deletes own player row (would leave a ghost)', () => patch({ [`saves/${A}/${hA}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV }, [`players/${A}`]: null }), 401],
+  ['owner deletes own board row', () => patch({ [`saves/${A}/${hA}`]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV }, [`board/${A}`]: null }), 401],
+  ['owner deletes own save', () => call('DELETE', `${R}/saves/${A}/${hA}`), 401],
+  ['delete a slot\'s saves without the grown-up proof', () => call('DELETE', `${R}/saves/${A}`), 401],
+  ['save as an object, not a string', () => patch({ [`saves/${A}/${hA}`]: { save: save(A, 'CheckA'), touch: SV }, [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['save string over 20,000 characters', () => patch({ [`saves/${A}/${hA}`]: { save: 'x'.repeat(20001), touch: SV }, [`board/${A}`]: row(A, 'CheckA') }), 401],
+  ['save string of exactly 20,000 characters', () => patch({ [`saves/${A}/${hA}`]: { save: 'x'.repeat(20000), touch: SV }, [`board/${A}`]: row(A, 'CheckA') }), 200],
+  ['put the honest save back', () => patch(ownerWrite(A, 'CheckA', hA)), 200],
+  ['change the grown-up code with the current proof', () => patch({ 'admin/secret': G2, [`admin/proof/${G}`]: { touch: SV } }), 200],
+  ['change it back with the new proof', () => patch({ 'admin/secret': G, [`admin/proof/${G2}`]: { touch: SV } }), 200],
+
   // The old paths stay as they are (read-only check: nothing is written there).
   ['old presence path still readable', () => get('presence'), 200],
 
   // Grown-up reset, then cleanup.
   ['reset p29\'s pin with the grown-up proof', () => patch({
     [`secrets/${A}`]: pinHash(A, '999'),
-    [`saves/${A}`]: { [pinHash(A, '999')]: { save: save(A, 'CheckA'), touch: SV } },
+    [`saves/${A}`]: { [pinHash(A, '999')]: { save: JSON.stringify(save(A, 'CheckA')), touch: SV } },
     [`board/${A}`]: row(A, 'CheckA'),
     [`admin/proof/${G}`]: { touch: SV },
   }), 200],

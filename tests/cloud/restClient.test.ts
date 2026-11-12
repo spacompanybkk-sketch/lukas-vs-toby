@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, reviveSave } from '../../src/cloud/restClient';
+import { DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, createCloud, lazyCloud, saveFromWire, saveToWire } from '../../src/cloud/restClient';
+import type { Cloud } from '../../src/cloud/types';
 import type { Save } from '../../src/progress/save';
 import { T0, hex, saveFor } from './helpers';
 
@@ -56,7 +57,7 @@ describe('requests', () => {
       method: 'PATCH',
       body: {
         'secrets/p01': H,
-        [`saves/p01/${H}`]: { save: s, touch: SV },
+        [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV },
         'players/p01': { name: 'Lukas', picture: s.picture },
         'board/p01': { slot: 'p01', name: 'Lukas', picture: s.picture, stars: 0, wave: 0, versusWins: 0, computerWins: 0, updatedAt: SV },
       },
@@ -68,12 +69,12 @@ describe('requests', () => {
     await new RestCloud({ fetch: m.fetch }).writeSave(s, H);
     expect(m.calls).toEqual([{
       url: `${DATABASE_URL}/v2.json`, method: 'PATCH',
-      body: { [`saves/p01/${H}`]: { save: s, touch: SV }, 'board/p01': boardRowFor(s) },
+      body: { [`saves/p01/${H}`]: { save: JSON.stringify(s), touch: SV }, 'board/p01': boardRowFor(s) },
     }]);
   });
 
   it('loads at the exact save path', async () => {
-    const m = mockFetch(() => ({ status: 200, data: { save: s, touch: T0 } }));
+    const m = mockFetch(() => ({ status: 200, data: { save: JSON.stringify(s), touch: T0 } }));
     expect(await new RestCloud({ fetch: m.fetch }).loadSave('p01', H)).toEqual(s);
     expect(m.calls[0]).toMatchObject({ method: 'GET', url: `${DATABASE_URL}/v2/saves/p01/${H}.json` });
   });
@@ -89,7 +90,7 @@ describe('requests', () => {
     });
     expect(m.calls[1]!.body).toEqual({
       'secrets/p01': H,
-      'saves/p01': { [H]: { save: s, touch: SV } },
+      'saves/p01': { [H]: { save: JSON.stringify(s), touch: SV } },
       'players/p01': { name: 'Lukas', picture: s.picture },
       'board/p01': boardRowFor(s),
       [`admin/proof/${G}`]: { touch: SV },
@@ -141,10 +142,12 @@ describe('answers', () => {
     });
   });
 
-  it('a refused create is full when 30 players exist, refused when the slot is free', async () => {
+  it('a refused create is taken when the slot has a player (checked first), full when 30 others do, refused when the slot is free', async () => {
     const thirty = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`p${String(i + 1).padStart(2, '0')}`, { name: 'A', picture: 'peashooter' }]));
     const full = mockFetch((c) => (c.method === 'GET' ? { status: 200, data: thirty } : { status: 401 }));
-    expect(await new RestCloud({ fetch: full.fetch }).createPlayer(s, H)).toBe('full');
+    // The 30th create whose answer was lost: its own row is there, so the retry hears taken.
+    expect(await new RestCloud({ fetch: full.fetch }).createPlayer(s, H)).toBe('taken');
+    expect(await new RestCloud({ fetch: full.fetch }).createPlayer(saveFor('p31'), H)).toBe('full');
     const free = mockFetch((c) => (c.method === 'GET' ? { status: 200, data: null } : { status: 401 }));
     expect(await new RestCloud({ fetch: free.fetch }).createPlayer(s, H)).toBe('refused');
   });
@@ -181,13 +184,14 @@ describe('answers', () => {
   });
 
   it('loadSave: null when nothing is stored; refused when what is stored is unreadable or another slot\'s', async () => {
-    const answers: unknown[] = [null, { save: { ...s, coins: -1 }, touch: T0 }, { save: saveFor('p02'), touch: T0 }, 'text'];
+    const answers: unknown[] = [
+      null, { save: JSON.stringify({ ...s, coins: -1 }), touch: T0 }, { save: JSON.stringify(saveFor('p02')), touch: T0 }, 'text',
+      { save: s, touch: T0 }, { save: '{broken', touch: T0 },
+    ];
     const m = mockFetch(() => ({ status: 200, data: answers.shift() }));
     const c = new RestCloud({ fetch: m.fetch });
     expect(await c.loadSave('p01', H)).toBeNull();
-    expect(await c.loadSave('p01', H)).toBe('refused');
-    expect(await c.loadSave('p01', H)).toBe('refused');
-    expect(await c.loadSave('p01', H)).toBe('refused');
+    for (let i = 0; i < 5; i++) expect(await c.loadSave('p01', H)).toBe('refused');
   });
 
   it('skips malformed players and board rows instead of failing', async () => {
@@ -207,23 +211,46 @@ describe('answers', () => {
   });
 });
 
-describe('reviveSave', () => {
-  it('restores what the database drops: empty upgrades, stars and unlocked lists', () => {
-    const stored: Record<string, unknown> = { ...s };
-    delete stored.upgrades;
-    stored.plants = {};
-    delete stored.zombies;
-    expect(reviveSave(stored)).toEqual(s);
+describe('the save on the wire', () => {
+  it('is ONE JSON string, read back exactly, whatever the database does to maps and lists', () => {
+    const t: Save = { ...s, upgrades: {}, plants: { stars: { w1: 3 }, unlocked: ['peashooter'] } };
+    expect(typeof saveToWire(t)).toBe('string');
+    expect(saveFromWire(saveToWire(t))).toEqual(t);
   });
 
-  it('turns an index-keyed object back into a list', () => {
-    const stored = { ...s, plants: { unlocked: { 1: 'sunflower', 0: 'peashooter' } } };
-    expect(reviveSave(stored)?.plants).toEqual({ stars: {}, unlocked: ['peashooter', 'sunflower'] });
+  it('refuses anything that is not a string holding a valid save', () => {
+    expect(saveFromWire(s)).toBeNull();
+    expect(saveFromWire('{nope')).toBeNull();
+    expect(saveFromWire(JSON.stringify({ ...s, coins: 1.5 }))).toBeNull();
+    expect(saveFromWire(null)).toBeNull();
+  });
+});
+
+describe('the fake, loaded only when asked for', () => {
+  it('createCloud(fake) works through a dynamic import', async () => {
+    const c = createCloud('fake');
+    expect(await c.listPlayers()).toEqual([]);
+    expect(await c.createPlayer(s, H)).toBe('ok');
+    expect(await c.loadSave('p01', H)).toEqual(s);
   });
 
-  it('still rejects a wrong save', () => {
-    expect(reviveSave({ ...s, coins: 1.5 })).toBeNull();
-    expect(reviveSave(null)).toBeNull();
+  it('a cloud that fails to load answers offline, and loads on a later call', async () => {
+    let tries = 0;
+    const inner = { listPlayers: async () => [] } as unknown as Cloud;
+    const c = lazyCloud(async () => {
+      tries += 1;
+      if (tries === 1) throw new Error('chunk missing');
+      return inner;
+    });
+    expect(await c.listPlayers()).toBe('offline');
+    expect(await c.listPlayers()).toEqual([]);
+    expect(tries).toBe(2);
+  });
+
+  it('is not mistaken for a promise', async () => {
+    const c = lazyCloud(async () => ({}) as Cloud);
+    expect((c as unknown as { then?: unknown }).then).toBeUndefined();
+    await expect(Promise.resolve(c)).resolves.toBe(c);
   });
 });
 

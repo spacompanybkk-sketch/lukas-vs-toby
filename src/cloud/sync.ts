@@ -6,7 +6,15 @@ import type { Save, Slot } from '../progress/save';
 import { pinHash } from './hash';
 import type { Cloud, CloudError } from './types';
 
-export type SyncState = 'synced' | 'pending' | 'offline';
+/**
+ * - `synced`: the cloud has this device's save.
+ * - `pending`: a change is on its way to the cloud.
+ * - `offline`: the cloud could not be reached (or refuses); the device copy keeps everything.
+ * - `replaced`: another device saved newer progress while this one had a change waiting; the
+ *   newer save was taken whole and this device's waiting change dropped. Worth a picture-level
+ *   message ("your game was updated from another device").
+ */
+export type SyncState = 'synced' | 'pending' | 'offline' | 'replaced';
 
 /** Retry after a failed cloud call: 2 s, doubling, at most 60 s. */
 export const BACKOFF = Object.freeze({ firstMs: 2000, maxMs: 60_000 });
@@ -22,6 +30,29 @@ export function reconcile(local: Save | null, remote: Save | null): { use: Save 
   if (local.updatedAt > remote.updatedAt) return { use: local, push: true, store: false };
   if (remote.updatedAt > local.updatedAt) return { use: remote, push: false, store: true };
   return { use: local, push: false, store: false };
+}
+
+export interface Decision { use: Save | null; push: boolean; store: boolean; replaced: boolean }
+
+/**
+ * `reconcile`, knowing which cloud version this device last synced with (`synced`, the
+ * `updatedAt` of that version) and which one it may have just sent without hearing back
+ * (`sent`). A save's `updatedAt` names a version (every edit gets a new, larger one), so this
+ * compares identities, not clocks:
+ *
+ * - The cloud still holds what this device synced (or sent): nobody else wrote; the newer copy
+ *   wins as in `reconcile`.
+ * - The cloud holds something else: another device saved since. Its save is taken whole, even
+ *   when this device's clock says its own change is newer; if this device had a change waiting,
+ *   that change is dropped and `replaced` says so.
+ * - This device never synced this player (`synced` null): `reconcile` alone decides.
+ */
+export function decide(local: Save | null, remote: Save | null, synced: number | null, sent: number | null = null): Decision {
+  const plain = (): Decision => ({ ...reconcile(local, remote), replaced: false });
+  if (!local || !remote || synced === null) return plain();
+  if (remote.updatedAt === local.updatedAt) return plain();
+  if (remote.updatedAt === synced || remote.updatedAt === sent) return plain();
+  return { use: remote, push: false, store: true, replaced: local.updatedAt !== synced };
 }
 
 interface Listenable {
@@ -49,14 +80,16 @@ function defaultStorage(): Storage | undefined {
 
 /** The hash of the pin last used on this device per slot, so a known player can log in offline. */
 const hashKey = (slot: Slot): string => `lvt2_hash_${slot}`;
+/** The `updatedAt` of the cloud version this device last synced with, per slot. */
+export const syncedKey = (slot: Slot): string => `lvt2_synced_${slot}`;
 
 /**
  * One logged-in player's save, kept on the device and in the cloud. `update` writes the device
  * copy at once and queues one cloud write (the latest save wins; a failed one is retried with
  * backoff 2 s → 60 s, and when the browser comes back online or the page becomes visible).
- * After any doubt about the cloud (log-in while offline, a failed call, the page coming back)
- * the cloud's copy is read first and the newer one kept, so a stale device never overwrites
- * newer progress made elsewhere.
+ * Every write is preceded by a read of the cloud's copy (`decide`), so a stale device — offline
+ * for a while, or simply left open while another device played — adopts newer progress instead
+ * of overwriting it.
  */
 export class SaveSync {
   readonly state: Signal<SyncState> = signal<SyncState>('synced');
@@ -66,11 +99,14 @@ export class SaveSync {
   private readonly now: () => number;
   private readonly win: Listenable | null;
   private readonly doc: (Listenable & { visibilityState?: string }) | null;
+  private readonly storage: Storage | undefined;
   private hash: string | null = null;
-  /** The cloud's copy must be read before writing. */
+  /** The cloud's copy must be read (to adopt it if newer), even with nothing to write. */
   private needsRead = false;
   /** The device copy has changes the cloud may not have. */
   private dirty = false;
+  /** `updatedAt` of a write that failed without an answer: it may have landed. */
+  private sent: number | null = null;
   /** Stopped until the next log-in (the pin was changed elsewhere, or the cloud refuses). */
   private stopped = false;
   private disposed = false;
@@ -78,8 +114,6 @@ export class SaveSync {
   private running: Promise<void> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private delay: number = BACKOFF.firstMs;
-
-  private readonly storage: Storage | undefined;
 
   constructor(private readonly cloud: Cloud, storage?: Storage, opts: SaveSyncOptions = {}) {
     this.storage = storage ?? defaultStorage();
@@ -91,14 +125,16 @@ export class SaveSync {
   }
 
   /**
-   * Logs a player in with their pin. Online, the cloud decides whether the pin is right and the
-   * newer of the two copies is kept. Offline, a player who has logged in on this device before
-   * with the same pin plays on from the device copy, and the cloud is checked when it returns.
+   * Logs a player in with their pin. Online, the cloud decides whether the pin is right and
+   * `decide` picks the copy to keep. Offline (or when the cloud refuses to answer), a player who
+   * has logged in on this device before with the same pin plays on from the device copy, and the
+   * cloud is checked when it can be. `no-save`: the pin is right but there is no save anywhere
+   * (only a console edit can cause it); the screen can offer a fresh start with `adopt`.
    */
-  async login(slot: Slot, pin: string): Promise<Save | CloudError> {
+  async login(slot: Slot, pin: string): Promise<Save | CloudError | 'no-save'> {
     const hash = await pinHash(slot, pin);
     const local = loadLocal(slot, this.storage);
-    const known = this.readHash(slot);
+    const known = this.readString(hashKey(slot));
     const remote = await this.cloud.loadSave(slot, hash);
     if (this.disposed) return 'offline';
     if (remote === 'wrong-pin') return 'wrong-pin';
@@ -106,33 +142,35 @@ export class SaveSync {
       if (!local || known !== hash) return remote;
       this.begin(local, hash);
       this.needsRead = true;
-      this.fail('offline');
+      this.fail(remote);
       return local;
     }
     // The device copy counts only if it is this player's: the same pin was used here before,
     // or (after a grown-up reset the pin differs) it carries the same name and picture.
     const mine = local && (known === hash || (remote !== null && remote.name === local.name && remote.picture === local.picture))
       ? local : null;
-    const r = reconcile(mine, remote);
-    if (!r.use) return 'refused';
-    this.begin(r.use, hash);
-    if (r.store || mine !== local) saveLocal(r.use, this.storage);
-    this.dirty = r.push;
-    this.state.value = r.push ? 'pending' : 'synced';
-    if (r.push) this.kick();
-    return r.use;
+    const d = decide(mine, remote, mine ? this.readSynced(slot) : null);
+    if (!d.use) return 'no-save';
+    this.begin(d.use, hash);
+    if (d.store || mine !== local) saveLocal(d.use, this.storage);
+    if (!d.push && remote) this.markSynced(remote);
+    this.dirty = d.push;
+    this.state.value = d.push ? 'pending' : d.replaced ? 'replaced' : 'synced';
+    if (d.push) this.kick();
+    return d.use;
   }
 
   /**
    * Creates a player in the cloud and logs them in. Nothing is kept on the device until the
-   * cloud confirms; a retry after an answer was lost (the player exists with this very pin and
-   * save) counts as confirmed.
+   * cloud confirms; a retry after an answer was lost (the player exists with this very pin,
+   * name and picture) counts as confirmed — whether the cloud then says `taken` or, when that
+   * lost create was the 30th, `full`.
    */
   async create(save: Save, pin: string): Promise<Save | CloudError> {
     const hash = await pinHash(save.slot, pin);
     let res = await this.cloud.createPlayer(save, hash);
     let use = save;
-    if (res === 'taken') {
+    if (res === 'taken' || res === 'full') {
       const there = await this.cloud.loadSave(save.slot, hash);
       if (there === 'offline') return 'offline';
       if (there && typeof there === 'object' && there.name === save.name && there.picture === save.picture) {
@@ -144,8 +182,25 @@ export class SaveSync {
     if (res !== 'ok') return res;
     this.begin(use, hash);
     saveLocal(use, this.storage);
+    this.markSynced(use);
     this.state.value = 'synced';
     return use;
+  }
+
+  /**
+   * After `login` said `no-save`: makes `save` the player's save, in the cloud first (the pin is
+   * checked again there), then on the device.
+   */
+  async adopt(save: Save, pin: string): Promise<Save | CloudError> {
+    const hash = await pinHash(save.slot, pin);
+    const res = await this.cloud.writeSave(save, hash);
+    if (this.disposed) return 'offline';
+    if (res !== 'ok') return res;
+    this.begin(save, hash);
+    saveLocal(save, this.storage);
+    this.markSynced(save);
+    this.state.value = 'synced';
+    return save;
   }
 
   /** Changes the logged-in player's save: on the device at once, in the cloud as soon as it can. */
@@ -181,6 +236,7 @@ export class SaveSync {
     this.hash = null;
     this.save.value = null;
     this.needsRead = this.dirty = this.stopped = false;
+    this.sent = null;
     this.running = null;
     this.state.value = 'synced';
   }
@@ -197,14 +253,14 @@ export class SaveSync {
     this.logout();
     this.hash = hash;
     this.save.value = s;
-    this.writeHash(s.slot, hash);
+    this.writeString(hashKey(s.slot), hash);
     setLastSlot(s.slot, this.storage);
   }
 
   private readonly wake = (): void => {
     if (this.disposed || !this.save.value || this.stopped) return;
     if (this.doc?.visibilityState === 'hidden') return;
-    // Another device may have saved meanwhile: look before writing again.
+    // Another device may have saved meanwhile: look before the player carries on.
     this.needsRead = true;
     this.clearTimer();
     this.kick();
@@ -220,38 +276,46 @@ export class SaveSync {
     this.running = run;
   }
 
+  /** Read, decide, and write if this device's copy should go up; again while changes keep coming. */
   private async run(session: number): Promise<void> {
+    let replaced = false;
     while (this.session === session && (this.needsRead || this.dirty)) {
-      const cur = this.save.value;
+      const slot = this.save.value?.slot;
       const hash = this.hash;
-      if (!cur || !hash) return;
-      if (this.needsRead) {
-        const remote = await this.cloud.loadSave(cur.slot, hash);
-        if (this.session !== session) return;
-        if (typeof remote === 'string') return this.fail(remote);
-        // Compare with the save as it is now: `update` may have run while we waited.
-        const r = reconcile(this.save.value, remote);
-        if (r.store && r.use) {
-          this.save.value = r.use;
-          saveLocal(r.use, this.storage);
-        }
-        this.needsRead = false;
-        this.dirty = r.push;
+      if (!slot || !hash) return;
+      const remote = await this.cloud.loadSave(slot, hash);
+      if (this.session !== session) return;
+      if (typeof remote === 'string') return this.fail(remote);
+      // Decide on the save as it is now: `update` may have run while we waited.
+      const cur = this.save.value;
+      if (!cur) return;
+      const d = decide(cur, remote, this.readSynced(slot), this.sent);
+      this.needsRead = false;
+      this.sent = null;
+      if (d.store && d.use) {
+        this.save.value = d.use;
+        saveLocal(d.use, this.storage);
+      }
+      if (d.replaced) replaced = true;
+      if (!d.push) {
+        if (remote) this.markSynced(remote);
+        this.dirty = false;
         continue;
       }
       this.dirty = false;
+      this.sent = cur.updatedAt;
       const res = await this.cloud.writeSave(cur, hash);
       if (this.session !== session) return;
       if (res !== 'ok') {
         this.dirty = true;
-        // It may have landed anyway (a lost answer), or someone else may write meanwhile.
-        this.needsRead = true;
         return this.fail(res);
       }
+      this.sent = null;
+      this.markSynced(cur);
     }
     if (this.session !== session) return;
     this.delay = BACKOFF.firstMs;
-    this.state.value = 'synced';
+    this.state.value = replaced ? 'replaced' : 'synced';
   }
 
   private fail(err: CloudError): void {
@@ -276,19 +340,29 @@ export class SaveSync {
     this.timer = null;
   }
 
-  private readHash(slot: Slot): string | null {
+  private markSynced(s: Save): void {
+    this.writeString(syncedKey(s.slot), String(s.updatedAt));
+  }
+
+  private readSynced(slot: Slot): number | null {
+    const v = Number(this.readString(syncedKey(slot)) ?? Number.NaN);
+    return Number.isSafeInteger(v) ? v : null;
+  }
+
+  private readString(key: string): string | null {
     try {
-      return this.storage?.getItem(hashKey(slot)) ?? null;
+      return this.storage?.getItem(key) ?? null;
     } catch {
       return null;
     }
   }
 
-  private writeHash(slot: Slot, hash: string): void {
+  private writeString(key: string, value: string): void {
     try {
-      this.storage?.setItem(hashKey(slot), hash);
+      this.storage?.setItem(key, value);
     } catch {
-      // Without it this player cannot log in offline on this device; online is unaffected.
+      // Without it this device cannot log in offline or tell whose save is newer; it falls
+      // back to comparing `updatedAt` alone. Online play is unaffected.
     }
   }
 }

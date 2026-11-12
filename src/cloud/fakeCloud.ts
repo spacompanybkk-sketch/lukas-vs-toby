@@ -1,4 +1,5 @@
 import rulesFile from '../../database.rules.json';
+import { FAKE_DATABASE_URL } from './restClient';
 
 /**
  * An in-memory Realtime Database behind a `fetch`-shaped function, for tests and for
@@ -14,14 +15,17 @@ import rulesFile from '../../database.rules.json';
  * - `{".sv": "timestamp"}` becomes the request's `now`; empty objects are not stored; arrays are
  *   stored as objects with index keys and come back as arrays when the keys are 0..n-1.
  *
- * A rule expression that throws counts as false, as in the real database.
+ * A rule expression that throws counts as false, as in the real database. Where the fake cannot
+ * tell what the real database does, it refuses rather than allows (for example `child()` with an
+ * empty path segment). This module evaluates rule strings with `new Function`; the app loads it
+ * only in fake mode, through a dynamic `import()`.
  */
 
 export type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 type Node = null | boolean | number | string | { [k: string]: Node };
 type RuleNode = { [k: string]: RuleNode | string | boolean };
 
-export const FAKE_DATABASE_URL = 'https://fake-rtdb.invalid';
+export { FAKE_DATABASE_URL };
 
 export interface FakeRequest { method: string; path: string; body: Json | undefined; status: number | 'offline' | 'lost' }
 
@@ -34,16 +38,15 @@ export interface FakeDatabaseOptions {
 
 const STORAGE_KEY = 'lvt2_fake_cloud';
 const BAD_KEY = /[.$#[\]/]/;
-const MATCHES = Symbol('rules.matches');
-
-// Rule strings call `.matches(/re/)` on strings; JavaScript strings have no such method, so the
-// compiled rule calls a symbol-keyed one instead (invisible to any other code).
-Object.defineProperty(String.prototype, MATCHES, {
-  value(this: string, re: RegExp): boolean {
-    return re.test(this);
-  },
-  configurable: true,
-});
+/**
+ * Rule strings call `.matches(/re/)` on a string (`$slot` or `newData.val()`), which JavaScript
+ * strings do not have; the compiled rule calls `__matches(value, /re/)` instead.
+ */
+const MATCHES_CALL = /(\$[A-Za-z_][A-Za-z0-9_]*|newData\.val\(\))\.matches\((\/(?:\\.|[^/\\\n])+\/[a-z]*)\)/g;
+const matches = (value: unknown, re: RegExp): boolean => {
+  if (typeof value !== 'string') throw new TypeError('matches() on a non-string');
+  return re.test(value);
+};
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const split = (path: string): string[] => path.split('/').filter((p) => p.length > 0);
@@ -114,7 +117,10 @@ class Snap {
   exists(): boolean { return this.node() !== null; }
   child(p: string): Snap {
     if (typeof p !== 'string') throw new TypeError('child() takes a string');
-    return new Snap(this.tree, [...this.path, ...split(p)]);
+    const parts = p.split('/');
+    // The real database fails the rule on an empty segment or a key it cannot store.
+    if (parts.some((k) => k.length === 0 || BAD_KEY.test(k))) throw new TypeError(`child('${p}')`);
+    return new Snap(this.tree, [...this.path, ...parts]);
   }
   parent(): Snap {
     if (this.path.length === 0) throw new Error('the root has no parent');
@@ -135,6 +141,13 @@ interface RuleStep { rule: RuleNode | undefined; vars: Record<string, string> }
 
 const compiled = new Map<string, (...args: unknown[]) => unknown>();
 
+/** A rule string as a JavaScript expression; throws if it uses `.matches` in a form not handled. */
+export function translateRule(expr: string): string {
+  const body = expr.replace(MATCHES_CALL, '__matches($1, $2)');
+  if (body.includes('.matches(')) throw new Error(`the fake cannot evaluate: ${expr}`);
+  return body;
+}
+
 function evaluate(expr: string | boolean | undefined, env: Record<string, unknown>): boolean {
   if (expr === undefined) return false;
   if (typeof expr === 'boolean') return expr;
@@ -142,15 +155,23 @@ function evaluate(expr: string | boolean | undefined, env: Record<string, unknow
   const key = `${names.join(',')}|${expr}`;
   let fn = compiled.get(key);
   if (!fn) {
-    const body = expr.replace(/\.matches\(/g, '[__matches](');
-    fn = new Function('__matches', ...names, `"use strict"; return (${body});`) as (...args: unknown[]) => unknown;
+    fn = new Function('__matches', ...names, `"use strict"; return (${translateRule(expr)});`) as (...args: unknown[]) => unknown;
     compiled.set(key, fn);
   }
   try {
-    return fn(MATCHES, ...names.map((n) => env[n])) === true;
+    return fn(matches, ...names.map((n) => env[n])) === true;
   } catch {
     return false;
   }
+}
+
+/** Every rule string in a rules tree (so a rule the fake cannot read fails at once, not silently). */
+function ruleStrings(node: RuleNode, out: string[] = []): string[] {
+  for (const [k, v] of Object.entries(node)) {
+    if (typeof v === 'string' && k.startsWith('.')) out.push(v);
+    else if (isObj(v)) ruleStrings(v as RuleNode, out);
+  }
+  return out;
 }
 
 export class FakeDatabase {
@@ -172,6 +193,7 @@ export class FakeDatabase {
     this.storage = opts.storage;
     const file = (opts.rules ?? rulesFile) as { rules: RuleNode };
     this.rules = file.rules;
+    for (const r of ruleStrings(this.rules)) translateRule(r);
     try {
       const text = this.storage?.getItem(STORAGE_KEY);
       if (text) this.tree = normalize(JSON.parse(text), 0);

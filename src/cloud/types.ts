@@ -29,6 +29,8 @@ export interface Cloud {
   board(): Promise<BoardRow[] | CloudError>;
   /** Sets the grown-up code, only when none is set yet. */
   setGrownUpCode(hash: string): Promise<'ok' | CloudError>;
+  /** Replaces the grown-up code, proven with the current one; a wrong one is `wrong-pin`. */
+  changeGrownUpCode(oldHash: string, newHash: string): Promise<'ok' | CloudError>;
   deletePlayer(slot: Slot, grownUpHash: string): Promise<'ok' | CloudError>;
   /** A new pin for a player, behind the grown-up code; `save` becomes the player's save. */
   resetPin(slot: Slot, grownUpHash: string, newHash: string, save: Save): Promise<'ok' | CloudError>;
