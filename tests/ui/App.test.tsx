@@ -107,6 +107,40 @@ describe('App flow', () => {
     expect(need('[data-skill="medium"]').getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('picking Toby selects Easy and picking Lukas selects Medium, and the choice stays changeable', () => {
+    act(() => render(<App />, root));
+    tap('[data-action="play"]');
+    const pressed = (): string[] => [...root.querySelectorAll('[data-skill][aria-pressed="true"]')]
+      .map((el) => el.getAttribute('data-skill') ?? '');
+    tap('[data-side="zombies"]');
+    expect(pressed()).toEqual(['easy']);
+    tap('[data-side="plants"]');
+    expect(pressed()).toEqual(['medium']);
+    tap('[data-skill="hard"]');
+    expect(pressed()).toEqual(['hard']);
+    tap('[data-side="zombies"]');
+    expect(pressed()).toEqual(['easy']);
+    tap('[data-skill="medium"]');
+    tap('[data-action="start"]');
+    const s = screen.value;
+    expect(s.name === 'battle' && s.options).toMatchObject({ playerFaction: 'zombies', skill: 'medium' });
+  });
+
+  it('START before a boy is picked stays put and makes both boy cards hop, again on every tap', () => {
+    act(() => render(<App />, root));
+    tap('[data-action="play"]');
+    const hops = (): string[] => [...root.querySelectorAll('[data-side]')]
+      .map((el) => [...el.classList].find((c) => c.startsWith('is-nudged')) ?? '');
+    expect(hops()).toEqual(['', '']);
+    tap('[data-action="start"]');
+    expect(screen.value.name).toBe('sidepick');
+    expect(hops()).toEqual(['is-nudged-a', 'is-nudged-a']);
+    tap('[data-action="start"]');
+    expect(hops()).toEqual(['is-nudged-b', 'is-nudged-b']); // a new class restarts the animation
+    tap('[data-side="plants"]');
+    expect(hops()).toEqual(['', '']);
+  });
+
   it('the back arrow on the side pick returns to the title', () => {
     act(() => render(<App />, root));
     tap('[data-action="play"]');

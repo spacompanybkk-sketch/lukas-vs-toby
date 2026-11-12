@@ -2,15 +2,17 @@ import { signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { createBasicBot } from '../ai/basicBot';
 import type { Bot, Skill } from '../ai/bot';
+import { DIFFICULTY, battleConfig, computerTable } from '../ai/difficulty';
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { UNIT_INFO } from '../data/units';
-import { Match, defaultConfig } from '../sim/match';
+import { Match } from '../sim/match';
 import { isStanding, statsFor } from '../sim/lookup';
 import { TICKS_PER_SECOND } from '../sim/types';
 import type { Command, CommandRejection, Faction, SimEvent, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 
+/** `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). */
 export interface BattleOptions { playerFaction: Faction; skill: Skill; seed: number }
 
 export interface CardVM {
@@ -59,8 +61,14 @@ export class BattleController {
   constructor(opts: BattleOptions, balance: Balance = BALANCE) {
     this.playerFaction = opts.playerFaction;
     this.opponent = opts.playerFaction === 'plants' ? 'zombies' : 'plants';
-    this.match = new Match(defaultConfig(opts.seed, balance), balance);
-    this.bot = createBasicBot(this.opponent, opts.skill, (Math.imul(opts.seed, 2654435761) + 1) >>> 0);
+    // The difficulty sets the computer's skill and both sides' income: the very match the balance
+    // checks measure for this side and difficulty.
+    this.match = new Match(battleConfig(opts.seed, opts.playerFaction, opts.skill, balance), balance);
+    const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
+    this.bot = createBasicBot(
+      this.opponent, computerSkill, (Math.imul(opts.seed, 2654435761) + 1) >>> 0,
+      computerTable(opts.playerFaction, opts.skill),
+    );
     this.hud = {
       energy: signal(0), cards: signal<CardVM[]>([]),
       base: signal({ plants: { hp: 0, max: 0 }, zombies: { hp: 0, max: 0 } }),
@@ -69,6 +77,9 @@ export class BattleController {
       result: signal<BattleResult>(null), denied: signal(0),
     };
     this.refresh();
+    // A first tap on the lawn should do something: start with the first card the player can pay for.
+    const first = this.hud.cards.peek().find((c) => c.affordable);
+    if (first !== undefined) this.hud.selected.value = first.unit;
   }
 
   /** One tick: the computer's commands and the player's queued one go to the match together. */
@@ -167,16 +178,18 @@ export class BattleController {
   /**
    * The tile and the player's own unit under the pointer, if any. A `unitId` counts only when it
    * is the player's own unit on the tile's lane (a zombie walking over a plant does not); a unit
-   * alone gives its own tile. Otherwise a plants player's own plant standing on the tile is used,
-   * so a bare tap on a tile works by touch. Zombies stack, so they are found only by `unitId`.
+   * alone gives its own tile. For plants the tile decides: a plant hit by the tap ray but standing
+   * on a neighbouring tile (a tap near a tile's edge, where a tall model leans over) is ignored,
+   * and the plant standing on the tapped tile, if any, is used, so a bare tap on a tile works by
+   * touch. Zombies are not tied to tiles and stack, so they are found only by `unitId`.
    */
   private resolveTile(tile: Tile | null, unitId: number | null): { tile: Tile; unit: Unit | null } | null {
     const named = unitId === null ? undefined : this.match.state.units.find((u) => u.id === unitId && isStanding(u));
     const own = named !== undefined && named.faction === this.playerFaction && (tile === null || named.lane === tile.lane)
       ? named : undefined;
     if (tile === null) return own === undefined ? null : { tile: { lane: own.lane, col: Math.floor(own.x) }, unit: own };
-    if (own !== undefined) return { tile, unit: own };
-    return { tile, unit: this.playerFaction === 'plants' ? this.plantAt(tile) ?? null : null };
+    if (this.playerFaction === 'plants') return { tile, unit: this.plantAt(tile) ?? null };
+    return { tile, unit: own ?? null };
   }
 
   private plantAt(tile: Tile): Unit | undefined {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BattleController } from '../../src/app/BattleController';
+import { DIFFICULTY, battleConfig } from '../../src/ai/difficulty';
 import { seconds } from '../../src/data/balance';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import type { Faction } from '../../src/sim/types';
@@ -72,6 +73,32 @@ describe('BattleController placing', () => {
     const plant = playerUnits(c)[0];
     c.select('peashooter');
     expect(c.hover({ lane: 0, col: 5 }, plant?.id ?? null)).toMatchObject({ lane: 0, col: 5, ok: true, mergeTargetId: null });
+  });
+
+  it('for plants the tapped tile wins over a plant on the neighbouring tile hit by the tap ray', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const left = playerUnits(c).find((u) => u.key === 'peashooter');
+    if (left === undefined) throw new Error('no peashooter');
+    for (let i = 0; i < seconds(6); i++) c.step(); // recharge
+    c.match.state.players.plants.energy = 900;
+    // The ray hit the plant on column 3, but the tap was on column 4: a new plant, not a merge.
+    expect(c.hover({ lane: 2, col: 4 }, left.id)).toMatchObject({ lane: 2, col: 4, ok: true, mergeTargetId: null });
+    expect(c.click({ lane: 2, col: 4 }, left.id)).toBeNull();
+    c.step();
+    expect(left.level).toBe(1);
+    const right = playerUnits(c).find((u) => u.key === 'peashooter' && Math.floor(u.x) === 4);
+    if (right === undefined) throw new Error('no peashooter on column 4');
+    for (let i = 0; i < seconds(6); i++) c.step();
+    c.match.state.players.plants.energy = 900;
+    // A tap on column 4 whose ray hit column 3 merges into the plant standing on column 4.
+    expect(c.hover({ lane: 2, col: 4 }, left.id)).toMatchObject({ ok: true, mergeTargetId: right.id });
+    expect(c.click({ lane: 2, col: 4 }, left.id)).toBeNull();
+    c.step();
+    expect([left.level, right.level]).toEqual([1, 2]);
   });
 
   it('places exactly one unit for 100 clicks in one tick', () => {
@@ -160,6 +187,37 @@ describe('BattleController pause and result', () => {
     expect(playerUnits(c)).toHaveLength(0);
     expect(c.hud.result.value).toEqual({ winner: 'plants', playerWon: true });
     expect(c.hud.base.value.zombies.hp).toBe(0);
+  });
+});
+
+describe('BattleController setup', () => {
+  it.each([['plants', 'easy'], ['zombies', 'easy'], ['plants', 'medium'], ['zombies', 'hard']] as const)(
+    'as %s on %s, plays the difficulty\'s match: its config and income multipliers', (side, skill) => {
+      const c = new BattleController({ playerFaction: side, skill, seed: 11 });
+      const config = c.match.state.config;
+      expect(config).toEqual(battleConfig(11, side, skill));
+      const income = DIFFICULTY[skill][side].income;
+      const computer: Faction = side === 'plants' ? 'zombies' : 'plants';
+      expect(config.incomeMultiplier[side]).toBe(income.human);
+      expect(config.incomeMultiplier[computer]).toBe(income.computer);
+    },
+  );
+
+  it('gives the human on Easy more income than on Medium, on both sides', () => {
+    for (const side of ['plants', 'zombies'] as const) {
+      const easy = new BattleController({ playerFaction: side, skill: 'easy', seed: 3 }).match.state.config;
+      const medium = new BattleController({ playerFaction: side, skill: 'medium', seed: 3 }).match.state.config;
+      expect(easy.incomeMultiplier[side], side).toBeGreaterThan(medium.incomeMultiplier[side]);
+    }
+  });
+
+  it.each(['plants', 'zombies'] as const)('as %s starts with the first card it can pay for selected', (side) => {
+    const c = make(side);
+    const first = c.hud.cards.value.find((card) => card.affordable);
+    expect(first).toBeDefined();
+    expect(c.hud.selected.value).toBe(first?.unit);
+    // So a first tap on the lawn does something.
+    expect(c.click({ lane: 2, col: 1 }, null)).toBeNull();
   });
 });
 

@@ -22,14 +22,33 @@ const SIDES: { side: Faction; boy: string; team: string; key: keyof BoyPortraits
   { side: 'zombies', boy: 'TOBY', team: 'Zombies', key: 'toby', icon: 'brain' },
 ];
 
-/** Two big boy cards, three difficulty buttons (Medium first), START, and a back arrow. */
+/**
+ * The difficulty a boy's card selects (still changeable afterwards): Easy for Toby, who is almost
+ * five; Medium for Lukas.
+ */
+export const DEFAULT_SKILL: Record<Faction, Skill> = { plants: 'medium', zombies: 'easy' };
+
+/**
+ * Two big boy cards, three difficulty buttons, START, and a back arrow. Picking a boy also picks
+ * his difficulty (`DEFAULT_SKILL`). START before a boy is picked makes the two cards hop.
+ */
 export function SidePick({ portraits = {}, seed = () => Date.now() }: SidePickProps) {
   const [side, setSide] = useState<Faction | null>(null);
   const [skill, setSkill] = useState<Skill>('medium');
+  const [nudges, setNudges] = useState(0);
+  const pick = (picked: Faction): void => {
+    setSide(picked);
+    setSkill(DEFAULT_SKILL[picked]);
+  };
   const start = (): void => {
-    if (side === null) return;
+    if (side === null) {
+      setNudges((n) => n + 1); // the boy cards hop: "pick one of us first"
+      return;
+    }
     go({ name: 'battle', options: { playerFaction: side, skill, seed: seed() >>> 0 } });
   };
+  // Two alternating animation classes, so every tap restarts the hop.
+  const nudge = nudges === 0 ? '' : nudges % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b';
   return (
     <div data-screen="sidepick" class="layer layer--menu sidepick">
       <button type="button" data-action="back" class="btn btn--square pal-wood sidepick__back" aria-label="Back" onClick={() => go({ name: 'title' })}>
@@ -43,8 +62,8 @@ export function SidePick({ portraits = {}, seed = () => Date.now() }: SidePickPr
             return (
               <button
                 key={s.side} type="button" data-side={s.side} aria-pressed={on}
-                class={`boy px pal-side side-${s.side}${on ? ' is-selected' : ''}${side !== null && !on ? ' is-other' : ''}`}
-                onClick={() => setSide(s.side)}
+                class={`boy px pal-side side-${s.side}${on ? ' is-selected' : ''}${side !== null && !on ? ' is-other' : ''}${side === null ? nudge : ''}`}
+                onClick={() => pick(s.side)}
               >
                 <span class="boy__art">
                   {src !== undefined

@@ -105,6 +105,22 @@
   outline-offset: calc(var(--px-line) + 3px);
 }
 .boy.is-other { filter: grayscale(0.6) brightness(0.75); }
+/* START tapped before a boy was picked: both cards hop twice, the second a beat later. */
+.boy.is-nudged-a { animation: px-hop-a 420ms steps(6, end) both; }
+.boy.is-nudged-b { animation: px-hop-b 420ms steps(6, end) both; }
+.boy.side-zombies.is-nudged-a, .boy.side-zombies.is-nudged-b { animation-delay: 90ms; }
+@keyframes px-hop-a {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-18px); }
+  50% { transform: translateY(0); }
+  75% { transform: translateY(-9px); }
+}
+@keyframes px-hop-b {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-18px); }
+  50% { transform: translateY(0); }
+  75% { transform: translateY(-9px); }
+}
 @media (hover: hover) {
   .boy:not(.is-selected):hover { transform: translateY(-4px); }
 }
