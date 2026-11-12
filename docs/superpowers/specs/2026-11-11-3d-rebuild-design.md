@@ -541,3 +541,44 @@ Delivery: phase 4 (Adventure and progress), since it owns saves. Versus wins are
 the leaderboard in phase 5. Proof: tests for create, log in, wrong password and lock-out,
 the 31st player refused, progress saved on one browser and loaded in another, offline play
 then sync, and the rules themselves tested against forged writes.
+
+## 21. Spells (added 2026-11-12)
+
+Michal: add one-shot things that refresh after some seconds, "like thunderbolt, clears
+area, or plant-vines (entangle 2x2 area). You can have 5 per side — not all of them will
+be available, maybe by random. It would add a dynamics to the game. Make them different
+but equal in power."
+
+What Michal decided: each side has five spells; a match offers only some of them, chosen
+at random; a spell is used once and comes back after a wait; the spells differ in kind
+but are equal in power.
+
+Calls made by the builder (Michal can reverse any):
+
+- A match deals each side 2 of its 5 spells, drawn from the match seed, so a replay or an
+  online match deals the same ones. Both players see their two from the first second.
+- A spell costs no Sun or Brains, only its wait. It is aimed by tapping a tile; its area
+  is shown before the finger lifts. Spells sit beside the hero power, which stays each
+  boy's own and is always there.
+- Starting waits are 40–60 s; no spell is ready in the first 20 s.
+
+| Side | Spell | What it does (starting values) |
+|------|-------|-------------------------------|
+| Plants | Thunderbolt | Lightning on a 2×2 area: 300 damage to every zombie in it. |
+| Plants | Vines | Vines over a 2×2 area: zombies in it are tied for 4 s. |
+| Plants | Sun Shower | 150 Sun at once. No aiming. |
+| Plants | Healing Rain | Plants in a 3×3 area are healed by 400. |
+| Plants | Rock Wall | A rock (800 health, lasts 12 s) on an empty tile; zombies must chew through it. |
+| Zombies | Meteor | A meteor on a 2×2 area: 220 damage to every plant in it. |
+| Zombies | Fog | Fog over a 2×2 area: plants in it are blind for 5 s. |
+| Zombies | Brain Feast | 200 Brains at once. No aiming. |
+| Zombies | Frenzy | Zombies in a 3×3 area move and bite half as fast again for 6 s. |
+| Zombies | Grave Rise | Three Bone Minions claw up in one lane at the tapped column. |
+
+"Equal in power" is measured, not judged: for every pair of spells a side can be dealt,
+the computer playing itself over many seeds wins within 5 points of the same rate, and
+no single spell moves a Medium-v-Medium match by more than 6 points against having none.
+The tuner owns the numbers; the kinds stay.
+
+Delivery: rules, look, sound, buttons and computer play in phase 2, beside the hero
+powers. Adventure may later hand spells out as rewards (phase 4).

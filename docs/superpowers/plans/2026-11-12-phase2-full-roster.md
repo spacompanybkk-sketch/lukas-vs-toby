@@ -8,7 +8,7 @@
 
 **Tech Stack:** as phase 1 — Vite, TypeScript strict, Three.js 0.187, Preact + signals, Vitest 5, Playwright 1.64 (cached Chromium only), tsx.
 
-**Spec:** `docs/superpowers/specs/2026-11-11-3d-rebuild-design.md` (sections 6.3–6.7, 10, 11, 12, 14, 19). Art rules: `docs/art-bible.md`.
+**Spec:** `docs/superpowers/specs/2026-11-11-3d-rebuild-design.md` (sections 6.3–6.7, 10, 11, 12, 14, 19, 21). Art rules: `docs/art-bible.md`.
 
 ## Global Constraints
 
@@ -226,6 +226,37 @@ heroLane(lane: number): CommandRejection | 'ignored' | null;   // queues the com
 - [ ] Controller: `heroLane` obeys pause/over like `click`; `hud.hero` updates only on change.
 - [ ] Typecheck, full suite, commit.
 
+### Task 4b: Spells (spec section 21)
+
+**Files:** create `src/sim/spells.ts`; modify `src/sim/{types,match,hash,economy,status,movement,combat}.ts`, `src/data/balance.ts`, `src/app/BattleController.ts`; tests `tests/sim/spells.test.ts`, `tests/app/BattleController.test.ts`.
+
+**Interfaces — Produces:**
+
+```ts
+export type PlantSpell = 'thunderbolt' | 'vines' | 'sunShower' | 'healingRain' | 'rockWall';
+export type ZombieSpell = 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise';
+export type SpellKey = PlantSpell | ZombieSpell;
+export const SPELLS: Record<Faction, SpellKey[]>;            // five each, table order of spec 21
+// Command gains  | { type: 'spell'; faction: Faction; spell: SpellKey; lane: number; col: number }
+// CommandRejection gains 'spell-charging' | 'spell-not-dealt' | 'spells-off'
+// PlayerState gains spells: { key: SpellKey; timer: number }[]   (the two dealt; ticks until ready)
+// MatchConfig gains spells: Record<Faction, number>   (how many are dealt; defaultConfig 2 each, classic helper 0)
+// UnitKey gains 'rock' (a plant-side unit: no attack, no merge, no bounty, not a card); Unit gains expires: number (ticks left, 0 = never) and haste: number (ticks left)
+// StatusKind gains 'haste'
+// Balance gains spells: Record<SpellKey, { cooldown: number; firstReady: number; size: 0 | 2 | 3; damage?: number; seconds?: number; amount?: number; hp?: number; factor?: number; count?: number }>
+// events  | { type: 'spellCast'; faction: Faction; spell: SpellKey; lane: number; col: number; size: 0 | 2 | 3 }  | { type: 'spellReady'; faction: Faction; spell: SpellKey }
+// BattleController: selectSpell(key: SpellKey | null): void;  hud.spells: Signal<{ key: SpellKey; ready: boolean; fraction: number }[]>;  hover() returns the area for a selected spell
+```
+
+Starting numbers are spec 21's table; cooldowns: thunderbolt 50, vines 45, sunShower 60, healingRain 50, rockWall 45, meteor 50, fog 45, brainFeast 60, frenzy 50, graveRise 55; `firstReady` 20 for all.
+
+- [ ] The deal: at match creation each side gets `config.spells[side]` distinct spells drawn with the state rng from its five; same seed, same deal; the deal is in hash, snapshot and restore.
+- [ ] Area: a 2×2 spell covers the tapped tile, the next column towards the enemy, and the next lane down (clamped to the lawn so it always covers four tiles); 3×3 is centred on the tapped tile and clipped at the edges. A unit is in the area when its lane and `floor(x)` are.
+- [ ] One test per spell with the table's exact values: Thunderbolt 300 to each zombie in the area, armor and shields ignored; Vines ties 120 ticks; Sun Shower +150 Sun (lane/col ignored); Healing Rain +400 capped at `maxHp`; Rock Wall places a `rock` (800 hp, `expires` 360 ticks, dies with cause `'spent'`) only on an empty plant tile (`'occupied'` otherwise); Meteor 220 to each plant; Fog blinds 150 ticks; Brain Feast +200 Brains; Frenzy sets `haste` 180 ticks (movement ×1.5, melee and shot timers count down 1.5× as fast, carried as a whole-number remainder so it stays deterministic); Grave Rise spawns 3 level-1 Bone Minions in the tapped lane at the tapped column's centre, `spent = 0`, `ownerId = null`.
+- [ ] Timers start at `seconds(firstReady)`, count down in `tickEconomy`, emit `spellReady` once, reset to `seconds(cooldown)` on cast. Rejections: `'spell-not-dealt'`, `'spell-charging'`, `'spells-off'` (count 0), `'bad-lane'`/`'bad-column'`, `'match-over'`.
+- [ ] Controller: selecting a spell clears card, shovel and hero and the other way round; a tap casts it; un-aimed spells (size 0) cast on the button tap itself.
+- [ ] Typecheck, full suite, commit.
+
 ### Task 5: Seeing it — projectiles, statuses, hazards, abilities
 
 **Files:** modify `src/render/models/props.ts`, `src/render/battle/{BattleView,UnitView}.ts`, `src/render/fx/{Effects,fxPalette}.ts`, `src/render/voxel/types.ts`, the unit model files where a clip is missing, `tools/shots.mjs`, `src/scenes/*` (a `?scene=roster-demo`); create `src/render/battle/{StatusMarks,Hazards}.ts`; tests `tests/render/{BattleView,statusMarks,hazards,props}.test.ts`.
@@ -240,6 +271,7 @@ What a child must be able to read from the lawn camera (art bible §3 effects pa
 - [ ] Hazard: a stepped green puddle decal on the tile with slow bubbles, fading out over its last 0.5 s.
 - [ ] Abilities play the model's `ability` clip where one exists (map the existing `leapSlam`, `mineTrigger`, `fuseSwell`, `lassoThrow`, `staffRaise`, `flameIdle`, `pultFling`, `bowDraw`, `pistolPop`, `shieldRaise` clips; add what is missing): mine pops up when armed and bursts with dirt; Cherry swells through its fuse then a big explosion with screen shake and 80 ms hit-stop; Pumpkin visibly leaps to the target tile and back; the lasso is a rope from Cowboy to plant for the tie's length; the Necromancer's raise bursts a gravestone and the minion claws up; heal shows a ring.
 - [ ] Hot Topic grows visibly: +6% scale per stack and a brighter flame.
+- [ ] Spells (Task 4b events): each of the ten has its own boxy effect over its area — stepped lightning bolt and scorch, vines growing over the tiles and wrapping zombies, falling sun tokens, green rain blocks, a rock model (≤ 800 triangles) that crumbles, a tumbling voxel meteor with shake, a grey fog bank of blocks, falling brains, red speed streaks on frenzied zombies (the `haste` mark), three gravestones bursting. The aimed area shows as highlighted tiles while a spell is selected.
 - [ ] `?scene=roster-demo&seed=N` runs a scripted match that shows every unit and ability within 60 s; `tools/shots.mjs` gains `roster-plants`, `roster-zombies`, `statuses`, `puddle`, `cherry-blast`. The implementer looks at every shot and fixes what does not read.
 - [ ] Unit tests assert objects appear/disappear per event and pools return to size; typecheck; full suite; commit.
 
@@ -247,7 +279,7 @@ What a child must be able to read from the lawn camera (art bible §3 effects pa
 
 **Files:** create `src/render/battle/HeroFx.ts`, model(s) in `src/render/models/props.ts` (Mega Mower); modify `src/render/battle/BattleView.ts`, `src/app/BattleSession.ts`, `src/audio/{sfx,bindings}.ts`; tests `tests/render/heroFx.test.ts`, `tests/audio/audio.test.ts`.
 
-**Interfaces — Consumes:** `heroUsed`, `heroReady`, all Task 1–3 events. **Produces:** `HeroFx.play(faction, lane): Promise<void>`; `SfxName` gains `'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot' | 'stun' | 'blind' | 'lasso' | 'poison' | 'burn' | 'heal' | 'raise' | 'mineArm' | 'mineBoom' | 'fuse' | 'cherryBoom' | 'squash' | 'grow' | 'miss' | 'heroReady' | 'megaMower' | 'boneStorm'`.
+**Interfaces — Consumes:** `heroUsed`, `heroReady`, all Task 1–3 events. **Produces:** `HeroFx.play(faction, lane): Promise<void>`; `SfxName` gains `'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot' | 'stun' | 'blind' | 'lasso' | 'poison' | 'burn' | 'heal' | 'raise' | 'mineArm' | 'mineBoom' | 'fuse' | 'cherryBoom' | 'squash' | 'grow' | 'miss' | 'heroReady' | 'megaMower' | 'boneStorm' | 'spellReady'` and one per spell (`'thunderbolt'` … `'graveRise'`).
 
 - [ ] Mega Mower: a giant voxel mower (≤ 3,000 triangles) drives the lane left to right in 0.9 s throwing grass debris; zombies it passes flash as their damage shows; camera push-in on the lane, 90 ms hit-stop at the first hit, full-width boxy banner with Lukas's portrait for 0.6 s. Bone Storm: bones fall the length of the lane with stepped lightning bolts (emissive ≥ 1.5), Toby's portrait banner. The simulation's damage is instant; the view only staggers how it is shown and never delays input.
 - [ ] Every new sound is synthesised in code like the existing recipes, short (< 0.6 s except the two hero sounds, < 1.5 s), panned by x, and rate-limited so 20 kernels a second do not stack into noise (reuse the existing voice cap). Poison/burn tick sounds play at most once a second in total.
@@ -262,6 +294,7 @@ What a child must be able to read from the lawn camera (art bible §3 effects pa
 - [ ] A battle deals all ten cards of the player's side (`ALL_CARDS`); the computer gets all ten of its side.
 - [ ] Tray: ten cards in one row at ≥ 1280 px wide; at 1024×768 two rows of five, each card ≥ 64×80 CSS px with ≥ 44 pt hit area, inside the safe area, never covering lanes 0–4. Portraits come from the 3D models as now. Hotkeys 1–0 unchanged.
 - [ ] Hero button: a large square with the boy's portrait, a stepped (not smooth) radial fill while charging, a pulsing boxy frame and the `heroReady` sound when ready. Tap it, then tap any tile of a lane: the lane highlights on hover/touch and the power fires on release; tapping the button again cancels. Key `H` is an extra. Selecting the hero clears the card and shovel, and the other way round.
+- [ ] Spell buttons: the two dealt spells sit beside the hero button, each a square pixel icon (no words) with the same stepped charge fill and ready pulse; tap one then tap the lawn (the area highlights under the finger), or for Sun Shower / Brain Feast just tap the button. Keys `Q` and `W` are extras. At 1024×768 cards, hero and both spells fit with no overlap.
 - [ ] `BattleInput`/`InputTarget` route a lawn tap to `heroLane` while the hero is selected.
 - [ ] e2e (desktop and ipad projects): all ten cards visible and tappable; place one of each plant by tap; fire the hero by tap after fast-forwarding 45 s and see `heroUsed`; no card or button overlaps another (bounding boxes) at 1024×768, 1180×820, 1440×900.
 - [ ] Typecheck, unit suite, e2e, commit.
@@ -272,7 +305,7 @@ What a child must be able to read from the lawn camera (art bible §3 effects pa
 
 The aim is a fair, playable game, not final balance (phase 3). Change numbers in `Balance` and the strategies; never prices.
 
-- [ ] Both strategies use every card and the hero power for a reason: plants wall lanes under pressure (Walnut/Avocado), mine and cherry the heaviest stack, put a Torchwood ahead of Peashooters, squash/pult where zombies cluster; zombies answer what they see (Archer/Brain Rot/Trident against deep rows, Hot Topic against thin lanes, Cowboy against a high-level plant, Necromancer behind a tank), and each fires its hero at the lane where it does most damage. Skill tables still scale mistakes and reaction time.
+- [ ] Both strategies use every card and the hero power for a reason: plants wall lanes under pressure (Walnut/Avocado), mine and cherry the heaviest stack, put a Torchwood ahead of Peashooters, squash/pult where zombies cluster; zombies answer what they see (Archer/Brain Rot/Trident against deep rows, Hot Topic against thin lanes, Cowboy against a high-level plant, Necromancer behind a tank), and each fires its hero at the lane where it does most damage and casts its dealt spells where they pay (damage on the fullest area, Vines/Fog on the strongest cluster, heal when plants are hurt, the income spells as soon as ready). Skill tables still scale mistakes and reaction time.
 - [ ] Stand-ins extended: random child and attentive player use all ten cards; a new "newest-card child" always buys the most expensive affordable card (review-focus 5).
 - [ ] Bands, 200 seeds unless stated, measured with the full roster and heroes on:
 
@@ -285,6 +318,8 @@ The aim is a fair, playable game, not final balance (phase 3). Change numbers in
 | Random child, Easy / Medium / Hard, each side | 55–85 / 15–45 / < 15% |
 | Newest-card child v Easy, each side | 25–85% |
 | Median match length; share reaching sudden death | 3–6 min; < 25% |
+| Spells equal in power: Medium v Medium plants win rate for each of the 10×10 dealt pairs (100 seeds each), spread between best and worst pair | ≤ 10 points |
+| Any one spell v none, shift in Medium v Medium | ≤ 6 points |
 | Merge value (level N v N singles), every unit that fights | 0.95–1.25 |
 
 - [ ] Toby's Easy with a slow tapper (parked R50): the random child tapping once every 6 s wins ≥ 45% on Easy as either side. Reach it by making Easy more forgiving (the computer's idle time, the child's income), not by breaking the bands above.
@@ -304,4 +339,4 @@ The aim is a fair, playable game, not final balance (phase 3). Change numbers in
 
 ## Order and parallel work
 
-Tasks 1 → 2 → 3 → 4 are sequential (same files). Once Task 4 is reviewed, Tasks 5+6 (render/audio, one worktree `…-rebuild-art`) and Task 7 (UI, main worktree) may run in parallel and are merged before Task 8. Task 8 then Task 9, then the whole-branch review (Opus).
+Tasks 1 → 2 → 3 → 4 → 4b are sequential (same files). Once Task 4b is reviewed, Tasks 5+6 (render/audio, one worktree `…-rebuild-art`) and Task 7 (UI, main worktree) may run in parallel and are merged before Task 8. Task 8 then Task 9, then the whole-branch review (Opus).
