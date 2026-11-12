@@ -33,6 +33,23 @@ export interface UnitStats {
    * `holdRange ?? shot.range` it does not walk. It is not `blocked` by that, so it still shoots.
    */
   holds?: boolean; holdRange?: number;
+  /**
+   * Potato Mine: armed `armSeconds` after it is planted; armed, it goes off when a standing zombie
+   * is `reach` ahead in its lane: `damage` (special curve) to every zombie within `radius`.
+   */
+  mine?: { armSeconds: number; reach: number; damage: number; radius: number };
+  /**
+   * Torchwood: a plant pea that passes it does `factor` times its damage and sets whom it damages
+   * burning, `burnDps` (special curve of the Torchwood's level) for `burnSeconds`.
+   */
+  ignite?: { factor: number; burnDps: number; burnSeconds: number };
+  /** Cherry Bomber: goes off `seconds` after it is planted, `damage` (special curve) within `radius`. */
+  fuse?: { seconds: number; damage: number; radius: number };
+  /**
+   * Pumpkin Squash: when ready, crushes a zombie up to `range` ahead: `damage` (damage curve) to
+   * every zombie in the lane within `radius` of it, then `recoverSeconds` until it is ready again.
+   */
+  leap?: { range: number; damage: number; radius: number; recoverSeconds: number };
 }
 
 /** Every tunable number of the game. The simulation reads these and nothing else. */
@@ -125,6 +142,37 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       recharge: 10, hp: 500, armor: 0, speed: 0.3,
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
+    },
+    // Phase 2 plants: starting numbers, tuned in phase 3.
+    potatoMine: {
+      recharge: 20, hp: 150, armor: 0, speed: 0,
+      mine: { armSeconds: 12, reach: 0.6, damage: 450, radius: 0.75 },
+    },
+    kernelPult: {
+      recharge: 5, hp: 300, armor: 0, speed: 0,
+      shot: {
+        kind: 'kernel', damage: 12, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
+        status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
+      },
+    },
+    mangoPult: {
+      recharge: 7, hp: 300, armor: 0, speed: 0,
+      shot: { kind: 'mango', damage: 45, interval: 3.0, range: 10, speed: 5, flight: 'lobbed', splash: 0.75 },
+    },
+    avocadoBunker: {
+      recharge: 20, hp: 2000, armor: 8, speed: 0,
+    },
+    torchwood: {
+      recharge: 10, hp: 500, armor: 0, speed: 0,
+      ignite: { factor: 2, burnDps: 10, burnSeconds: 3 },
+    },
+    cherryBomber: {
+      recharge: 30, hp: 300, armor: 0, speed: 0,
+      fuse: { seconds: 1, damage: 600, radius: 1.6 },
+    },
+    pumpkinSquash: {
+      recharge: 20, hp: 900, armor: 0, speed: 0,
+      leap: { range: 2, damage: 350, radius: 0.5, recoverSeconds: 6 },
     },
   },
   trickle: { plants: 1.8, zombies: 9.3 },
