@@ -8,6 +8,7 @@
 }
 .battle .hud-tray,
 .battle .hud-pause,
+.battle .power,
 .battle .layer { pointer-events: auto; }
 
 .battle__top {
@@ -38,6 +39,8 @@
   bottom: calc(var(--gutter-bottom) + var(--px-line));
   display: flex;
   justify-content: center;
+  align-items: flex-end;
+  gap: clamp(10px, 1.4vw, 18px);
 }
 
 /* ---- Energy counter ---- */
@@ -169,6 +172,12 @@
 .hud-tray [data-shovel] { touch-action: none; }
 .hud-tray {
   --lo: var(--c-wood-lo);
+  /* Ten in a row must leave room for the hero and spell buttons: cards narrow to fit the window
+   * (never below 64 px). The hand folds into two rows of five before that bites (see trayRows). */
+  --tray-fit: calc((100vw - 2 * var(--gutter-x) - var(--tray-reserve)) / (var(--tray-cols, 10) + 2.8));
+  --tray-reserve: 210px;
+  --card-w: max(64px, min(var(--card-base), var(--tray-fit)));
+  --card-h: calc(var(--card-w) * 1.27);
   display: inline-flex;
   align-items: flex-end;
   gap: calc(var(--tray-gap) * 2);
@@ -176,7 +185,18 @@
   max-width: 100%;
 }
 .hud-tray.side-zombies { --fill: var(--c-slate-lo); --hi: var(--c-slate); --lo: #372c4f; }
-.hud-tray__cards { display: flex; gap: var(--tray-gap); }
+.hud-tray__cards {
+  display: grid;
+  grid-template-columns: repeat(var(--tray-cols, 10), var(--card-w));
+  column-gap: var(--tray-gap);
+  /* Room between the rows for a raised, outlined card in the lower one. */
+  row-gap: calc(var(--px-line) * 3 + 3px);
+}
+.hud-tray--rows-2 .card.is-selected { transform: translateY(-8%); }
+.hud-tray--rows-2 .card.is-selected:active { transform: translateY(-6%); }
+@media (hover: hover) {
+  .hud-tray--rows-2 .card:not(.is-selected):hover { transform: translateY(-3%); }
+}
 .hud-tray.is-denied-a { animation: tray-shake-a 300ms steps(6, end); }
 .hud-tray.is-denied-b { animation: tray-shake-b 300ms steps(6, end); }
 @keyframes tray-shake-a {
@@ -317,6 +337,106 @@
   outline-offset: calc(var(--px-line) + 1px);
 }
 
+/* ---- Hero power and spells ----
+ * Beside the tray on the player's side. One row of cards: the hero is as tall as the tray and the
+ * two spells stack beside it; two rows: a bigger hero, bigger spells. */
+.battle__powers {
+  --hero-size: calc(var(--card-base) * 1.27 + 24px);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--tray-gap);
+}
+.battle__bottom--rows-2 .battle__powers { --hero-size: calc(var(--card-base) * 2); }
+.battle__powers.side-zombies { flex-direction: row-reverse; }
+.power-spells {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tray-gap);
+  --spell-size: calc((var(--hero-size, 120px) - var(--tray-gap) - var(--px-lip)) / 2);
+}
+.power {
+  --lip: var(--px-lip);
+  --fill: var(--side-fill, var(--c-cream));
+  --hi: var(--side-hi, var(--c-cream-hi));
+  --lo: var(--side-lo, var(--c-cream-lo));
+  flex: none;
+  display: block;
+  padding: var(--px-bev);
+  margin-bottom: var(--px-lip);
+  touch-action: manipulation;
+  transition: transform 90ms steps(2, end), filter 90ms steps(2, end);
+}
+.power--hero { width: var(--hero-size, 120px); height: var(--hero-size, 120px); }
+.power--spell { width: var(--spell-size, 64px); height: var(--spell-size, 64px); }
+.power--plants, .side-plants .power--spell { --fill: var(--c-leaf); --hi: var(--c-leaf-hi); --lo: var(--c-leaf-lo); }
+.power--zombies, .side-zombies .power--spell { --fill: var(--c-purple); --hi: var(--c-purple-hi); --lo: var(--c-purple-lo); }
+.power__art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--c-sky-hi);
+  box-shadow: inset 0 0 0 2px rgba(26, 16, 8, 0.35);
+}
+.side-zombies .power__art, .power--zombies .power__art { background: var(--c-slate-lo); }
+.power__img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; pointer-events: none; }
+.power__initial {
+  font-family: var(--font-display);
+  font-size: calc(var(--hero-size, 120px) * 0.5);
+  line-height: 1;
+  color: var(--white);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+.power__icon { width: 78%; height: 78%; display: block; }
+.power__veil {
+  position: absolute;
+  left: var(--px-bev);
+  right: var(--px-bev);
+  top: var(--px-bev);
+  max-height: calc(100% - 2 * var(--px-bev));
+  background: rgba(26, 16, 8, 0.62);
+  box-shadow: inset 0 -3px 0 rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+}
+.power.is-charging .power__art { filter: grayscale(0.85) brightness(0.9); }
+.power__pips {
+  position: absolute;
+  left: calc(var(--px-bev) + 3px);
+  right: calc(var(--px-bev) + 3px);
+  bottom: calc(var(--px-bev) + 3px);
+  display: flex;
+  gap: 2px;
+  height: max(5px, calc(var(--hero-size, 120px) * 0.07));
+  pointer-events: none;
+}
+.power--spell .power__pips { height: max(4px, calc(var(--spell-size, 64px) * 0.09)); gap: 1px; }
+.power__pips > span { flex: 1; background: rgba(26, 16, 8, 0.75); }
+.power__pips > span.is-lit { background: var(--c-sun); box-shadow: inset 0 -2px 0 var(--c-sun-lo); }
+.power__frame {
+  position: absolute;
+  inset: calc(var(--px-line) * -2);
+  bottom: calc(var(--px-line) * -2 - var(--lip));
+  border: var(--px-bev) solid var(--c-sun);
+  pointer-events: none;
+  animation: power-pulse 700ms steps(1, end) infinite;
+}
+@keyframes power-pulse {
+  0% { border-color: var(--c-sun); inset: calc(var(--px-line) * -2); }
+  50% { border-color: var(--white); inset: calc(var(--px-line) * -3); }
+}
+.power.is-ready { filter: none; }
+.power.is-selected {
+  transform: translateY(-8%);
+  outline: var(--px-line) solid var(--white);
+  outline-offset: calc(var(--px-line) * 3);
+}
+.power.is-selected .power__frame { animation: none; border-color: var(--c-sun); }
+.power:active { --lip: 1px; transform: translateY(calc(var(--px-lip) - 1px)); filter: brightness(var(--press-dim)); }
+.power.is-selected:active { transform: translateY(-6%); }
+.power:focus-visible { outline: var(--px-line) dashed var(--c-sun); outline-offset: 6px; }
+
 /* ---- READY / FIGHT! ---- */
 .battle__banner {
   position: absolute;
@@ -337,6 +457,9 @@
 .pause { min-width: clamp(300px, 42vw, 560px); }
 .pause__badge { --ico-size: calc(var(--btn-h) * 0.9); }
 .pause__resume { min-width: 70%; }
+.pause__tick { width: var(--ico-size); height: var(--ico-size); flex: none; }
+.pause__quit.is-armed { animation: quit-armed 500ms steps(1, end) infinite; }
+@keyframes quit-armed { 0% { filter: none; } 50% { filter: brightness(1.2); } }
 .pause__grid {
   display: grid;
   grid-template-columns: repeat(3, auto);

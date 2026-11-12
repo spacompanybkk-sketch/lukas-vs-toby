@@ -8,7 +8,7 @@ import type { CardVM, HudSignals } from '../../src/app/BattleController';
 import { DEFAULT_SETTINGS } from '../../src/app/settings';
 import type { Faction, UnitKey } from '../../src/sim/types';
 import { BANNER_MS, BattleScreen } from '../../src/ui/screens/BattleScreen';
-import type { BattleSessionLike } from '../../src/ui/screens/BattleScreen';
+import type { BattlePowers, BattleSessionLike } from '../../src/ui/screens/BattleScreen';
 
 const renders = vi.hoisted(() => ({ tray: 0, clock: 0 }));
 
@@ -75,10 +75,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function mount(session: BattleSessionLike): void {
+function mount(session: BattleSessionLike, powers?: BattlePowers): void {
   act(() => render(
     <BattleScreen
-      session={session} settings={DEFAULT_SETTINGS} onSettingsChange={vi.fn()} onRestart={vi.fn()} onQuit={onQuit}
+      session={session} powers={powers} settings={DEFAULT_SETTINGS} onSettingsChange={vi.fn()} onRestart={vi.fn()} onQuit={onQuit}
     />,
     root,
   ));
@@ -149,6 +149,7 @@ describe('BattleScreen', () => {
     act(() => { vi.advanceTimersByTime(BANNER_MS + 100); });
     act(() => need('[data-hud="pause"]').click());
     act(() => need('[data-action="quit"]').click());
+    act(() => need('[data-action="quit"]').click()); // Quit takes two taps
     expect(onQuit).toHaveBeenCalledTimes(1);
     act(() => render(null, root)); // the app unmounts the battle on quit
     act(() => { vi.advanceTimersByTime(10_000); });
@@ -197,5 +198,50 @@ describe('BattleScreen', () => {
     act(() => { s.controller.hud.result.value = { winner: 'zombies', playerWon: false }; });
     expect(root.querySelector('[data-hud="tray"]')).toBeNull();
     expect(root.querySelector('[data-hud="pause"]')).toBeNull();
+  });
+
+  it('without powers the bottom holds the tray alone, as in phase 1', () => {
+    mount(fakeSession());
+    expect(root.querySelector('[data-hero]')).toBeNull();
+    expect(root.querySelector('[data-spell]')).toBeNull();
+    expect(root.querySelector('.battle__powers')).toBeNull();
+  });
+
+  it('with powers: the hero and spell buttons sit beside the tray, live, and call back', () => {
+    const s = fakeSession();
+    const hero = signal({ ready: false, fraction: 0.5 });
+    const heroSelected = signal(false);
+    const spells = signal([{ key: 'thunderbolt', ready: true, fraction: 1 }, { key: 'vines', ready: false, fraction: 0.2 }]);
+    const spellSelected = signal<string | null>(null);
+    const onHero = vi.fn();
+    const onSpell = vi.fn();
+    mount(s, { hero, heroSelected, onHero, spells, spellSelected, onSpell });
+    const bottom = need('.battle__bottom');
+    const slot = need('.battle__powers');
+    expect(bottom.contains(slot)).toBe(true);
+    expect(bottom.contains(need('[data-hud="tray"]'))).toBe(true);
+    // Lukas's powers sit on his side (left of the tray).
+    expect(bottom.firstElementChild).toBe(slot);
+    expect(need('[data-hero]').getAttribute('data-hero')).toBe('plants');
+    act(() => need('[data-hero]').click());
+    expect(onHero).toHaveBeenCalledTimes(1);
+    act(() => need('[data-spell="vines"]').click());
+    expect(onSpell).toHaveBeenCalledWith('vines');
+    act(() => { hero.value = { ready: true, fraction: 1 }; heroSelected.value = true; spellSelected.value = 'thunderbolt'; });
+    expect(need('[data-hero]').classList.contains('is-ready')).toBe(true);
+    expect(need('[data-hero]').getAttribute('aria-pressed')).toBe('true');
+    expect(need('[data-spell="thunderbolt"]').classList.contains('is-selected')).toBe(true);
+    act(() => { s.controller.hud.result.value = { winner: 'plants', playerWon: true }; });
+    expect(root.querySelector('.battle__powers')).toBeNull();
+  });
+
+  it("Toby's powers sit to the right of the tray", () => {
+    const s = fakeSession();
+    (s.controller as { playerFaction: Faction }).playerFaction = 'zombies';
+    mount(s, { hero: signal({ ready: true, fraction: 1 }), onHero: vi.fn() });
+    const bottom = need('.battle__bottom');
+    expect(bottom.lastElementChild).toBe(need('.battle__powers'));
+    expect(need('[data-hero]').getAttribute('data-hero')).toBe('zombies');
+    expect(root.querySelector('[data-spell]')).toBeNull();
   });
 });

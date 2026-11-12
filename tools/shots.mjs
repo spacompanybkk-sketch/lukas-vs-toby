@@ -360,7 +360,40 @@ const SCENARIOS = [
   result('result-lose', 'plants'),
   cheer('result-cheer-plants', 'zombies', 'zombies'),
   cheer('result-cheer-zombies', 'plants', 'plants'),
+  // The phase-2 HUD pieces (?scene=hud-gallery) at the iPad, iPad Air and laptop sizes.
+  ...hudGallery(),
 ];
+
+/** hud-gallery-<view>-<size>: ten and three cards with hero and spells for both sides, and the states sheet. */
+function hudGallery() {
+  const sizes = [['1024', 1024, 768], ['1180', 1180, 820], ['1440', 1440, 900]];
+  const views = [
+    ['plants10', 'side=plants&cards=10'],
+    ['zombies10', 'side=zombies&cards=10&hero=charging'],
+    ['plants3', 'side=plants&cards=3&hero=selected'],
+    ['states', 'view=states'],
+  ];
+  const quit = {
+    name: 'hud-gallery-quit-1024',
+    url: '/?scene=hud-gallery&side=plants&cards=10',
+    viewport: { width: 1024, height: 768 },
+    steps: async (page) => {
+      await page.waitForFunction(() => window.__lvt.hudReady?.then(() => true), null, { timeout: 20_000 });
+      await page.click('[data-hud="pause"]');
+      await page.click('[data-action="quit"]');
+      await settleUi(page);
+    },
+  };
+  return [quit, ...sizes.flatMap(([label, width, height]) => views.map(([name, query]) => ({
+    name: `hud-gallery-${name}-${label}`,
+    url: `/?scene=hud-gallery&${query}`,
+    viewport: { width, height },
+    steps: async (page) => {
+      await page.waitForFunction(() => window.__lvt.hudReady?.then(() => true), null, { timeout: 20_000 });
+      await settleUi(page);
+    },
+  })))];
+}
 
 /** Waits for the card portraits, then plays the title's demo battle on to `seconds`. */
 async function demoAt(page, seconds) {

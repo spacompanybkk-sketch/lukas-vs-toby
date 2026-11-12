@@ -86,7 +86,8 @@
   --btn-big-h: clamp(76px, 13vh, 128px);
   --hud-h: clamp(48px, 7.4vh, 78px);
   --hud-fs: clamp(24px, 4vh, 42px);
-  --card-w: clamp(64px, min(6.6vw, 10.4vh), 124px);
+  --card-base: clamp(64px, min(6.6vw, 10.4vh), 124px);
+  --card-w: var(--card-base); /* the tray narrows its own cards to fit ten in a row */
   --card-h: calc(var(--card-w) * 1.27);
   --tray-gap: clamp(4px, 0.6vw, 10px);
   --panel-pad: clamp(16px, 3vh, 36px);

@@ -218,6 +218,8 @@ describe('App flow', () => {
     expect(q('[data-screen="pause"]')).toBeNull();
     tap('[data-hud="pause"]');
     tap('[data-action="quit"]');
+    expect(screen.value.name).toBe('battle'); // the first tap only arms Quit
+    tap('[data-action="quit"]');
     expect(screen.value.name).toBe('title');
     expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
   });

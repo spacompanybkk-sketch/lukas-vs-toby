@@ -290,7 +290,8 @@ test('quit to the menu and a second match: one canvas, one WebGL context, a fres
   expect(await glContexts(page), 'WebGL contexts after the first match').toBe(1);
   await page.evaluate(() => { (window as any).__first = { session: (window.__lvt as any).session, stage: (window.__lvt as any).stage }; });
   await page.locator('[data-hud="pause"]').click();
-  await page.locator('[data-action="quit"]').click();
+  await page.locator('[data-action="quit"]').click(); // arms Quit (a tick shows)
+  await page.locator('[data-action="quit"]').click(); // quits
   await expect(page.locator('[data-screen="title"]')).toBeVisible();
   await pickAndStart(page, 'zombies', 'easy');
   // The new session has just been made: its clock has not moved.

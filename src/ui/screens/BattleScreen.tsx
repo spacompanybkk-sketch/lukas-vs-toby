@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
+import { useComputed } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import type { BattleOptions, HudSignals } from '../../app/BattleController';
 import type { Settings } from '../../app/settings';
@@ -7,7 +8,10 @@ import type { Faction, UnitKey } from '../../sim/types';
 import { SettingsPanel } from '../SettingsPanel';
 import { BaseBar } from '../hud/BaseBars';
 import type { BoyPortraits } from '../hud/BaseBars';
-import { CardTray } from '../hud/CardTray';
+import { CardTray, useTrayRows } from '../hud/CardTray';
+import { HeroButton } from '../hud/HeroButton';
+import { SpellButtons } from '../hud/SpellButtons';
+import type { SpellButtonVM } from '../hud/SpellButtons';
 import { EnergyCounter } from '../hud/EnergyCounter';
 import { PauseMenu } from '../hud/PauseMenu';
 import { ResultOverlay } from '../hud/ResultOverlay';
@@ -54,6 +58,22 @@ export interface BattleScreenProps {
   onQuit(): void;
   /** Handed to the energy counter, so the session can fly tokens into it. */
   energyRef?: Ref<HTMLDivElement>;
+  /** Hero power and spells; absent until the controller provides them. */
+  powers?: BattlePowers;
+}
+
+/**
+ * The hero power and spell buttons, beside the tray on the player's own side (Lukas left, Toby
+ * right). Every part is optional: without `hero` there is no hero button, without `spells` (or
+ * with none dealt) no spell buttons, and without either the bottom is the tray alone.
+ */
+export interface BattlePowers {
+  hero?: ReadonlySignal<{ ready: boolean; fraction: number }>;
+  heroSelected?: ReadonlySignal<boolean>;
+  onHero?(): void;
+  spells?: ReadonlySignal<SpellButtonVM[]>;
+  spellSelected?: ReadonlySignal<string | null>;
+  onSpell?(key: string): void;
 }
 
 /** Each intro banner shows this long; the session begins when the second has gone. */
@@ -65,7 +85,7 @@ export const BANNER_MS = 700;
  * when a second passes, a card when its recharge steps), never the whole screen.
  */
 export function BattleScreen(props: BattleScreenProps) {
-  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef } = props;
+  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
@@ -99,9 +119,7 @@ export function BattleScreen(props: BattleScreenProps) {
         <LiveBase hud={hud} faction="plants" playerFaction={side} portrait={boys.lukas} />
         <LiveBase hud={hud} faction="zombies" playerFaction={side} portrait={boys.toby} />
       </div>
-      <div class="battle__bottom">
-        <LiveTray ctl={ctl} portraits={portraits} />
-      </div>
+      <LiveBottom ctl={ctl} portraits={portraits} powers={powers} boys={boys} />
       <IntroBanner session={session} />
       <Overlays
         ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
@@ -134,6 +152,47 @@ function LivePause({ ctl }: { ctl: Controller }) {
     >
       <span class="ico ico--pause" aria-hidden="true" />
     </button>
+  );
+}
+
+/**
+ * The bottom bar: the tray, with the player's powers beside it on his side. Re-renders only when
+ * the number of cards (and so the row layout) changes; each block inside reads its own signals.
+ */
+function LiveBottom({ ctl, portraits, powers, boys }: { ctl: Controller; portraits: Record<string, string>; powers: BattlePowers | undefined; boys: BoyPortraits }) {
+  const count = useComputed(() => ctl.hud.cards.value.length).value;
+  const rows = useTrayRows(count);
+  const side = ctl.playerFaction;
+  const slot = powers !== undefined && (powers.hero !== undefined || powers.spells !== undefined)
+    ? <LivePowers ctl={ctl} powers={powers} portrait={side === 'plants' ? boys.lukas : boys.toby} />
+    : null;
+  return (
+    <div class={`battle__bottom battle__bottom--rows-${rows} side-${side}`}>
+      {side === 'plants' && slot}
+      <LiveTray ctl={ctl} portraits={portraits} />
+      {side === 'zombies' && slot}
+    </div>
+  );
+}
+
+/** Hero and spell buttons; gone once the match is decided, like the tray. */
+function LivePowers({ ctl, powers, portrait }: { ctl: Controller; powers: BattlePowers; portrait: string | undefined }) {
+  if (ctl.hud.result.value !== null) return null;
+  const side = ctl.playerFaction;
+  const hero = powers.hero?.value;
+  const spells = powers.spells?.value ?? [];
+  return (
+    <div class={`battle__powers side-${side}`} data-hud="powers">
+      {hero !== undefined && (
+        <HeroButton
+          faction={side} ready={hero.ready} fraction={hero.fraction} selected={powers.heroSelected?.value ?? false}
+          portrait={portrait} onPress={() => powers.onHero?.()}
+        />
+      )}
+      {spells.length > 0 && (
+        <SpellButtons spells={spells} selected={powers.spellSelected?.value ?? null} onPress={(k) => powers.onSpell?.(k)} />
+      )}
+    </div>
   );
 }
 

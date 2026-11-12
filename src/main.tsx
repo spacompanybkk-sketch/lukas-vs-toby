@@ -5,6 +5,7 @@ import * as gallery from './render/gallery';
 import * as battleDemo from './scenes/battleDemo';
 import * as boot from './scenes/boot';
 import * as fx from './scenes/fx';
+import * as hudGallery from './scenes/hudGallery';
 import * as lawn from './scenes/lawn';
 import * as stress from './scenes/stress';
 import { App } from './ui/App';
@@ -28,6 +29,7 @@ const SCENES = new Map<string, SceneModule>([
   ['fx', fx],
   ['battle-demo', battleDemo],
   ['stress', stress],
+  ['hud-gallery', hudGallery],
 ]);
 
 installDebug();
