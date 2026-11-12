@@ -101,6 +101,8 @@ describe('unit roster', () => {
 describe('statsFor', () => {
   it('takes any unit key, the Bone Minion included, and refuses one the table has no numbers for', () => {
     const b = cloneBalance(BALANCE);
+    expect(statsFor(b, 'boneMinion').hp).toBe(150); // the shipped table has its numbers (phase 2, Task 3)
+    delete b.units.boneMinion;
     expect(() => statsFor(b, 'boneMinion')).toThrow('boneMinion');
     b.units.boneMinion = { recharge: 1, hp: 150, armor: 0, speed: 0.6 };
     expect(statsFor(b, 'boneMinion').hp).toBe(150);
