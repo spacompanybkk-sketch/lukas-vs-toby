@@ -16,6 +16,8 @@ import {
   spinToken,
   type RockStage,
 } from '../models/props';
+import { spellArea as simSpellArea } from '../../sim/spells';
+import type { SpellSize } from '../../sim/types';
 import { PALETTE } from '../palette';
 import type { Faction, SpellKey } from '../types';
 import { BoxBatch, hash2 } from '../world/boxes';
@@ -82,29 +84,17 @@ const COLS = 10;
 const LANES = 5;
 
 /**
- * The tiles a spell covers when tapped at (`lane`, `col`) with area `size` (plan Task 4b):
- * a 2 × 2 is the tapped tile, the next column towards the enemy and the next lane down,
- * moved back onto the lawn at an edge so it is always four tiles; a 3 × 3 is centred on the
- * tapped tile and clipped. Rock Wall and Grave Rise take the tapped tile alone; Sun Shower
- * and Brain Feast are not aimed and cover none. For drawing only: the simulation decides.
+ * The tiles a spell covers when tapped at (`lane`, `col`) with area `size`: the simulation's own
+ * rule (`spellArea` in `src/sim/spells.ts`), so what is drawn is what is hit. Rock Wall and Grave
+ * Rise take the tapped tile alone; Sun Shower and Brain Feast are not aimed and cover none. The
+ * tapped tile is first brought onto the lawn.
  */
 export function spellArea(spell: SpellKey, lane: number, col: number, size: number): Tile[] {
   if (spell === 'sunShower' || spell === 'brainFeast') return [];
   const l = Math.min(LANES - 1, Math.max(0, Math.floor(lane)));
   const c = Math.min(COLS - 1, Math.max(0, Math.floor(col)));
-  if (spell === 'rockWall' || spell === 'graveRise' || size < 2) return [{ lane: l, col: c }];
-  const out: Tile[] = [];
-  if (size === 2) {
-    const towards = SPELL_SIDE[spell] === 'plants' ? 1 : -1;
-    const c2 = c + towards >= 0 && c + towards < COLS ? c + towards : c - towards;
-    const l2 = l + 1 < LANES ? l + 1 : l - 1;
-    for (const ll of [l, l2]) for (const cc of [c, c2]) out.push({ lane: ll, col: cc });
-    return out;
-  }
-  for (let ll = l - 1; ll <= l + 1; ll++) {
-    for (let cc = c - 1; cc <= c + 1; cc++) if (ll >= 0 && ll < LANES && cc >= 0 && cc < COLS) out.push({ lane: ll, col: cc });
-  }
-  return out;
+  const area: SpellSize = spell === 'rockWall' || spell === 'graveRise' || size < 2 ? 1 : size >= 3 ? 3 : 2;
+  return simSpellArea(SPELL_SIDE[spell], area, l, c);
 }
 
 export interface SpellFxOptions {
@@ -290,6 +280,11 @@ export class SpellFx {
     return this.jobs.length;
   }
 
+  /** Whether a rock stands on (`lane`, `col`). */
+  hasRock(lane: number, col: number): boolean {
+    return this.rocksByTile.has(tileKey(lane, col));
+  }
+
   /** Rocks standing on the lawn. */
   get rocks(): number {
     return this.rocksByTile.size;
@@ -398,7 +393,7 @@ export class SpellFx {
       case 'vines':
         return this.growVines(tiles);
       case 'sunShower':
-        return this.shower(this.suns, 0.4, 7.6, PALETTE.sun, '+150');
+        return this.shower(this.suns, 0.4, 7.6, PALETTE.sun);
       case 'healingRain':
         return this.rain(tiles);
       case 'rockWall':
@@ -408,7 +403,7 @@ export class SpellFx {
       case 'fog':
         return this.fogBank(tiles);
       case 'brainFeast':
-        return this.shower(this.brains, 4.4, 9.6, PALETTE.brains, '+200');
+        return this.shower(this.brains, 4.4, 9.6, PALETTE.brains);
       case 'frenzy':
         return this.frenzy(tiles);
       case 'graveRise':
@@ -561,15 +556,17 @@ export class SpellFx {
     };
   }
 
-  /** Tokens falling across columns `x0` to `x1` of every lane: the two income spells. */
-  private shower(pool: Pool, x0: number, x1: number, color: string, text: string): Job {
+  /**
+   * Tokens falling across columns `x0` to `x1` of every lane: the two income spells. The "+N"
+   * comes from the battle view, with the amount the simulation really paid.
+   */
+  private shower(pool: Pool, x0: number, x1: number, color: string): Job {
     const drops: { o: Object3D | null; x: number; z: number; delay: number }[] = [];
     for (let i = 0; i < SHOWER_DROPS; i++) {
       const x = x0 + ((i * 0.618) % 1) * (x1 - x0);
       const z = 0.5 + ((i * 3) % 5);
       drops.push({ o: null, x, z, delay: i * 0.1 });
     }
-    this.effects.floatText(at.set((x0 + x1) / 2, 1.4, 2.5), text, color);
     const FALL = 0.55;
     let time = 0;
     return {

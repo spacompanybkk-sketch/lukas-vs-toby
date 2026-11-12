@@ -103,3 +103,27 @@ describe('SpellButtons', () => {
     expect(spell('mystery').getAttribute('aria-label')).toBe('mystery');
   });
 });
+
+describe('SpellButtons press (wiring B)', () => {
+  const down = (el: Element): void => {
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0 }));
+  };
+
+  it('presses on pointer down and swallows the click that follows; a picked one is put down by its click', () => {
+    const props = mount();
+    act(() => down(spell('thunderbolt')));
+    act(() => spell('thunderbolt').click());
+    expect(props.onPress).toHaveBeenCalledTimes(1);
+    const picked = mount({ selected: 'thunderbolt' });
+    act(() => down(spell('thunderbolt')));
+    expect(picked.onPress).not.toHaveBeenCalled();
+    act(() => spell('thunderbolt').click());
+    expect(picked.onPress).toHaveBeenCalledWith('thunderbolt');
+  });
+
+  it('only the refused spell shakes', () => {
+    mount({ shake: { key: 'sunShower', n: 1 } });
+    expect(spell('sunShower').classList.contains('is-denied-a')).toBe(true);
+    expect(spell('thunderbolt').classList.contains('is-denied')).toBe(false);
+  });
+});

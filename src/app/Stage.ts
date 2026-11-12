@@ -52,7 +52,7 @@ export class FeelClock {
 
   feel(f: Feel, rig: Pick<CameraRig, 'shake' | 'punch'>): void {
     if (f.shake) rig.shake(f.shake, 0.35);
-    if (f.punch) rig.punch(f.punch, 0.25);
+    if (f.punch) rig.punch(f.punch, f.punchSeconds ?? 0.25, f.focusZ);
     if (f.hitStop) this.hitStop = Math.max(this.hitStop, f.hitStop);
     if (f.slowMo) this.slowMo = Math.max(this.slowMo, f.slowMo);
   }

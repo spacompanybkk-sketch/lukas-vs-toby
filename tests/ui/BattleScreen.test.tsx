@@ -248,3 +248,67 @@ describe('BattleScreen', () => {
     expect(root.querySelector('[data-spell]')).toBeNull();
   });
 });
+
+describe('BattleScreen powers from the controller (wiring B)', () => {
+  /** A fake session whose controller has the real power methods' shape: a charging hero refuses. */
+  function powered() {
+    const s = fakeSession();
+    const hud = s.controller.hud;
+    hud.hero.value = { ready: false, fraction: 0.4 };
+    hud.spells.value = [{ key: 'thunderbolt', ready: true, fraction: 1 }, { key: 'sunShower', ready: false, fraction: 0.3 }];
+    const ctl = s.controller as BattleSessionLike['controller'];
+    ctl.toggleHero = vi.fn(() => { hud.denied.value += 1; });
+    ctl.selectSpell = vi.fn((k) => {
+      if (k === 'sunShower') hud.denied.value += 1;
+      else hud.spellSelected.value = hud.spellSelected.peek() === k ? null : k;
+    });
+    const banner = signal<{ side: Faction; n: number } | null>(null);
+    (s as { heroBanner?: typeof banner }).heroBanner = banner;
+    return { s, hud, ctl, banner };
+  }
+
+  it('builds the hero and spell buttons from the controller\'s signals and presses them', () => {
+    const { s, ctl, hud } = powered();
+    mount(s);
+    expect(need('[data-hero]').classList.contains('is-charging')).toBe(true);
+    act(() => need('[data-spell="thunderbolt"]').click());
+    expect(ctl.selectSpell).toHaveBeenCalledWith('thunderbolt');
+    expect(need('[data-spell="thunderbolt"]').classList.contains('is-selected')).toBe(true);
+    act(() => need('[data-hero]').click());
+    expect(ctl.toggleHero).toHaveBeenCalledTimes(1);
+    act(() => { hud.hero.value = { ready: true, fraction: 1 }; });
+    expect(need('[data-hero]').classList.contains('is-ready')).toBe(true);
+  });
+
+  it('a refused press shakes that button only, not the tray', () => {
+    const { s } = powered();
+    mount(s);
+    act(() => need('[data-hero]').click());
+    expect(need('[data-hero]').classList.contains('is-denied')).toBe(true);
+    expect(need('[data-hud="tray"]').classList.contains('is-denied')).toBe(false);
+    act(() => need('[data-spell="sunShower"]').click());
+    expect(need('[data-spell="sunShower"]').classList.contains('is-denied')).toBe(true);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(root.querySelector('.is-denied')).toBeNull();
+  });
+
+  it('a hero power used shows that boy\'s banner across the screen for 0.6 s', () => {
+    const { s, banner } = powered();
+    act(() => render(
+      <BattleScreen
+        session={s} boys={{ lukas: 'lukas.png', toby: 'toby.png' }} settings={DEFAULT_SETTINGS}
+        onSettingsChange={vi.fn()} onRestart={vi.fn()} onQuit={onQuit}
+      />,
+      root,
+    ));
+    expect(root.querySelector('.hero-banner')).toBeNull();
+    act(() => { banner.value = { side: 'zombies', n: 1 }; });
+    const shown = need('.hero-banner');
+    expect(shown.classList.contains('side-zombies')).toBe(true);
+    expect(shown.querySelector('img')?.getAttribute('src')).toBe('toby.png');
+    act(() => { vi.advanceTimersByTime(650); });
+    expect(root.querySelector('.hero-banner')).toBeNull();
+    act(() => { banner.value = { side: 'plants', n: 2 }; });
+    expect(need('.hero-banner').querySelector('img')?.getAttribute('src')).toBe('lukas.png');
+  });
+});

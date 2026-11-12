@@ -107,3 +107,34 @@ describe('HeroButton', () => {
     expect(chargeStep(Number.NaN)).toBe(0);
   });
 });
+
+describe('HeroButton press (wiring B)', () => {
+  const down = (el: Element): void => {
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0 }));
+  };
+
+  it('presses on pointer down (so a drag onto the lawn starts with it picked), and the click after it is not a second press', () => {
+    const props = mount();
+    act(() => down(btn()));
+    expect(props.onPress).toHaveBeenCalledTimes(1);
+    act(() => btn().click());
+    expect(props.onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('when picked, the down does nothing and the click puts it down', () => {
+    const props = mount({ selected: true, ready: true, fraction: 1 });
+    act(() => down(btn()));
+    expect(props.onPress).not.toHaveBeenCalled();
+    act(() => btn().click());
+    expect(props.onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('shakes when its press was refused (each refusal restarts the shake)', () => {
+    mount({ shake: 1 });
+    expect(btn().classList.contains('is-denied-a')).toBe(true);
+    mount({ shake: 2 });
+    expect(btn().classList.contains('is-denied-b')).toBe(true);
+    mount({ shake: 0 });
+    expect(btn().classList.contains('is-denied')).toBe(false);
+  });
+});

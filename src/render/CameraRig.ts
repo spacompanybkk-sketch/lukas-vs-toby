@@ -72,6 +72,8 @@ const wobble = (t: number, seed: number): number =>
 
 const euler = new Euler(0, 0, 0, 'YXZ');
 const scratch = new Vector3();
+/** A punch with a focus leans this share of the way towards its lane. */
+const PUNCH_LEAN = 0.4;
 
 /** The victory shot's pitch (degrees down) and distance (share of the framed shot's). */
 const VICTORY_PITCH_DEG = 52;
@@ -98,6 +100,8 @@ export class CameraRig {
   private punchAmount = 0;
   private punchSeconds = 0;
   private punchLeft = 0;
+  /** The lane line (world z) a punch leans towards, or NaN for straight in. */
+  private punchFocusZ = Number.NaN;
 
   private introSeconds = 0;
   private introLeft = 0;
@@ -246,8 +250,9 @@ export class CameraRig {
   }
 
   /** A brief zoom towards the lawn: `amount` is the share of the distance, 0.04 is plenty. */
-  punch(amount: number, seconds: number): void {
+  punch(amount: number, seconds: number, focusZ?: number): void {
     if (!(amount > 0) || !(seconds > 0)) return;
+    this.punchFocusZ = focusZ !== undefined && Number.isFinite(focusZ) ? focusZ : Number.NaN;
     this.punchAmount = amount;
     this.punchSeconds = seconds;
     this.punchLeft = seconds;
@@ -367,6 +372,7 @@ export class CameraRig {
       const u = 1 - this.punchLeft / this.punchSeconds;
       const swell = u < 0.25 ? easeOutCubic(u / 0.25) : 1 - easeInOutCubic((u - 0.25) / 0.75);
       pose.distance *= 1 - this.punchAmount * swell;
+      if (!Number.isNaN(this.punchFocusZ)) pose.pivot.z += (this.punchFocusZ - pose.pivot.z) * PUNCH_LEAN * swell;
     }
 
     euler.set(-pose.pitch, pose.yaw, 0);

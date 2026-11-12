@@ -1,5 +1,5 @@
 import { Component } from 'preact';
-import { PowerCharge, chargeStep } from './HeroButton';
+import { PowerCharge, PressGate, chargeStep, shakeClass } from './HeroButton';
 import { PixelIcon } from './PixelIcon';
 import type { PixelArt } from './PixelIcon';
 import './hud.css';
@@ -18,6 +18,8 @@ export interface SpellButtonsProps {
   selected: string | null;
   /** Every tap, with the spell's key; the controller decides what it means. */
   onPress(key: string): void;
+  /** The spell whose last press was refused, and 1 or 2 alternating (0: none shakes). */
+  shake?: { key: string; n: number };
 }
 
 /** Each spell's name (spec 21), used as its button's accessible name; the picture says it to a child. */
@@ -228,29 +230,32 @@ const UNKNOWN_ICON: PixelArt = {
  * One square per dealt spell: its pixel picture, no words. While a spell recharges its veil drops
  * away in steps; when ready the same boxy gold frame as the hero button pulses round it.
  */
-export function SpellButtons({ spells, selected, onPress }: SpellButtonsProps) {
+export function SpellButtons({ spells, selected, onPress, shake }: SpellButtonsProps) {
   return (
     <div class="power-spells" data-hud="spells" role="group" aria-label="Spells">
       {spells.map((s) => (
         <SpellButton
           key={s.key} spellKey={s.key} ready={s.ready} step={s.ready ? 1 : chargeStep(s.fraction)}
-          selected={selected === s.key} onPress={onPress}
+          selected={selected === s.key} onPress={onPress} shake={shake !== undefined && shake.key === s.key ? shake.n : 0}
         />
       ))}
     </div>
   );
 }
 
-interface SpellButtonProps { spellKey: string; ready: boolean; step: number; selected: boolean; onPress(key: string): void }
+interface SpellButtonProps { spellKey: string; ready: boolean; step: number; selected: boolean; shake: number; onPress(key: string): void }
 
 /** One spell; re-renders only when its look changes (a whole charge step, ready, selected). */
 class SpellButton extends Component<SpellButtonProps> {
   override shouldComponentUpdate(n: SpellButtonProps): boolean {
     const p = this.props;
-    return !(p.spellKey === n.spellKey && p.ready === n.ready && p.step === n.step && p.selected === n.selected);
+    return !(p.spellKey === n.spellKey && p.ready === n.ready && p.step === n.step && p.selected === n.selected && p.shake === n.shake);
   }
 
+  private readonly gate = new PressGate();
   private readonly press = (): void => this.props.onPress(this.props.spellKey);
+  private readonly down = (e: PointerEvent): void => this.gate.down(e, this.props.selected, this.press);
+  private readonly click = (): void => this.gate.click(this.press);
 
   override render() {
     const { spellKey: key, ready, step, selected } = this.props;
@@ -258,9 +263,9 @@ class SpellButton extends Component<SpellButtonProps> {
     if (selected) cls.push('is-selected');
     return (
       <button
-        type="button" data-spell={key} class={cls.join(' ')}
+        type="button" data-spell={key} class={cls.join(' ') + shakeClass(this.props.shake)}
         aria-label={SPELL_NAMES[key] ?? key} aria-pressed={selected} aria-disabled={ready ? undefined : 'true'}
-        onClick={this.press}
+        onPointerDown={this.down} onClick={this.click}
       >
         <span class="power__art">
           <PixelIcon art={SPELL_ICONS[key] ?? UNKNOWN_ICON} class="power__icon" />

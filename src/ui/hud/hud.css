@@ -432,6 +432,45 @@
 .power:active { --lip: 1px; transform: translateY(calc(var(--px-lip) - 1px)); filter: brightness(var(--press-dim)); }
 .power.is-selected:active { transform: translateY(-6%); }
 .power:focus-visible { outline: var(--px-line) dashed var(--c-sun); outline-offset: 6px; }
+/* A press refused (still charging): the button itself shakes, as the tray does for a card. */
+.power.is-denied-a { animation: tray-shake-a 300ms steps(6, end); }
+.power.is-denied-b { animation: tray-shake-b 300ms steps(6, end); }
+
+/* ---- Hero power banner ----
+ * Full width, boxy, for 0.6 s: the boy whose power it is, and its picture name. It never takes a
+ * tap (the lawn stays live under it). */
+.hero-banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2vw, 28px);
+  padding: clamp(8px, 1.2vw, 14px) 16px;
+  pointer-events: none;
+  border-top: var(--px-line) solid var(--ink);
+  border-bottom: var(--px-line) solid var(--ink);
+  animation: hero-banner 600ms steps(6, end) both;
+}
+.hero-banner.side-plants { background: var(--c-leaf); box-shadow: inset 0 calc(var(--px-line) * 2) 0 var(--c-leaf-hi), inset 0 calc(var(--px-line) * -2) 0 var(--c-leaf-lo); }
+.hero-banner.side-zombies { background: var(--c-purple); box-shadow: inset 0 calc(var(--px-line) * 2) 0 var(--c-purple-hi), inset 0 calc(var(--px-line) * -2) 0 var(--c-purple-lo); }
+.hero-banner__face {
+  width: clamp(64px, 11vw, 132px);
+  height: clamp(64px, 11vw, 132px);
+  border: var(--px-line) solid var(--ink);
+  background: var(--c-cream);
+  image-rendering: pixelated;
+  object-fit: cover;
+}
+.hero-banner__name { font-size: var(--fs-huge); line-height: 1; color: var(--c-cream); }
+.hero-banner.side-plants .hero-banner__name { color: var(--c-sun); }
+@keyframes hero-banner {
+  0% { transform: translateX(-100%); }
+  20%, 80% { transform: translateX(0); }
+  100% { transform: translateX(100%); opacity: 0; }
+}
 
 /* ---- READY / FIGHT! ---- */
 .battle__banner {

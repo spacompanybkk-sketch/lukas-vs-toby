@@ -44,6 +44,12 @@ export interface SpellVM { key: SpellKey; ready: boolean; fraction: number }
 /** What a tap on `tile` would do with the selected spell: the tiles it would cover, and whether it is allowed. */
 export interface SpellPreview { spell: SpellKey; lane: number; col: number; tiles: SpellTile[]; ok: boolean }
 
+/** What a tap on a lane would do with the hero power picked: fire down `lane` (`ok`: it is ready). */
+export interface HeroPreview { hero: true; lane: number; ok: boolean }
+
+/** Anything `hover` can answer: a card's placement, a spell's area, or the hero's lane. */
+export type AimPreview = PlacementPreview | SpellPreview | HeroPreview;
+
 /** The player's hero power: usable now, and how far it has charged (0..1). */
 export interface HeroVM { ready: boolean; fraction: number }
 
@@ -178,10 +184,16 @@ export class BattleController {
     this.hud.heroSelected.value = true;
   }
 
+  /** The hero button (or key H): picks the hero power, or puts it down when it is picked. */
+  toggleHero(): void {
+    this.selectHero(!this.hud.heroSelected.peek());
+  }
+
   /**
    * A tap on a spell's button. An aimed spell is picked (the next lawn tap casts it), which clears
    * the card, the shovel and the hero; tapping the picked one again puts it down. An un-aimed spell
-   * (size 0: Sun Shower, Brain Feast) is cast there and then, queued like a click. A spell that is
+   * (size 0: Sun Shower, Brain Feast) is cast there and then, queued like a click, which puts
+   * down the hero and any aimed spell. A spell that is
    * not dealt is ignored; one still charging is refused (counted as a denial). Null puts any spell down.
    */
   selectSpell(key: SpellKey | null): void {
@@ -207,15 +219,24 @@ export class BattleController {
     if (this.queued !== null) return;
     const cmd: Command = { type: 'spell', faction: this.playerFaction, spell: key, lane: 0, col: 0 };
     const reason = this.match.check(cmd);
-    if (reason !== null) this.deny(reason);
-    else this.queued = cmd;
+    if (reason !== null) {
+      this.deny(reason);
+      return;
+    }
+    this.queued = cmd;
+    // Cast: nothing is waiting to be aimed any more.
+    this.clearPowers();
   }
 
   /**
    * What a tap here would do: with a spell picked, the area it would cover (and whether the cast
    * would be allowed); with a card, the placement or merge preview; otherwise null.
    */
-  hover(tile: Tile | null, unitId: number | null): PlacementPreview | SpellPreview | null {
+  hover(tile: Tile | null, unitId: number | null): AimPreview | null {
+    if (this.hud.heroSelected.peek()) {
+      if (tile === null) return null;
+      return { hero: true, lane: tile.lane, ok: this.match.check({ type: 'hero', faction: this.playerFaction, lane: tile.lane }) === null };
+    }
     const spell = this.hud.spellSelected.peek();
     if (spell !== null) {
       if (tile === null) return null;
@@ -306,7 +327,7 @@ export class BattleController {
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
-    this.hud.heroSelected.value = false;
+    this.clearPowers();
     return null;
   }
 
@@ -320,6 +341,16 @@ export class BattleController {
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
       this.clearPowers();
+      return;
+    }
+    const lower = key.toLowerCase();
+    if (lower === 'h') {
+      this.toggleHero();
+      return;
+    }
+    if (lower === 'q' || lower === 'w') {
+      const slot = this.match.state.players[this.playerFaction].spells[lower === 'q' ? 0 : 1];
+      if (slot !== undefined) this.selectSpell(slot.key);
       return;
     }
     const index = HOTKEYS.indexOf(key);

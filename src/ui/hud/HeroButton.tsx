@@ -16,6 +16,8 @@ export interface HeroButtonProps {
   onPress(): void;
   /** The boy's portrait (an image URL); without it his side's emblem. */
   portrait?: string;
+  /** Its last press was refused: 0 still; 1 and 2 alternate so each refusal restarts the shake. */
+  shake?: number;
 }
 
 /** What each boy's power is called (the button's accessible name). */
@@ -69,10 +71,38 @@ export const FACTION_EMBLEMS: Record<Faction, PixelArt> = {
 };
 
 /** What a power button draws from: the props that change its look, in whole charge steps. */
-export interface PowerLook { ready: boolean; step: number; selected: boolean }
+export interface PowerLook { ready: boolean; step: number; selected: boolean; shake: number }
 
 export const sameLook = (a: PowerLook, b: PowerLook): boolean =>
-  a.ready === b.ready && a.step === b.step && a.selected === b.selected;
+  a.ready === b.ready && a.step === b.step && a.selected === b.selected && a.shake === b.shake;
+
+/** The shake classes for a refused press (see `HeroButtonProps.shake`). */
+export const shakeClass = (shake: number): string => (shake === 0 ? '' : shake % 2 === 1 ? ' is-denied is-denied-a' : ' is-denied is-denied-b');
+
+/**
+ * Press handling for the power buttons, touch first, as the cards do it: a press counts on
+ * pointer down, so a drag from the button onto the lawn starts with the power already picked,
+ * and the click that ends that same press is swallowed. A button already picked does nothing on
+ * the down; its click puts it down. A click with no down before it (a key) presses.
+ */
+export class PressGate {
+  private downed = false;
+
+  down(e: PointerEvent, selected: boolean, press: () => void): void {
+    // First finger or pen, or the main mouse button; never a right click or a second finger.
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    this.downed = !selected;
+    if (!selected) press();
+  }
+
+  click(press: () => void): void {
+    if (this.downed) {
+      this.downed = false;
+      return;
+    }
+    press();
+  }
+}
 
 /**
  * The boy's hero power: a big square with his portrait. While it charges a dark veil over the
@@ -87,7 +117,10 @@ export class HeroButton extends Component<HeroButtonProps> {
       && sameLook(lookOf(p), lookOf(next)));
   }
 
+  private readonly gate = new PressGate();
   private readonly press = (): void => this.props.onPress();
+  private readonly down = (e: PointerEvent): void => this.gate.down(e, this.props.selected, this.press);
+  private readonly click = (): void => this.gate.click(this.press);
 
   override render() {
     const { faction, ready, selected, portrait } = this.props;
@@ -96,9 +129,9 @@ export class HeroButton extends Component<HeroButtonProps> {
     if (selected) cls.push('is-selected');
     return (
       <button
-        type="button" data-hero={faction} class={cls.join(' ')}
+        type="button" data-hero={faction} class={cls.join(' ') + shakeClass(this.props.shake ?? 0)}
         aria-label={HERO_NAMES[faction]} aria-pressed={selected} aria-disabled={ready ? undefined : 'true'}
-        onClick={this.press}
+        onPointerDown={this.down} onClick={this.click}
       >
         <span class="power__art">
           {portrait !== undefined
@@ -111,8 +144,8 @@ export class HeroButton extends Component<HeroButtonProps> {
   }
 }
 
-const lookOf = (p: { ready: boolean; fraction: number; selected: boolean }): PowerLook =>
-  ({ ready: p.ready, step: p.ready ? 1 : chargeStep(p.fraction), selected: p.selected });
+const lookOf = (p: { ready: boolean; fraction: number; selected: boolean; shake?: number }): PowerLook =>
+  ({ ready: p.ready, step: p.ready ? 1 : chargeStep(p.fraction), selected: p.selected, shake: p.shake ?? 0 });
 
 /**
  * The charge overlay shared by the hero and spell buttons: while charging, a dark veil over the

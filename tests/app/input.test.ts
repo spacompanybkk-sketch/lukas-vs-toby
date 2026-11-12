@@ -104,6 +104,27 @@ describe('BattleInput', () => {
     expect(calls).toEqual(['preview 3,4', 'click 3,4', 'preview none']);
   });
 
+  for (const [attr, value] of [['hero', 'plants'], ['spell', 'thunderbolt']] as const) {
+    it(`dragging from the ${attr} button and letting go over the lawn acts there, like a card`, () => {
+      const { target, calls } = fakeTarget();
+      input = new BattleInput(target, { canvas, isOverLawn });
+      const button = document.createElement('button');
+      button.dataset[attr] = value;
+      tray.appendChild(button);
+      ptr('pointerdown', { x: 100, y: 700, kind: 'touch' }, button);
+      ptr('pointermove', { x: 220, y: 130, kind: 'touch' }, button);
+      ptr('pointerup', { x: 220, y: 130, kind: 'touch' }, button);
+      expect(calls).toEqual(['preview 1,2', 'click 1,2', 'preview none']);
+    });
+  }
+
+  it('forwards H, Q and W (either case) for the hero and the two spells', () => {
+    const { target } = fakeTarget();
+    input = new BattleInput(target, { canvas, isOverLawn });
+    for (const key of ['h', 'Q', 'w', 'e']) window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+    expect(target.hotkey.mock.calls.map((c) => c[0])).toEqual(['h', 'Q', 'w']);
+  });
+
   it('a tap on a card (released over the tray) does not act on the lawn', () => {
     const { target } = fakeTarget();
     input = new BattleInput(target, { canvas, isOverLawn });

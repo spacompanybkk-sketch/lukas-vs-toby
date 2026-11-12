@@ -139,6 +139,8 @@ export class UnitView {
   marksHeight = -1;
   /** True when it went off rather than died (a mine, a cherry): it vanishes with no crumble. */
   spent = false;
+  /** The last hero power show that flashed it (see `BattleView.heroHit`), or 0. */
+  heroShow = 0;
   /** View time (seconds) it was last tied, or −1: see `BattleView`. */
   tiedAt = -1;
   /** A Potato Mine showing its armed light. */

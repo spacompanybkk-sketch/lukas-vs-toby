@@ -441,3 +441,67 @@ describe('BattleSession', () => {
     expect(stage.director).not.toBe(session);
   });
 });
+
+describe('BattleSession hero powers and spells (wiring B)', () => {
+  /** Hero and both spells ready (Thunderbolt aimed, Sun Shower not) for a plants player. */
+  function armed(stage: StageLike) {
+    const made = make(stage);
+    const s = made.session.controller.match.state.players.plants;
+    s.heroTimer = 1;
+    s.spells = [{ key: 'thunderbolt', timer: 1 }, { key: 'sunShower', timer: 1 }];
+    made.session.begin();
+    made.session.fastForward(1);
+    return made;
+  }
+  function move(stage: StageLike, x: number, y: number): void {
+    stage.canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+  }
+
+  it('the hero picked, the lane under the pointer lights up, and a tap there fires it with its banner and sound', () => {
+    const stage = fakeStage();
+    const { session, play } = armed(stage);
+    const lane = vi.spyOn(stage.lawn, 'highlightLane');
+    session.controller.toggleHero();
+    const at = session.tileToClient(1, 6);
+    move(stage, at.x, at.y);
+    expect(lane).toHaveBeenLastCalledWith(1, 'ok', 'plants');
+    tap(stage, at.x, at.y);
+    expect(session.heroBanner.value).toBeNull();
+    run(stage, 0.1);
+    expect(session.heroBanner.value).toMatchObject({ side: 'plants' });
+    expect(play).toHaveBeenCalledWith('megaMower');
+    expect(session.controller.hud.heroSelected.value).toBe(false);
+  });
+
+  it('an aimed spell shows the simulation\'s area under the pointer and casts where tapped', () => {
+    const stage = fakeStage();
+    const { session, play } = armed(stage);
+    const area = vi.spyOn(session.view.spells, 'showArea');
+    session.controller.selectSpell('thunderbolt');
+    const at = session.tileToClient(4, 9);
+    move(stage, at.x, at.y);
+    expect(area).toHaveBeenLastCalledWith(
+      [{ lane: 3, col: 8 }, { lane: 3, col: 9 }, { lane: 4, col: 8 }, { lane: 4, col: 9 }], 'plants', 'ok',
+    );
+    tap(stage, at.x, at.y);
+    run(stage, 0.1);
+    expect(play).toHaveBeenCalledWith('thunderbolt', expect.anything());
+    expect(session.controller.hud.spellSelected.value).toBeNull();
+  });
+
+  it('a power still charging plays the deny sound when pressed', () => {
+    const stage = fakeStage();
+    const { session, play } = make(stage);
+    session.begin();
+    session.controller.toggleHero();
+    expect(play).toHaveBeenCalledWith('deny');
+  });
+
+  it('the other side\'s hero shows its banner too', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    session.view.onHero('zombies', 2);
+    expect(session.heroBanner.value).toMatchObject({ side: 'zombies' });
+  });
+});

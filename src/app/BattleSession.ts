@@ -4,7 +4,7 @@ import { Vector3 } from 'three';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { SoundGate, battleIntensity, playEventSounds } from '../audio/bindings';
 import { BattleView } from '../render/battle/BattleView';
-import type { PlacementPreview } from '../render/battle/types';
+import type { AimPreview } from '../render/battle/types';
 import { LAWN_COLS, LAWN_LANES, tileCenter, worldToClient } from '../render/coords';
 import type { CommandRejection, Faction, SimEvent } from '../sim/types';
 import { BattleController } from './BattleController';
@@ -19,6 +19,9 @@ export const INTRO_SECONDS = 1.8;
 
 /** Seconds the winners cheer, after the loser's base has fallen, before the result panel shows. */
 export const CHEER_SECONDS = 2;
+
+/** A hero power just used: whose (the banner shows that boy), numbered so two in a row both show. */
+export interface HeroBanner { side: Faction; n: number }
 
 /** Where an energy token flies from (client pixels) when the player's side earns energy. */
 export type TokenSink = (from: { x: number; y: number }, side: Faction, amount: number) => void;
@@ -54,6 +57,8 @@ export class BattleSession implements Director, InputTarget {
   intro: Promise<void> = Promise.resolve();
   /** True when the battle was begun at once (a test scene): the HUD shows no banners. */
   skipIntro = false;
+  /** The last hero power used, by either side: the HUD shows its boy's banner. */
+  readonly heroBanner = signal<HeroBanner | null>(null);
 
   private readonly stage: StageLike;
   private readonly audio: AudioEngine;
@@ -90,11 +95,22 @@ export class BattleSession implements Director, InputTarget {
     });
     this.view.onFeel = (f) => this.clock.feel(f, stage.rig);
     this.view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);
+    this.view.onHero = (side) => {
+      this.heroBanner.value = { side, n: (this.heroBanner.peek()?.n ?? 0) + 1 };
+    };
     this.input = new BattleInput(this, { canvas: stage.canvas, ...options.input });
     // A new card (or none) changes what the ghost should show where the pointer already is.
     const hud = this.controller.hud;
     this.offEffects.push(hud.selected.subscribe(() => this.input.refresh()));
     this.offEffects.push(hud.shovel.subscribe(() => this.input.refresh()));
+    this.offEffects.push(hud.heroSelected.subscribe(() => this.input.refresh()));
+    this.offEffects.push(hud.spellSelected.subscribe(() => this.input.refresh()));
+    // Every refusal, from a lawn tap or a HUD button (a power still charging), is heard once.
+    let denied = hud.denied.peek();
+    this.offEffects.push(hud.denied.subscribe((n) => {
+      if (n > denied && !this.disposed) this.audio.play('deny');
+      denied = n;
+    }));
   }
 
   get playerFaction(): Faction {
@@ -202,16 +218,15 @@ export class BattleSession implements Director, InputTarget {
     return { tile: this.tileAt(nx, ny), unitId };
   }
 
-  hover(tile: Tile | null, unitId: number | null): PlacementPreview | null {
-    const preview = this.controller.hover(tile, unitId);
-    return preview !== null && 'unit' in preview ? preview : null; // a spell's area is not drawn yet (Task 7)
+  hover(tile: Tile | null, unitId: number | null): AimPreview | null {
+    return this.controller.hover(tile, unitId);
   }
 
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     return this.controller.click(tile, unitId);
   }
 
-  setPreview(p: PlacementPreview | null): void {
+  setPreview(p: AimPreview | null): void {
     if (!this.detached) this.view.setPreview(p);
   }
 
@@ -223,9 +238,8 @@ export class BattleSession implements Director, InputTarget {
     this.controller.hotkey(key);
   }
 
-  denied(): void {
-    this.audio.play('deny');
-  }
+  /** The sound comes from `hud.denied` (see the constructor), which every refusal counts. */
+  denied(): void {}
 
   // ---- Inside --------------------------------------------------------------------------------
 

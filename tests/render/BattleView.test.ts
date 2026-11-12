@@ -51,6 +51,17 @@ function countNamed(scene: Scene, prefix: string): number {
   return n;
 }
 
+/** Like `countNamed`, but only objects drawn now (they and every parent visible): the spells' pools keep theirs hidden in the scene. */
+function countShown(scene: Scene, prefix: string): number {
+  let n = 0;
+  scene.traverse((o) => {
+    if (!o.name.startsWith(prefix) || o.parent === null) return;
+    for (let p: typeof o | null = o; p; p = p.parent) if (!p.visible) return;
+    n++;
+  });
+  return n;
+}
+
 describe('BattleView', () => {
   it('adds a unit-<id> object when a unit spawns', () => {
     const { scene, view, match } = setUp();
@@ -158,10 +169,11 @@ describe('BattleView', () => {
     }).not.toThrow();
     expect(match.state.units.length).toBeGreaterThan(0);
     expect(view.unitCount).toBe(match.state.units.length);
-    // Only what is still flying in the simulation is on screen; every token and gravestone is gone.
+    // Only what is still flying in the simulation is on screen; every token and gravestone is gone
+    // (the spell shows keep a hidden pool of each in the scene: none of those may be showing).
     expect(countNamed(scene, 'projectile-')).toBe(match.state.projectiles.length);
-    expect(countNamed(scene, 'token-')).toBe(0);
-    expect(countNamed(scene, 'gravestone')).toBe(0);
+    expect(countShown(scene, 'token-')).toBe(0);
+    expect(countShown(scene, 'gravestone')).toBe(0);
   });
 });
 

@@ -1,5 +1,5 @@
 import {
-  BackSide, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
+  BackSide, Box3, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
   Vector2, Vector3, type Camera, type Object3D, type Scene,
 } from 'three';
 import { factionOf } from '../../data/units';
@@ -9,7 +9,7 @@ import type { Effects } from '../fx/Effects';
 import { MATTE_PLASTIC } from '../look';
 import { BaseView } from '../models/bases';
 import {
-  BURNING_TRAIL, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeGravestone, makeMergeMarker, makeProjectile, makeToken, spinToken,
+  BURNING_TRAIL, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeGravestone, makeMergeMarker, makeProjectile, makeRock, makeToken, spinToken,
   type TokenKind,
 } from '../models/props';
 import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
@@ -20,12 +20,14 @@ import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
 import { BoxBatch } from '../world/boxes';
 import type { Lawn } from '../world/Lawn';
 import { Hazards } from './Hazards';
+import { HeroFx } from './HeroFx';
+import { SpellFx } from './SpellFx';
 import { HealthBars } from './HealthBars';
 import { StatusMarks } from './StatusMarks';
-import type { Feel, PlacementPreview } from './types';
+import type { AimPreview, Feel } from './types';
 import { GROW_PER_STACK, RELEASE_SECONDS, UnitView, type UnitHooks } from './UnitView';
 
-export type { Feel, PlacementPreview } from './types';
+export type { AimPreview, Feel, PlacementPreview } from './types';
 
 // The battle on screen. `applyEvents` is called once per simulation step with that step's
 // events and the state after it; `frame` once per animation frame with how far the picture is
@@ -103,7 +105,7 @@ const RAISE = hex('#9B6BFF');
 const SOIL = hex('#8A5A2B');
 
 /** The statuses a unit can carry, each with its bit in `UnitView.statusBits`. */
-const STATUSES: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn'];
+const STATUSES: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn', 'haste'];
 const TIED_BIT = 1 << STATUSES.indexOf('tied');
 /** Stars and flames on a zombie are drawn this much bigger: on a busy lawn they are the ones that get lost. */
 const ZOMBIE_MARK_SIZE = 1.45;
@@ -168,6 +170,17 @@ interface ProjectileView {
   late: boolean;
 }
 
+/**
+ * A Rock Wall's rock: drawn by `SpellFx` (it has no unit model), with an invisible box named
+ * `unit-<id>` that a tap can pick (for the shovel), and a health bar like any unit's.
+ */
+interface RockView { id: number; lane: number; col: number; hp: number; maxHp: number; wrapper: Group }
+
+/** The hero power's push-in on its lane: how far, and for how long. */
+const HERO_PUNCH: Feel = { punch: 0.09, punchSeconds: 0.9 };
+/** Where the "+N" of a spell's income floats: over the middle of the shower, for each side. */
+const SPELL_INCOME_X: Record<Faction, number> = { plants: 4, zombies: 7 };
+
 interface TokenView { object: Object3D; kind: TokenKind; age: number; at: Vector3; active: boolean }
 /** A lasso rope from a Cowboy to the plant it has tied, shown while the plant is tied. */
 interface Rope { group: Group; segments: Mesh[]; from: number; to: number; age: number; active: boolean }
@@ -191,6 +204,19 @@ export class BattleView {
   onFeel: (f: Feel) => void = () => {};
   /** Energy the player's side gained here: the HUD flies a token in from `from`. */
   onEnergyToken: (side: Faction, from: Vector3, amount: number) => void = () => {};
+  /** A hero power was used (by either side): the HUD shows that boy's banner. */
+  onHero: (side: Faction, lane: number) => void = () => {};
+  /** The ten spells' shows, the Rock Wall's rocks and the aimed area. */
+  readonly spells: SpellFx;
+  /** The two hero powers' shows. */
+  private readonly heroFx: HeroFx;
+  /** A number per hero show, so each flashes a unit once (see `heroHit`). */
+  private heroShow = 0;
+  private readonly rocks = new Map<number, RockView>();
+  private readonly rockList: RockView[] = [];
+  private readonly rockPick = new BoxGeometry(0.8, 0.8, 0.8);
+  private readonly rockPickMaterial = new MeshBasicMaterial({ visible: false });
+  private readonly rockHeight: number;
 
   private readonly scene: Scene;
   private readonly camera: Camera;
@@ -262,6 +288,10 @@ export class BattleView {
     this.playerFaction = playerFaction;
     this.bases = { plants: new BaseView('plants'), zombies: new BaseView('zombies') };
     scene.add(this.bases.plants.group, this.bases.zombies.group, this.bars.mesh, this.marks.group, this.puddles.group);
+    this.spells = new SpellFx(fx, fx.particles, { onFeel: (f) => this.onFeel(f) });
+    this.heroFx = new HeroFx(fx, { onFeel: (f) => this.onFeel(f) });
+    scene.add(this.spells.group, this.heroFx.group);
+    this.rockHeight = new Box3().setFromObject(makeRock(0)).max.y;
     this.hooks = {
       mergePeak: (view) => this.mergePeak(view),
       burst: (view) => this.burst(view),
@@ -287,6 +317,11 @@ export class BattleView {
   /** How many level-up markers are showing, for tests. */
   get mergeMarkers(): number {
     return this.markersShown;
+  }
+
+  /** Hero power shows running now, for tests. */
+  get heroShows(): number {
+    return this.heroFx.playing;
   }
 
   /** How many health bars were drawn last frame, for tests. */
@@ -329,6 +364,13 @@ export class BattleView {
     const units = state.units;
     for (let i = 0; i < units.length; i++) {
       const u = units[i] as Unit;
+      if (u.key === 'rock') {
+        const rock = this.addRock(u.id, u.lane, u.x); // joined mid-match, or just cast
+        rock.hp = u.hp;
+        rock.maxHp = u.maxHp;
+        this.spells.setRock(rock.lane, rock.col, u.maxHp > 0 ? u.hp / u.maxHp : 0);
+        continue;
+      }
       let view = this.views.get(u.id);
       if (!view) view = this.addUnit(u.id, u.key, u.faction, u.lane, u.x, u.level); // joined mid-match
       view.setSim(u.x, u.hp, u.maxHp, u.blocked);
@@ -430,6 +472,8 @@ export class BattleView {
     this.placeMarkers(timeSeconds);
     this.marks.update(dt);
     this.puddles.update(dt);
+    this.spells.update(dt);
+    this.heroFx.update(dt);
     this.moveRopes(dt);
 
     // The winners' confetti, on real frames even while the game clock is slowed for the finale.
@@ -459,6 +503,13 @@ export class BattleView {
         const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
         v1.y = top + 0.14 + BAR_LIFT * Math.min(view.stackPlace, 4);
         this.bars.add(v1, view.hp / view.maxHp, view.level);
+        this.barCount++;
+      }
+      for (let i = 0; i < this.rockList.length; i++) {
+        const rock = this.rockList[i] as RockView;
+        if (rock.lane !== lane || !(rock.hp < rock.maxHp)) continue;
+        v1.set(rock.col + 0.5 - BAR_SHIFT, this.rockHeight + 0.14, rock.lane + 0.5);
+        this.bars.add(v1, rock.hp / rock.maxHp, 1);
         this.barCount++;
       }
     }
@@ -504,8 +555,11 @@ export class BattleView {
     }
   }
 
-  /** Shows where a card would go, or clears it with null. */
-  setPreview(p: PlacementPreview | null): void {
+  /**
+   * Shows what a tap would do: where a card would go, the area a spell would cover, or the lane
+   * the hero power would sweep; null clears it.
+   */
+  setPreview(p: AimPreview | null): void {
     if (this.pulseTarget) this.pulseTarget.pulsing = false;
     this.pulseTarget = null;
     if (this.ghost) this.ghost.root.visible = false;
@@ -514,9 +568,18 @@ export class BattleView {
     this.outline = null;
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
+    this.spells.showArea(null);
     if (!p) return;
 
     const state = p.ok ? 'ok' : 'bad';
+    if ('tiles' in p) {
+      this.spells.showArea(p.tiles, this.playerFaction, state);
+      return;
+    }
+    if ('hero' in p) {
+      this.lawn.highlightLane(p.lane, state, this.playerFaction);
+      return;
+    }
     if (p.mergeTargetId !== null) {
       const target = this.views.get(p.mergeTargetId);
       if (target && !target.dying) {
@@ -565,6 +628,10 @@ export class BattleView {
       view.wrapper.updateMatrixWorld(true); // as drawn this frame, even before a render
       this.pickables.push(view.wrapper);
     }
+    for (const rock of this.rockList) {
+      rock.wrapper.updateMatrixWorld(true);
+      this.pickables.push(rock.wrapper);
+    }
     if (this.pickables.length === 0) return null;
     this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(ndc.set(ndcX, ndcY), this.camera);
@@ -601,6 +668,15 @@ export class BattleView {
       if (d <= bestD) {
         bestD = d;
         best = view.id;
+      }
+    }
+    for (const rock of this.rockList) {
+      v1.set(rock.col + 0.5, this.rockHeight / 2, rock.lane + 0.5);
+      const at = worldToClient(v1, this.camera, client);
+      const d = (at.x - px) ** 2 + (at.y - py) ** 2;
+      if (d <= bestD) {
+        bestD = d;
+        best = rock.id;
       }
     }
     return best;
@@ -697,6 +773,13 @@ export class BattleView {
     this.projectiles.clear();
     this.marks.dispose();
     this.puddles.dispose();
+    this.spells.dispose();
+    this.heroFx.dispose();
+    for (const rock of this.rockList) rock.wrapper.removeFromParent();
+    this.rockList.length = 0;
+    this.rocks.clear();
+    this.rockPick.dispose();
+    this.rockPickMaterial.dispose();
     for (const rope of this.ropes) rope.group.removeFromParent();
     this.ropes.length = 0;
     this.ropeGeometry.dispose();
@@ -767,6 +850,10 @@ export class BattleView {
   private apply(e: SimEvent, state: SimState): void {
     switch (e.type) {
       case 'unitSpawned': {
+        if (e.key === 'rock') {
+          this.addRock(e.unitId, e.lane, e.x);
+          break;
+        }
         const view = this.addUnit(e.unitId, e.key, e.faction, e.lane, e.x, 1);
         view.play('spawn');
         v1.set(e.x, 0, e.lane + 0.5);
@@ -794,11 +881,21 @@ export class BattleView {
         this.hitProjectile(e.projectileId, e.lane, e.x, e.targetId, e.targetBase, e.blocked, stillFlying(state, e.projectileId));
         break;
       case 'unitDamaged': {
+        const rock = this.rocks.get(e.unitId);
+        if (rock) {
+          rock.hp = e.hp;
+          this.spells.setRock(rock.lane, rock.col, rock.maxHp > 0 ? Math.max(0, e.hp) / rock.maxHp : 0);
+          break;
+        }
         const view = this.views.get(e.unitId);
         if (view && !this.justTied(view)) view.hurt();
         break;
       }
       case 'unitDied': {
+        if (this.rocks.has(e.unitId)) {
+          this.removeRock(e.unitId, e.cause === 'shovel');
+          break;
+        }
         const view = this.views.get(e.unitId);
         if (!view) break;
         if (e.cause === 'shovel') {
@@ -835,6 +932,13 @@ export class BattleView {
         break;
       }
       case 'energyGained': {
+        if (e.source === 'spell') {
+          // Sun Shower / Brain Feast: the tokens are the shower's; the amount floats over it.
+          v1.set(SPELL_INCOME_X[e.faction], 1.4, 2.5);
+          this.fx.floatText(v1, `+${e.amount}`, e.faction === 'plants' ? PALETTE.sun : PALETTE.brains);
+          if (e.faction === this.playerFaction) this.onEnergyToken(e.faction, v1.clone(), e.amount);
+          break;
+        }
         v1.set(e.x, 0.95, e.lane + 0.5);
         this.popToken(e.faction === 'plants' ? 'sun' : 'brain', v1);
         v2.set(e.x, 1.25, e.lane + 0.5);
@@ -905,10 +1009,15 @@ export class BattleView {
       case 'abilityUsed':
         this.ability(e.unitId, e.ability, e.targetId);
         break;
-      case 'commandRejected':
       case 'heroUsed':
-      case 'heroReady':
+        this.hero(e.faction, e.lane);
+        break;
       case 'spellCast':
+        // The Rock Wall's rock heaves up from its own unitSpawned (and from the state, late).
+        if (e.spell !== 'rockWall') this.spells.cast(e.spell, e.lane, e.col, e.size);
+        break;
+      case 'commandRejected':
+      case 'heroReady': // the HUD's button pulses; the call is a sound
       case 'spellReady':
         break;
       default: {
@@ -921,6 +1030,68 @@ export class BattleView {
   /** Tied a moment ago: hits on it stay quiet so the rope reads as a tie, not a blow. */
   private justTied(view: UnitView): boolean {
     return view.tiedAt >= 0 && this.time - view.tiedAt < TIE_QUIET_SECONDS;
+  }
+
+  /**
+   * A hero power: the boy's banner (HUD), the camera pushing in on the lane, and the show, which
+   * flashes each enemy on the lane as it reaches it (the damage itself is already done).
+   */
+  private hero(faction: Faction, lane: number): void {
+    this.onHero(faction, lane);
+    this.onFeel({ ...HERO_PUNCH, focusZ: lane + 0.5 });
+    const show = ++this.heroShow;
+    void this.heroFx.play(faction, lane, (x) => this.heroHit(show, faction, lane, x));
+  }
+
+  /**
+   * The show has reached `x` on `lane`: every enemy of `faction` there it has passed (the mower
+   * runs left to right, the storm right to left) and not yet flashed in this show flashes, with
+   * a spark. True when it flashed any (the show then stops the world for a moment, once).
+   */
+  private heroHit(show: number, faction: Faction, lane: number, x: number): boolean {
+    let any = false;
+    for (let i = 0; i < this.list.length; i++) {
+      const view = this.list[i] as UnitView;
+      if (view.lane !== lane || view.faction === faction || view.heroShow === show) continue;
+      if (faction === 'plants' ? view.currX > x : view.currX < x) continue;
+      view.heroShow = show;
+      view.flash();
+      v3.set(view.currX, view.height * 0.6, lane + 0.5);
+      this.fx.spark(v3);
+      any = true;
+    }
+    return any;
+  }
+
+  /** The rock of a Rock Wall, made once per unit id: an invisible box to pick, and SpellFx's rock. */
+  private addRock(id: number, lane: number, x: number): RockView {
+    let rock = this.rocks.get(id);
+    if (rock) return rock;
+    const col = Math.floor(x);
+    const wrapper = new Group();
+    wrapper.name = `unit-${id}`;
+    const box = new Mesh(this.rockPick, this.rockPickMaterial);
+    box.position.y = 0.4;
+    wrapper.add(box);
+    wrapper.position.set(col + 0.5, 0, lane + 0.5);
+    this.scene.add(wrapper);
+    rock = { id, lane, col, hp: 1, maxHp: 1, wrapper };
+    this.rocks.set(id, rock);
+    this.rockList.push(rock);
+    if (!this.spells.hasRock(lane, col)) this.spells.cast('rockWall', lane, col, 1);
+    return rock;
+  }
+
+  /** A rock is gone (bitten through, its time up, or shovelled): it crumbles. */
+  private removeRock(id: number, shovel: boolean): void {
+    const rock = this.rocks.get(id);
+    if (!rock) return;
+    this.rocks.delete(id);
+    const i = this.rockList.indexOf(rock);
+    if (i >= 0) this.rockList.splice(i, 1);
+    rock.wrapper.removeFromParent();
+    this.spells.crumbleRock(rock.lane, rock.col);
+    if (shovel) this.fx.puff(v1.set(rock.col + 0.5, 0.2, rock.lane + 0.5));
   }
 
   private setBaseHealth(side: Faction, hp: number, max: number): void {

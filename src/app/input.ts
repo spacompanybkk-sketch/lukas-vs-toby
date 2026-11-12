@@ -1,5 +1,5 @@
 import type { CommandRejection } from '../sim/types';
-import type { PlacementPreview } from '../render/battle/types';
+import type { AimPreview } from '../render/battle/types';
 
 export type Tile = { lane: number; col: number };
 /** What lies under a point on the screen: a lawn tile (or null off the lawn) and a unit, if any. */
@@ -10,9 +10,9 @@ export interface InputTarget {
   /** False before the battle begins and after it ends: the lawn ignores the pointer. */
   isLive(): boolean;
   pick(clientX: number, clientY: number): Picked;
-  hover(tile: Tile | null, unitId: number | null): PlacementPreview | null;
+  hover(tile: Tile | null, unitId: number | null): AimPreview | null;
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null;
-  setPreview(p: PlacementPreview | null): void;
+  setPreview(p: AimPreview | null): void;
   /** A right click on the lawn: drop the card or the shovel. */
   clearSelection(): void;
   hotkey(key: string): void;
@@ -31,7 +31,9 @@ export interface InputOptions {
   isOverLawn?(clientX: number, clientY: number): boolean;
 }
 
-const HOTKEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Escape', ' ']);
+const HOTKEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Escape', ' ', 'h', 'H', 'q', 'Q', 'w', 'W']);
+/** HUD buttons a drag can start from: a card, the hero power, a spell. */
+const DRAGGABLE = '[data-card],[data-hero],[data-spell]';
 
 type Source = 'lawn' | 'card';
 interface Active { id: number; source: Source; mouse: boolean }
@@ -41,12 +43,14 @@ interface Active { id: number; source: Source; mouse: boolean }
  *
  * - Tap a card (the tray selects it), then tap the lawn: on release the tap places, merges or
  *   shovels where the finger lifted.
- * - Drag from a card and let go over the lawn: the same, where it was let go. The card has the
+ * - Drag from a card (or the hero power, or a spell) and let go over the lawn: the same, where
+ *   it was let go. The card has the
  *   pointer captured, so the release is heard at document level and hit-tested by position.
  * - While a card is selected the ghost and tile highlight follow a hovering mouse, or a finger
  *   while it is down (so a child sees where it will go before lifting).
  * - Only one pointer at a time: a second finger is ignored and does not break the first's drag.
- * - A right click on the lawn drops the selection. Keys 1–0, Escape and Space are extras.
+ * - A right click on the lawn drops the selection. Keys 1–0, H (hero), Q and W (spells), Escape
+ *   and Space are extras.
  */
 export class BattleInput {
   private readonly target: InputTarget;
@@ -109,7 +113,7 @@ export class BattleInput {
       return;
     }
     if (!e.isPrimary || (mouse && e.button !== 0)) return;
-    const card = !onCanvas && node instanceof Element ? node.closest('[data-card]') : null;
+    const card = !onCanvas && node instanceof Element ? node.closest(DRAGGABLE) : null;
     if (!onCanvas && card === null) return;
     this.active = { id: e.pointerId, source: onCanvas ? 'lawn' : 'card', mouse };
     if (onCanvas) {
@@ -174,7 +178,7 @@ export class BattleInput {
       (this.doc.activeElement as HTMLElement | null)?.blur?.();
     }
     this.target.hotkey(e.key);
-    if (e.key === 'Escape') this.refresh();
+    this.refresh();
   };
 
   private act(x: number, y: number): void {

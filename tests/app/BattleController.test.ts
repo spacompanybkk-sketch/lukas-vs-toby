@@ -788,3 +788,114 @@ describe('BattleController spells', () => {
     expect(c.hover({ lane: 0, col: 0 }, null)).toMatchObject({ ok: false });
   });
 });
+
+describe('BattleController powers wiring (wiring B)', () => {
+  /** Hero and both spells (one aimed, one not) ready; the hud caught up. */
+  const ready = (side: Faction = 'plants'): BattleController => {
+    const c = make(side);
+    c.match.state.players[side].heroTimer = 1;
+    c.match.state.players[side].spells = side === 'plants'
+      ? [{ key: 'thunderbolt', timer: 1 }, { key: 'sunShower', timer: 1 }]
+      : [{ key: 'meteor', timer: 1 }, { key: 'brainFeast', timer: 1 }];
+    c.step();
+    return c;
+  };
+  const picked = (c: BattleController) => ({
+    card: c.hud.selected.value, shovel: c.hud.shovel.value, hero: c.hud.heroSelected.value, spell: c.hud.spellSelected.value,
+  });
+
+  it('heroLane fired with a spell picked puts the spell down too', () => {
+    const c = ready();
+    c.selectSpell('thunderbolt');
+    expect(c.hud.spellSelected.value).toBe('thunderbolt');
+    expect(c.heroLane(1)).toBeNull();
+    expect(picked(c)).toMatchObject({ hero: false, spell: null });
+  });
+
+  it('an un-aimed cast puts the hero (and any aimed spell) down', () => {
+    const c = ready();
+    c.toggleHero();
+    expect(c.hud.heroSelected.value).toBe(true);
+    c.selectSpell('sunShower');
+    expect(picked(c)).toMatchObject({ hero: false, spell: null });
+    expect(c.step()).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'sunShower' }));
+  });
+
+  it('card, shovel, hero and spell are picked one at a time, in every direction', () => {
+    const c = ready();
+    const pick: Record<string, () => void> = {
+      card: () => c.select('peashooter'),
+      shovel: () => { if (!c.hud.shovel.peek()) c.toggleShovel(); },
+      hero: () => { if (!c.hud.heroSelected.peek()) c.toggleHero(); },
+      spell: () => { if (c.hud.spellSelected.peek() === null) c.selectSpell('thunderbolt'); },
+    };
+    const on = (k: string): boolean => {
+      const p = picked(c);
+      return k === 'card' ? p.card !== null : k === 'shovel' ? p.shovel : k === 'hero' ? p.hero : p.spell !== null;
+    };
+    for (const a of Object.keys(pick)) {
+      for (const b of Object.keys(pick)) {
+        if (a === b) continue;
+        pick[a]?.();
+        expect(on(a)).toBe(true);
+        pick[b]?.();
+        expect(on(b)).toBe(true);
+        expect(on(a)).toBe(false);
+      }
+    }
+  });
+
+  it('toggleHero: picks, and a second press puts it down; while charging it is refused with a denial', () => {
+    const c = ready();
+    c.toggleHero();
+    expect(c.hud.heroSelected.value).toBe(true);
+    c.toggleHero();
+    expect(c.hud.heroSelected.value).toBe(false);
+    const d = make();
+    const denied = d.hud.denied.value;
+    d.toggleHero();
+    expect(d.hud.heroSelected.value).toBe(false);
+    expect(d.hud.denied.value).toBe(denied + 1);
+  });
+
+  it('a spell still charging is refused with a denial, aimed or not', () => {
+    const c = make();
+    c.match.state.players.plants.spells = [{ key: 'thunderbolt', timer: 9 }, { key: 'sunShower', timer: 9 }];
+    const denied = c.hud.denied.value;
+    c.selectSpell('thunderbolt');
+    c.selectSpell('sunShower');
+    expect(c.hud.denied.value).toBe(denied + 2);
+    expect(c.hud.spellSelected.value).toBeNull();
+  });
+
+  it('hover with the hero picked names the lane under the pointer', () => {
+    const c = ready();
+    c.toggleHero();
+    expect(c.hover({ lane: 3, col: 6 }, null)).toEqual({ hero: true, lane: 3, ok: true });
+    expect(c.hover(null, null)).toBeNull();
+  });
+
+  it('keys: H picks or drops the hero, Q and W the first and second spell', () => {
+    const c = ready();
+    c.hotkey('h');
+    expect(c.hud.heroSelected.value).toBe(true);
+    c.hotkey('H');
+    expect(c.hud.heroSelected.value).toBe(false);
+    c.hotkey('q');
+    expect(c.hud.spellSelected.value).toBe('thunderbolt');
+    c.hotkey('Q');
+    expect(c.hud.spellSelected.value).toBeNull();
+    c.hotkey('w'); // Sun Shower: cast at once
+    expect(c.step()).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'sunShower' }));
+  });
+
+  it('a tap on the lawn with the hero picked fires it down that lane; with an aimed spell, casts it there', () => {
+    const c = ready();
+    c.toggleHero();
+    expect(c.click({ lane: 4, col: 2 }, null)).toBeNull();
+    expect(c.step()).toContainEqual({ type: 'heroUsed', faction: 'plants', lane: 4 });
+    c.selectSpell('thunderbolt');
+    expect(c.click({ lane: 1, col: 5 }, null)).toBeNull();
+    expect(c.step()).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'thunderbolt', lane: 1, col: 5 }));
+  });
+});

@@ -247,7 +247,8 @@ const centre = new Vector3();
 export class Effects {
   readonly group = new Group();
 
-  private readonly particles: Particles;
+  /** The particle pool these effects draw with (spell shows emit into it too). */
+  readonly particles: Particles;
   private readonly random: () => number;
   private readonly ball = voxelBall();
   private readonly shell = voxelBall(true);
