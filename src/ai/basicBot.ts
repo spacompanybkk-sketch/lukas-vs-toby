@@ -56,7 +56,7 @@ export const SKILLS: SkillTables = {
     hard: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 5, sunflowerLevel: 4, sunflowerFloor: 2, defenceMargin: 2 },
   },
   zombies: {
-    easy: { ...UNUSED, thinkEvery: 120, randomShare: 0.8, mergeSpareSeconds: 0, tankAt: 2 },
+    easy: { ...UNUSED, thinkEvery: 120, randomShare: 0.85, mergeSpareSeconds: 0, tankAt: 2 },
     medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, mergeSpareSeconds: 0, tankAt: 2 },
     hard: { ...UNUSED, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2 },
   },

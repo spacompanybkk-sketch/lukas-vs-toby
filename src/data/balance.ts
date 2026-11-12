@@ -224,7 +224,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
     pumpkinSquash: {
       recharge: 20, hp: 900, armor: 0, speed: 0,
-      leap: { range: 2, damage: 350, radius: 0.5, recoverSeconds: 6 },
+      leap: { range: 3, damage: 350, radius: 0.5, recoverSeconds: 6 },
     },
     // Phase 2 zombies: starting numbers, tuned in phase 3.
     desertZombie: {
@@ -241,7 +241,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     hotTopic: {
       recharge: 6, hp: 300, armor: 0, speed: 0.5,
       melee: { damage: 25, interval: 0.5, reach: 0.6 },
-      grow: { hpShare: 0.2, damageShare: 0.2, maxStacks: 5 },
+      grow: { hpShare: 0.03, damageShare: 0.2, maxStacks: 5 },
     },
     cowboyZombie: {
       recharge: 10, hp: 450, armor: 0, speed: 0.35,
@@ -257,9 +257,9 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       raise: { key: 'boneMinion', interval: 10 },
     },
     tridentZombie: {
-      recharge: 12, hp: 500, armor: 0, speed: 0.2,
+      recharge: 12, hp: 400, armor: 0, speed: 0.2,
       melee: { damage: 40, interval: 1.2, reach: 0.6 },
-      shot: { kind: 'trident', damage: 70, interval: 3.5, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
+      shot: { kind: 'trident', damage: 40, interval: 4, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
     },
     brainRot: {
       recharge: 15, hp: 450, armor: 0, speed: 0.25,
@@ -278,18 +278,18 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
     rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
   },
-  trickle: { plants: 1.8, zombies: 9.3 },
-  bountyShare: { plants: 0.2, zombies: 0.5 },
-  baseShotFactor: 0.35,
+  trickle: { plants: 2.5, zombies: 13 },
+  bountyShare: { plants: 0.5, zombies: 0.5 },
+  baseShotFactor: 0.3,
   hitRadius: 0.35,
   levelCurves: {
     hp: { plants: [0, 1, 2, 3, 4, 5], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
-    damage: { plants: [0, 1, 2, 3, 4, 5], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
+    damage: { plants: [0, 1, 2.1, 3.2, 4.3, 5.4], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
     special: [0, 1, 2, 3, 4, 5],
   },
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 190,
-  baseHp: 7000,
+  baseHp: 6000,
   baseDefense: { damage: 100, interval: 2, paysBounty: false },
   zombieBaseShotRange: 3.5,
   minionCap: 3,
@@ -298,16 +298,16 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     zombies: { damage: 250, chargeSeconds: 60, firstChargeSeconds: 45 }, // Bone Storm
   },
   spells: {
-    thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
+    thunderbolt: { cooldown: 60, firstReady: 20, size: 2, damage: 50 },
     vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
-    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
-    healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
+    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },
+    healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 100 },
     rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
-    meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
-    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
-    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
-    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
-    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
+    meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 20 },
+    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 2.5 },
+    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 25 },
+    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 5, factor: 1.5 },
+    graveRise: { cooldown: 60, firstReady: 20, size: 1, count: 1, minCol: 4 },
   },
 });
 

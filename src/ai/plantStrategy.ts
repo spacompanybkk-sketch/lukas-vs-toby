@@ -23,11 +23,13 @@
  *    zombie on the lawn; then it merges its lowest-level Sunflower up to its skill's level.
  * 6. Margin: a lane under its skill's margin gets another shooter, then a wall.
  * 7. Build-up, from what is left above its reserve: a Torchwood just in front of two or more
- *    Peashooters; a Potato Mine at the front of a quiet lane; then another shooter in the lane with
- *    the fewest (merging where the columns are used up).
+ *    Peashooters; a Potato Mine at the front of a quiet lane (two on the lawn at most); a wall in front of two shooters (an
+ *    Avocado Bunker where a Torchwood is worth guarding, else a Walnut Bomb), then a Pumpkin Squash
+ *    behind that wall; then another shooter in the lane with the fewest (merging where the
+ *    columns are used up).
  *
  * Which shooter: a Kernel-pult against shields (its lobs ignore them, its butter stuns), a
- * Mango-pult against a crowd (its splash), otherwise a Peashooter (a Torchwood doubles its peas).
+ * Mango-pult against two or more zombies (its splash), otherwise a Peashooter (a Torchwood doubles its peas).
  * Which wall: a Pumpkin Squash against two or more zombies when it can afford one, an Avocado Bunker against heavy or
  * fast-biting zombies (its armor shaves every bite), otherwise a Walnut Bomb.
  *
@@ -54,6 +56,8 @@ const SHOOTER_COLS: readonly number[] = [1, 2, 3, 4];
 const LAST_DITCH_COLS: readonly number[] = [0];
 /** Wall tiles. */
 const WALL_COLS: readonly number[] = [6, 5];
+/** Pumpkin Squash tiles: in front of the shooters, behind the wall. */
+const PUMPKIN_COLS: readonly number[] = [4, 5, 3];
 /** Potato Mine tiles at the front of a quiet lane. */
 const MINE_COLS: readonly number[] = [7, 6];
 /** A zombie counts as approaching a wall tile while it is at least this far right of the tile's left edge. */
@@ -64,10 +68,12 @@ const FIRST_SUNFLOWERS = 2;
 const OPENING_TICKS = 600;
 /** Zombie health left over, in a lane with no plant, that the plant base is trusted to deal with. */
 const LONE_LEAK_HP = 200;
+/** Potato Mines it keeps planted ahead of quiet lanes, at most. */
+const QUIET_MINES = 2;
 /** A Potato Mine is the help for a push of at most this much zombie health. */
 const MINE_PUSH_HP = 500;
 /** Cherry Bomber: the zombie health its blast must catch (each zombie counted up to the blast). */
-const CHERRY_MIN = 600;
+const CHERRY_MIN = 450;
 
 const SHOOTERS: ReadonlySet<CardKey> = new Set(['peashooter', 'kernelPult', 'mangoPult']);
 const WALLS: ReadonlySet<CardKey> = new Set(['walnutBomb', 'avocadoBunker', 'pumpkinSquash']);
@@ -178,13 +184,16 @@ function* plantWants(
   if (!spare(UNIT_INFO.torchwood.price)) return;
   const torch = torchWant(lawn);
   if (torch !== undefined) yield torch;
-  for (const view of shuffledLanes(rng).map((lane) => lawn[lane] as LaneView)) {
+  const mines = lawn.reduce((n, view) => n + view.plants.filter((p) => p.key === 'potatoMine').length, 0);
+  for (const view of mines >= QUIET_MINES ? [] : shuffledLanes(rng).map((lane) => lawn[lane] as LaneView)) {
     const mine = view.zombies.length === 0 && shooters(view).length > 0 ? mineWant(b, view, true) : undefined;
     if (mine !== undefined) {
       yield mine;
       break;
     }
   }
+  const built = buildUpWant(lawn, rng);
+  if (built !== undefined) yield built;
   for (const view of lanesByFewestShooters(lawn, rng)) {
     const shooter = shooterWant(view, false, rng);
     if (shooter !== undefined) {
@@ -192,6 +201,29 @@ function* plantWants(
       return;
     }
   }
+}
+
+/**
+ * Building a lane up before the zombies come: a lane with two shooters and no wall gets one on
+ * column 6 or 5 (an Avocado Bunker where a Torchwood stands behind it, worth guarding, else a
+ * Walnut Bomb); a walled lane with two shooters and no Pumpkin Squash gets one in front of them.
+ */
+function buildUpWant(lawn: readonly LaneView[], rng: BotRng): Want | undefined {
+  for (const lane of shuffledLanes(rng)) {
+    const view = lawn[lane] as LaneView;
+    const n = shooters(view).length;
+    if (n >= 2 && !view.plants.some((p) => WALLS.has(p.key as CardKey))) {
+      const col = WALL_COLS.find((c) => view.tiles[c] === undefined);
+      const kind: CardKey = view.plants.some((p) => p.key === 'torchwood') ? 'avocadoBunker' : 'walnutBomb';
+      if (col !== undefined) return { cmd: placeCommand('plants', kind, lane, col), wait: 'energy' };
+    }
+    if (n >= 2 && view.plants.some((p) => WALLS.has(p.key as CardKey) && p.key !== 'pumpkinSquash')
+      && !view.plants.some((p) => p.key === 'pumpkinSquash')) {
+      const col = PUMPKIN_COLS.find((c) => view.tiles[c] === undefined);
+      if (col !== undefined) return { cmd: placeCommand('plants', 'pumpkinSquash', lane, col), wait: 'energy' };
+    }
+  }
+  return undefined;
 }
 
 /** A fresh level-1 Peashooter as `reckonLane` adds it to a lane. */
@@ -209,7 +241,7 @@ function oneMoreShooter(b: Balance): { dps: number; rate: number; hp: number } {
  */
 function shooterKind(view: LaneView, rng: BotRng): CardKey {
   if (view.zombies.some((z) => z.key === 'skeletonWarrior')) return 'kernelPult';
-  if (view.zombies.length >= 3) return 'mangoPult';
+  if (view.zombies.length >= 2) return 'mangoPult';
   const count = (key: CardKey): number => view.plants.filter((p) => p.key === key).length;
   if (count('peashooter') < 2) return 'peashooter';
   const kernels = count('kernelPult');

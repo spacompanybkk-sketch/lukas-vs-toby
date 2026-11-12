@@ -7,20 +7,21 @@
  * 1. Hard only: when its energy is worth more than its line in seconds of income, a merge onto the
  *    healthiest walking zombie in the lane it last sent to.
  * 2. From energy beyond its next real card (`RUSH_RESERVE`), a Very Fast Walker down a lane with no
- *    plant and none of its own zombies: it runs to the base for a chip.
- * 3. Once no lane is open (every lane has a plant), every 20 s at most, a siege zombie (Trident,
- *    Brain Rot, Archer) against the lane with the most plants (four or more) when none of its
- *    siege zombies is there yet: a stack is worn down from range. Only from energy it has at once.
+ *    shooter and none of its own zombies: it eats the Sunflowers there, or runs to the base for a chip.
+ * 3. Once no lane is open (every lane has a plant), every 30 s at most, a siege zombie (Trident,
+ *    Brain Rot, Archer in turn) against the lane with the most plants (four or more) when none of
+ *    its siege zombies is there yet: a stack is worn down from range. It waits for the energy.
  * 4. One zombie into the lane where a fresh Brain Eater would get furthest past the plants' fire,
  *    skipping lanes its zombies are already reckoned to break (they are taken care of), waiting
  *    for the energy.
  *
  * Which zombie (the first that is not recharging; it waits for the energy for it):
  * - a Necromancer behind a tank already walking the lane (its heal and minions back the tank up);
- * - a Cowboy Zombie when the lane holds a plant of level 3 or more (its lasso ties the strongest);
+ * - a Cowboy Zombie when the lane holds a merged plant (level 2 or more: its lasso ties the strongest);
  * - siege against a deep row (3 or more plants): Trident Zombie, Brain Rot, Skeleton Archer, which
  *   hit from range or through several plants;
- * - a Skeleton Warrior or Desert Zombie (shield, blinding sand) against `tankAt` Peashooter levels;
+ * - a Skeleton Warrior or Desert Zombie (shield, blinding sand) to lead into a lane that shoots,
+ *   when no tank walks there yet;
  * - a Hot Topic against a thin lane (one or two plants: it grows on each one it eats);
  * - otherwise a Brain Eater.
  *
@@ -55,10 +56,12 @@ export interface ZombieMemory {
   lastLane: number | null;
   /** The tick it last sent a siege zombie against a stack, or null. */
   siegeTick: number | null;
+  /** Siege zombies sent so far: they take turns, so the dearer ones get their go too. */
+  sieges: number;
 }
 
 export function newZombieMemory(): ZombieMemory {
-  return { lastLane: null, siegeTick: null };
+  return { lastLane: null, siegeTick: null, sieges: 0 };
 }
 
 /**
@@ -72,13 +75,15 @@ const RUSH_RESERVE = 125;
 const DEEP_ROW = 3;
 /** Plants in a lane from which it counts as a stack worth a siege zombie of its own. */
 const STACK_ROW = 4;
-/** Ticks between siege zombies sent against stacks (20 s). */
-const SIEGE_EVERY = 600;
-/** A plant level from which the Cowboy's lasso is worth it. */
-const COWBOY_LEVEL = 3;
+/** Ticks between siege zombies sent against stacks (30 s). */
+const SIEGE_EVERY = 900;
+/** A plant level from which the Cowboy's lasso is worth it (a merged plant). */
+const COWBOY_LEVEL = 2;
 /** Zombies that count as a tank a Necromancer can hang back behind. */
 const TANKS: ReadonlySet<string> = new Set(['skeletonWarrior', 'brainEater', 'hotTopic', 'cowboyZombie', 'desertZombie']);
 const SIEGE: readonly CardKey[] = ['tridentZombie', 'brainRot', 'skeletonArcher'];
+/** Plants that shoot down the lane, which a shield or blinding sand answers. */
+const SHOOTERS: ReadonlySet<string> = new Set(['peashooter', 'kernelPult', 'mangoPult']);
 
 export function zombieMove(
   match: Match, rng: BotRng, plan: ZombiePlan, memory: ZombieMemory,
@@ -105,9 +110,11 @@ function* zombieWants(
   const open = lawn.some((view) => view.plants.length === 0);
   const stack = open || (memory.siegeTick !== null && s.tick - memory.siegeTick < SIEGE_EVERY) ? undefined : stackLane(lawn);
   if (stack !== undefined) {
-    for (const card of rotated(SIEGE, rng)) {
-      yield { cmd: sendCommand(card, stack.lane), onChosen: () => { memory.lastLane = stack.lane; memory.siegeTick = s.tick; } };
-    }
+    const card = SIEGE[memory.sieges % SIEGE.length] as CardKey;
+    yield {
+      cmd: sendCommand(card, stack.lane), wait: 'energy',
+      onChosen: () => { memory.lastLane = stack.lane; memory.siegeTick = s.tick; memory.sieges += 1; },
+    };
   }
 
   const view = weakestLane(match.balance, lawn, rng);
@@ -173,7 +180,8 @@ function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng): CardKey[] {
   if (tank && !view.zombies.some((z) => z.key === 'necromancer')) out.push('necromancer');
   if (plants.some((p) => p.level >= COWBOY_LEVEL)) out.push('cowboyZombie');
   if (plants.length >= DEEP_ROW) out.push(...rotated(SIEGE, rng));
-  if (shooterLevels(view) >= plan.tankAt) out.push(...rotated(['skeletonWarrior', 'desertZombie'], rng));
+  const shooting = plants.some((p) => SHOOTERS.has(p.key));
+  if (!tank && (shooting || shooterLevels(view) >= plan.tankAt)) out.push(...rotated(['skeletonWarrior', 'desertZombie'], rng));
   if (plants.length >= 1 && plants.length <= 2) out.push('hotTopic');
   out.push('brainEater');
   return out;
@@ -199,11 +207,14 @@ function rotated(items: readonly CardKey[], rng: BotRng): CardKey[] {
   return items.map((_, i) => items[(start + i) % items.length] as CardKey);
 }
 
-/** A Very Fast Walker down a lane with no plant and nobody of its own, ties in a random order. */
+/**
+ * A Very Fast Walker down a lane with no shooter (at most Sunflowers, which it eats) and nobody of
+ * its own, ties in a random order.
+ */
 function rushLane(lawn: readonly LaneView[], rng: BotRng): number | undefined {
   return shuffledLanes(rng).find((lane) => {
     const view = laneOf(lawn, lane);
-    return view.plants.length === 0 && view.zombies.length === 0;
+    return view.zombies.length === 0 && !view.plants.some((p) => SHOOTERS.has(p.key));
   });
 }
 
