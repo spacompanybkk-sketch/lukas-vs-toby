@@ -230,7 +230,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     desertZombie: {
       recharge: 6, hp: 380, armor: 0, speed: 0.35,
       melee: { damage: 30, interval: 1.0, reach: 0.6 },
-      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 3 } },
+      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 2 } },
     },
     skeletonArcher: {
       recharge: 6, hp: 220, armor: 0, speed: 0.4,
@@ -278,7 +278,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
     rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
   },
-  trickle: { plants: 2.5, zombies: 14 },
+  trickle: { plants: 2.5, zombies: 13 },
   bountyShare: { plants: 0.5, zombies: 0.5 },
   baseShotFactor: 0.3,
   hitRadius: 0.35,
