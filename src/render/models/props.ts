@@ -1,4 +1,4 @@
-import { Color, Group, Mesh, MeshStandardMaterial, type BufferGeometry, type Object3D } from 'three';
+import { Color, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, type BufferGeometry, type Object3D } from 'three';
 import type { ProjectileKind } from '../../sim/types';
 import { glowMaterial } from '../fx/glow';
 import { MATTE_PLASTIC } from '../look';
@@ -178,4 +178,74 @@ export function spinToken(token: Object3D, timeSeconds: number): void {
   if (!body) return;
   body.rotation.y = timeSeconds * 2.2;
   body.position.y = Math.sin(timeSeconds * 3.1) * 0.035;
+}
+
+/** Edge of one voxel of the merge marker, in tiles. */
+const MARKER_CELL = 0.06;
+/** The marker leans back to face the lawn camera (pitched about 52° down), so the arrow reads whole. */
+const MARKER_TILT = -0.9;
+/** The level-up arrow, top row first. */
+const MARKER_ARROW = [
+  '...#...',
+  '..###..',
+  '.#####.',
+  '#######',
+  '..###..',
+  '..###..',
+  '..###..',
+];
+/** Each side's arrow stays inside its colour family: sun for the plants, brains for the zombies. */
+const MARKER_COLORS: Record<'plants' | 'zombies', { body: string; light: string }> = {
+  plants: { body: PALETTE.petalDark, light: PALETTE.sun },
+  zombies: { body: BRAIN_FOLD, light: PALETTE.brainPink },
+};
+
+/**
+ * A blocky up-arrow, two voxels deep, with a one-voxel dark outline behind it: the "this one
+ * can level up" marker shown over the player's own units while a merge is possible. Its base
+ * is at the origin, its face towards +z (the camera).
+ */
+function markerGeometry(side: 'plants' | 'zombies'): BufferGeometry {
+  const batch = new BoxBatch();
+  const c = MARKER_CELL;
+  const rows = MARKER_ARROW.length;
+  const cols = (MARKER_ARROW[0] as string).length;
+  const on = (i: number, j: number): boolean => MARKER_ARROW[rows - 1 - j]?.[i] === '#';
+  const body = paint(MARKER_COLORS[side].body);
+  const light = paint(MARKER_COLORS[side].light);
+  const ink = paint(PALETTE.outline);
+  const x0 = (-cols * c) / 2;
+  for (let j = -1; j <= rows; j++) {
+    for (let i = -1; i <= cols; i++) {
+      if (on(i, j)) {
+        // The arrow's upper-left edge catches the light; the rest is the side's colour.
+        const lit = !on(i - 1, j) || !on(i, j + 1);
+        batch.box(x0 + i * c, j * c, 0, c, c, 2 * c, lit ? light : body);
+      } else if (on(i - 1, j) || on(i + 1, j) || on(i, j - 1) || on(i, j + 1)) {
+        batch.box(x0 + i * c, j * c, -c, c, c, 2 * c, ink); // the outline, set back a voxel
+      }
+    }
+  }
+  const geometry = batch.build();
+  geometry.translate(0, c, 0); // the outline's lowest row rests on the origin
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+let flat: MeshBasicMaterial | null = null;
+
+/**
+ * The level-up marker for a side's units; shares its geometry and material with every other
+ * copy. It is unlit and not tone mapped, so it shows its own flat colours in any light and
+ * stays below the bloom threshold (a glow would wash it out to white).
+ */
+export function makeMergeMarker(side: 'plants' | 'zombies'): Object3D {
+  flat ??= new MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+  const group = new Group();
+  group.name = `merge-marker-${side}`;
+  const mesh = new Mesh(shared(`marker-${side}`, () => markerGeometry(side)), flat);
+  mesh.rotation.x = MARKER_TILT;
+  group.add(mesh);
+  return group;
 }

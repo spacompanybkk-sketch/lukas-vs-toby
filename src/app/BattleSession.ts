@@ -129,6 +129,7 @@ export class BattleSession implements Director, InputTarget {
     this.stage.paused = this.controller.hud.paused.peek();
     this.stage.timeScale = this.clock.tick(realDt);
     this.time += gameDt;
+    this.view.setMergeCue(this.live ? this.controller.mergeCue() : null);
     this.view.frame(state, alpha, gameDt, this.time);
     if (!this.ended) this.audio.setIntensity(battleIntensity(state));
     else if (this.fallen && !this.ready.peek()) {
@@ -189,7 +190,12 @@ export class BattleSession implements Director, InputTarget {
     const rect = this.canvasRect();
     const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ny = 1 - ((clientY - rect.top) / rect.height) * 2;
-    const unitId = this.view.unitAtRay(nx, ny, rect);
+    // A hit on the player's own unit's model, with its card or the shovel, means that unit, even
+    // where the model stands over the grass of the lane behind (the upper half of any model does).
+    const hit = this.view.unitHitByRay(nx, ny);
+    const aimed = hit === null ? null : this.controller.aimAt(hit);
+    if (aimed !== null) return { tile: aimed, unitId: hit };
+    const unitId = hit ?? this.view.unitNearRay(nx, ny, rect);
     return { tile: this.tileAt(nx, ny), unitId };
   }
 

@@ -8,7 +8,7 @@ import type { Balance } from '../data/balance';
 import { UNIT_INFO } from '../data/units';
 import { Match } from '../sim/match';
 import { isStanding, statsFor } from '../sim/lookup';
-import { TICKS_PER_SECOND } from '../sim/types';
+import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
 import type { Command, CommandRejection, Faction, SimEvent, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 
@@ -33,6 +33,9 @@ export interface HudSignals {
 }
 
 type Tile = { lane: number; col: number };
+
+/** A zombie tap merges into the player's own zombie of that type standing this near the tapped tile's middle, along the lane. */
+export const ZOMBIE_MERGE_REACH = 0.75;
 
 const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
@@ -117,7 +120,7 @@ export class BattleController {
   hover(tile: Tile | null, unitId: number | null): PlacementPreview | null {
     const unit = this.hud.selected.peek();
     if (unit === null) return null;
-    const target = this.resolveTile(tile, unitId);
+    const target = this.resolveTile(tile, unitId, unit);
     if (target === null) return null;
     const cmd = this.commandFor(unit, target.tile, target.unit);
     return {
@@ -135,7 +138,7 @@ export class BattleController {
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
-    const target = this.resolveTile(tile, unitId);
+    const target = this.resolveTile(tile, unitId, this.hud.shovel.peek() ? null : this.hud.selected.peek());
     const cmd = this.buildClickCommand(target);
     if (cmd === 'no-selection') return this.deny('not-in-hand');
     if (cmd === 'no-tile') return this.deny('bad-lane');
@@ -144,6 +147,39 @@ export class BattleController {
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
     return null;
+  }
+
+  /**
+   * The card whose merge is possible right now, for the level-up markers over the player's own
+   * units of that type: a card is selected (not the shovel), it is recharged and paid for, and
+   * at least one of the player's standing units of that type is below the top level. Null
+   * otherwise. Called once a frame, so it allocates nothing.
+   */
+  mergeCue(): UnitKey | null {
+    const unit = this.hud.selected.peek();
+    if (unit === null || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
+    const me = this.match.state.players[this.playerFaction];
+    if ((me.recharge[unit] ?? 0) > 0 || me.energy < UNIT_INFO[unit].price) return null;
+    const units = this.match.state.units;
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i] as Unit;
+      if (u.faction === this.playerFaction && u.key === unit && u.level < MAX_LEVEL && isStanding(u)) return unit;
+    }
+    return null;
+  }
+
+  /**
+   * The tile to act on when the pointer's ray hits a unit's model itself: the unit's own tile,
+   * when it is the player's own standing unit and the selected card is its type (a merge) or
+   * the shovel is on. Otherwise null, and the ground under the pointer decides. A tap on the
+   * upper half of a model would otherwise land on the grass behind it, a lane further back.
+   */
+  aimAt(unitId: number): Tile | null {
+    const u = this.match.state.units.find((x) => x.id === unitId);
+    if (u === undefined || u.faction !== this.playerFaction || !isStanding(u)) return null;
+    const shovel = this.hud.shovel.peek();
+    if (!shovel && this.hud.selected.peek() !== u.key) return null;
+    return { lane: u.lane, col: Math.floor(u.x) };
   }
 
   hotkey(key: string): void {
@@ -181,15 +217,35 @@ export class BattleController {
    * alone gives its own tile. For plants the tile decides: a plant hit by the tap ray but standing
    * on a neighbouring tile (a tap near a tile's edge, where a tall model leans over) is ignored,
    * and the plant standing on the tapped tile, if any, is used, so a bare tap on a tile works by
-   * touch. Zombies are not tied to tiles and stack, so they are found only by `unitId`.
+   * touch. Zombies are not tied to tiles and stack: a named zombie of the card's type (`card`)
+   * wins; otherwise the player's own zombie of that type, below the top level, standing nearest
+   * the tapped tile's middle within `ZOMBIE_MERGE_REACH` along the lane, so a tap on the grass
+   * by a small walking zombie merges into it; otherwise the named zombie, if any.
    */
-  private resolveTile(tile: Tile | null, unitId: number | null): { tile: Tile; unit: Unit | null } | null {
+  private resolveTile(tile: Tile | null, unitId: number | null, card: UnitKey | null): { tile: Tile; unit: Unit | null } | null {
     const named = unitId === null ? undefined : this.match.state.units.find((u) => u.id === unitId && isStanding(u));
     const own = named !== undefined && named.faction === this.playerFaction && (tile === null || named.lane === tile.lane)
       ? named : undefined;
     if (tile === null) return own === undefined ? null : { tile: { lane: own.lane, col: Math.floor(own.x) }, unit: own };
     if (this.playerFaction === 'plants') return { tile, unit: this.plantAt(tile) ?? null };
-    return { tile, unit: own ?? null };
+    if (own !== undefined && own.key === card) return { tile, unit: own };
+    return { tile, unit: (card === null ? undefined : this.zombieNear(tile, card)) ?? own ?? null };
+  }
+
+  /** The player's own standing zombie of type `key` below the top level nearest the tile's middle, within reach. */
+  private zombieNear(tile: Tile, key: UnitKey): Unit | undefined {
+    const middle = tile.col + 0.5;
+    let best: Unit | undefined;
+    let bestD = ZOMBIE_MERGE_REACH;
+    for (const u of this.match.state.units) {
+      if (u.faction !== 'zombies' || u.key !== key || u.lane !== tile.lane || u.level >= MAX_LEVEL || !isStanding(u)) continue;
+      const d = Math.abs(u.x - middle);
+      if (d <= bestD) {
+        bestD = d;
+        best = u;
+      }
+    }
+    return best;
   }
 
   private plantAt(tile: Tile): Unit | undefined {

@@ -187,3 +187,50 @@ export function analyse(page: Page, images: string[], rects: Rect[]): Promise<{
 
 /** A square of `size` CSS pixels centred on a point. */
 export const around = (at: { x: number; y: number }, size = 12, dy = 0): Rect => ({ x: at.x - size / 2, y: at.y + dy - size / 2, w: size, h: size });
+
+/**
+ * Client position of a point `frac` of the way up a unit's drawn model (0 its feet, 1 its top),
+ * as drawn: it waits two frames first, so a fast-forward has reached the picture.
+ */
+export async function unitPoint(page: Page, id: number, frac: number): Promise<{ x: number; y: number }> {
+  await frames(page, 2);
+  return page.evaluate(([unitId, f]) => {
+    const lvt = window.__lvt as any;
+    const view = lvt.session.view.unit(unitId);
+    if (!view) throw new Error(`no view for unit ${unitId}`);
+    view.wrapper.updateMatrixWorld(true);
+    const p = view.wrapper.position.clone();
+    p.y += view.height * f;
+    p.project(lvt.stage.camera);
+    const r = (lvt.stage.canvas as HTMLCanvasElement).getBoundingClientRect();
+    return { x: r.left + (p.x * 0.5 + 0.5) * r.width, y: r.top + (0.5 - p.y * 0.5) * r.height };
+  }, [id, frac] as const);
+}
+
+/** Starts recording the match's `unitMerged` events; `mergedEvents` reads them. */
+export function recordMerges(page: Page): Promise<void> {
+  return page.evaluate(() => {
+    const c = (window.__lvt as any).session.controller;
+    const step = c.step.bind(c);
+    c.__merged = [];
+    c.step = () => {
+      const events = step();
+      for (const e of events) if (e.type === 'unitMerged') c.__merged.push({ unitId: e.unitId, level: e.level });
+      return events;
+    };
+  });
+}
+
+export function mergedEvents(page: Page): Promise<{ unitId: number; level: number }[]> {
+  return page.evaluate(() => [...((window.__lvt as any).session.controller.__merged ?? [])]);
+}
+
+/** How many level-up markers the battle shows. */
+export function mergeMarkers(page: Page): Promise<number> {
+  return page.evaluate(() => (window.__lvt as any).session.view.mergeMarkers as number);
+}
+
+/** The refused-action counter (the tray shakes on each change). */
+export function deniedCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
+}

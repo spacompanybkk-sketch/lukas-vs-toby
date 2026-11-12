@@ -7,7 +7,7 @@ import type { Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../..
 import { BASE_STOP_X, ZOMBIE_SPAWN_X } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
 import { BaseView } from '../models/bases';
-import { PEA_COLORS, makeGravestone, makeProjectile, makeToken, spinToken, type TokenKind } from '../models/props';
+import { PEA_COLORS, makeGravestone, makeMergeMarker, makeProjectile, makeToken, spinToken, type TokenKind } from '../models/props';
 import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
 import { PALETTE } from '../palette';
 import { modelColors } from '../voxel/build';
@@ -73,6 +73,13 @@ const PROJECTILE_SCALE: Record<ProjectileKind, number> = { pea: 1.2, brain: 1.1 
 /** Sudden death warms the sun and sky towards this over two seconds. */
 const SUDDEN_DEATH_TINT = new Color('#FF8A3D');
 const SUDDEN_DEATH_SHARE = 0.4;
+
+/** The level-up marker floats this far over a unit's health bar spot (tiles). */
+const MARKER_GAP = 0.06;
+/** It pulses in two hard steps, never a smooth ease: up and larger, then back, this many times a second. */
+const MARKER_STEPS_PER_SECOND = 4;
+const MARKER_STEP_UP = 0.06;
+const MARKER_STEP_SCALE = 1.18;
 
 /** Seconds between the winners' confetti pops. */
 const CONFETTI_EVERY = 0.14;
@@ -171,6 +178,10 @@ export class BattleView {
   private pulseTarget: UnitView | null = null;
   private readonly raycaster = new Raycaster();
   private readonly pickables: Object3D[] = [];
+  /** The card a merge is possible with right now (see `setMergeCue`), and the markers' pool. */
+  private mergeCue: UnitKey | null = null;
+  private readonly markers: Object3D[] = [];
+  private markersShown = 0;
 
   constructor(scene: Scene, camera: Camera, lawn: Lawn, fx: Effects, playerFaction: Faction, options: BattleViewOptions = {}) {
     this.scene = scene;
@@ -199,6 +210,21 @@ export class BattleView {
   /** Units on the lawn, those still falling apart included. */
   get unitCount(): number {
     return this.list.length;
+  }
+
+  /** How many level-up markers are showing, for tests. */
+  get mergeMarkers(): number {
+    return this.markersShown;
+  }
+
+  /**
+   * While a merge with `unit`'s card is possible right now (null: none), each of the player's
+   * own standing units of that type below the top level shows a pulsing voxel up-arrow over it.
+   * The marker hangs in the unit's own wrapper, so a tap on it picks that unit. Cheap to call
+   * every frame: the markers are pooled and nothing is allocated once the pool is big enough.
+   */
+  setMergeCue(unit: UnitKey | null): void {
+    this.mergeCue = unit;
   }
 
   /** The view of a unit, for tools and tests. */
@@ -269,6 +295,8 @@ export class BattleView {
         this.fx.aura(view.model.root, LEVEL_COLOR[5] as number);
       }
     }
+
+    this.placeMarkers(timeSeconds);
 
     // The winners' confetti, on real frames even while the game clock is slowed for the finale.
     if (this.cheerLeft > 0 && this.cheerSide !== null) {
@@ -388,6 +416,11 @@ export class BattleView {
    * middle is nearest the pointer, within `PICK_TOLERANCE_PX`.
    */
   unitAtRay(ndcX: number, ndcY: number, viewport?: { width: number; height: number }): number | null {
+    return this.unitHitByRay(ndcX, ndcY) ?? (viewport ? this.unitNearRay(ndcX, ndcY, viewport) : null);
+  }
+
+  /** The unit whose drawn model (or level-up marker) the pointer's ray hits, or null. */
+  unitHitByRay(ndcX: number, ndcY: number): number | null {
     this.pickables.length = 0;
     for (const view of this.list) {
       if (view.dying || !view.wrapper.visible) continue;
@@ -407,9 +440,14 @@ export class BattleView {
       }
       if (shown && id !== null) return id;
     }
-    if (!viewport) return null;
+    return null;
+  }
 
-    // A finger is wider than a ray: the nearest unit middle on screen, if close enough.
+  /**
+   * A finger is wider than a ray: the unit whose middle is nearest the pointer on screen, within
+   * `PICK_TOLERANCE_PX` CSS pixels of a `viewport`, or null.
+   */
+  unitNearRay(ndcX: number, ndcY: number, viewport: { width: number; height: number }): number | null {
     client.width = viewport.width;
     client.height = viewport.height;
     const px = (ndcX * 0.5 + 0.5) * viewport.width;
@@ -428,6 +466,40 @@ export class BattleView {
       }
     }
     return best;
+  }
+
+  /**
+   * Puts a level-up marker over each unit a merge is possible into (see `setMergeCue`) and hides
+   * the rest. It sits over where the unit's health bar goes, so it never covers the bar, and
+   * pulses in hard steps.
+   */
+  private placeMarkers(timeSeconds: number): void {
+    let n = 0;
+    const cue = this.mergeCue;
+    if (cue !== null) {
+      const up = Math.floor(timeSeconds * MARKER_STEPS_PER_SECOND) % 2 === 1;
+      for (const view of this.list) {
+        if (view.key !== cue || view.faction !== this.playerFaction || view.dying || view.level >= 5) continue;
+        let marker = this.markers[n];
+        if (marker === undefined) {
+          marker = makeMergeMarker(this.playerFaction);
+          this.markers.push(marker);
+        }
+        if (marker.parent !== view.wrapper) view.wrapper.add(marker);
+        const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
+        // Over the bar's spot (see the bars in `frame`), in the wrapper's own frame.
+        marker.position.set(
+          0,
+          top + 0.14 + BAR_LIFT * Math.min(view.stackPlace, 4) + MARKER_GAP + (up ? MARKER_STEP_UP : 0),
+          0.5 + view.lane - view.wrapper.position.z,
+        );
+        marker.scale.setScalar(up ? MARKER_STEP_SCALE : 1);
+        marker.visible = true;
+        n++;
+      }
+    }
+    for (let i = n; i < this.markers.length; i++) (this.markers[i] as Object3D).visible = false;
+    this.markersShown = n;
   }
 
   /**

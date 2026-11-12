@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BattleController } from '../../src/app/BattleController';
 import { DIFFICULTY, battleConfig } from '../../src/ai/difficulty';
 import { seconds } from '../../src/data/balance';
+import { spawnUnit } from '../../src/sim/match';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import type { Faction } from '../../src/sim/types';
 
@@ -361,5 +362,111 @@ describe('BattleController determinism and bot', () => {
       acted = c.step().some((e) => e.type === 'unitSpawned' && e.faction === 'zombies');
     }
     expect(acted).toBe(true);
+  });
+});
+
+describe('BattleController merging, as a child plays it', () => {
+  /** A zombie player's controller with standing zombies placed by hand, money and cards ready. */
+  function zombieScene(units: { key: 'brainEater' | 'veryFastWalker'; lane: number; x: number; level?: number }[]) {
+    const c = make('zombies');
+    const made = units.map((u) => {
+      const z = spawnUnit(c.match.state, c.match.balance, u.key, u.lane, u.x);
+      z.level = u.level ?? 1;
+      return z;
+    });
+    c.match.state.players.zombies.energy = 900;
+    c.match.state.players.zombies.recharge = {};
+    return { c, made };
+  }
+
+  it('zombies: a tap in the lane near the player\'s own zombie of the selected type merges into it', () => {
+    const { c, made: [z] } = zombieScene([{ key: 'brainEater', lane: 2, x: 6.7 }]);
+    c.select('brainEater');
+    // The tap fell on the grass under the zombie (column 6), not on its small walking model.
+    expect(c.hover({ lane: 2, col: 6 }, null)).toMatchObject({ ok: true, mergeTargetId: z?.id });
+    expect(c.click({ lane: 2, col: 6 }, null)).toBeNull();
+    const events = c.step();
+    expect(events.some((e) => e.type === 'unitMerged' && e.unitId === z?.id && e.level === 2)).toBe(true);
+    expect(c.match.state.units.filter((u) => u.faction === 'zombies' && u.key === 'brainEater')).toHaveLength(1);
+  });
+
+  it('zombies: the nearest one within 0.75 tile along the lane; farther, other lanes, other types and level 5 do not count', () => {
+    const { c, made } = zombieScene([
+      { key: 'brainEater', lane: 2, x: 4.9 }, // 0.6 from column 4's middle
+      { key: 'brainEater', lane: 2, x: 4.2 }, // 0.3: the nearest
+      { key: 'veryFastWalker', lane: 2, x: 4.5 }, // another type, right on the spot
+      { key: 'brainEater', lane: 3, x: 4.5 }, // another lane
+    ]);
+    c.select('brainEater');
+    expect(c.hover({ lane: 2, col: 4 }, null)?.mergeTargetId).toBe(made[1]?.id);
+    // Column 6's middle is 1.1 from the nearest Brain Eater: a new one is sent instead.
+    expect(c.hover({ lane: 2, col: 6 }, null)).toMatchObject({ ok: true, mergeTargetId: null });
+    // Level 5 is not offered; the next nearest below level 5 is.
+    if (made[1]) made[1].level = 5;
+    expect(c.hover({ lane: 2, col: 4 }, null)?.mergeTargetId).toBe(made[0]?.id);
+    if (made[0]) made[0].level = 5;
+    expect(c.hover({ lane: 2, col: 4 }, null)?.mergeTargetId).toBeNull();
+  });
+
+  it('zombies: an exact hit on the player\'s own zombie of the selected type wins over a nearer one', () => {
+    const { c, made } = zombieScene([{ key: 'brainEater', lane: 1, x: 5.5 }, { key: 'brainEater', lane: 1, x: 6.1 }]);
+    c.select('brainEater');
+    expect(c.hover({ lane: 1, col: 5 }, made[1]?.id ?? null)?.mergeTargetId).toBe(made[1]?.id);
+    // A hit on a zombie of another type falls back to the nearest of the selected type.
+    const walker = spawnUnit(c.match.state, c.match.balance, 'veryFastWalker', 1, 5.4);
+    expect(c.hover({ lane: 1, col: 5 }, walker.id)?.mergeTargetId).toBe(made[0]?.id);
+  });
+
+  it('a merge refused for recharging or energy counts as a denial (the tray shakes, the deny sound plays)', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const denied = c.hud.denied.value;
+    expect(c.click({ lane: 2, col: 3 }, null)).toBe('recharging');
+    c.match.state.players.plants.recharge = {};
+    c.match.state.players.plants.energy = 0;
+    expect(c.click({ lane: 2, col: 3 }, null)).toBe('no-energy');
+    expect(c.hud.denied.value).toBe(denied + 2);
+  });
+
+  it('mergeCue names the selected card only while a merge with it is possible right now', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    expect(c.mergeCue()).toBeNull(); // nothing to merge into
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    expect(c.mergeCue()).toBeNull(); // recharging
+    c.match.state.players.plants.recharge = {};
+    expect(c.mergeCue()).toBe('peashooter');
+    c.match.state.players.plants.energy = 0;
+    expect(c.mergeCue()).toBeNull(); // cannot pay
+    c.match.state.players.plants.energy = 900;
+    const p = playerUnits(c)[0];
+    if (p) p.level = 5;
+    expect(c.mergeCue()).toBeNull(); // every one is at the top level
+    if (p) p.level = 1;
+    c.select('sunflower');
+    expect(c.mergeCue()).toBeNull(); // no Sunflower on the lawn
+    c.toggleShovel();
+    expect(c.mergeCue()).toBeNull();
+  });
+
+  it('aimAt: an exact ray hit on the player\'s own unit of the selected type (or any, with the shovel) names its tile', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const p = playerUnits(c)[0];
+    if (p === undefined) throw new Error('no peashooter');
+    expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
+    c.select('sunflower');
+    expect(c.aimAt(p.id)).toBeNull(); // another card: the ground under the pointer decides
+    c.toggleShovel();
+    expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
+    expect(c.aimAt(99999)).toBeNull();
   });
 });

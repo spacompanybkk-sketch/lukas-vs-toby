@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { PerspectiveCamera, Scene } from 'three';
+import { PerspectiveCamera, Scene, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BattleSession, CHEER_SECONDS } from '../../src/app/BattleSession';
 import type { BattleSessionOptions } from '../../src/app/BattleSession';
@@ -11,6 +11,7 @@ import { Effects } from '../../src/render/fx/Effects';
 import { Particles } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
+import { spawnUnit } from '../../src/sim/match';
 import type { Faction } from '../../src/sim/types';
 
 const DT = 1 / 60;
@@ -72,6 +73,24 @@ function tap(stage: StageLike, x: number, y: number, kind = 'mouse'): void {
   const init = { bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: kind, button: 0, isPrimary: true };
   stage.canvas.dispatchEvent(new PointerEvent('pointerdown', init));
   stage.canvas.dispatchEvent(new PointerEvent('pointerup', init));
+}
+
+/** Client position of a point `frac` of the way up a unit's drawn model (0 feet, 1 top), or `above` tiles over its top. */
+function onModel(session: BattleSession, stage: StageLike, id: number, frac: number, above = 0): { x: number; y: number } {
+  const view = session.view.unit(id);
+  if (view === undefined) throw new Error(`no view for unit ${id}`);
+  view.wrapper.updateMatrixWorld(true);
+  const p = new Vector3().setFromMatrixPosition(view.wrapper.matrixWorld);
+  p.y += view.height * frac + above;
+  p.project(stage.camera);
+  return { x: (p.x * 0.5 + 0.5) * window.innerWidth, y: (0.5 - p.y * 0.5) * window.innerHeight };
+}
+
+/** Money in hand and every card recharged, for the player. */
+function ready(session: BattleSession): void {
+  const me = session.controller.match.state.players[session.playerFaction];
+  me.energy = 900;
+  me.recharge = {};
 }
 
 function unitsInScene(stage: StageLike): number {
@@ -162,6 +181,73 @@ describe('BattleSession', () => {
     const at = session.tileToClient(1, 9);
     const right = session.tileToClient(1, 10);
     expect(session.pick((at.x + right.x) / 2 + (right.x - at.x) / 2, at.y).tile).toEqual({ lane: 1, col: 9 });
+  });
+
+  it('as plants: a tap on the top of the own Peashooter, with its card, merges into it (not a new plant on the lane behind)', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    ready(session);
+    session.controller.select('peashooter');
+    const at = session.tileToClient(2, 3);
+    tap(stage, at.x, at.y);
+    run(stage, 0.6);
+    const plant = session.controller.match.state.units.find((u) => u.key === 'peashooter');
+    if (plant === undefined) throw new Error('no peashooter');
+    // The top of the model lies over the grass of the lane behind.
+    const top = onModel(session, stage, plant.id, 0.85);
+    expect(session.pick(top.x, top.y).tile?.lane).toBe(2);
+    ready(session);
+    tap(stage, top.x, top.y);
+    run(stage, 0.1);
+    expect(plant.level).toBe(2);
+    expect(session.controller.match.state.units.filter((u) => u.key === 'peashooter')).toHaveLength(1);
+  });
+
+  it('as zombies: a tap on the top of the own zombie, or on the grass under it, merges into it', () => {
+    const stage = fakeStage();
+    const { session } = make(stage, 'zombies');
+    session.begin();
+    const z = spawnUnit(session.controller.match.state, session.controller.match.balance, 'brainEater', 2, 6.6);
+    run(stage, 0.2);
+    session.controller.select('brainEater');
+    ready(session);
+    const top = onModel(session, stage, z.id, 0.85);
+    tap(stage, top.x, top.y, 'touch');
+    run(stage, 0.1);
+    expect(z.level).toBe(2);
+    ready(session);
+    const ground = session.tileToClient(z.lane, Math.floor(z.x));
+    tap(stage, ground.x, ground.y, 'touch');
+    run(stage, 0.1);
+    expect(z.level).toBe(3);
+    expect(session.controller.match.state.units.filter((u) => u.faction === 'zombies' && u.key === 'brainEater')).toHaveLength(1);
+  });
+
+  it('shows a level-up marker over each own unit a merge is possible into, and a tap on the marker merges', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    ready(session);
+    session.controller.select('peashooter');
+    const at = session.tileToClient(2, 3);
+    tap(stage, at.x, at.y);
+    run(stage, 0.6);
+    expect(session.view.mergeMarkers).toBe(0); // the card is recharging
+    const plant = session.controller.match.state.units.find((u) => u.key === 'peashooter');
+    if (plant === undefined) throw new Error('no peashooter');
+    ready(session);
+    run(stage, 0.05);
+    expect(session.view.mergeMarkers).toBe(1);
+    session.controller.select('sunflower');
+    run(stage, 0.05);
+    expect(session.view.mergeMarkers).toBe(0); // no Sunflower to merge into
+    session.controller.select('peashooter');
+    run(stage, 0.05);
+    const marker = onModel(session, stage, plant.id, 1, 0.45);
+    tap(stage, marker.x, marker.y);
+    run(stage, 0.1);
+    expect(plant.level).toBe(2);
   });
 
   it('ignores the lawn before begin()', () => {
