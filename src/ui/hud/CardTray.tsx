@@ -2,6 +2,8 @@ import { Component } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CardVM } from '../../app/BattleController';
 import type { Faction, UnitKey } from '../../sim/types';
+import { PixelIcon } from './PixelIcon';
+import type { PixelArt } from './PixelIcon';
 import { trayLayout, useTrayLayout, CARD_ASPECT } from './trayLayout';
 import './hud.css';
 
@@ -135,6 +137,44 @@ class Card extends Component<CardProps> {
   }
 }
 
+/**
+ * What a card shows while its picture is still being drawn (or could not be): a plain boxy
+ * silhouette of a plant in its pot or a zombie's head and shoulders, a shade darker than the
+ * card. Never a letter: the younger player cannot read.
+ */
+const SILHOUETTES: Record<Faction, PixelArt> = {
+  plants: {
+    rows: [
+      '....ss....',
+      '...ssss...',
+      '.ss.ss.ss.',
+      'ssssssssss',
+      '.ssssssss.',
+      '....ss....',
+      '....ss....',
+      '..ssssss..',
+      '..ssssss..',
+      '...ssss...',
+    ],
+    palette: { s: '#3E9A2E' },
+  },
+  zombies: {
+    rows: [
+      '...ssss...',
+      '..ssssss..',
+      '..ssssss..',
+      '..ssssss..',
+      '...ssss...',
+      '....ss....',
+      '.ssssssss.',
+      'ssssssssss',
+      'ssssssssss',
+      'ssssssssss',
+    ],
+    palette: { s: '#4B2A8F' },
+  },
+};
+
 function renderCard({ card, side, selected, portrait, onDown, onClick }: CardProps) {
   const veil = rechargeStep(card.rechargeFraction);
   const cls = ['card', 'px', 'pal-side', `card--${side}`];
@@ -155,7 +195,7 @@ function renderCard({ card, side, selected, portrait, onDown, onClick }: CardPro
       <span class="card__art">
         {portrait !== undefined
           ? <img class="card__img" src={portrait} alt="" draggable={false} />
-          : <span class="card__placeholder" aria-hidden="true">{card.name.charAt(0).toUpperCase()}</span>}
+          : <span class="card__placeholder" aria-hidden="true"><PixelIcon art={SILHOUETTES[side]} class="card__silhouette" /></span>}
       </span>
       <span class="card__name">{card.name}</span>
       <span class="card__price">

@@ -118,11 +118,18 @@ describe('CardTray', () => {
     expect(tray().classList.contains('is-denied')).toBe(false);
   });
 
-  it('shows the portrait image when given, else a placeholder with the initial', () => {
+  it('shows the portrait image when given, else a boxy silhouette in the side\'s colour, never a letter', () => {
+    // Partial portraits (some still being drawn): each card shows what it has.
     mount({ portraits: { peashooter: 'data:image/png;base64,AAAA' } });
     expect(card('peashooter').querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,AAAA');
     expect(card('sunflower').querySelector('img')).toBeNull();
-    expect(card('sunflower').querySelector('.card__placeholder')?.textContent).toBe('S');
+    const placeholder = card('sunflower').querySelector('.card__placeholder');
+    expect(placeholder?.querySelector('svg')).not.toBeNull();
+    // No letter anywhere a child sees: the card's visible text is its price and hotkey only.
+    for (const el of tray().querySelectorAll('[data-card]')) {
+      const art = el.querySelector('.card__art') as HTMLElement;
+      expect(art.textContent?.trim()).toBe('');
+    }
   });
 
   it('drains the recharge overlay in steps', () => {

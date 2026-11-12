@@ -34,6 +34,34 @@ describe('renderPortraits', () => {
     error.mockRestore();
   });
 
+  it('hands each portrait over as soon as it is drawn (onEach), in the order asked', async () => {
+    setPortraitPainter((key) => `url:${key}`);
+    const seen: string[] = [];
+    const done = renderPortraits(['peashooter', 'sunflower', 'walnutBomb'], 80, (key, url) => seen.push(`${key}=${url}`));
+    await done;
+    expect(seen).toEqual(['peashooter=url:peashooter', 'sunflower=url:sunflower', 'walnutBomb=url:walnutBomb']);
+  });
+
+  it('a portrait that fails is tried once more at once; a second failure leaves it out', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let calls = 0;
+    setPortraitPainter((key) => {
+      if (key === 'potatoMine' && calls++ === 0) throw new Error('a lost frame');
+      return `url:${key}`;
+    });
+    const got: string[] = [];
+    expect(await renderPortraits(['potatoMine'], 80, (k) => got.push(k))).toEqual({ potatoMine: 'url:potatoMine' });
+    expect(got).toEqual(['potatoMine']);
+    expect(error).not.toHaveBeenCalled();
+    setPortraitPainter((key) => {
+      if (key === 'torchwood') throw new Error('no GL');
+      return `url:${key}`;
+    });
+    expect(await renderPortraits(['torchwood'], 80)).toEqual({});
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  });
+
   it('returns nothing (no throw) before a painter is set', async () => {
     expect(await renderPortraits(['peashooter'], 80)).toEqual({});
   });

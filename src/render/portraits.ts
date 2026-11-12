@@ -34,31 +34,40 @@ export function setPortraitPainter(p: PortraitPainter | null): void {
 
 /**
  * Card portraits rendered from the real models, as data URLs with transparent backgrounds. Each
- * key and size is drawn once per session. Keys that cannot be drawn (no painter yet, or it
- * failed) are left out, so the card shows its placeholder.
+ * key and size is drawn once per session. `onEach` hears each one as soon as it is drawn, so the
+ * cards fill in one by one rather than all at the end. A portrait that fails is tried once more
+ * at once (a lost frame, a busy context); one that fails again is left out, so its card keeps its
+ * placeholder, and is tried again on the next call.
  */
-export async function renderPortraits(keys: readonly UnitKey[], size: number): Promise<Record<string, string>> {
+export async function renderPortraits(
+  keys: readonly UnitKey[], size: number, onEach?: (key: UnitKey, url: string) => void,
+): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   let since = now();
   for (const key of keys) {
-    const id = `${key}@${size}`;
-    let job = cache.get(id);
-    if (job === undefined) {
-      const p = painter;
-      if (p === null) continue;
-      // A few per frame: never hold the page for more than about a frame and a half at once.
-      if (now() - since > FRAME_BUDGET_MS) {
-        await nextFrame();
-        since = now();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const id = `${key}@${size}`;
+      let job = cache.get(id);
+      if (job === undefined) {
+        const p = painter;
+        if (p === null) break;
+        // A few per frame: never hold the page for more than about a frame and a half at once.
+        if (now() - since > FRAME_BUDGET_MS) {
+          await nextFrame();
+          since = now();
+        }
+        job = Promise.resolve().then(() => p(key, size));
+        cache.set(id, job);
+        job.catch(() => cache.delete(id));
       }
-      job = Promise.resolve().then(() => p(key, size));
-      cache.set(id, job);
-      job.catch(() => cache.delete(id));
-    }
-    try {
-      out[key] = await job;
-    } catch (e) {
-      console.error(`portrait of ${key} failed`, e);
+      try {
+        out[key] = await job;
+        onEach?.(key, out[key] as string);
+        break;
+      } catch (e) {
+        cache.delete(id);
+        if (attempt === 1) console.error(`portrait of ${key} failed`, e);
+      }
     }
   }
   return out;

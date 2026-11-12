@@ -65,6 +65,10 @@ export function mountGame(
     toby: `${import.meta.env.BASE_URL}portraits/toby.png`,
   };
   const portraits = signal<Record<string, string>>({});
+  /** One card picture is ready: it goes on its card now, not when all twenty are. */
+  const showPortrait = (key: string, url: string): void => {
+    if (portraits.peek()[key] !== url) portraits.value = { ...portraits.peek(), [key]: url };
+  };
   const energyRef = createRef<HTMLDivElement>();
   let current: BattleSession | null = null;
   let firstSession = jumpIn !== null;
@@ -86,11 +90,12 @@ export function mountGame(
         lvt.portraitPaintMs = Math.round(paintMs); // drawing time alone, for the report
       }
     });
-    // Every card a battle deals (all ten a side), so none shows a bare letter.
-    const cards = ALL_CARDS;
+    // Every card a battle deals (all ten a side). A battle jumped straight into gets its own side
+    // first; each picture goes onto its card as soon as it is drawn.
+    const first: Faction = jumpIn?.playerFaction ?? 'plants';
+    const second: Faction = first === 'plants' ? 'zombies' : 'plants';
     const startedAt = performance.now();
-    lvt.portraits = renderPortraits([...cards.plants, ...cards.zombies], PORTRAIT_SIZE).then((p) => {
-      portraits.value = p;
+    lvt.portraits = renderPortraits([...ALL_CARDS[first], ...ALL_CARDS[second]], PORTRAIT_SIZE, showPortrait).then(() => {
       lvt.portraitMs = Math.round(performance.now() - startedAt);
     });
     lvt.renderer = s.renderer;
@@ -106,6 +111,9 @@ export function mountGame(
     const session = new BattleSession(stage, audio, options, {
       onToken: (from, side) => flyToken(ui, from, energyRef.current, side),
     });
+    // The cards of this battle before any other (already drawn ones cost nothing), and any that
+    // failed get another try.
+    void renderPortraits(ALL_CARDS[options.playerFaction], PORTRAIT_SIZE, showPortrait);
     if (firstSession) {
       firstSession = false;
       session.skipIntro = true;
@@ -126,6 +134,7 @@ export function mountGame(
   Object.defineProperty(lvt, 'session', { configurable: true, get: () => current });
   lvt.demo = demo;
   lvt.tileToClient = (lane: number, col: number) => current?.tileToClient(lane, col) ?? null;
+  lvt.lawnCorners = () => current?.lawnCorners() ?? null;
   lvt.fastForward = (ticks: number) => current?.fastForward(ticks);
   lvt.damageBase = (side: Faction, amount: number) => current?.damageBase(side, amount);
   lvt.audio = audio;
