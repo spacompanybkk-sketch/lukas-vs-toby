@@ -28,15 +28,26 @@ export function pixelPaths(art: PixelArt): { ch: string; color: string; d: strin
   return [...byChar].map(([ch, parts]) => ({ ch, color: art.palette[ch] as string, d: parts.join('') }));
 }
 
+/** Path data worked out once per picture (the pictures are module constants). */
+const drawn = new WeakMap<PixelArt, { w: number; h: number; paths: ReturnType<typeof pixelPaths> }>();
+
+function drawingOf(art: PixelArt): { w: number; h: number; paths: ReturnType<typeof pixelPaths> } {
+  let d = drawn.get(art);
+  if (d === undefined) {
+    d = { w: Math.max(1, ...art.rows.map((r) => r.length)), h: Math.max(1, art.rows.length), paths: pixelPaths(art) };
+    drawn.set(art, d);
+  }
+  return d;
+}
+
 export function PixelIcon({ art, class: cls = '' }: { art: PixelArt; class?: string }) {
-  const w = Math.max(1, ...art.rows.map((r) => r.length));
-  const h = Math.max(1, art.rows.length);
+  const { w, h, paths } = drawingOf(art);
   return (
     <svg
       class={`pixel-icon ${cls}`.trim()} viewBox={`0 0 ${w} ${h}`} shape-rendering="crispEdges"
       aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"
     >
-      {pixelPaths(art).map((p) => <path key={p.ch} fill={p.color} d={p.d} />)}
+      {paths.map((p) => <path key={p.ch} fill={p.color} d={p.d} />)}
     </svg>
   );
 }

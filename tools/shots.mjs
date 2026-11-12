@@ -364,9 +364,9 @@ const SCENARIOS = [
   ...hudGallery(),
 ];
 
-/** hud-gallery-<view>-<size>: ten and three cards with hero and spells for both sides, and the states sheet. */
+/** hud-gallery-<view>-<size> (screens, and iPad Safari windows with the bars showing): ten and three cards with hero and spells for both sides, and the states sheet. */
 function hudGallery() {
-  const sizes = [['1024', 1024, 768], ['1180', 1180, 820], ['1440', 1440, 900]];
+  const sizes = [['1024', 1024, 768], ['1180', 1180, 820], ['1440', 1440, 900], ['1024x704', 1024, 704], ['1180x746', 1180, 746]];
   const views = [
     ['plants10', 'side=plants&cards=10'],
     ['zombies10', 'side=zombies&cards=10&hero=charging'],

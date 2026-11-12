@@ -106,6 +106,7 @@ function States({ portraits }: { portraits: Record<string, string> }) {
                 portrait={side === 'plants' ? BOYS.lukas : BOYS.toby} onPress={noop}
               />
             ))}
+            <HeroButton faction={side} ready fraction={1} selected={false} onPress={noop} />
           </div>
           <div class="hudg__row hudg__row--spells" data-row={`spells-${side}`}>
             <SpellButtons spells={SPELLS[side].map((key) => ({ key, ready: true, fraction: 1 }))} selected={null} onPress={noop} />

@@ -1,5 +1,7 @@
+import { Component } from 'preact';
 import type { Faction } from '../../sim/types';
-import { BOYS } from './BaseBars';
+import { PixelIcon } from './PixelIcon';
+import type { PixelArt } from './PixelIcon';
 import './hud.css';
 
 export interface HeroButtonProps {
@@ -12,7 +14,7 @@ export interface HeroButtonProps {
   selected: boolean;
   /** Every tap; the controller decides what it means (pick, cancel, or a refusal while charging). */
   onPress(): void;
-  /** The boy's portrait (an image URL); without it a flat chip with his initial. */
+  /** The boy's portrait (an image URL); without it his side's emblem. */
   portrait?: string;
 }
 
@@ -28,42 +30,101 @@ export function chargeStep(fraction: number): number {
   return Math.floor(Math.min(1, fraction) * CHARGE_STEPS) / CHARGE_STEPS;
 }
 
+/** Each side's emblem, shown when there is no portrait: a sunflower, a zombie's face. */
+export const FACTION_EMBLEMS: Record<Faction, PixelArt> = {
+  plants: {
+    rows: [
+      '.....oo.....',
+      '..oooyyooo..',
+      '.oyyoyyoyyo.',
+      '.oyyyyyyyyo.',
+      '.ooybBbbyoo.',
+      'oyyyBbbByyyo',
+      'oYYYbbBbYYYo',
+      '.ooYbBbbYoo.',
+      '.oYYYYYYYYo.',
+      '.oYYoYYoYYo.',
+      '..oooYYooo..',
+      '.....oo.....',
+    ],
+    palette: { o: '#2A1B0E', y: '#FFD54A', Y: '#F59F0B', b: '#8B5A2B', B: '#6B4423' },
+  },
+  zombies: {
+    rows: [
+      '............',
+      '..ooooooo...',
+      '.ogggggggo..',
+      '.ogggggggo..',
+      '.oWWgggWWo..',
+      '.oWkgggkWo..',
+      '.ogggggggo..',
+      '.ogoooooGo..',
+      '.ogwowowGo..',
+      '.oGGGGGGGo..',
+      '..ooooooo...',
+      '............',
+    ].map((r) => `.${r.slice(0, 11)}`),
+    palette: { o: '#2A1B0E', g: '#9ACD8A', G: '#6FA364', W: '#FFFFFF', k: '#2A1B0E', w: '#EDE6D3' },
+  },
+};
+
+/** What a power button draws from: the props that change its look, in whole charge steps. */
+export interface PowerLook { ready: boolean; step: number; selected: boolean }
+
+export const sameLook = (a: PowerLook, b: PowerLook): boolean =>
+  a.ready === b.ready && a.step === b.step && a.selected === b.selected;
+
 /**
  * The boy's hero power: a big square with his portrait. While it charges a dark veil over the
  * portrait drops away in steps from the top; when ready a boxy gold frame pulses round it.
+ * Re-renders only when what it shows changes (a whole charge step, ready, selected), not on
+ * every tick of the charge.
  */
-export function HeroButton({ faction, ready, fraction, selected, onPress, portrait }: HeroButtonProps) {
-  const boy = BOYS[faction];
-  const veil = ready ? 0 : 1 - chargeStep(fraction);
-  const cls = ['power', 'power--hero', 'px', `power--${faction}`, ready ? 'is-ready' : 'is-charging'];
-  if (selected) cls.push('is-selected');
+export class HeroButton extends Component<HeroButtonProps> {
+  override shouldComponentUpdate(next: HeroButtonProps): boolean {
+    const p = this.props;
+    return !(p.faction === next.faction && p.portrait === next.portrait
+      && sameLook(lookOf(p), lookOf(next)));
+  }
+
+  private readonly press = (): void => this.props.onPress();
+
+  override render() {
+    const { faction, ready, selected, portrait } = this.props;
+    const { step } = lookOf(this.props);
+    const cls = ['power', 'power--hero', 'px', `power--${faction}`, ready ? 'is-ready' : 'is-charging'];
+    if (selected) cls.push('is-selected');
+    return (
+      <button
+        type="button" data-hero={faction} class={cls.join(' ')}
+        aria-label={HERO_NAMES[faction]} aria-pressed={selected} aria-disabled={ready ? undefined : 'true'}
+        onClick={this.press}
+      >
+        <span class="power__art">
+          {portrait !== undefined
+            ? <img class="power__img" src={portrait} alt="" draggable={false} />
+            : <PixelIcon art={FACTION_EMBLEMS[faction]} class="power__emblem" />}
+        </span>
+        <PowerCharge ready={ready} step={step} />
+      </button>
+    );
+  }
+}
+
+const lookOf = (p: { ready: boolean; fraction: number; selected: boolean }): PowerLook =>
+  ({ ready: p.ready, step: p.ready ? 1 : chargeStep(p.fraction), selected: p.selected });
+
+/**
+ * The charge overlay shared by the hero and spell buttons: while charging, a dark veil over the
+ * part still to charge (top down) and a bar of CHARGE_STEPS blocks lit by CSS from `--lit`; when
+ * ready, the pulsing frame.
+ */
+export function PowerCharge({ ready, step }: { ready: boolean; step: number }) {
+  if (ready) return <span class="power__frame" aria-hidden="true" />;
   return (
-    <button
-      type="button" data-hero={faction} class={cls.join(' ')}
-      aria-label={HERO_NAMES[faction]} aria-pressed={selected} aria-disabled={ready ? undefined : 'true'}
-      onClick={() => onPress()}
-    >
-      <span class="power__art">
-        {portrait !== undefined
-          ? <img class="power__img" src={portrait} alt="" draggable={false} />
-          : <span class="power__initial" aria-hidden="true">{boy.name.charAt(0)}</span>}
-      </span>
-      {veil > 0 && <PowerVeil veil={veil} />}
-      {!ready && <ChargePips fraction={fraction} />}
-      {ready && <span class="power__frame" aria-hidden="true" />}
-    </button>
+    <>
+      {step < 1 && <span class="power__veil" style={{ height: `${(1 - step) * 100}%` }} aria-hidden="true" />}
+      <span class="power__pips" style={{ '--lit': String(Math.round(step * CHARGE_STEPS)) }} aria-hidden="true" />
+    </>
   );
-}
-
-/** The dark veil over the part still to charge, from the top down. */
-export function PowerVeil({ veil }: { veil: number }) {
-  return <span class="power__veil" style={{ height: `${veil * 100}%` }} aria-hidden="true" />;
-}
-
-/** A row of CHARGE_STEPS blocks along the bottom, lit one by one as the power charges. */
-export function ChargePips({ fraction }: { fraction: number }) {
-  const lit = Math.round(chargeStep(fraction) * CHARGE_STEPS);
-  const pips = [];
-  for (let i = 0; i < CHARGE_STEPS; i++) pips.push(<span key={i} class={i < lit ? 'is-lit' : undefined} />);
-  return <span class="power__pips" aria-hidden="true">{pips}</span>;
 }

@@ -2,13 +2,20 @@ import { expect, test } from './fixtures';
 import type { Page } from './fixtures';
 
 // The phase-2 HUD (ten cards, the hero button, two spells) laid over the lawn by
-// `?scene=hud-gallery`, at the three sizes it must work at: iPad 1024x768, iPad Air 1180x820 and a
-// 1440x900 laptop. Runs in both projects: with a mouse (desktop) and with a finger (ipad).
+// `?scene=hud-gallery`, at every size it must work at (see SIZES).
+// Runs in both projects: with a mouse (desktop) and with a finger (ipad).
 
+// The three screen sizes, then iPad Safari with its address and tab bars showing (10.2", a short
+// 10.2" window, 10.9" Air, 11" Pro, 12.9" Pro).
 const SIZES = [
   { width: 1024, height: 768, rows: 2 },
   { width: 1180, height: 820, rows: 2 },
   { width: 1440, height: 900, rows: 1 },
+  { width: 1024, height: 704, rows: 2 },
+  { width: 1024, height: 650, rows: 1 },
+  { width: 1180, height: 746, rows: 1 },
+  { width: 1194, height: 760, rows: 1 },
+  { width: 1366, height: 950, rows: 1 },
 ] as const;
 const SIDES = ['plants', 'zombies'] as const;
 

@@ -86,6 +86,18 @@ describe('SpellButtons', () => {
     }
   });
 
+  it('a spell button skips renders between charge steps, and draws each icon from one cached path set', () => {
+    const props = mount();
+    const veil = spell('sunShower').querySelector<HTMLElement>('.power__veil');
+    const pathEl = spell('thunderbolt').querySelector('path');
+    mount({ ...props, spells: [{ key: 'thunderbolt', ready: true, fraction: 1 }, { key: 'sunShower', ready: false, fraction: 0.32 }] });
+    expect(spell('sunShower').querySelector('.power__veil')).toBe(veil);
+    expect(veil?.style.height).toBe('75%');
+    mount({ ...props, spells: [{ key: 'thunderbolt', ready: true, fraction: 1 }, { key: 'sunShower', ready: false, fraction: 0.38 }] });
+    expect(spell('sunShower').querySelector<HTMLElement>('.power__veil')?.style.height).toBe('62.5%');
+    expect(spell('thunderbolt').querySelector('path')).toBe(pathEl);
+  });
+
   it('an unknown spell still gets a button (a plain block), never a crash', () => {
     mount({ spells: [{ key: 'mystery', ready: false, fraction: 0 }] });
     expect(spell('mystery').getAttribute('aria-label')).toBe('mystery');

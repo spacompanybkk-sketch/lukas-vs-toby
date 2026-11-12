@@ -172,12 +172,7 @@
 .hud-tray [data-shovel] { touch-action: none; }
 .hud-tray {
   --lo: var(--c-wood-lo);
-  /* Ten in a row must leave room for the hero and spell buttons: cards narrow to fit the window
-   * (never below 64 px). The hand folds into two rows of five before that bites (see trayRows). */
-  --tray-fit: calc((100vw - 2 * var(--gutter-x) - var(--tray-reserve)) / (var(--tray-cols, 10) + 2.8));
-  --tray-reserve: 210px;
-  --card-w: max(64px, min(var(--card-base), var(--tray-fit)));
-  --card-h: calc(var(--card-w) * 1.27);
+  /* Card size, columns and gap come in as custom properties from trayLayout (trayLayout.ts). */
   display: inline-flex;
   align-items: flex-end;
   gap: calc(var(--tray-gap) * 2);
@@ -341,18 +336,17 @@
  * Beside the tray on the player's side. One row of cards: the hero is as tall as the tray and the
  * two spells stack beside it; two rows: a bigger hero, bigger spells. */
 .battle__powers {
-  --hero-size: calc(var(--card-base) * 1.27 + 24px);
+  --hero-size: var(--bar-hero, calc(var(--card-base) * 1.27 + 24px));
   display: flex;
   align-items: flex-end;
   gap: var(--tray-gap);
 }
-.battle__bottom--rows-2 .battle__powers { --hero-size: calc(var(--card-base) * 2); }
 .battle__powers.side-zombies { flex-direction: row-reverse; }
 .power-spells {
   display: flex;
   flex-direction: column;
   gap: var(--tray-gap);
-  --spell-size: calc((var(--hero-size, 120px) - var(--tray-gap) - var(--px-lip)) / 2);
+  --spell-size: var(--bar-spell, calc((var(--hero-size, 120px) - var(--tray-gap) - var(--px-lip)) / 2));
 }
 .power {
   --lip: var(--px-lip);
@@ -390,6 +384,7 @@
   text-shadow: 3px 3px 0 var(--ink);
 }
 .power__icon { width: 78%; height: 78%; display: block; }
+.power__emblem { width: 72%; height: 72%; display: block; }
 .power__veil {
   position: absolute;
   left: var(--px-bev);
@@ -402,18 +397,19 @@
 }
 .power.is-charging .power__art { filter: grayscale(0.85) brightness(0.9); }
 .power__pips {
+  /* CHARGE_STEPS blocks; the first --lit of them gold. The mask cuts the bar into blocks. */
+  --pip: calc(100% / 8);
   position: absolute;
   left: calc(var(--px-bev) + 3px);
   right: calc(var(--px-bev) + 3px);
   bottom: calc(var(--px-bev) + 3px);
-  display: flex;
-  gap: 2px;
   height: max(5px, calc(var(--hero-size, 120px) * 0.07));
+  background: linear-gradient(90deg, var(--c-sun) 0 calc(var(--pip) * var(--lit, 0)), rgba(26, 16, 8, 0.75) 0);
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 calc(var(--pip) - 2px), transparent 0 var(--pip));
+  mask: repeating-linear-gradient(90deg, #000 0 calc(var(--pip) - 2px), transparent 0 var(--pip));
   pointer-events: none;
 }
-.power--spell .power__pips { height: max(4px, calc(var(--spell-size, 64px) * 0.09)); gap: 1px; }
-.power__pips > span { flex: 1; background: rgba(26, 16, 8, 0.75); }
-.power__pips > span.is-lit { background: var(--c-sun); box-shadow: inset 0 -2px 0 var(--c-sun-lo); }
+.power--spell .power__pips { height: max(4px, calc(var(--spell-size, 64px) * 0.09)); }
 .power__frame {
   position: absolute;
   inset: calc(var(--px-line) * -2);

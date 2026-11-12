@@ -2,6 +2,7 @@ import { Component } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CardVM } from '../../app/BattleController';
 import type { Faction, UnitKey } from '../../sim/types';
+import { trayLayout, useTrayLayout, CARD_ASPECT } from './trayLayout';
 import './hud.css';
 
 export interface CardTrayProps {
@@ -25,42 +26,16 @@ export interface CardTrayProps {
 const RECHARGE_STEPS = 8;
 const SHAKE_MS = 300;
 
-/** One row of ten needs this much width; below it a hand of more than five folds into two rows. */
-export const ONE_ROW_MIN_WIDTH = 1280;
-/** Two rows only fit above the lawn's near edge on a window no wider than 3:2 (iPad 4:3, 1180x820). */
-const TWO_ROW_MAX_ASPECT = 1.5;
-const ROW_MAX = 5;
-
 /**
- * Rows for a hand of `count` cards in a window `width` x `height` CSS px: two rows of up to five
- * on a narrow window that is tall enough for them (an iPad in landscape), else one row.
+ * Rows for a hand of `count` cards in a window `width` x `height` CSS px (default gutters), with
+ * the hero and spell buttons beside it: see `trayLayout`.
  */
 export function trayRows(count: number, width: number, height: number): 1 | 2 {
-  if (count <= ROW_MAX || width >= ONE_ROW_MIN_WIDTH || height <= 0) return 1;
-  return width / height <= TWO_ROW_MAX_ASPECT ? 2 : 1;
+  return trayLayout(count, { width, height, gutterX: 12, gutterBottom: 10 }).rows;
 }
 
-/** `trayRows` for a hand of `count` cards in the current window, kept current through resizes. */
-export function useTrayRows(count: number): 1 | 2 {
-  const win = useWindowSize();
-  return trayRows(count, win.width, win.height);
-}
-
-/** The window's CSS size, kept current through resizes and rotations. */
-function useWindowSize(): { width: number; height: number } {
-  const read = (): { width: number; height: number } => ({ width: window.innerWidth, height: window.innerHeight });
-  const [size, setSize] = useState(read);
-  useEffect(() => {
-    const onResize = (): void => {
-      const next = read();
-      setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
-    };
-    onResize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  return size;
-}
+/** `trayLayout(count)` for the current window; shared with the bar the tray sits in. */
+export { useTrayLayout };
 
 export function rechargeStep(fraction: number): number {
   return Math.ceil(Math.min(1, Math.max(0, fraction)) * RECHARGE_STEPS) / RECHARGE_STEPS;
@@ -77,8 +52,8 @@ export function CardTray(props: CardTrayProps) {
   const latest = useRef(props);
   latest.current = props;
   const shake = useShake(denied);
-  const rows = useTrayRows(cards.length);
-  const cols = Math.max(1, Math.ceil(cards.length / rows));
+  const layout = useTrayLayout(cards.length);
+  const { rows, cols } = layout;
   const { down, click } = useMemo(() => {
     // The unit that this press selected on pointer down, so its click does not deselect it again.
     let pressSelected: UnitKey | null = null;
@@ -110,7 +85,11 @@ export function CardTray(props: CardTrayProps) {
   return (
     <div
       data-hud="tray" class={`hud-tray px pal-wood side-${side} hud-tray--rows-${rows}${shakeClass}`}
-      style={{ '--tray-cols': String(cols) }} role="toolbar" aria-label="Cards"
+      style={{
+        '--tray-cols': String(cols), '--tray-gap': `${layout.gap}px`,
+        '--card-w': `${layout.card}px`, '--card-h': `${layout.card * CARD_ASPECT}px`,
+      }}
+      role="toolbar" aria-label="Cards"
     >
       <div class="hud-tray__cards">
         {cards.map((c) => (

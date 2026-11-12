@@ -8,7 +8,8 @@ import type { Faction, UnitKey } from '../../sim/types';
 import { SettingsPanel } from '../SettingsPanel';
 import { BaseBar } from '../hud/BaseBars';
 import type { BoyPortraits } from '../hud/BaseBars';
-import { CardTray, useTrayRows } from '../hud/CardTray';
+import { CardTray } from '../hud/CardTray';
+import { useTrayLayout } from '../hud/trayLayout';
 import { HeroButton } from '../hud/HeroButton';
 import { SpellButtons } from '../hud/SpellButtons';
 import type { SpellButtonVM } from '../hud/SpellButtons';
@@ -161,13 +162,19 @@ function LivePause({ ctl }: { ctl: Controller }) {
  */
 function LiveBottom({ ctl, portraits, powers, boys }: { ctl: Controller; portraits: Record<string, string>; powers: BattlePowers | undefined; boys: BoyPortraits }) {
   const count = useComputed(() => ctl.hud.cards.value.length).value;
-  const rows = useTrayRows(count);
+  const layout = useTrayLayout(count);
   const side = ctl.playerFaction;
   const slot = powers !== undefined && (powers.hero !== undefined || powers.spells !== undefined)
     ? <LivePowers ctl={ctl} powers={powers} portrait={side === 'plants' ? boys.lukas : boys.toby} />
     : null;
   return (
-    <div class={`battle__bottom battle__bottom--rows-${rows} side-${side}`}>
+    <div
+      class={`battle__bottom battle__bottom--rows-${layout.rows} side-${side}`}
+      style={{
+        gap: `${layout.barGap}px`, '--tray-gap': `${layout.gap}px`,
+        '--bar-hero': `${layout.hero}px`, '--bar-spell': `${layout.spell}px`,
+      }}
+    >
       {side === 'plants' && slot}
       <LiveTray ctl={ctl} portraits={portraits} />
       {side === 'zombies' && slot}

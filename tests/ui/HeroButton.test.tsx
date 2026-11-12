@@ -69,12 +69,30 @@ describe('HeroButton', () => {
     expect(btn().getAttribute('aria-pressed')).toBe('false');
   });
 
-  it("shows the boy's portrait when given, else his initial", () => {
+  it("shows the boy's portrait when given, else his side's pixel emblem (never a letter)", () => {
     mount({ portrait: '/portraits/lukas.png' });
     expect(btn().querySelector('img')?.getAttribute('src')).toBe('/portraits/lukas.png');
     mount({ faction: 'zombies' });
     expect(btn().querySelector('img')).toBeNull();
-    expect(btn().textContent).toContain('T');
+    expect(btn().querySelector('svg.power__emblem')).not.toBeNull();
+    expect(btn().textContent).toBe('');
+  });
+
+  it('re-renders only on a whole charge step, ready or selected; a tap still reaches the latest onPress', () => {
+    const first = mount({ fraction: 0.4 });
+    const renders = vi.spyOn(HeroButton.prototype, 'render');
+    const later = vi.fn();
+    act(() => render(<HeroButton {...first} fraction={0.45} onPress={later} />, root));
+    expect(renders).not.toHaveBeenCalled();
+    expect(btn().querySelector<HTMLElement>('.power__veil')?.style.height).toBe('62.5%');
+    act(() => btn().click());
+    expect(later).toHaveBeenCalledTimes(1);
+    expect(first.onPress).not.toHaveBeenCalled();
+    act(() => render(<HeroButton {...first} fraction={0.5} onPress={later} />, root));
+    expect(renders).toHaveBeenCalledTimes(1);
+    renders.mockRestore();
+    expect(btn().querySelector<HTMLElement>('.power__veil')?.style.height).toBe('50%');
+    expect(btn().querySelector<HTMLElement>('.power__pips')?.style.getPropertyValue('--lit')).toBe('4');
   });
 
   it('chargeStep rounds the charge down to whole eighths, so it never looks readier than it is', () => {

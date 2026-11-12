@@ -184,7 +184,7 @@ describe('CardTray', () => {
     expect(cards().filter((c) => c.classList.contains('is-selected'))).toHaveLength(1);
   });
 
-  it('lays ten cards in one row on a wide window and in two rows of five at 1024 x 768', () => {
+  it('lays ten cards in one row on a wide window and in two rows of five at 1024 x 768, sized by trayLayout', () => {
     mount({ cards: TEN });
     expect(tray().classList.contains('hud-tray--rows-2')).toBe(false);
     expect(tray().style.getPropertyValue('--tray-cols')).toBe('10');
@@ -195,6 +195,8 @@ describe('CardTray', () => {
     expect(tray().classList.contains('hud-tray--rows-2')).toBe(true);
     viewport(1280, 800);
     expect(tray().classList.contains('hud-tray--rows-2')).toBe(false);
+    viewport(1024, 768);
+    expect(tray().style.getPropertyValue('--card-w')).toBe('67.5px');
   });
 
   it('keeps a short hand in one row at any size', () => {
@@ -204,16 +206,19 @@ describe('CardTray', () => {
     expect(tray().style.getPropertyValue('--tray-cols')).toBe('3');
   });
 
-  it('trayRows: two rows only for more than five cards on a narrow, tall-enough window', () => {
+  it('trayRows: two rows only when they give bigger cards than one row (the iPad sizes)', () => {
     expect(trayRows(10, 1024, 768)).toBe(2);
+    expect(trayRows(10, 1024, 704)).toBe(2);
     expect(trayRows(10, 1180, 820)).toBe(2);
-    expect(trayRows(10, 1279, 860)).toBe(2);
-    expect(trayRows(10, 1280, 800)).toBe(1);
+    // Safari with its bars showing: too short for two rows above the lawn's edge.
+    expect(trayRows(10, 1024, 650)).toBe(1);
+    expect(trayRows(10, 1180, 746)).toBe(1);
+    expect(trayRows(10, 1194, 760)).toBe(1);
+    expect(trayRows(10, 1366, 950)).toBe(1);
     expect(trayRows(10, 1440, 900)).toBe(1);
-    expect(trayRows(5, 1024, 768)).toBe(1);
-    expect(trayRows(6, 1024, 768)).toBe(2);
-    // A wide, short window (16:9 under 1280) has no room for two rows above the lawn's edge.
     expect(trayRows(10, 1152, 648)).toBe(1);
+    expect(trayRows(5, 1024, 768)).toBe(1);
+    expect(trayRows(6, 1024, 768)).toBe(1);
     expect(trayRows(0, 1024, 768)).toBe(1);
   });
 });

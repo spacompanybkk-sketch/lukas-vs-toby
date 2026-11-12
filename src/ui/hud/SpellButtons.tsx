@@ -1,4 +1,5 @@
-import { ChargePips, PowerVeil, chargeStep } from './HeroButton';
+import { Component } from 'preact';
+import { PowerCharge, chargeStep } from './HeroButton';
 import { PixelIcon } from './PixelIcon';
 import type { PixelArt } from './PixelIcon';
 import './hud.css';
@@ -35,6 +36,7 @@ const C = {
   red: '#E2553F', redLo: '#A83A28', redHi: '#F17D66',
   brain: '#FF8FB1', brainLo: '#D9607F', brainHi: '#FFC4D6',
   bone: '#EDE6D3', boneLo: '#C9BFA5',
+  skin: '#9ACD8A', skinLo: '#6FA364', purpleLo: '#4B2A8F',
   soil: '#8B5A2B', soilLo: '#6B4423',
 };
 
@@ -144,20 +146,20 @@ export const SPELL_ICONS: Record<string, PixelArt> = {
   },
   fog: {
     rows: [
-      '...oooo.....',
-      '..ohhhhoooo.',
-      '.ohhhhhhhhho',
-      '.ooooooooooo',
-      '............',
-      'oooooooooo..',
-      'ohhhhhhhhso.',
-      'oooooooooo..',
-      '............',
-      '..oooooooooo',
-      '..ohhhhhhhso',
-      '..oooooooooo',
+      '...........r',
+      '...oooooo.rR',
+      '.oowwwwwwrR.',
+      'owwwwoowrRwo',
+      'owwwoUUrRwwo',
+      'owwwoUrRwwwo',
+      'owwwwrRwwwwo',
+      '.oowrRwwwoo.',
+      '..ooooooooo.',
+      '.ommmmommmmo',
+      'ommmmmmmmmmo',
+      'oooooooooooo',
     ],
-    palette: { o: C.ink, h: C.stoneHi, s: C.stone },
+    palette: { o: C.ink, w: C.white, U: C.purpleLo, r: C.red, R: C.redLo, m: C.stone },
   },
   brainFeast: {
     rows: [
@@ -183,19 +185,19 @@ export const SPELL_ICONS: Record<string, PixelArt> = {
   frenzy: {
     rows: [
       '............',
-      '....oo....oo',
-      '...oro...oro',
-      '..orro..orro',
-      '.orro..orro.',
-      'orro..orro..',
-      'oRRo..oRRo..',
-      '.oRRo..oRRo.',
-      '..oRRo..oRRo',
-      '...oRo...oRo',
-      '....oo....oo',
+      '.ooooooo....',
+      'ogggggggo...',
+      'ogggggggorrr',
+      'oRRgggRRo...',
+      'oRRgggRRorrr',
+      'ogggggggo...',
+      'ogoooooGorrr',
+      'ogkokokGo...',
+      'oGGGGGGGo...',
+      '.ooooooo....',
       '............',
     ],
-    palette: { o: C.ink, r: C.red, R: C.redLo },
+    palette: { o: C.ink, g: C.skin, G: C.skinLo, R: C.red, r: C.red, k: C.bone },
   },
   graveRise: {
     rows: [
@@ -229,26 +231,42 @@ const UNKNOWN_ICON: PixelArt = {
 export function SpellButtons({ spells, selected, onPress }: SpellButtonsProps) {
   return (
     <div class="power-spells" data-hud="spells" role="group" aria-label="Spells">
-      {spells.map((s) => {
-        const isSelected = selected === s.key;
-        const veil = s.ready ? 0 : 1 - chargeStep(s.fraction);
-        const cls = ['power', 'power--spell', 'px', `power--spell-${s.key}`, s.ready ? 'is-ready' : 'is-charging'];
-        if (isSelected) cls.push('is-selected');
-        return (
-          <button
-            key={s.key} type="button" data-spell={s.key} class={cls.join(' ')}
-            aria-label={SPELL_NAMES[s.key] ?? s.key} aria-pressed={isSelected} aria-disabled={s.ready ? undefined : 'true'}
-            onClick={() => onPress(s.key)}
-          >
-            <span class="power__art">
-              <PixelIcon art={SPELL_ICONS[s.key] ?? UNKNOWN_ICON} class="power__icon" />
-            </span>
-            {veil > 0 && <PowerVeil veil={veil} />}
-            {!s.ready && <ChargePips fraction={s.fraction} />}
-            {s.ready && <span class="power__frame" aria-hidden="true" />}
-          </button>
-        );
-      })}
+      {spells.map((s) => (
+        <SpellButton
+          key={s.key} spellKey={s.key} ready={s.ready} step={s.ready ? 1 : chargeStep(s.fraction)}
+          selected={selected === s.key} onPress={onPress}
+        />
+      ))}
     </div>
   );
+}
+
+interface SpellButtonProps { spellKey: string; ready: boolean; step: number; selected: boolean; onPress(key: string): void }
+
+/** One spell; re-renders only when its look changes (a whole charge step, ready, selected). */
+class SpellButton extends Component<SpellButtonProps> {
+  override shouldComponentUpdate(n: SpellButtonProps): boolean {
+    const p = this.props;
+    return !(p.spellKey === n.spellKey && p.ready === n.ready && p.step === n.step && p.selected === n.selected);
+  }
+
+  private readonly press = (): void => this.props.onPress(this.props.spellKey);
+
+  override render() {
+    const { spellKey: key, ready, step, selected } = this.props;
+    const cls = ['power', 'power--spell', 'px', `power--spell-${key}`, ready ? 'is-ready' : 'is-charging'];
+    if (selected) cls.push('is-selected');
+    return (
+      <button
+        type="button" data-spell={key} class={cls.join(' ')}
+        aria-label={SPELL_NAMES[key] ?? key} aria-pressed={selected} aria-disabled={ready ? undefined : 'true'}
+        onClick={this.press}
+      >
+        <span class="power__art">
+          <PixelIcon art={SPELL_ICONS[key] ?? UNKNOWN_ICON} class="power__icon" />
+        </span>
+        <PowerCharge ready={ready} step={step} />
+      </button>
+    );
+  }
 }
