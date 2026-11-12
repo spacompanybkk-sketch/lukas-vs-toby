@@ -84,16 +84,16 @@ const COLS = 10;
 const LANES = 5;
 
 /**
- * The tiles a spell covers when tapped at (`lane`, `col`) with area `size`: the simulation's own
- * rule (`spellArea` in `src/sim/spells.ts`), so what is drawn is what is hit. Rock Wall and Grave
- * Rise take the tapped tile alone; Sun Shower and Brain Feast are not aimed and cover none. The
- * tapped tile is first brought onto the lawn.
+ * The tiles a spell covers when tapped at (`lane`, `col`) with the cast's area `size` (from
+ * `spellCast`, or the balance table while aiming): the simulation's own rule (`spellArea` in
+ * `src/sim/spells.ts`), so what is drawn is what is hit. Size 0 (Sun Shower, Brain Feast) covers
+ * none, 1 the tapped tile (Rock Wall, Grave Rise), 2 a 2 x 2, 3 a 3 x 3. The tapped tile is first
+ * brought onto the lawn.
  */
 export function spellArea(spell: SpellKey, lane: number, col: number, size: number): Tile[] {
-  if (spell === 'sunShower' || spell === 'brainFeast') return [];
   const l = Math.min(LANES - 1, Math.max(0, Math.floor(lane)));
   const c = Math.min(COLS - 1, Math.max(0, Math.floor(col)));
-  const area: SpellSize = spell === 'rockWall' || spell === 'graveRise' || size < 2 ? 1 : size >= 3 ? 3 : 2;
+  const area = Math.min(3, Math.max(0, Math.floor(size))) as SpellSize;
   return simSpellArea(SPELL_SIDE[spell], area, l, c);
 }
 
@@ -269,7 +269,7 @@ export class SpellFx {
     this.fog = new Pool(g, MAX_AREA * FOG_PER_TILE * CASTS, makeFogBlock, 'fog');
     this.graves = new Pool(g, GRAVES * CASTS, makeGravestone, 'gravestone');
     for (let i = 0; i < 9; i++) {
-      const mark = new TileMark('spell-area', 1, 1);
+      const mark = new TileMark('spell-area', 1, 1, { vivid: true });
       this.marks.push(mark);
       g.add(mark.mesh);
     }

@@ -8,17 +8,17 @@ import type { SpellKey } from '../../src/render/types';
 import { seededRandom } from '../../src/render/world/boxes';
 import { allocationsIn } from './allocations';
 
-const SPELLS: [SpellKey, 0 | 2 | 3][] = [
+const SPELLS: [SpellKey, 0 | 1 | 2 | 3][] = [
   ['thunderbolt', 2],
   ['vines', 2],
   ['sunShower', 0],
   ['healingRain', 3],
-  ['rockWall', 0],
+  ['rockWall', 1],
   ['meteor', 2],
   ['fog', 2],
   ['brainFeast', 0],
   ['frenzy', 3],
-  ['graveRise', 0],
+  ['graveRise', 1],
 ];
 
 const camera = new PerspectiveCamera();
@@ -69,9 +69,9 @@ describe('spellArea', () => {
     expect(spellArea('frenzy', 0, 0, 3).map(key).sort()).toEqual(['0,0', '0,1', '1,0', '1,1']);
   });
 
-  it('is the tapped tile alone for an aimed spell of size 0, and nothing for an un-aimed one', () => {
-    expect(spellArea('rockWall', 2, 3, 0).map(key)).toEqual(['2,3']);
-    expect(spellArea('graveRise', 1, 6, 0).map(key)).toEqual(['1,6']);
+  it('is the tapped tile alone at size 1 (Rock Wall, Grave Rise, as the cast says), and nothing at size 0', () => {
+    expect(spellArea('rockWall', 2, 3, 1).map(key)).toEqual(['2,3']);
+    expect(spellArea('graveRise', 1, 6, 1).map(key)).toEqual(['1,6']);
     expect(spellArea('sunShower', 2, 3, 0)).toEqual([]);
     expect(spellArea('brainFeast', 2, 3, 0)).toEqual([]);
   });
@@ -158,7 +158,7 @@ describe('SpellFx', () => {
 
   it('shows the rock crack as it is chewed, and crumbles it', () => {
     const { spells, effects, particles } = setup();
-    spells.cast('rockWall', 3, 2, 0);
+    spells.cast('rockWall', 3, 2, 1);
     run(spells, effects, 0.5);
     const rock = visibleDeep(spells.group).find((o) => o.name === 'spell-rock') as Mesh;
     expect(rock).toBeDefined();
@@ -230,7 +230,7 @@ describe('SpellFx', () => {
     scene.add(spells.group);
     spells.cast('fog', 2, 4, 2);
     spells.cast('thunderbolt', 0, 2, 2);
-    spells.cast('rockWall', 3, 3, 0);
+    spells.cast('rockWall', 3, 3, 1);
     spells.showArea(spellArea('fog', 2, 4, 2));
     run(spells, effects, 0.3);
     const owned = new Set<BufferGeometry | Material>();
@@ -248,5 +248,27 @@ describe('SpellFx', () => {
     expect(spells.active).toBe(0);
     expect(spells.rocks).toBe(0);
     expect(scene.children).not.toContain(spells.group);
+  });
+});
+
+describe('SpellFx aimed area colours (wiring B fix round)', () => {
+  it('the zombies\' area is a vivid brain-pink fill as strong as the plants\' yellow; the plants\' stays sun yellow', () => {
+    const { spells } = setup();
+    const marks = (): Mesh[] => {
+      const out: Mesh[] = [];
+      spells.group.traverse((o) => { if (o.name === 'spell-area' && o.visible) out.push(o as Mesh); });
+      return out;
+    };
+    const uniforms = (m: Mesh) => (m.material as unknown as { uniforms: Record<string, { value: any }> }).uniforms;
+    spells.showArea([{ lane: 1, col: 8 }, { lane: 1, col: 9 }], 'zombies', 'ok');
+    expect(marks()).toHaveLength(2);
+    const z = uniforms(marks()[0] as Mesh);
+    expect(z.uFill?.value.getHexString()).toBe('d6197f');
+    expect(z.uFillOpacity?.value).toBeGreaterThanOrEqual(0.45);
+    spells.showArea([{ lane: 1, col: 2 }], 'plants', 'ok');
+    const p = uniforms(marks()[0] as Mesh);
+    expect(p.uFill?.value.getHexString()).toBe('ffd54a');
+    spells.showArea([{ lane: 1, col: 8 }], 'zombies', 'bad');
+    expect(uniforms(marks()[0] as Mesh).uStripes?.value).toBe(1); // red stripes, whoever asks
   });
 });

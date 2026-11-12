@@ -45,14 +45,22 @@ export type MarkState = 'ok' | 'bad';
 
 /** Art bible section 6: a 30% fill. */
 const FILL_OPACITY = 0.3;
+/** A zombie spell's area: brain pink, filled more strongly, so it reads on grass and graveyard alike. */
+const VIVID_ZOMBIE_FILL = '#D6197F';
+const VIVID_ZOMBIE_LINE = '#FF8AC8';
+const VIVID_FILL_OPACITY = 0.92;
 
 /** A highlight lying on the lawn: one tile, or a strip of them. */
 export class TileMark {
   readonly mesh: Mesh;
   private readonly material: ShaderMaterial;
 
+  /** True for a spell's area: the zombies' mark is drawn in vivid brain pink. */
+  private readonly vivid: boolean;
+
   /** `width` along X and `depth` along Z, in tiles. */
-  constructor(name: string, width: number, depth: number) {
+  constructor(name: string, width: number, depth: number, options: { vivid?: boolean } = {}) {
+    this.vivid = options.vivid ?? false;
     this.material = new ShaderMaterial({
       vertexShader: MARK_VERTEX,
       fragmentShader: MARK_FRAGMENT,
@@ -85,13 +93,16 @@ export class TileMark {
     this.mesh.position.x = x;
     this.mesh.position.z = z;
     const bad = state === 'bad';
-    const fill = bad ? PALETTE.denyRed : side === 'plants' ? PALETTE.sun : PALETTE.lanePurple;
+    // A vivid mark (a spell's area) on the zombies' side is brain pink with a pink rim, filled as
+    // strongly as the plants' yellow: the lane purple washes out to grey on the grass.
+    const vivid = this.vivid && side === 'zombies' && !bad;
+    const fill = bad ? PALETTE.denyRed : side === 'plants' ? PALETTE.sun : vivid ? VIVID_ZOMBIE_FILL : PALETTE.lanePurple;
     this.uniform<Color>('uFill').value.set(fill);
     // The outline is a little brighter than any lit surface, so it keeps a faint glow.
     this.uniform<Color>('uLine')
-      .value.set(bad ? PALETTE.denyRed : '#FFFFFF')
+      .value.set(bad ? PALETTE.denyRed : vivid ? VIVID_ZOMBIE_LINE : '#FFFFFF')
       .multiplyScalar(1.3);
-    this.uniform<number>('uFillOpacity').value = bad ? 0 : FILL_OPACITY;
+    this.uniform<number>('uFillOpacity').value = bad ? 0 : vivid ? VIVID_FILL_OPACITY : FILL_OPACITY;
     this.uniform<number>('uStripes').value = bad ? 1 : 0;
     this.mesh.visible = true;
   }
