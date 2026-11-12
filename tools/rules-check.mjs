@@ -194,6 +194,16 @@ const ROWS = [
     [`admin/proof/${G}`]: { touch: SV },
   }), 200],
   ['the old pin no longer reads', () => get(`${R}/saves/${A}/${hA}`), 401],
+  ['reset p29 to the SAME pin (999) with the proof: no prev needed', () => patch({
+    [`secrets/${A}`]: pinHash(A, '999'),
+    [`saves/${A}`]: { [pinHash(A, '999')]: rec(A, JSON.stringify(save(A, 'CheckA')), { prev: null }) },
+    [`board/${A}`]: row(A, 'CheckA'),
+    [`admin/proof/${G}`]: { touch: SV },
+  }), 200],
+  ['the pin holder without the proof still needs prev', () => patch({
+    [`saves/${A}/${pinHash(A, '999')}`]: rec(A, JSON.stringify(save(A, 'CheckA')), { prev: null }),
+    [`board/${A}`]: row(A, 'CheckA'),
+  }), 401],
   ['cleanup after: remove p29', () => patch(removeBody(A)), 200],
   ['cleanup after: remove p30', () => patch(removeBody(B)), 200],
 ];

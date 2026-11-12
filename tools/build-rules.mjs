@@ -106,8 +106,9 @@ export function block(R) {
           '.write': `${slotOk} && newData.exists() && $hash === ${secretAfter(3)}.val()`,
           // Compare-and-swap: replacing a stored record needs `prev` equal to its `ver`, so of
           // two devices writing from the same version only the first wins; the other reloads,
-          // merges and writes again.
-          '.validate': `newData.hasChildren(['save', 'touch', 'ver']) && $hash === ${secretAfter(3)}.val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val())`,
+          // merges and writes again. A grown-up proof in the same update waives it (a reset to
+          // the pin the player already has lands on the existing record).
+          '.validate': `newData.hasChildren(['save', 'touch', 'ver']) && $hash === ${secretAfter(3)}.val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val() || ${adminProof(3)})`,
           // The save is ONE JSON string (the client parses it strictly), bounded in size.
           save: { '.validate': `newData.isString() && newData.val().length <= ${MAX_SAVE_CHARS}` },
           touch: { '.validate': 'newData.val() === now' },

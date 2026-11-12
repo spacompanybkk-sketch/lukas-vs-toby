@@ -41,7 +41,7 @@
           "$hash": {
             ".read": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2/secrets/' + $slot).val() === $hash",
             ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && newData.exists() && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
-            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val())",
+            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val() || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
             "save": {
               ".validate": "newData.isString() && newData.val().length <= 20000"
             },
@@ -148,7 +148,7 @@
           "$hash": {
             ".read": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2test/secrets/' + $slot).val() === $hash",
             ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && newData.exists() && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
-            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val())",
+            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val() || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
             "save": {
               ".validate": "newData.isString() && newData.val().length <= 20000"
             },

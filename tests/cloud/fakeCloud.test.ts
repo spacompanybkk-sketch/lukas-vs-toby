@@ -338,6 +338,14 @@ describe('fix round 2: compare-and-swap and a grown-up code that cannot be delet
     expect(db.peek(`v2/saves/p01/${h1}/ver`)).toBe(VA);
   });
 
+  it('waives prev only with the grown-up proof in the same update', async () => {
+    const { r, db, h1 } = await world();
+    const proof = { [`admin/proof/${hex('a')}`]: { touch: SV } };
+    expect((await r.patch('v2', { ...write(h1, { ver: NEW }), [`admin/proof/${hex('b')}`]: { touch: SV } })).status).toBe(401);
+    expect((await r.patch('v2', { ...write(h1, { ver: NEW }), ...proof })).status).toBe(200);
+    expect(db.peek(`v2/saves/p01/${h1}/ver`)).toBe(NEW);
+  });
+
   it('never deletes the grown-up code, even with its proof', async () => {
     const { r, db } = await world();
     expect((await r.del('v2/admin/secret')).status).toBe(401);

@@ -183,6 +183,42 @@ describe('the grown-up gate', () => {
   });
 });
 
+describe('a grown-up reset and the compare-and-swap', () => {
+  it('a reset to the SAME pin succeeds: the grown-up proof waives prev', async () => {
+    const { cloud, db } = setup();
+    await cloud.setGrownUpCode(hex('a'));
+    const h = await pinHash('p04', '444');
+    await cloud.createPlayer({ ...saveFor('p04'), coins: 10 }, h, V1);
+    const s: Save = { ...saveFor('p04'), coins: 3, updatedAt: T0 + 1 };
+    expect(await cloud.resetPin('p04', hex('a'), h, s, V2)).toBe('ok');
+    expect(await cloud.loadRecord('p04', h)).toEqual({ save: s, ver: V2 });
+    expect(db.peek(`v2/saves/p04/${h}/prev`)).toBeNull();
+  });
+
+  it('a reset to a different pin still removes the old record', async () => {
+    const { cloud, db } = setup();
+    await cloud.setGrownUpCode(hex('a'));
+    const old = await pinHash('p04', '444');
+    const fresh = await pinHash('p04', '555');
+    await cloud.createPlayer(saveFor('p04'), old, V1);
+    expect(await cloud.resetPin('p04', hex('a'), fresh, { ...saveFor('p04'), updatedAt: T0 + 1 }, V2)).toBe('ok');
+    expect(db.peek(`v2/saves/p04/${old}`)).toBeNull();
+    expect(db.peek('v2/saves/p04')).toEqual({ [fresh]: expect.objectContaining({ ver: V2 }) });
+  });
+
+  it('a pin holder without the proof still needs prev', async () => {
+    const { cloud } = setup();
+    await cloud.setGrownUpCode(hex('a'));
+    const h = await pinHash('p04', '444');
+    await cloud.createPlayer(saveFor('p04'), h, V1);
+    const s: Save = { ...saveFor('p04'), updatedAt: T0 + 1 };
+    expect(await cloud.writeSave(s, h, V2, null)).toBe('conflict');
+    // A wrong grown-up code does not waive it either.
+    expect(await cloud.resetPin('p04', hex('b'), h, s, V2)).toBe('wrong-pin');
+    expect(await cloud.writeSave(s, h, V2, V1)).toBe('ok');
+  });
+});
+
 describe('failures', () => {
   it('no network is offline for every call', async () => {
     const { cloud, db } = setup();
