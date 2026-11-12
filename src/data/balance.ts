@@ -203,7 +203,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     kernelPult: {
       recharge: 5, hp: 300, armor: 0, speed: 0,
       shot: {
-        kind: 'kernel', damage: 14, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
+        kind: 'kernel', damage: 13, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
         status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
       },
     },
@@ -278,7 +278,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
     rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
   },
-  trickle: { plants: 2.5, zombies: 13 },
+  trickle: { plants: 2.5, zombies: 14 },
   bountyShare: { plants: 0.5, zombies: 0.5 },
   baseShotFactor: 0.3,
   hitRadius: 0.35,

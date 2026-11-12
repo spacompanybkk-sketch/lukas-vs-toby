@@ -50,9 +50,9 @@ export const DIFFICULTY: DifficultyTable = {
     zombies: { skill: 'medium', income: { human: 1.5, computer: 1 }, randomShare: 0 },
   },
   hard: {
-    plants: { skill: 'hard', income: { human: 1, computer: 1.15 }, randomShare: 0 },
+    plants: { skill: 'hard', income: { human: 1, computer: 1.05 }, randomShare: 0 },
     // Hard but not hopeless (Michal, 2026-11-12): steady waves win 15-40%.
-    zombies: { skill: 'hard', income: { human: 1.3, computer: 1.1 }, randomShare: 0 },
+    zombies: { skill: 'hard', income: { human: 1.4, computer: 1.1 }, randomShare: 0 },
   },
 };
 
