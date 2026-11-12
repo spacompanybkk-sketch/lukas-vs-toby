@@ -1,19 +1,22 @@
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { PHASE1_CARDS, UNIT_INFO, factionOf, priceOf } from '../data/units';
+import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
 import type { UnitInfo } from '../data/units';
-import { abilityTimerAtSpawn, announceSpawn, tickAbilities } from './abilities';
+import { tickAbilities } from './abilities';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { restoreState, hashState, snapshotState } from './hash';
 import { isStanding, levelScale, statsFor } from './lookup';
 import { tickMovement } from './movement';
+import { spawnUnit } from './spawn';
 import { tickStatuses } from './status';
 import { LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
-  CardKey, Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit, UnitKey,
+  CardKey, Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit,
 } from './types';
+
+export { spawnUnit } from './spawn'; // where the tests and scenes look for it
 
 type PlaceCommand = Extract<Command, { type: 'place' }>;
 type MergeCommand = Extract<Command, { type: 'merge' }>;
@@ -40,36 +43,6 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     incomeMultiplier: { ...c.incomeMultiplier },
     suddenDeath: c.suddenDeath,
   };
-}
-
-/**
- * Creates a level-1 unit and adds it to the state. It checks no placement rule and charges
- * nobody: `Match.place` does both of those first, and tests use this to set a scene. A card's
- * `spent` is its price; a unit that is not a card (the Bone Minion) has spent nothing. It starts
- * with no status, no stacks and no owner.
- */
-export function spawnUnit(
-  s: SimState, b: Balance, key: UnitKey, lane: number, x: number, events?: SimEvent[],
-): Unit {
-  const stats = statsFor(b, key);
-  const faction = factionOf(key);
-  const unit: Unit = {
-    id: s.nextId, key, faction, lane, x, level: 1,
-    hp: stats.hp, maxHp: stats.hp, spent: priceOf(key), armor: stats.armor,
-    meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
-    shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
-    abilityTimer: abilityTimerAtSpawn(stats),
-    blocked: false,
-    stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0,
-    stacks: 0, ownerId: null,
-  };
-  s.nextId += 1;
-  s.units.push(unit);
-  if (events) {
-    events.push({ type: 'unitSpawned', unitId: unit.id, key, faction, lane, x });
-    announceSpawn(unit, stats, events);
-  }
-  return unit;
 }
 
 /** One match. All game rules run in `step`; everything else only reads `state`. */

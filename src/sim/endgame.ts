@@ -1,6 +1,6 @@
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { damageBase } from './combat';
+import { damageBase } from './damage';
 import { TICKS_PER_SECOND } from './types';
 import type { Faction, SimEvent, SimState } from './types';
 

@@ -8,27 +8,15 @@
 
 import { seconds } from '../data/balance';
 import type { Balance, UnitStats } from '../data/balance';
-import { damageUnit, explode } from './combat';
+import { damageUnit, explode } from './damage';
 import { isStanding, levelScale, nearestEnemyAhead } from './lookup';
+import { abilityUsed as used } from './spawn';
 import { applyStatus, canAct } from './status';
-import type { AbilityName, Projectile, SimEvent, SimState, Unit } from './types';
+import type { Projectile, SimEvent, SimState, Unit } from './types';
 
 type Mine = NonNullable<UnitStats['mine']>;
 type Fuse = NonNullable<UnitStats['fuse']>;
 type Leap = NonNullable<UnitStats['leap']>;
-
-/** The `abilityTimer` a unit is placed with: its Sun interval, a mine's arming time, a fuse. */
-export function abilityTimerAtSpawn(stats: UnitStats): number {
-  if (stats.sun) return seconds(stats.sun.interval);
-  if (stats.mine) return seconds(stats.mine.armSeconds);
-  if (stats.fuse) return seconds(stats.fuse.seconds);
-  return 0; // a shield, a leap: ready from the start
-}
-
-/** What a unit announces the moment it is placed: a Cherry Bomber lights its fuse. */
-export function announceSpawn(u: Unit, stats: UnitStats, events: SimEvent[]): void {
-  if (stats.fuse) used(u, 'fuse', null, events);
-}
 
 /**
  * Step stage, after the plant base's defence and before projectiles: every unit that is standing
@@ -48,15 +36,27 @@ export function tickAbilities(s: SimState, b: Balance, events: SimEvent[]): void
 }
 
 /**
+ * Whether a Potato Mine has armed. The flag is kept in `stacks` (1 once armed), which no plant
+ * uses otherwise; read and set it only through `isArmed` and `arm`.
+ */
+export function isArmed(u: Unit): boolean {
+  return u.stacks === 1;
+}
+
+function arm(u: Unit): void {
+  u.stacks = 1;
+}
+
+/**
  * Potato Mine. Its `abilityTimer` counts down from `armSeconds`; the tick it is first at 0 the
- * mine arms (`abilityUsed 'arm'`, and `stacks` becomes 1, so it arms only once). Armed, on the
+ * mine arms (`abilityUsed 'arm'`, see `isArmed`, so it arms only once). Armed, on the
  * first tick a standing zombie is within `reach` ahead in its lane, it goes off: `abilityUsed
  * 'trigger'` with that zombie, a blast of `damage` within `radius`, and the mine is spent.
  */
 function potatoMine(s: SimState, b: Balance, u: Unit, mine: Mine, events: SimEvent[]): void {
   if (u.abilityTimer > 0) return;
-  if (u.stacks === 0) {
-    u.stacks = 1;
+  if (!isArmed(u)) {
+    arm(u);
     used(u, 'arm', null, events);
   }
   const victim = nearestEnemyAhead(s, u.faction, u.lane, u.x, mine.reach);
@@ -121,12 +121,8 @@ export function ignitePea(
 
 /** A burning projectile sets whom it damages burning (see `ignitePea`). */
 export function burnOnHit(s: SimState, p: Projectile, u: Unit, events: SimEvent[]): void {
-  if (!p.burning || !(p.burnTicks > 0)) return;
+  if (!p.burning || p.burnTicks <= 0) return;
   applyStatus(s, u, 'burn', p.burnTicks, p.burnDps, p.ownerId, events);
-}
-
-function used(u: Unit, ability: AbilityName, targetId: number | null, events: SimEvent[]): void {
-  events.push({ type: 'abilityUsed', unitId: u.id, ability, lane: u.lane, x: u.x, targetId });
 }
 
 /**

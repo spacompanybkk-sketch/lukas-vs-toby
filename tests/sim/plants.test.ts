@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance, UnitStats } from '../../src/data/balance';
+import { isArmed } from '../../src/sim/abilities';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { PlantKey, SimEvent, Unit } from '../../src/sim/types';
 import { classicBalance, eventsOf, merge, place } from './helpers';
@@ -134,6 +135,23 @@ describe('Potato Mine', () => {
     expect(eventsOf(events, 'explosion')).toEqual([]);
     expect(mine.hp).toBeLessThan(150);
     expect(mine.hp).toBe(150 - 40 * eventsOf(events, 'unitAttacked').filter((e) => e.targetId === mine.id).length);
+  });
+
+  it('armed, it goes off under a lone zombie exactly 0.6 ahead, and not under one 0.7 ahead', () => {
+    const m = fresh();
+    const mine = spawnUnit(m.state, m.balance, 'potatoMine', 0, 0.4); // 1.0 - 0.4 is exactly 0.6 in floating point
+    mine.abilityTimer = 1;
+    expect(isArmed(mine)).toBe(false);
+    m.step();
+    expect(isArmed(mine)).toBe(true);
+    const far = dummy(m, 0, 1.1); // 0.7 ahead
+    expect(abilities(steps(m, 30))).toEqual([]);
+    expect(far.hp).toBe(1000);
+    m.state.units = m.state.units.filter((u) => u !== far);
+    const near = dummy(m, 0, 1.0); // 0.6 ahead
+    expect(abilities(m.step())).toEqual([
+      { type: 'abilityUsed', unitId: mine.id, ability: 'trigger', lane: 0, x: 0.4, targetId: near.id },
+    ]);
   });
 
   it.each(['stun', 'tied'] as const)('%s, it does not go off; it does on the first tick it can act again', (kind) => {
@@ -292,6 +310,15 @@ describe('Torchwood', () => {
     expect(eventsOf(landing, 'unitDamaged')[0]).toMatchObject({ amount: 40 }); // the factor does not grow with the level
   });
 
+  it('stunned, it still sets a pea alight (igniting is passive, like a ready shield)', () => {
+    const { m, torch, z } = scene();
+    torch.stun = 200;
+    const landing = stepUntil(m, hit);
+    expect(torch.stun).toBeGreaterThan(0);
+    expect(eventsOf(landing, 'projectileHit')).toMatchObject([{ targetId: z.id, burning: true }]);
+    expect(eventsOf(landing, 'unitDamaged')[0]).toMatchObject({ unitId: z.id, amount: 40 });
+  });
+
   it('sets a pea alight once, however many Torchwoods it passes', () => {
     const { m, z } = scene();
     spawnUnit(m.state, m.balance, 'torchwood', 0, 3.5);
@@ -404,6 +431,22 @@ describe('Cherry Bomber', () => {
     expect(eventsOf(events, 'unitDied')).toMatchObject([{ unitId: cherry.id, cause: 'damage' }]);
     expect(eventsOf(events, 'explosion')).toEqual([]);
     expect(z.hp).toBe(1000);
+  });
+
+  it('killed on the very tick its fuse reaches 0, it does not go off (review-focus 1)', () => {
+    const m = fresh();
+    const cherry = spawnUnit(m.state, m.balance, 'cherryBomber', 2, 4.5);
+    const eater = spawnUnit(m.state, m.balance, 'brainEater', 2, 4.9);
+    cherry.abilityTimer = 1;
+    cherry.hp = 1;
+    eater.meleeTimer = 1; // its bite comes on the same tick, and bites come before abilities
+    eater.shotTimer = 99;
+    const events = m.step();
+    expect(cherry.abilityTimer).toBe(0);
+    expect(eventsOf(events, 'unitAttacked')).toMatchObject([{ unitId: eater.id, targetId: cherry.id }]);
+    expect(eventsOf(events, 'unitDied')).toMatchObject([{ unitId: cherry.id, cause: 'damage' }]);
+    expect(eventsOf(events, 'explosion')).toEqual([]);
+    expect(eater.hp).toBe(400);
   });
 
   it.each(['stun', 'tied'] as const)('%s mid-fuse, the fuse stands still until it can act again', (kind) => {

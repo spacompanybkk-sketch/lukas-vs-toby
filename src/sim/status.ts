@@ -11,7 +11,7 @@
  */
 
 import type { Balance } from '../data/balance';
-import { damageUnit } from './combat';
+import { damageUnit } from './damage';
 import { isStanding } from './lookup';
 import { TICKS_PER_SECOND } from './types';
 import type { SimEvent, SimState, StatusKind, Unit } from './types';

@@ -13,8 +13,9 @@
  */
 
 import { seconds } from '../data/balance';
-import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance';
+import type { Balance, MeleeStats, ShotStats } from '../data/balance';
 import { burnOnHit, ignitePea } from './abilities';
+import { damageBase, damageUnit, explode } from './damage';
 import { payBounty } from './economy';
 import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
 import { nextRandom } from './rng';
@@ -22,8 +23,7 @@ import { applyStatus, canAct } from './status';
 import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
 import type { Faction, Projectile, SimEvent, SimState, Unit } from './types';
 
-/** A blast: a death blast, a Potato Mine or a Cherry Bomber going off. */
-type Blast = Pick<NonNullable<UnitStats['deathBlast']>, 'damage' | 'radius'>;
+export { damageBase, damageUnit, explode } from './damage'; // where the tests and older callers look for them
 
 /**
  * Step stage 4: units attack, in ascending id. Attack timers are only read and reset here;
@@ -202,7 +202,7 @@ function advance(p: Projectile): number {
 function flyStraight(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
   const from = advance(p);
   const target = nearestEnemyAhead(s, p.faction, p.lane, from, p.speed + b.hitRadius);
-  if (p.flight === 'straight') ignitePea(s, b, p, from, target ? target.x : p.x, events);
+  ignitePea(s, b, p, from, target ? target.x : p.x, events); // it leaves alone all but a straight plant pea
   if (target) {
     if (p.flight === 'lobbed') {
       p.x = target.x; // it comes down on the enemy it met, so the view draws it there
@@ -322,22 +322,6 @@ function hitBase(s: SimState, p: Projectile, side: Faction, x: number, amount: n
 }
 
 /**
- * Takes `amount` less the unit's armor off its health, at least 1, and reports it. With
- * `ignoreArmor` (poison, burn) the armor takes nothing off.
- */
-export function damageUnit(s: SimState, u: Unit, amount: number, events: SimEvent[], ignoreArmor = false): void {
-  const dealt = Math.max(1, amount - (ignoreArmor ? 0 : u.armor));
-  u.hp -= dealt;
-  events.push({ type: 'unitDamaged', unitId: u.id, amount: dealt, hp: u.hp });
-}
-
-/** Takes `amount` off a base and reports it. The health may go below zero; the endgame reads it. */
-export function damageBase(s: SimState, side: Faction, amount: number, lane: number | null, events: SimEvent[]): void {
-  s.baseHp[side] -= amount;
-  events.push({ type: 'baseDamaged', faction: side, amount, hp: s.baseHp[side], lane });
-}
-
-/**
  * Step stage 6: every unit that is down (hp not above 0, see `isStanding`) is removed, in
  * ascending id, with `unitDied` and then its bounty. A dying unit with a death blast then
  * explodes, damaging every standing enemy within its radius. Repeats until everyone left is
@@ -365,22 +349,5 @@ export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void
       if (blast) explode(s, b, u, blast, events);
     }
     cause = 'blast';
-  }
-}
-
-/**
- * A blast (a death blast, a mine, a cherry): `explosion`, then every standing enemy within `radius`
- * (straight-line distance, lanes one tile apart) takes `damage` times the source's special level
- * curve, in id order. Game rule: a unit already down is skipped, as it is for every other attack
- * (see `nearestEnemyAhead`).
- */
-export function explode(s: SimState, b: Balance, source: Unit, blast: Blast, events: SimEvent[]): void {
-  events.push({ type: 'explosion', lane: source.lane, x: source.x, radius: blast.radius, sourceKey: source.key });
-  const amount = blast.damage * levelScale(b, source.faction, source.level, 'special');
-  for (const u of s.units) {
-    if (u.faction === source.faction || !isStanding(u)) continue;
-    const dx = u.x - source.x;
-    const dLane = u.lane - source.lane;
-    if (Math.sqrt(dx * dx + dLane * dLane) <= blast.radius) damageUnit(s, u, amount, events);
   }
 }
