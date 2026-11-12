@@ -35,6 +35,9 @@ export interface Viewport {
 export const CARD_ASPECT = 1.27;
 const ROW_MAX = 5;
 const CARD_MAX = 124;
+/** Never smaller than this, whatever the window: a card stays 64 x 81, a spell 44 square. */
+export const CARD_MIN = 64;
+export const SPELL_MIN = 44;
 /** The tray's padding left and right (bevel + 10 px each side) and top and bottom (bevel + 8). */
 const TRAY_PAD_X = 28;
 const TRAY_PAD_Y = 24;
@@ -85,7 +88,9 @@ function heightFor(rows: 1 | 2, card: number, powers: boolean): number {
 /** The y (CSS px from the top) of the near edge of lanes 0–4, as the battle camera frames them. */
 export function lawnFrontY(width: number, height: number): number {
   if (!(width > 0 && height > 0)) return height * 0.66;
-  const camera = new PerspectiveCamera(30, width / height, 2, 200);
+  // CameraRig sets the field of view itself (the battle camera's), and near/far do not move
+  // where a point lands on screen, so a default camera frames the lawn exactly as the battle's.
+  const camera = new PerspectiveCamera();
   new CameraRig(camera).frameLawn(width / height);
   camera.updateMatrixWorld(true);
   let y = 0;
@@ -122,12 +127,19 @@ export function trayLayout(count: number, view: Viewport, frontY = lawnFrontY(vi
 
   const one = best(1);
   const two = count > ROW_MAX ? best(2) : -Infinity;
-  const rows: 1 | 2 = two > one ? 2 : 1;
-  const card = Math.max(rows === 2 ? two : one, 1);
+  let rows: 1 | 2 = two > one ? 2 : 1;
+  let card = rows === 2 ? two : one;
+  if (card < CARD_MIN) {
+    // A window smaller than the supported range: keep everything tappable and let the bar reach
+    // up over the lawn's front lip instead. One row if it fits across at the minimum, else two.
+    card = CARD_MIN;
+    const oneFitsAcross = widthFor(1, count, CARD_MIN, gap, barGap, powers) <= availW;
+    rows = oneFitsAcross || count <= ROW_MAX ? 1 : 2;
+  }
   const hero = Math.floor(heroFor(rows, card));
+  const spell = Math.max(SPELL_MIN, Math.floor((hero - gap - LIP) / 2));
   return {
-    rows, cols: Math.max(1, Math.ceil(count / rows)), card, gap, hero,
-    spell: Math.floor((hero - gap - LIP) / 2), barGap,
+    rows, cols: Math.max(1, Math.ceil(count / rows)), card, gap, hero: Math.max(hero, spell), spell, barGap,
   };
 }
 
@@ -166,8 +178,10 @@ export function useViewport(): Viewport {
   const [view, setView] = useState<Viewport>(() => current ?? (current = measure()));
   useEffect(() => {
     if (listeners.size === 0) {
+      // Safari's bars sliding in and out change the visual viewport without a window resize.
       window.addEventListener('resize', onResize);
       window.addEventListener('orientationchange', onResize);
+      window.visualViewport?.addEventListener('resize', onResize);
     }
     listeners.add(setView);
     onResize();
@@ -177,6 +191,7 @@ export function useViewport(): Viewport {
       if (listeners.size === 0) {
         window.removeEventListener('resize', onResize);
         window.removeEventListener('orientationchange', onResize);
+        window.visualViewport?.removeEventListener('resize', onResize);
       }
     };
   }, []);

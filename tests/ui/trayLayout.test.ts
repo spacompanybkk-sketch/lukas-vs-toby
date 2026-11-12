@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lawnFrontY, trayLayout } from '../../src/ui/hud/trayLayout';
+import { CARD_MIN, SPELL_MIN, lawnFrontY, trayLayout } from '../../src/ui/hud/trayLayout';
 
 // iPad screens, iPad Safari with its bars showing, and two laptops.
 const SIZES = [
@@ -36,5 +36,17 @@ describe('trayLayout', () => {
     expect(lawnFrontY(1024, 768)).toBeCloseTo(495, -1);
     expect(lawnFrontY(1440, 900)).toBeCloseTo(614, -1);
     expect(lawnFrontY(1024, 650)).toBeLessThan(lawnFrontY(1024, 768));
+  });
+
+  it('never goes below 64 px cards and 44 px spells, even on a window smaller than supported (900x600)', () => {
+    for (const [w, h] of [[900, 600], [800, 500], [1024, 560]] as const) {
+      const l = trayLayout(10, view(w, h));
+      expect(l.card, `${w}x${h}`).toBeGreaterThanOrEqual(CARD_MIN);
+      expect(l.card * 1.27, `${w}x${h}`).toBeGreaterThanOrEqual(80);
+      expect(l.spell, `${w}x${h}`).toBeGreaterThanOrEqual(SPELL_MIN);
+      expect(l.hero, `${w}x${h}`).toBeGreaterThanOrEqual(l.spell);
+    }
+    // At 900 px ten cards of 64 px do not fit across beside the powers, so they fold into two rows.
+    expect(trayLayout(10, view(900, 600)).rows).toBe(2);
   });
 });
