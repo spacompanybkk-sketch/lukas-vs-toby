@@ -13,10 +13,10 @@ import { bothSides, lv, round, span } from './kit';
 //
 // Every level adds something the lawn camera can see, above the stump or round it:
 //
-//   2  a taller flame with side tongues; a leafy sprout on the stump
+//   2  a taller flame with side tongues; a leafy sprout and a red-capped mushroom on the stump
 //   3  iron bands round the stump, at its foot and round the rim
 //   4  a blue-white crystal flame; crystal bands
-//   5  gold bands and a tall, bright flame; warm lights in the eyes
+//   5  a gold foot band and a crown of gold points round a tall, bright flame; warm lights in the eyes
 
 const MOUTH = '#2A1608';
 const TOOTH = '#F4E6C8';
@@ -102,7 +102,16 @@ export const torchwood: ModelDef = {
         span(3, 3.5, 1.5, 6, 3, 3.5, 'barkDark'),
         span(-1, 0, 7, 9, 3.5, 4, 'barkDark'),
         // Level 3 up: bands round the stump, at the foot and round the rim, with a rivet in front.
-        ...lv(3, 5, [...round(0, 0, [[4.5, 3.5], [3.5, 4.5]], 1.5, 2.5, BAND), ...round(0, 0, [[4.5, 3.5], [3.5, 4.5]], 8, 9, BAND)]),
+        ...lv(3, 4, [...round(0, 0, [[4.5, 3.5], [3.5, 4.5]], 1.5, 2.5, BAND), ...round(0, 0, [[4.5, 3.5], [3.5, 4.5]], 8, 9, BAND)]),
+        // Level 5: a gold band at the foot and a crown of four gold points round
+        // the flame: the stump stays wood, the gold is the crown.
+        ...lv(5, 5, [
+          ...round(0, 0, [[4.5, 3.5], [3.5, 4.5]], 1.5, 2.5, 'levelGold'),
+          span(3, 4, 9, 10.5, -0.5, 0.5, 'levelGold'),
+          span(-4, -3, 9, 10.5, -0.5, 0.5, 'levelGold'),
+          span(-0.5, 0.5, 9, 10.5, 3, 4, 'levelGold'),
+          span(-0.5, 0.5, 9, 10.5, -4, -3, 'levelGold'),
+        ]),
         ...lv(3, 4, [span(4.5, 5, 8.25, 8.75, -0.25, 0.25, 'levelIronDark')]),
         ...lv(5, 5, [span(4.5, 5, 8.25, 8.75, -0.25, 0.25, 'fireLight', { emissive: 2 })]),
         // The cut top (painted over the band): pale wood with a darker ring in it and the bark round the rim.
@@ -114,8 +123,14 @@ export const torchwood: ModelDef = {
         span(3.5, 4, 3, 4, -1.5, 1.5, MOUTH),
         span(3.75, 4, 3.5, 4, -1, 1, TOOTH),
         ...bothSides([span(4, 5, 7.5, 8, 0.25, 1.25, 'barkDark'), span(4, 5, 8, 8.5, 1.25, 2.5, 'barkDark')]),
-        // Level 2 up: a leafy sprout on the near flank.
+        // Level 2 up: a leafy sprout on the near flank, and a red-capped mushroom at its foot.
         ...lv(2, 5, [span(-1.5, -0.5, 6, 6.5, 4, 5, 'stem'), span(-2, 0, 6.5, 7, 4.5, 5.5, 'leaf'), span(-2.5, -1.5, 7, 7.5, 5, 5.5, 'leafLight')]),
+        ...lv(2, 5, [
+          span(1.5, 2.5, 2.5, 3.5, 4, 5, 'bone'),
+          span(1, 3, 3.5, 4.5, 4, 6, 'cherry'),
+          span(1.5, 2, 4, 4.5, 5, 5.5, 'tooth'),
+          span(2.5, 3, 3.5, 4, 5.5, 6, 'tooth'),
+        ]),
       ],
     },
     {

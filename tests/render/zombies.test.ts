@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getModelDef, modelKeys } from '../../src/render/models/registry';
-import { BIPED_PARTS, bipedModel, type BipedSpec } from '../../src/render/models/zombies/biped';
+import { Euler, MathUtils, Quaternion, Vector3 } from 'three';
+import { BIPED_PARTS, HEAD_TIP, HEAD_TURN, SLOW_STEP, atLevels, bipedModel, headTurn, mirrorZ, walkFor, type BipedSpec } from '../../src/render/models/zombies/biped';
 import { buildParts } from '../../src/render/voxel/build';
 import {
   bowDraw,
@@ -91,6 +92,44 @@ describe('bipedModel', () => {
     expect(bipedModel(tiny({ clips: { melee: bite } })).clips.melee).toBe(bite);
   });
 
+  it('turns the head HEAD_TURN about the vertical and tips it back HEAD_TIP, whatever the slouch', () => {
+    const rad = MathUtils.degToRad;
+    const want = new Quaternion()
+      .setFromEuler(new Euler(0, rad(HEAD_TURN), 0))
+      .multiply(new Quaternion().setFromEuler(new Euler(0, 0, rad(-HEAD_TIP))));
+    for (const slouch of [0, 5, 10, 20, 25]) {
+      const head = bipedModel(tiny({ slouch })).parts.find((part) => part.name === 'head');
+      expect(head?.rot).toEqual(headTurn(slouch));
+      const [x, y, z] = (head?.rot ?? [0, 0, 0]).map(rad) as [number, number, number];
+      // The torso's slouch, then the head's own turn: where the head ends up.
+      const got = new Quaternion()
+        .setFromEuler(new Euler(0, 0, rad(slouch)))
+        .multiply(new Quaternion().setFromEuler(new Euler(x, y, z, 'XYZ')));
+      expect(got.angleTo(want), `slouch ${slouch}`).toBeLessThan(rad(0.05));
+      // The face (−X) looks towards the camera's side (+Z) and a little up.
+      const face = new Vector3(-1, 0, 0).applyQuaternion(got);
+      expect(face.z).toBeCloseTo(Math.sin(rad(HEAD_TURN)) * Math.cos(rad(HEAD_TIP)), 3);
+      expect(face.y).toBeCloseTo(Math.sin(rad(HEAD_TIP)), 3);
+    }
+  });
+
+  it('mirrorZ puts the boxes on the other side of the body, and atLevels gates a run of boxes', () => {
+    const box = { at: [-2, 1, 0.5] as [number, number, number], size: [1, 2, 3] as [number, number, number], color: 'skin', emissive: 2 };
+    const [mirrored] = mirrorZ([box]);
+    expect(mirrored).toEqual({ ...box, at: [-2, 1, -3.5] });
+    // A box across the middle stays in the same place; mirroring twice gives the box back.
+    expect(mirrorZ([{ ...box, at: [0, 0, -1.5] }])[0]?.at).toEqual([0, 0, -1.5]);
+    expect(mirrorZ(mirrorZ([box]))).toEqual([box]);
+    expect(box.at).toEqual([-2, 1, 0.5]);
+    const gated = atLevels(3, 4, [box, { ...box, minLevel: 1 }]);
+    expect(gated.map((b) => [b.minLevel, b.maxLevel])).toEqual([
+      [3, 4],
+      [3, 4],
+    ]);
+    expect(gated[0]?.emissive).toBe(2);
+    expect('minLevel' in box).toBe(false);
+  });
+
   it('refuses an extra part whose parent is not a part', () => {
     const spec = tiny();
     spec.extra = [...(spec.extra ?? []), { name: 'hat', parent: 'nose', pivot: [0, 0, 0], boxes: [] }];
@@ -115,10 +154,36 @@ describe('zombie clips', () => {
     expect(Math.max(...heights) - Math.min(...heights)).toBeCloseTo(1, 1);
     // Roll ±4°.
     expect(Math.abs(get(quarter, 'root').rx)).toBeCloseTo((4 * Math.PI) / 180, 3);
-    // Seamless.
+    // Seamless: every channel of every part, not only the swing.
     const start = sampled(walk, 0);
     const end = sampled(walk, 0.8);
-    for (const name of CORE) expect(get(end, name).rz).toBeCloseTo(get(start, name).rz, 6);
+    for (const name of CORE) {
+      for (const field of Object.keys(get(start, name)) as (keyof PartPose)[]) {
+        expect(Math.abs(get(end, name)[field] - get(start, name)[field]), `${name}.${field}`).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it('walk: the arms reach forward and back and sweep round, so the swing reads from above', () => {
+    const quarter = sampled(zombieWalk(0.8), 0.2);
+    // One hand a voxel and a half ahead, the other as far behind.
+    expect(get(quarter, 'armL').px).toBeCloseTo(1.5, 6);
+    expect(get(quarter, 'armR').px).toBeCloseTo(-1.5, 6);
+    expect(Math.abs(get(quarter, 'armL').ry)).toBeGreaterThan(5 * (Math.PI / 180));
+  });
+
+  it('walk: zombies at a slow pace bob a voxel and a half and roll 6 degrees, since from above the bob and roll carry the walk', () => {
+    expect(walkFor(SLOW_STEP)).toEqual({ bob: 1.5, roll: 6 });
+    expect(walkFor(0.6)).toEqual({ bob: 1, roll: 4 });
+    const slow = bipedModel(tiny({ stepSeconds: 0.9 })).clips.walk as Clip;
+    const heights = Array.from({ length: 90 }, (_, i) => get(sampled(slow, (i / 90) * 0.9), 'root').py);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeCloseTo(1.5, 2);
+    expect(Math.abs(get(sampled(slow, 0.9 / 4), 'root').rx)).toBeCloseTo(6 * (Math.PI / 180), 4);
+    for (const key of ['brainEater', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'necromancer', 'tridentZombie', 'brainRot']) {
+      const walk = getModelDef(key).clips.walk as Clip;
+      const hs = Array.from({ length: 100 }, (_, i) => get(sampled(walk, (i / 100) * walk.duration), 'root').py);
+      expect(Math.max(...hs) - Math.min(...hs), key).toBeGreaterThan(1.45);
+    }
   });
 
   it('walk: a bigger stride when asked, for the runners', () => {
@@ -223,6 +288,14 @@ describe('zombie clips', () => {
 
     const lasso = lassoThrow();
     expect(lasso.parts).toContain('armR');
+    // Nothing jumps at the release (0.42 s): every channel carries on from the whirl.
+    const before = sampled(lasso, 0.42 - 1e-6);
+    const after = sampled(lasso, 0.42 + 1e-6);
+    for (const name of lasso.parts ?? []) {
+      for (const field of Object.keys(get(before, name)) as (keyof PartPose)[]) {
+        expect(Math.abs(get(after, name)[field] - get(before, name)[field]), `${name}.${field}`).toBeLessThan(1e-3);
+      }
+    }
     for (const clip of [shield, bow, pop, staff, lasso]) {
       expect(clip.loop).toBe(false);
       const end = sampled(clip, clip.duration);
@@ -276,11 +349,12 @@ describe('the zombies', () => {
     for (const [key, step] of Object.entries(STEPS)) expect(getModelDef(key).clips.walk?.duration, key).toBeCloseTo(step);
   });
 
-  it('the Bone Minion is half a zombie and the same at every level', () => {
+  it('the Bone Minion is half a zombie with one look, and says so', () => {
     const def = getModelDef('boneMinion');
-    expect(def.envelope).toEqual([6, 8, 5]);
-    expect(def.parts.flatMap((part) => part.boxes).every((box) => box.minLevel === undefined && box.maxLevel === undefined)).toBe(true);
-    expect(def.trim).toEqual([]);
+    expect(def.envelope).toEqual([6, 8, 6]);
+    // What one look means is checked for every flagged model in models.test.ts.
+    expect(def.singleLevel).toBe(true);
+    expect(modelKeys().filter((key) => getModelDef(key).singleLevel)).toEqual(['boneMinion']);
   });
 
   it('Hot Topic bites fast, snapping its hanging jaw shut', () => {

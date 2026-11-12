@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Trident Zombie, the siege. Faces −X. A big-shouldered, blue-grey zombie from the sea:
 // a broad bare chest with a tattered purple sash, barnacles on its shoulders, fins for
@@ -23,6 +23,8 @@ const head: Box[] = [
   { at: [-4, 9, -2.5], size: [5.5, 5, 5], color: 'seaBlue' },
   { at: [-3.5, 9, -3], size: [4.5, 5, 6], color: 'seaBlue' },
   { at: [-3.5, 8.5, -2.5], size: [4.5, 0.5, 5], color: 'seaBlueDark' },
+  // A pale plate behind the eyes: blue-grey skin is dark enough to swallow black eyes.
+  facePlate(-4, 10.5, 14, -2.5, 2.5, 'seaBlueLight'),
   // Pouting fish lips, and a fin for an ear on the camera's side.
   { at: [-4.5, 9.5, -1.5], size: [0.5, 1, 2.5], color: 'brainPink' },
   { at: [-4, 9.5, -1], size: [0.5, 0.5, 1.5], color: 'mouthDark' },
@@ -99,19 +101,13 @@ export const tridentZombie = bipedModel({
   ],
   joints: { torso: [0, 5, 0], head: [-1.5, 9, 0], armL: [-0.5, 8, 4.25], armR: [-0.5, 8, -4.25], legL: [0, 4, 1.5], legR: [0, 4, -1.5] },
   // Heavy: a long, rolling stride.
-  walk: { legs: 22, arms: 10, bob: 1.2, roll: 6 },
+  walk: { legs: 22, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',
       parent: 'head',
       pivot: [-4.25, 12, 0],
-      boxes: [
-        { at: [-4.5, 10.5, 0.5], size: [0.5, 3, 2.5], color: 'eye' },
-        { at: [-4, 10.5, 2.5], size: [1.5, 3, 1], color: 'eye' },
-        { at: [-4.5, 12.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-4.5, 11, -2.5], size: [0.5, 2, 1.5], color: 'eye' },
-        { at: [-4.5, 12, -2.5], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-      ],
+      boxes: zombieEyes({ face: -4, y: 10.5, near: [2.5, 3], far: [2, 2] }),
     },
     {
       // The trident, upright through the right fist (where it leaves the face clear) (the slouch turned out of it).

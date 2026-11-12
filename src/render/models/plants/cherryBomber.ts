@@ -15,9 +15,10 @@ import { bothSides, lv, span } from './kit';
 // Every level adds something the lawn camera can see, on top or out to the side:
 //
 //   2  bigger cherries, longer stems and a bigger leaf
-//   3  an iron cap on each cherry, down over its brows
+//   3  an iron cap on each cherry's crown, behind its brows
 //   4  glowing crystal shells over the cherries' near shoulders; crystal caps
-//   5  gold shells and caps, a gold leaf, two fuses each, warm lights in the eyes
+//   5  gold caps and gold rings on the stems (the cherries stay red), two fuses each, warm
+//      lights in the eyes
 
 /** The front cherry's centre line; the back one is at -CX. */
 const CX = 2.5;
@@ -67,13 +68,16 @@ function ball(cx: number, size: Size): Box[] {
   ];
 }
 
-/** Level 3 up: a cap down over the brows; level 4 up, a shell over the near shoulder; level 5, a second fuse. */
+/**
+ * Level 3 up: a cap sitting on the crown, behind the brows, so the brows and eyes stay in
+ * view; level 4, a crystal shell over the near shoulder; level 5, a second fuse (the cherry
+ * itself stays red: the gold is the cap).
+ */
 function armour(cx: number): Box[] {
   const { r, w, y1, top } = BIG;
   return [
-    ...lv(3, 5, [span(cx - r + 0.5, cx + r, top - 0.5, top + 0.5, -w, w, CAP), span(cx - r + 1, cx + r - 1, top - 0.5, top + 0.5, -w - 0.5, w + 0.5, CAP), span(cx - 1, cx + 1, top + 0.5, top + 1, -1, 1, CAP)]),
+    ...lv(3, 5, [span(cx - r + 1, cx + r - 1.5, top, top + 1, -w + 0.5, w - 0.5, CAP), span(cx - 1.5, cx + 0.5, top + 1, top + 1.5, -1, 1, CAP)]),
     ...lv(4, 4, [span(cx - 2, cx + 1.5, 3, y1, w + 1, w + 1.5, 'levelCrystalDeep'), span(cx - 1.5, cx + 1, 3.5, y1 - 0.5, w + 1.5, w + 2, 'levelCrystal')]),
-    ...lv(5, 5, [span(cx - 2, cx + 1.5, 3, y1, w + 1, w + 1.5, 'levelGoldDark'), span(cx - 1.5, cx + 1, 3.5, y1 - 0.5, w + 1.5, w + 2, 'levelGold')]),
     ...lv(5, 5, [span(cx + 0.5, cx + 1.5, top + 1, top + 2, -0.5, 0.5, CORD), span(cx + 1, cx + 2, top + 2, top + 3, -0.5, 0.5, 'fireLight', { emissive: 2.5 })]),
   ];
 }
@@ -166,8 +170,7 @@ export const cherryBomber: ModelDef = {
       pivot: [0, 12.5, 0],
       boxes: [
         ...lv(1, 1, leaf(12.5, false, 'leaf', 'leafDark')),
-        ...lv(2, 4, leaf(13.5, true, 'leaf', 'leafDark')),
-        ...lv(5, 5, leaf(13.5, true, 'levelGold', 'levelGoldDark')),
+        ...lv(2, 5, leaf(13.5, true, 'leaf', 'leafDark')),
       ],
     },
     ...cherry('front', CX, 0, 12),

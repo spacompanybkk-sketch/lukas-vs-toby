@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Brain Rot, the area denial. Faces −X. A slumped, sallow zombie in a stained purple-grey
 // sweater, arms dangling, drooping eyes (one big, one small) and a drip of green drool. The
@@ -11,7 +11,7 @@ import { atLevels, bipedModel, mirrorZ } from './biped';
 //   2  big round goggles with a strap, standing out in front of its eyes
 //   3  a gas mask with a canister snout over its mouth; iron rims
 //   4  a crystal jar over the brain; crystal rims
-//   5  a gold tank on its back with a hose to the mask, bubbling; gold rims
+//   5  a tank of glowing goo on its back, gold bands and cap, a hose to the mask, bubbling; gold rims
 
 const head: Box[] = [
   // The head, its top cut off level where the brain shows.
@@ -19,6 +19,8 @@ const head: Box[] = [
   { at: [-3, 8.5, -3], size: [5, 4.5, 6], color: 'sickSkin' },
   { at: [-3, 8, -2.5], size: [5, 0.5, 5], color: 'sickSkinDark' },
   { at: [-3.5, 12.5, -2.5], size: [6, 0.5, 5], color: 'sickSkinDark' },
+  // A pale plate behind the eyes.
+  facePlate(-3.5, 10, 12.5, -2.5, 2.5, 'sickSkinLight'),
   // A sagging mouth with a drip of green drool, and dark bags under the eyes.
   { at: [-3.5, 9, -1.5], size: [0.5, 1, 3], color: 'mouthDark' },
   { at: [-4, 8, 0], size: [0.5, 1.5, 1], color: 'toxicGreen' },
@@ -67,12 +69,14 @@ const torso: Box[] = [
   // Toxic stains down the front and the camera's side.
   { at: [-2, 6, -1], size: [0.5, 1, 1.5], color: 'toxicGreenDark' },
   { at: [-1, 6.5, 2.5], size: [1.5, 1, 0.5], color: 'toxicGreenDark' },
-  // Level 5: a gold tank on its back, a cap and a hose over the shoulder.
+  // Level 5: a tank of glowing goo on its back, banded and capped in gold, and a hose over
+  // the shoulder. The goo is the tank's colour, so the gold is its bands and cap.
   ...atLevels(5, 5, [
-    { at: [2, 5, -2], size: [2.5, 7, 3], color: 'levelGold' },
-    { at: [2.5, 5, -2.5], size: [1.5, 7, 4], color: 'levelGold' },
+    { at: [2, 5, -2], size: [2.5, 7, 3], color: 'toxicGreen', emissive: 1.5 },
+    { at: [2.5, 5, -2.5], size: [1.5, 7, 4], color: 'toxicGreen', emissive: 1.5 },
+    { at: [2, 5, -2.5], size: [2.5, 1, 4], color: 'levelGold' },
     { at: [2, 8.5, -2.5], size: [2.5, 0.5, 4], color: 'levelGoldDark' },
-    { at: [2.5, 12, -1.5], size: [1.5, 1, 2], color: 'levelGoldDark' },
+    { at: [2.5, 12, -1.5], size: [1.5, 1, 2], color: 'levelGold' },
     { at: [3, 13, -1], size: [1, 1, 1], color: 'poison', emissive: 2 },
     { at: [0, 8.5, -2.5], size: [2, 0.5, 0.5], color: 'levelGoldDark' },
     { at: [-2, 8.5, -2.5], size: [2, 0.5, 0.5], color: 'levelGoldDark' },
@@ -110,20 +114,16 @@ export const brainRot = bipedModel({
   // Slumped: twice the usual slouch, the arms drooping.
   slouch: 20,
   rots: { armL: [0, 0, 15], armR: [0, 0, 15] },
-  walk: { legs: 16, arms: 10, bob: 0.8, roll: 6 },
+  walk: { legs: 16, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',
       parent: 'head',
       pivot: [-3.75, 11, 0],
       boxes: [
-        // Droopy: the big eye half shut under a heavy lid, the small one lower.
-        { at: [-4, 10, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-3.5, 10, 2.5], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-4, 11.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-4, 12, 0.5], size: [0.5, 0.5, 2.5], color: 'sickSkinDark' },
-        { at: [-4, 10, -2.5], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-4, 11, -2.5], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
+        // Dopey: a big eye and a smaller one (no heavy lid: from above it hid the
+        // eye's glint and the two eyes ran together).
+        ...zombieEyes({ face: -3.5, y: 10, near: [2, 2.5], far: [2, 2], farLift: 0, gap: 1.5 }),
       ],
     },
     {

@@ -17,7 +17,7 @@ import { bothSides, lv, span } from './kit';
 //   2  a studded rind: knobs round the rim of the cut face, on the near flank and on top
 //   3  riveted iron plates on the near flank and the crown; the knobs turn iron
 //   4  the plates turn to glowing crystal, with crystal shields standing out at both edges
-//   5  gold plates and a gold battlement round the crown, warm lights in the rivets and eyes
+//   5  a gold battlement round the crown on iron plates, warm lights in the rivets and eyes
 //
 // Damage: the part `cracks` is built hidden; the view shows it below half health.
 
@@ -47,7 +47,7 @@ function slices(y0: number, y1: number, x0: number, x1: number, color: string, i
   return out;
 }
 
-/** Riveted plates: iron at level 3, crystal at 4, gold at 5; a rim and a face a voxel proud. */
+/** Riveted plates: iron at level 3, crystal at 4, iron again at 5; a rim and a face a voxel proud. */
 function plates(rim: [number, number, number, number, number, number], face: [number, number, number, number, number, number]): Box[] {
   const [a, b, c, d, e, f] = rim;
   const [g, h, i, j, k, l] = face;
@@ -56,8 +56,9 @@ function plates(rim: [number, number, number, number, number, number], face: [nu
     span(g, h, i, j, k, l, 'levelIron', { minLevel: 3, maxLevel: 3 }),
     span(a, b, c, d, e, f, 'levelCrystalDeep', { minLevel: 4, maxLevel: 4 }),
     span(g, h, i, j, k, l, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
-    span(a, b, c, d, e, f, 'levelGoldDark', { minLevel: 5 }),
-    span(g, h, i, j, k, l, 'levelGold', { minLevel: 5 }),
+    // At level 5 the plates stay iron: the gold is the battlement on the crown.
+    span(a, b, c, d, e, f, 'levelIronDark', { minLevel: 5 }),
+    span(g, h, i, j, k, l, 'levelIron', { minLevel: 5 }),
   ];
 }
 

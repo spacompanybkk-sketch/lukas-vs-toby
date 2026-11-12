@@ -1,32 +1,53 @@
 import { bowDraw, zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, mirrorZ, zombieEyes } from './biped';
 
 // Skeleton Archer, the sniper. Faces −X. A thin bone skeleton, no armour, in a peaked
 // leather cap with a purple feather, a quiver of purple-fletched arrows on its back and a
 // rust-red bow in its left hand, on the camera's side, upright with the string towards it.
 // It stands tall to draw and loose. Its trim is the bow.
 //
-//   2  a bigger bow with a grip wrap, a long feather, more arrows
+//   2  a bigger bow with a grip wrap, a long feather, more arrows, a spare arrow stuck in the cap
 //   3  an iron bow with a crossbow stock, iron-tipped arrows
 //   4  a crystal bow with a glowing string
-//   5  a gold bow, a gold band on the cap and a gold-rimmed quiver
+//   5  a red-wood bow with gold tips and a glowing string, a gold band on the cap and a gold-rimmed quiver
+
+/** The bigger bow from level 2: a wrapped grip, two curved limbs; the tips' colour separate. */
+function bigBow(limb: string, tip: string): Box[] {
+  return [
+    { at: [-6, 8, 3.5], size: [1.5, 2, 0.5], color: 'hatBrownDark' },
+    { at: [-6, 10, 3.5], size: [1, 2, 0.5], color: limb },
+    { at: [-5.5, 12, 3.5], size: [1, 1.5, 0.5], color: limb },
+    { at: [-5, 13.5, 3.5], size: [1, 1, 0.5], color: limb },
+    { at: [-4.5, 14.5, 3.5], size: [1, 1, 0.5], color: tip },
+    { at: [-6, 6, 3.5], size: [1, 2, 0.5], color: limb },
+    { at: [-5.5, 4.5, 3.5], size: [1, 1.5, 0.5], color: limb },
+    { at: [-5, 3.5, 3.5], size: [1, 1, 0.5], color: limb },
+    { at: [-4.5, 2.5, 3.5], size: [1, 1, 0.5], color: tip },
+  ];
+}
 
 const head: Box[] = [
   // A narrow skull with a small jaw.
-  { at: [-4, 10, -2.5], size: [5.5, 4, 5], color: 'bone' },
-  { at: [-3.5, 10, -3], size: [4.5, 4, 6], color: 'bone' },
+  // (Its face six wide, so two sockets and a two-voxel bone bridge fit across it.)
+  { at: [-4, 10, -3], size: [5.5, 4, 6], color: 'bone' },
   { at: [-4, 9, -2], size: [4, 1, 4], color: 'boneShadow' },
-  { at: [-4, 11, -0.5], size: [0.5, 1, 1], color: 'socket' },
+  { at: [-4, 10.5, -0.5], size: [0.5, 1, 1], color: 'socket' },
   { at: [-4, 10, -1.5], size: [0.5, 0.5, 3], color: 'socket' },
   { at: [-4.5, 9.5, -1], size: [0.5, 1, 1], color: 'tooth' },
-  // The peaked cap: a crown, a peak out over the face and a point at the back.
-  { at: [-4.5, 13.5, -3], size: [6.5, 1, 6.5], color: 'hatBrown' },
-  { at: [-3.5, 14.5, -2.5], size: [5, 1, 5.5], color: 'hatBrown' },
-  { at: [-5.5, 13.5, -2], size: [1, 0.5, 4], color: 'hatBrownDark' },
+  // The cap: a crown flush with the face (a peak over the face shaded the sockets, so the
+  // bone between them went dark from above) and a point at the back.
+  { at: [-4, 13.5, -3], size: [6, 1, 6], color: 'hatBrown' },
+  { at: [-3.5, 14.5, -2.5], size: [5, 1, 5], color: 'hatBrown' },
   { at: [1.5, 14.5, -1], size: [1.5, 1, 2], color: 'hatBrownDark' },
+  // Level 2 up: a spare arrow stuck upright through the top of the cap, red flights on top:
+  // a new shape over the head, where the lawn camera sees it.
+  ...atLevels(2, 5, [
+    { at: [-1, 15.5, 0.5], size: [1, 3, 1], color: 'hatBrownDark' },
+    { at: [-1.5, 18.5, 0], size: [2, 1.5, 2], color: 'speedRed' },
+  ]),
   // Level 5: a gold band round the cap.
-  { at: [-4.5, 13.5, -3], size: [6.5, 0.5, 6.5], color: 'levelGold', minLevel: 5 },
+  { at: [-4, 13.5, -3], size: [6, 0.5, 6], color: 'levelGold', minLevel: 5 },
 ];
 
 const torso: Box[] = [
@@ -71,20 +92,14 @@ export const skeletonArcher = bipedModel({
     { at: [-1.5, 5, -2], size: [3, 0.5, 4], color: 'hatBrownDark' },
   ],
   joints: { torso: [0, 5.5, 0], head: [-1, 9.5, 0], armL: [-0.5, 9, 3], armR: [-0.5, 9, -3], legL: [0, 4, 1.25], legR: [0, 4, -1.25] },
-  walk: { legs: 22, arms: 8, bob: 1 },
+  walk: { legs: 22, arms: 12, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',
       parent: 'head',
       pivot: [-4.25, 12, 0],
-      boxes: [
-        { at: [-4.5, 10.5, 0.5], size: [0.5, 3, 2.5], color: 'socket' },
-        { at: [-4, 10.5, 2.5], size: [1.5, 3, 1], color: 'socket' },
-        { at: [-4.5, 12, 1], size: [0.5, 1, 1], color: 'eyeRed', emissive: 2.5 },
-        { at: [-3.5, 12, 3], size: [1, 1, 0.5], color: 'eyeRed', emissive: 2.5 },
-        { at: [-4.5, 11, -2.5], size: [0.5, 2, 2], color: 'socket' },
-        { at: [-4.5, 11.5, -2], size: [0.5, 1, 1], color: 'eyeRed', emissive: 2.5 },
-      ],
+      // Two sockets in the pale skull with a bone bridge two voxels wide, a red light in each.
+      boxes: zombieEyes({ face: -4, y: 10.5, near: [2, 3], far: [2, 2.5], gap: 2, color: 'socket', light: { color: 'eyeRed', emissive: 2.5 } }),
     },
     {
       // A purple feather in the cap, sweeping back; much longer from level 2.
@@ -136,23 +151,16 @@ export const skeletonArcher = bipedModel({
           { at: [-4, 4.5, 3.5], size: [1, 1, 0.5], color: 'rust' },
           { at: [-3.5, 5, 3.5], size: [0.5, 8, 0.5], color: 'bone' },
         ]),
-        ...atLevels(2, 5, [
-          { at: [-6, 8, 3.5], size: [1.5, 2, 0.5], color: 'hatBrownDark' },
-          { at: [-6, 10, 3.5], size: [1, 2, 0.5], color: 'rust' },
-          { at: [-5.5, 12, 3.5], size: [1, 1.5, 0.5], color: 'rust' },
-          { at: [-5, 13.5, 3.5], size: [1, 1, 0.5], color: 'rust' },
-          { at: [-4.5, 14.5, 3.5], size: [1, 1, 0.5], color: 'rust' },
-          { at: [-6, 6, 3.5], size: [1, 2, 0.5], color: 'rust' },
-          { at: [-5.5, 4.5, 3.5], size: [1, 1.5, 0.5], color: 'rust' },
-          { at: [-5, 3.5, 3.5], size: [1, 1, 0.5], color: 'rust' },
-          { at: [-4.5, 2.5, 3.5], size: [1, 1, 0.5], color: 'rust' },
-        ]),
+        ...atLevels(2, 4, bigBow('rust', 'rust')),
+        // Level 5: the bow stays red wood, its tips capped in gold.
+        ...atLevels(5, 5, bigBow('hatBrown', 'levelGold')),
         { at: [-4, 3, 3.5], size: [0.5, 12, 0.5], color: 'bone', minLevel: 2, maxLevel: 3 },
         { at: [-4, 3, 3.5], size: [0.5, 12, 0.5], color: 'levelCrystal', emissive: 2.5, minLevel: 4, maxLevel: 4 },
         { at: [-4, 3, 3.5], size: [0.5, 12, 0.5], color: 'fireLight', emissive: 1.6, minLevel: 5 },
         // Level 3 up: a crossbow stock along the arrow's line, an arrow lying on it.
+        { at: [-7, 8.5, 3.5], size: [3, 1, 0.5], color: 'rust', minLevel: 3, maxLevel: 4 },
+        { at: [-7, 8.5, 3.5], size: [3, 1, 0.5], color: 'hatBrown', minLevel: 5 },
         ...atLevels(3, 5, [
-          { at: [-7, 8.5, 3.5], size: [3, 1, 0.5], color: 'rust' },
           { at: [-8, 9, 3.5], size: [1, 0.5, 0.5], color: 'levelIron' },
           { at: [-7, 9.5, 3.5], size: [3, 0.5, 0.5], color: 'hatBrownDark' },
         ]),

@@ -17,9 +17,9 @@ import { bothSides, lv, round, span } from './kit';
 // Every level adds something the lawn camera can see, on top or out to the side:
 //
 //   2  a metal cap on the crown, and the antenna a voxel taller
-//   3  twin antennae in a V; the cap turns iron
+//   3  twin antennae in a V and a detonator handle on the cap; the cap turns iron
 //   4  glowing crystal casing on the near flank and a crystal crest on the cap
-//   5  the casing and the cap gold, with warm lights for rivets and in the eyes
+//   5  the cap and its crest gold (the casing stays iron), warm lights for rivets and in the eyes
 
 /** The potato's centre line, as authored. */
 const CX = -0.5;
@@ -102,6 +102,9 @@ export const potatoMine: ModelDef = {
         ...lv(2, 2, antenna(0, 8.5)),
         ...lv(3, 5, TWIN),
 
+        // Level 3 up: a detonator handle, a T standing up off the back of the cap, a new shape
+        // on top where the lawn camera sees it.
+        ...lv(3, 5, [span(-4, -3, 8, 9.5, -0.5, 0.5, 'levelIronDark'), span(-4, -3, 9.5, 10, -1.5, 1.5, 'levelIronDark')]),
         // Level 2 up: a cap on the crown, stepped to a dome, rivets round it.
         ...lv(2, 5, [span(-4, 1, 6.5, 7.5, -2.5, 2.5, 'iron'), span(-3.5, 0.5, 7.5, 8, -2, 2, 'iron')]),
         ...lv(2, 4, [span(0.5, 1, 7, 7.5, 2.5, 3, 'levelIronDark'), span(-3.5, -3, 7, 7.5, 2.5, 3, 'levelIronDark')]),
@@ -109,7 +112,8 @@ export const potatoMine: ModelDef = {
 
         // Level 4 up: casing on the near flank; a crest along the cap.
         ...casing('levelCrystal', 'levelCrystalDeep', 4),
-        ...casing('levelGold', 'levelGoldDark', 5),
+        // Level 5: the casing stays iron; the gold is the cap and its crest.
+        ...casing('levelIron', 'levelIronDark', 5),
         ...lv(4, 4, [span(-3, 0, 8, 9, -0.5, 0.5, 'levelCrystal'), span(-2.5, -1, 9, 10, -0.5, 0.5, 'levelCrystal')]),
         ...lv(5, 5, [span(-3, 0, 8, 8.5, -0.5, 0.5, 'levelGold'), span(0.5, 1, 3.5, 4, 4.5, 5, 'fireLight', { emissive: 2 })]),
       ],

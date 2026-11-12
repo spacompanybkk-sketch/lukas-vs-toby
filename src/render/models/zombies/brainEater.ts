@@ -1,13 +1,13 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Brain Eater, the basic zombie. Faces −X. Green skin, a torn purple shirt, slate trousers
 // and old brown shoes; one big eye and one small, a tooth and a tongue; a pink brain held
 // up in its right hand, which is what it throws (the view hides `brain` when it leaves and
 // shows it again on the next idle). Its trim is the shoulder pads.
 //
-//   2  rusty shoulder pads with a stud, standing up off both shoulders
+//   2  rusty shoulder pads with a stud, standing up off both shoulders; a plastered bump on the head
 //   3  an iron spiked helmet; iron pads
 //   4  a crystal skull cap with shards and a brain floating above it; crystal pads
 //   5  a gold crown with points, a brain still floating over it, gold pads, eyes alight
@@ -18,6 +18,8 @@ const head: Box[] = [
   { at: [-4, 8.5, -3], size: [5, 5.5, 6], color: 'skin' },
   { at: [-4, 8, -2.5], size: [5, 0.5, 5], color: 'skinDark' },
   { at: [-4, 14, -2.5], size: [5, 0.5, 5], color: 'skin' },
+  // A pale plate behind the eyes, so they read as two eyes and not one dark band.
+  facePlate(-4.5, 10, 13.5, -2.5, 2.5, 'skinLight'),
   // A wide crooked mouth, a tooth hanging from it, and a tongue lolling out over the chin.
   { at: [-4.5, 9, -2], size: [0.5, 1, 3.5], color: 'mouthDark' },
   { at: [-5, 9, -0.5], size: [0.5, 1, 1], color: 'tooth' },
@@ -31,6 +33,14 @@ const head: Box[] = [
   { at: [-3, 14.5, 0.5], size: [1, 1, 1], color: 'trouserDark', maxLevel: 2 },
   { at: [0, 14.5, 1.5], size: [1, 0.5, 1], color: 'trouserDark', maxLevel: 2 },
   { at: [1.5, 13.5, -1], size: [0.5, 1, 1.5], color: 'trouserDark', maxLevel: 2 },
+
+  // Level 2: a big pink bump on top of its head, stuck over with a white plaster cross, where
+  // the lawn camera looks straight at it (the helmet, cap and crown cover it from 3).
+  ...atLevels(2, 2, [
+    { at: [-2.5, 15, -1.5], size: [3, 1.5, 3], color: 'brainPink' },
+    { at: [-3, 16.5, -0.5], size: [4, 0.5, 1], color: 'bone' },
+    { at: [-1.5, 16.5, -2], size: [1, 0.5, 4], color: 'bone' },
+  ]),
 
   // Level 3: an iron helmet with a brim and a spike.
   ...atLevels(3, 3, [
@@ -50,18 +60,16 @@ const head: Box[] = [
   ]),
 
   // Level 5: a gold crown, a band with a point at each corner and a tall one in front.
+  // Level 5: a small gold crown perched on the hair, three points and a pink jewel; its
+  // green head and purple shirt still do most of the talking.
   ...atLevels(5, 5, [
-    { at: [-5, 14, -3], size: [7, 1, 1], color: 'levelGold' },
-    { at: [-5, 14, 2], size: [7, 1, 1], color: 'levelGold' },
-    { at: [-5, 14, -2], size: [1, 1, 4], color: 'levelGold' },
-    { at: [1, 14, -2], size: [1, 1, 4], color: 'levelGold' },
-    { at: [-5, 15, -3], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [-5, 15, 2], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [1, 15, -3], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [1, 15, 2], size: [1, 1.5, 1], color: 'levelGold' },
-    { at: [-5, 15, -0.5], size: [1, 2, 1], color: 'levelGold' },
-    { at: [-5.5, 14.5, -0.5], size: [0.5, 1, 1], color: 'brainPink', emissive: 1.6 },
-    { at: [-4, 14.5, -2], size: [5, 0.5, 4], color: 'clothPurple' },
+    { at: [-3, 14, -1.5], size: [3, 0.5, 3], color: 'levelGold' },
+    { at: [-3, 14.5, -1.5], size: [1, 1, 1], color: 'levelGold' },
+    { at: [-3, 14.5, 0.5], size: [1, 1, 1], color: 'levelGold' },
+    { at: [-1, 14.5, -0.5], size: [1, 1, 1], color: 'levelGold' },
+    { at: [-3.5, 14, -0.5], size: [0.5, 0.5, 1], color: 'brainPink', emissive: 1.6 },
+    { at: [-3, 14, -2.5], size: [4.5, 0.5, 1], color: 'trouserDark' },
+    { at: [0, 14, -1.5], size: [1.5, 0.5, 3], color: 'trouserDark' },
   ]),
 ];
 
@@ -116,17 +124,9 @@ export const brainEater = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-4.75, 11.5, 0],
-      boxes: [
-        // The big eye on the camera's side, wrapping round the corner of the head so that it
-        // shows from the lawn; the small one beyond. Each has a glint at the top, sunward.
-        { at: [-5, 10, 0.5], size: [0.5, 3, 3], color: 'eye' },
-        { at: [-4.5, 10, 2.5], size: [1.5, 3, 1], color: 'eye' },
-        { at: [-5, 12, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 10.5, -2.5], size: [0.5, 2, 2], color: 'eye' },
-        { at: [-5, 11.5, -2.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 10.5, 1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-        { at: [-5, 10.5, -1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-      ],
+      // The big eye on the camera's side and the small one beyond, apart, each with a glint
+      // at the top, sunward; alight at level 5.
+      boxes: zombieEyes({ face: -4.5, y: 10, near: [2.5, 3], far: [2, 2], light: { color: 'fireLight', emissive: 3, minLevel: 5 } }),
     },
     {
       // The brain it throws, held up in the right hand.

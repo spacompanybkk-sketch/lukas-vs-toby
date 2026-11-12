@@ -1,13 +1,13 @@
 import { staffRaise, zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Necromancer, the support. Faces −X. A short wizard in a dark purple robe down to its
 // boots, a hood that rises to a crooked point, a long white beard and bushy brows, and a
 // staff in its right hand, standing up over its head, topped with a glowing purple gem. It shuffles.
 // Its trim is the pale purple edging of the robe and hood.
 //
-//   2  a bigger staff head: ram's horns curling round a bigger gem
+//   2  a bigger staff head: ram's horns curling round a bigger gem; the hood's point grows a tassel
 //   3  a little skull floating by its shoulder, eyes aglow; iron edging
 //   4  a big glowing crystal orb on the staff; crystal edging
 //   5  gold edging and gold horns round the orb
@@ -16,17 +16,26 @@ const head: Box[] = [
   // The face, peeking out of the hood.
   { at: [-3.5, 8, -2], size: [4.5, 4, 4], color: 'skin' },
   { at: [-3.5, 8.5, -2], size: [0.5, 0.5, 4], color: 'skinDark' },
+  // A pale plate behind the eyes, lit against the hood's shadow.
+  facePlate(-3.5, 9, 11.5, -2, 2, 'skinLight'),
   // Bushy white brows, the near one raised.
   { at: [-4, 11.5, 0], size: [0.5, 0.5, 2], color: 'bone' },
   { at: [-4, 11, -2], size: [0.5, 0.5, 1.5], color: 'bone' },
   // The hood round it, its edging, and the crooked point.
-  { at: [-3, 8, -3], size: [5.5, 5, 6], color: 'robePurple' },
+  { at: [-3, 8, -3], size: [5, 5, 6], color: 'robePurple' },
   { at: [-3.5, 12, -3], size: [0.5, 1, 6], color: 'robeTrim' },
   { at: [-3.5, 8, 2], size: [0.5, 4, 1], color: 'robeTrim' },
   { at: [-3.5, 8, -3], size: [0.5, 4, 1], color: 'robeTrim' },
   { at: [-1.5, 13, -2], size: [3.5, 1, 4], color: 'robePurple' },
   { at: [-0.5, 14, -1.5], size: [2.5, 1, 3], color: 'robePurpleDark' },
   { at: [1, 15, -1], size: [1.5, 0.5, 2], color: 'robePurpleDark' },
+  // Level 2 up: the point grows long and droops behind, with a tassel at the end in the
+  // edging colour (so it turns iron, crystal and gold with the levels).
+  ...atLevels(2, 5, [
+    { at: [2, 15, -0.75], size: [2, 1, 1.5], color: 'robePurpleDark' },
+    { at: [3.5, 13.5, -0.75], size: [1, 1.5, 1.5], color: 'robePurpleDark' },
+    { at: [3.25, 12, -1], size: [1.5, 1.5, 2], color: 'robeTrim' },
+  ]),
 ];
 
 const torso: Box[] = [
@@ -66,18 +75,13 @@ export const necromancer = bipedModel({
   ],
   joints: { torso: [0, 4, 0], head: [-1, 8, 0], armL: [-0.5, 7, 3.5], armR: [-0.5, 7, -3.5], legL: [0, 2, 1.25], legR: [0, 2, -1.25] },
   // A slow shuffle: short steps, little swing.
-  walk: { legs: 14, arms: 6, bob: 0.6, roll: 3 },
+  walk: { legs: 14, arms: 10, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',
       parent: 'head',
       pivot: [-3.75, 10.25, 0],
-      boxes: [
-        { at: [-4, 9, 0], size: [0.5, 2.5, 2], color: 'eye' },
-        { at: [-4, 10.5, 0], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-4, 9.5, -1.5], size: [0.5, 1.5, 1], color: 'eye' },
-        { at: [-4, 10.5, -1.5], size: [0.5, 0.5, 0.5], color: 'eyeGlint' },
-      ],
+      boxes: zombieEyes({ face: -3.5, y: 9, near: [2, 2.5], far: [1.5, 2], farLift: 0, centre: -0.25 }),
     },
     {
       // A long white beard, swinging as it walks.

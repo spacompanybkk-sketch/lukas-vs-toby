@@ -609,8 +609,9 @@ const allOf = (p: BipedParts): string[] => [p.root, p.torso, p.head, p.armL, p.a
 
 /**
  * A walk, looping every `stepSeconds` (two steps): legs swing ±25° from the hip, the arms
- * ±15° against them, the body bobs a voxel (up as the legs pass, down at the full stride)
- * and rolls ±4° onto the leg it stands on. A runner asks for a bigger stride and swing;
+ * ±15° against them (sweeping round and reaching a voxel and a half forward and back, so the
+ * swing reads from above), the body bobs a voxel (up as the legs pass, down at the full
+ * stride) and rolls ±4° onto the leg it stands on. A runner asks for a bigger stride and swing;
  * `cycles` fits that many cycles into `stepSeconds`, for jogging on the spot.
  */
 export function zombieWalk(
@@ -635,12 +636,18 @@ export function zombieWalk(
       // The left foot goes forward (−X) first: a negative turn of a hanging leg.
       (pose[p.legL] as PartPose).rz = -legs * swing;
       (pose[p.legR] as PartPose).rz = legs * swing;
-      // Each arm against its own leg.
-      (pose[p.armL] as PartPose).rz = arms * swing;
-      (pose[p.armR] as PartPose).rz = -arms * swing;
-      // And it reaches forward with the arm that is up.
-      (pose[p.armL] as PartPose).px = 0.6 * swing;
-      (pose[p.armR] as PartPose).px = -0.6 * swing;
+      // Each arm against its own leg. The arms are held out in front, so a swing about Z
+      // only lifts and drops the hands, which the lawn camera hardly sees from above. They
+      // also sweep in and out about the shoulder (Y) and reach forward and back along the
+      // lane, so from above one hand is clearly ahead of the other.
+      const armL = pose[p.armL] as PartPose;
+      const armR = pose[p.armR] as PartPose;
+      armL.rz = arms * swing;
+      armR.rz = -arms * swing;
+      armL.ry = -0.6 * arms * swing;
+      armR.ry = -0.6 * arms * swing;
+      armL.px = 1.5 * swing;
+      armR.px = -1.5 * swing;
       const hips = pose[p.root] as PartPose;
       hips.py = (bob / 2) * Math.cos(2 * phase);
       hips.rx = roll * swing;
@@ -995,12 +1002,14 @@ export function lassoThrow(opts: { arm?: string; parts?: Partial<BipedParts> } =
         return;
       }
       const u = (time - release) / (duration - release);
-      // Down and forward through the throw, then back to rest.
+      // Down and forward through the throw, then back to rest. Every channel carries on from
+      // where the whirl left it (the arm up at 110°, the chest leaning back 6°), so nothing
+      // jumps at the release.
       const k = springBack(u);
       limb.rz = -DEG * 110 * k + DEG * 25 * Math.sin(Math.PI * u);
       limb.rx = 0;
       limb.ry = 0;
-      chest.rz = DEG * 10 * Math.sin(Math.PI * u);
+      chest.rz = -DEG * 6 * k + DEG * 10 * Math.sin(Math.PI * u);
     },
   };
 }

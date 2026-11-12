@@ -1,6 +1,6 @@
 import { zombieBite, zombieWalk } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, headTurn, mirrorZ, zombieEyes } from './biped';
 
 // Very Fast Walker, the rush. Faces −X. Skinny and long-legged, leaning 25° into a sprint
 // with its arms bent and pumping, a red-flushed face, a red sweatband whose tails stream out
@@ -10,7 +10,7 @@ import { atLevels, bipedModel, mirrorZ } from './biped';
 //   2  spiked running shoes, a longer pair of sweatband tails and a racing number on its back
 //   3  a chrome visor across its eyes; iron cleats
 //   4  crystal lightning fins on its head and back
-//   5  gold visor, cleats and fins, and a glowing gold speed trail streaming out behind it
+//   5  gold visor, cleats and fins, and a glowing trail of fire streaming out behind it
 
 // The head is modelled further back than it is drawn: the 25° lean carries it forward over
 // the chest, and a little past it, so that it juts ahead of its feet. Its face is the −X
@@ -20,10 +20,12 @@ const head: Box[] = [
   { at: [-2.5, 9, -3], size: [5, 5, 6], color: 'skinFlush' },
   { at: [-2.5, 8.5, -2.5], size: [5, 0.5, 5], color: 'skinFlushDark' },
   { at: [-2.5, 14, -2.5], size: [5, 0.5, 5], color: 'skinFlush' },
+  // A pale plate behind the eyes, under the band.
+  facePlate(-3, 10, 12.5, -2.5, 2.5, 'skinFlushLight'),
   // Red cheeks, a mouth open as it pants, and its tongue flapping out of the camera's side.
   { at: [-3.5, 9.5, -2.5], size: [0.5, 1, 1.5], color: 'speedRed' },
-  { at: [-3, 9.5, -1.5], size: [0.5, 1.5, 2.5], color: 'mouthDark' },
-  { at: [-3.5, 10.5, -1], size: [0.5, 0.5, 1], color: 'tooth' },
+  { at: [-3, 9, -1.5], size: [0.5, 1.5, 2.5], color: 'mouthDark' },
+  { at: [-3.5, 10, -1], size: [0.5, 0.5, 1], color: 'tooth' },
   { at: [-3.5, 9, 0.5], size: [1, 1, 3], color: 'brainPink' },
   { at: [-2.5, 8.5, 3], size: [1.5, 1, 1], color: 'brainPink' },
   // The sweatband round the forehead, a voxel proud.
@@ -103,6 +105,9 @@ export const veryFastWalker = bipedModel({
   legR: mirrorZ(legL),
   hips: [{ at: [-1.25, 5, -1.75], size: [2.5, 1.5, 3.5], color: 'speedRed' }],
   slouch: 25,
+  // Leaning into the sprint, it tips its head back further than most so that its face, not
+  // the top of its sweatband, is what the lawn camera sees.
+  headRot: headTurn(25, 60, 30),
   joints: {
     torso: [0, 6, 0],
     head: [0, 8.5, 0],
@@ -119,14 +124,8 @@ export const veryFastWalker = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-3.25, 11, 0],
-      boxes: [
-        // The near eye big and wrapping round to the camera's side, the far one squinting small.
-        { at: [-3.5, 10, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-3, 10, 2.5], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-3.5, 11.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-3.5, 10.5, -2.5], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-3.5, 11, -2.5], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-      ],
+      // The near eye big and goggling, the far one squinting small.
+      boxes: zombieEyes({ face: -3, y: 10, near: [2.5, 2.5], far: [2, 1.5], farLift: 0.5 }),
     },
     {
       // The sweatband's tails, streaming back off the knot behind the head.
@@ -136,25 +135,25 @@ export const veryFastWalker = bipedModel({
       boxes: [
         { at: [3, 12.5, -1], size: [1, 1.5, 2], color: 'speedRed' },
         { at: [4, 12, 0.5], size: [1, 1, 1], color: 'speedRed', maxLevel: 1 },
-        { at: [4, 12.5, -1.5], size: [1, 1, 1], color: 'speedRed', maxLevel: 1 },
         { at: [4, 12, 0.5], size: [4, 1, 1], color: 'speedRed', minLevel: 2 },
         { at: [4, 12.5, -1.5], size: [3.5, 1, 1], color: 'speedRed', minLevel: 2 },
         { at: [8, 11.5, 0.5], size: [1, 1, 1], color: 'speedRed', minLevel: 2 },
       ],
     },
     {
-      // Level 5: a glowing gold trail streaming out behind it, in three ribbons.
+      // Level 5: a speed trail of fire streaming out behind it, in four ribbons: warm
+      // accents, red into yellow, so the gold stays on its visor, fins and cleats.
       name: 'trail',
       parent: 'root',
       pivot: [3, 9, 0],
       boxes: atLevels(5, 5, [
-        { at: [3, 12, -0.5], size: [4, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [3, 12, -0.5], size: [4, 1, 1], color: 'speedRed', emissive: 1.6 },
         { at: [7, 12, -0.5], size: [2, 1, 1], color: 'fireLight', emissive: 1.6 },
-        { at: [2.5, 9.5, 1.5], size: [3.5, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [2.5, 9.5, 1.5], size: [3.5, 1, 1], color: 'fire', emissive: 1.6 },
         { at: [6, 9.5, 1.5], size: [2, 1, 1], color: 'fireLight', emissive: 1.6 },
-        { at: [2.5, 7, -2.5], size: [3, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [2.5, 7, -2.5], size: [3, 1, 1], color: 'fire', emissive: 1.6 },
         { at: [5.5, 7, -2.5], size: [2, 1, 1], color: 'fireLight', emissive: 1.6 },
-        { at: [2, 4.5, 0.5], size: [2.5, 1, 1], color: 'levelGold', emissive: 1.6 },
+        { at: [2, 4.5, 0.5], size: [2.5, 1, 1], color: 'speedRed', emissive: 1.6 },
         { at: [4.5, 4.5, 0.5], size: [1.5, 1, 1], color: 'fireLight', emissive: 1.6 },
       ]),
     },

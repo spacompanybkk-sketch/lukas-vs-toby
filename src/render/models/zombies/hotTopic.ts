@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Hot Topic, the snowball. Faces −X. A round, greedy zombie, mostly belly and mouth: the
 // jaw hangs open on a hinge to show big square teeth top and bottom, a pink tongue and a
@@ -12,7 +12,7 @@ import { atLevels, bipedModel, mirrorZ } from './biped';
 //   2  a fork and a knife held up, ready to eat
 //   3  a saucepan for a helmet, its handle sticking out behind; iron teeth, fork and knife
 //   4  a tall crystal chef's hat; crystal teeth, fork and knife, glowing
-//   5  a gold chef's hat with warm jewels; gold teeth, fork and knife; eyes alight
+//   5  a white chef's hat with a gold band and warm jewels; gold teeth, fork and knife; eyes alight
 
 /** The cutlery in a level's material: grey plastic at 2, iron, crystal, gold. */
 const cutlery = (boxes: Box[]): Box[] => [
@@ -32,6 +32,8 @@ const head: Box[] = [
   { at: [-4, 9.5, -2.5], size: [0.5, 1, 1.5], color: 'tooth' },
   { at: [-4, 9.5, -0.5], size: [0.5, 1, 1.5], color: 'tooth' },
   { at: [-4, 9.5, 1.5], size: [0.5, 1, 1.5], color: 'tooth' },
+  // A pale plate behind the eyes.
+  facePlate(-3.5, 10.5, 14, -3, 3, 'skinLight'),
   // Rosy cheeks.
   { at: [-3.5, 11, 2.5], size: [0.5, 1, 0.5], color: 'brainPink' },
   // Hot-headed: a tuft of flame-red hair, flickering higher from level 2 (hats from 3).
@@ -59,11 +61,13 @@ const head: Box[] = [
     { at: [-3.5, 17.5, -3], size: [6, 1.5, 6], color: 'levelCrystal' },
     { at: [-2.5, 19, -2], size: [4, 0.5, 4], color: 'levelCrystal' },
   ]),
+  // Level 5: a white chef's hat with a gold band and warm jewels: the gold is the band, so
+  // it is still a hungry green zombie in a chef's hat from the lawn.
   ...atLevels(5, 5, [
-    { at: [-3.5, 14, -3], size: [6, 1.5, 6], color: 'levelGoldDark' },
-    { at: [-3, 15.5, -2.5], size: [5, 2, 5], color: 'levelGold' },
-    { at: [-3.5, 17.5, -3], size: [6, 1.5, 6], color: 'levelGold' },
-    { at: [-2.5, 19, -2], size: [4, 0.5, 4], color: 'levelGold' },
+    { at: [-3.5, 14, -3], size: [6, 1.5, 6], color: 'levelGold' },
+    { at: [-3, 15.5, -2.5], size: [5, 2, 5], color: 'bone' },
+    { at: [-3.5, 17.5, -3], size: [6, 1.5, 6], color: 'bone' },
+    { at: [-2.5, 19, -2], size: [4, 0.5, 4], color: 'boneShadow' },
     { at: [-4, 14.5, -0.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 2 },
     { at: [-0.5, 14.5, 3], size: [1, 1, 0.5], color: 'fireLight', emissive: 2 },
   ]),
@@ -72,16 +76,18 @@ const head: Box[] = [
 const torso: Box[] = [
   // A big round belly, wider than the head, in a striped shirt too small for it: the bottom
   // row is bare green skin.
+  // Stripes a whole voxel tall on whole voxels: half-voxel stripes cut every face of the
+  // belly into twice the cells.
   { at: [-3.5, 3, -4], size: [7, 5, 8], color: 'clothPurple' },
   { at: [-3, 3, -4.5], size: [6, 5, 9], color: 'clothPurple' },
   { at: [-3, 2.5, -3.5], size: [6, 0.5, 7], color: 'skinDark' },
   { at: [-3, 8, -3.5], size: [6, 0.5, 7], color: 'clothDark' },
-  { at: [-3.5, 3, -4], size: [7, 0.5, 8], color: 'skin' },
-  { at: [-3, 3, -4.5], size: [6, 0.5, 9], color: 'skin' },
-  { at: [-3.5, 5, -4], size: [7, 0.5, 8], color: 'clothDark' },
-  { at: [-3, 5, -4.5], size: [6, 0.5, 9], color: 'clothDark' },
-  { at: [-3.5, 6.5, -4], size: [7, 0.5, 8], color: 'clothDark' },
-  { at: [-3, 6.5, -4.5], size: [6, 0.5, 9], color: 'clothDark' },
+  { at: [-3.5, 3, -4], size: [7, 1, 8], color: 'skin' },
+  { at: [-3, 3, -4.5], size: [6, 1, 9], color: 'skin' },
+  { at: [-3.5, 5, -4], size: [7, 1, 8], color: 'clothDark' },
+  { at: [-3, 5, -4.5], size: [6, 1, 9], color: 'clothDark' },
+  { at: [-3.5, 7, -4], size: [7, 1, 8], color: 'clothDark' },
+  { at: [-3, 7, -4.5], size: [6, 1, 9], color: 'clothDark' },
   // The napkin tucked in under the chin, checked purple, and its knot sticking up behind.
   { at: [-4, 4.5, -2.5], size: [0.5, 3.5, 5], color: 'bone' },
   { at: [-4, 5.5, -1.5], size: [0.5, 1, 1], color: 'clothPurple' },
@@ -124,14 +130,7 @@ export const hotTopic = bipedModel({
       name: 'eyes',
       parent: 'head',
       pivot: [-3.75, 12.5, 0],
-      boxes: [
-        { at: [-4, 11, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-3.5, 11, 3], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-4, 12.5, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-4, 12, -2.5], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-4, 12.5, -2.5], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-        { at: [-4, 11.5, 1.5], size: [0.5, 1, 1], color: 'fireLight', emissive: 3, minLevel: 5 },
-      ],
+      boxes: zombieEyes({ face: -3.5, y: 11, near: [2.5, 3], far: [2, 2], farLift: 0.75, light: { color: 'fireLight', emissive: 3, minLevel: 5 } }),
     },
     {
       // The lower jaw, hinged at the back of the mouth and hanging open at rest.

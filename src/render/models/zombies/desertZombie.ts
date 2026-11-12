@@ -1,6 +1,6 @@
 import { zombieBite, zombieIdle, zombieThrow } from '../../voxel/clips';
 import type { Box } from '../../voxel/types';
-import { atLevels, bipedModel, mirrorZ } from './biped';
+import { atLevels, bipedModel, facePlate, mirrorZ, zombieEyes } from './biped';
 
 // Desert Zombie, the control. Faces −X. A mummy wrapped in bandages, arms held out straight
 // and stiff, green skin showing through a gap round the eyes (one big, one small), loose
@@ -10,7 +10,7 @@ import { atLevels, bipedModel, mirrorZ } from './biped';
 //   2  a full headdress: a taller cap and lappets flaring out past the shoulders
 //   3  a pharaoh's: the headdress turns to iron striped with sand, a cobra rising off the brow
 //   4  a glowing crystal headdress and cobra
-//   5  a gold headdress and cobra, and a broad gold collar with warm gems
+//   5  a purple headdress striped in gold, a gold cobra, and a broad gold collar with warm gems
 
 /** The pharaoh's headdress (nemes): a cap, lappets flaring past the shoulders, a tail behind. */
 const nemes = (from: number, to: number, cloth: string, stripe: string): Box[] =>
@@ -37,7 +37,7 @@ const head: Box[] = [
   { at: [-4.5, 9.5, -2.5], size: [0.5, 0.5, 5], color: 'bandageDark' },
   { at: [-4, 9.5, 2.5], size: [5, 0.5, 0.5], color: 'bandageDark' },
   // The gap the eyes look out of: green skin across the face and round to the camera's side.
-  { at: [-4.5, 10.5, -2.5], size: [0.5, 2.5, 5], color: 'skin' },
+  facePlate(-4.5, 10, 13.5, -2.5, 2.5, 'skinLight'),
   { at: [-3, 10.5, 2.5], size: [1.5, 2.5, 0.5], color: 'skin' },
   // A slit of a mouth with a tooth, under the wraps.
   { at: [-4.5, 8.5, -1.5], size: [0.5, 1, 3], color: 'mouthDark' },
@@ -45,10 +45,10 @@ const head: Box[] = [
 
   // Level 1: a little sand-coloured headdress, a cap and two short lappets.
   ...atLevels(1, 1, [
-    { at: [-4.5, 13.5, -3], size: [6.5, 1, 6], color: 'sand' },
+    { at: [-4.5, 13.5, -3], size: [6, 1, 6], color: 'sand' },
     { at: [-4, 14.5, -2.5], size: [5, 0.5, 5], color: 'sand' },
-    { at: [-4.5, 14, -3], size: [6.5, 0.5, 0.5], color: 'clothPurple' },
-    { at: [-4.5, 14, 2.5], size: [6.5, 0.5, 0.5], color: 'clothPurple' },
+    { at: [-4.5, 14, -3], size: [6, 0.5, 0.5], color: 'clothPurple' },
+    { at: [-4.5, 14, 2.5], size: [6, 0.5, 0.5], color: 'clothPurple' },
     { at: [-2.5, 10, 3], size: [2, 3.5, 0.5], color: 'sand' },
     { at: [-2.5, 11, 3], size: [2, 0.5, 0.5], color: 'clothPurple' },
     { at: [-2.5, 10, -3.5], size: [2, 3.5, 0.5], color: 'sand' },
@@ -56,7 +56,10 @@ const head: Box[] = [
   // Level 2: the full headdress, taller, striped over the top, the lappets flaring out. From
   // level 3 it is a pharaoh's: the cloth turns to metal and the stripes to sand.
   ...nemes(2, 2, 'sand', 'clothPurple'),
-  ...nemes(3, 5, 'clothPurple', 'sand'),
+  ...nemes(3, 4, 'clothPurple', 'sand'),
+  // Level 5: the headdress stays purple cloth, its stripes turn gold: a mummy in a royal
+  // headdress, not a block of gold.
+  ...nemes(5, 5, 'robePurple', 'levelGold'),
   // A cobra rising off the brow: iron at 3, crystal at 4, gold at 5.
   ...atLevels(3, 3, [
     { at: [-6, 13.5, -0.5], size: [1, 2.5, 1], color: 'levelIron' },
@@ -117,19 +120,13 @@ export const desertZombie = bipedModel({
     { at: [-1.5, 5, -2.25], size: [3, 0.5, 4.5], color: 'bandage' },
   ],
   joints: { torso: [0, 5, 0], head: [-1.5, 8.5, 0], armL: [-0.5, 7.5, 4], armR: [-0.5, 7.5, -4], legL: [0, 4, 1.5], legR: [0, 4, -1.5] },
-  walk: { legs: 20, arms: 6, bob: 1 },
+  walk: { legs: 20, arms: 10, bob: 1.5, roll: 6 },
   extra: [
     {
       name: 'eyes',
       parent: 'head',
       pivot: [-4.75, 11.75, 0],
-      boxes: [
-        { at: [-5, 10.5, 0.5], size: [0.5, 2.5, 2.5], color: 'eye' },
-        { at: [-4.5, 10.5, 2.5], size: [1.5, 2.5, 1], color: 'eye' },
-        { at: [-5, 12, 0.5], size: [0.5, 1, 1], color: 'eyeGlint' },
-        { at: [-5, 11, -2], size: [0.5, 1.5, 1.5], color: 'eye' },
-        { at: [-5, 11.5, -2], size: [0.5, 1, 0.5], color: 'eyeGlint' },
-      ],
+      boxes: zombieEyes({ face: -4.5, y: 10.5, near: [2.5, 2.5], far: [2, 2], farLift: 0.25 }),
     },
     {
       // A loose bandage end trailing from the back of the head, longer from level 2.

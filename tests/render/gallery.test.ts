@@ -188,6 +188,39 @@ describe('gallery scene', () => {
     expect(() => mount(canvas, new URLSearchParams('scene=gallery&model=nope'))).toThrow(/nope/);
   });
 
+  it('names a key in &models= that is not registered: an error under the tests, a warning in the browser', () => {
+    const canvas = document.createElement('canvas');
+    canvas.getContext = (() => ({})) as unknown as typeof canvas.getContext;
+    expect(() => mount(canvas, new URLSearchParams('scene=gallery&models=peashooter,peashootr'))).toThrow(/\[gallery\].*"peashootr"/);
+    // Outside the tests the same list draws what it can and says what it left out.
+    vi.stubEnv('MODE', 'development');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { gallery } = open('scene=gallery&models=peashooter,peashootr');
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^\[gallery\].*"peashootr"/));
+      expect(new Set(gallery.instances.map((instance) => instance.def.key))).toEqual(new Set(['peashooter']));
+    } finally {
+      warn.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('shows a model with one look once, at level 1, beside the five levels of the others', () => {
+    const { gallery, ui } = open('scene=gallery&models=peashooter,boneMinion');
+    const minions = gallery.instances.filter((instance) => instance.def.key === 'boneMinion');
+    expect(minions.map((instance) => instance.level)).toEqual([1]);
+    expect(gallery.instances.filter((instance) => instance.def.key === 'peashooter').map((instance) => instance.level)).toEqual([1, 2, 3, 4, 5]);
+    expect([...ui.querySelectorAll('[data-label="level"]')].length).toBe(6);
+  });
+
+  it('puts the page number in the corner of the window, not among the rows', () => {
+    const { ui } = open('scene=gallery&page=2');
+    const page = ui.querySelector('[data-label="page"]') as HTMLElement;
+    expect(page.textContent).toMatch(/^page 2 of \d+$/);
+    expect(page.style.right).toBe('12px');
+    expect(page.style.transform).toBe('');
+  });
+
   it('frames one row closer than the overview', () => {
     const overview = open('scene=gallery').renderer.camera.position.clone();
     teardown?.();
