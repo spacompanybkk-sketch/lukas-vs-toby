@@ -160,8 +160,10 @@ function raise(s: SimState, b: Balance, u: Unit, rise: Raise, events: SimEvent[]
   let mine = 0;
   for (const m of s.units) if (m.ownerId === u.id && m.key === rise.key && isStanding(m)) mine += 1;
   if (mine >= b.minionCap) return;
-  used(u, 'raise', s.nextId, events);
-  spawnMinion(s, b, u.lane, u.x, u.level, u.id, events);
+  const spawned: SimEvent[] = [];
+  const minion = spawnMinion(s, b, u.lane, u.x, u.level, u.id, spawned);
+  used(u, 'raise', minion.id, events); // reported before the minion's own unitSpawned
+  events.push(...spawned);
   u.abilityTimer = seconds(rise.interval);
 }
 
