@@ -144,7 +144,8 @@ the fair band any other way, and then move only in steps of 25.
 - The plant base fights back. A zombie that has reached the base and is biting it is
   struck by the base on a timer, one zombie per lane at a time. A zombie that slips
   down an empty lane therefore costs some base health and then dies, instead of biting
-  for the rest of the match. (Added 2026-11-11: the first computer-vs-computer runs
+  for the rest of the match. A zombie killed by the base pays the plants no bounty
+  (Michal, 2026-11-12: plants must not earn from zombies that got past them). (Added 2026-11-11: the first computer-vs-computer runs
   showed that plants, which only shoot towards the zombies, could never hit a zombie
   that had got past them, so one early leak decided most matches.)
 - Plants hit the zombie base with shots, as in the old game. Every plant whose shot
