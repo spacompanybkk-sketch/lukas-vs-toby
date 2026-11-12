@@ -14,7 +14,9 @@ import { BattleSession } from './BattleSession';
 import { installDebug, markReady } from './debug';
 import { loadSettings } from './settings';
 import type { Settings } from './settings';
+import { session } from './session';
 import { Stage } from './Stage';
+import { defaultCloud } from '../cloud/restClient';
 import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
 
@@ -53,6 +55,13 @@ export function mountGame(
 ): () => void {
   const lvt = installDebug();
   const audio = new AudioEngine();
+  // The players' session on this page's cloud (the fake unless the build says live). Its clock can
+  // be moved on by tests (`__lvt.skipClock(ms)`), so a 30 s lock-out need not be waited out.
+  let skew = 0;
+  session.configure({ cloud: defaultCloud(), now: () => Date.now() + skew });
+  lvt.skipClock = (ms: number) => { skew += ms; };
+  lvt.players = session;
+  lvt.go = go;
   let stage: Stage | null = null;
   try {
     stage = new Stage(canvas, loadSettings().quality);
@@ -145,7 +154,7 @@ export function mountGame(
   // The menus have the demo battle behind them and their own tune.
   const stopScreens = effect(() => {
     const s = screen.value;
-    if (s.name === 'title' || s.name === 'sidepick') {
+    if (s.name !== 'battle' && s.name !== 'unsupported') {
       demo?.show();
       audio.startMusic('menu');
     }
@@ -161,6 +170,8 @@ export function mountGame(
   const onGesture = (): boolean | Promise<boolean> =>
     audio.needsGesture ? audio.unlock().then(() => !audio.needsGesture) : true;
 
+  const playUi = (name: Parameters<AudioEngine['play']>[0]): void => audio.play(name);
+
   const renderer = stage?.renderer;
   renderer?.countDrawCalls(fps);
   const fpsSource = fps && renderer !== undefined ? () => renderer.stats : undefined;
@@ -169,6 +180,7 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
+      onSound={playUi}
     />
   );
   render(<Root />, ui);
@@ -176,6 +188,7 @@ export function mountGame(
   return () => {
     stopScreens();
     render(null, ui);
+    session.dispose();
     current?.dispose();
     stage?.dispose();
     audio.stopMusic(0);

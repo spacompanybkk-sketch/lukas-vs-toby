@@ -142,7 +142,7 @@ class Card extends Component<CardProps> {
  * silhouette of a plant in its pot or a zombie's head and shoulders, a shade darker than the
  * card. Never a letter: the younger player cannot read.
  */
-const SILHOUETTES: Record<Faction, PixelArt> = {
+export const SILHOUETTES: Record<Faction, PixelArt> = {
   plants: {
     rows: [
       '....ss....',

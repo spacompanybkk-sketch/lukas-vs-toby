@@ -5,7 +5,7 @@ export interface TitleProps {
   onSettings(): void;
 }
 
-/** The game's name, one big PLAY, and a gear. The bot battle plays behind it (wired elsewhere). */
+/** The game's name, one big PLAY (to the players' pictures), and a gear. The bot battle plays behind it. */
 export function Title({ onSettings }: TitleProps) {
   return (
     <div data-screen="title" class="layer layer--menu title">
@@ -14,7 +14,7 @@ export function Title({ onSettings }: TitleProps) {
         <span class="logo__vs inked">vs</span>
         <span class="logo__line logo__line--zombies inked">TOBY ZOMBIES</span>
       </h1>
-      <button type="button" data-action="play" class="btn btn--big pal-leaf title__play" onClick={() => go({ name: 'sidepick' })}>
+      <button type="button" data-action="play" class="btn btn--big pal-leaf title__play" onClick={() => go({ name: 'players' })}>
         <span class="ico ico--play" aria-hidden="true" /><span class="btn__label inked">PLAY</span>
       </button>
       <button type="button" data-action="settings" class="btn btn--square pal-stone title__gear" aria-label="Settings" onClick={onSettings}>

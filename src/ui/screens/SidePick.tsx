@@ -9,6 +9,16 @@ export interface SidePickProps {
   portraits?: BoyPortraits;
   /** Seed for the battle; defaults to the clock. */
   seed?: () => number;
+  /**
+   * The logged-in player's difficulty per side: picking a side selects it (instead of
+   * `DEFAULT_SKILL`), and `onSkill` hears every change so it can be saved.
+   */
+  difficulty?: Record<Faction, Skill>;
+  /** The side picked from the start (Lukas plants, Toby zombies). */
+  side?: Faction | null;
+  onSkill?(side: Faction, skill: Skill): void;
+  /** The back arrow (default: the title). */
+  onBack?(): void;
 }
 
 const SKILLS: { skill: Skill; label: string; stars: number }[] = [
@@ -32,13 +42,18 @@ export const DEFAULT_SKILL: Record<Faction, Skill> = { plants: 'medium', zombies
  * Two big boy cards, three difficulty buttons, START, and a back arrow. Picking a boy also picks
  * his difficulty (`DEFAULT_SKILL`). START before a boy is picked makes the two cards hop.
  */
-export function SidePick({ portraits = {}, seed = () => Date.now() }: SidePickProps) {
-  const [side, setSide] = useState<Faction | null>(null);
-  const [skill, setSkill] = useState<Skill>('medium');
+export function SidePick({ portraits = {}, seed = () => Date.now(), difficulty, side: firstSide = null, onSkill, onBack = () => go({ name: 'title' }) }: SidePickProps) {
+  const skillFor = (f: Faction): Skill => (difficulty ?? DEFAULT_SKILL)[f];
+  const [side, setSide] = useState<Faction | null>(firstSide);
+  const [skill, setSkill] = useState<Skill>(firstSide !== null ? skillFor(firstSide) : 'medium');
   const [nudges, setNudges] = useState(0);
   const pick = (picked: Faction): void => {
     setSide(picked);
-    setSkill(DEFAULT_SKILL[picked]);
+    setSkill(skillFor(picked));
+  };
+  const choose = (k: Skill): void => {
+    setSkill(k);
+    if (side !== null && k !== skill) onSkill?.(side, k);
   };
   const start = (): void => {
     if (side === null) {
@@ -51,7 +66,7 @@ export function SidePick({ portraits = {}, seed = () => Date.now() }: SidePickPr
   const nudge = nudges === 0 ? '' : nudges % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b';
   return (
     <div data-screen="sidepick" class="layer layer--menu sidepick">
-      <button type="button" data-action="back" class="btn btn--square pal-wood sidepick__back" aria-label="Back" onClick={() => go({ name: 'title' })}>
+      <button type="button" data-action="back" class="btn btn--square pal-wood sidepick__back" aria-label="Back" onClick={onBack}>
         <span class="ico ico--back" aria-hidden="true" />
       </button>
       <div class="sidepick__body stack">
@@ -80,7 +95,7 @@ export function SidePick({ portraits = {}, seed = () => Date.now() }: SidePickPr
           {SKILLS.map((k) => (
             <button
               key={k.skill} type="button" data-skill={k.skill} aria-pressed={skill === k.skill}
-              class={`btn pal-${skill === k.skill ? 'wood' : 'stone'} skill`} onClick={() => setSkill(k.skill)}
+              class={`btn pal-${skill === k.skill ? 'wood' : 'stone'} skill`} onClick={() => choose(k.skill)}
             >
               <span class="skill__stars" aria-hidden="true">
                 {Array.from({ length: k.stars }, (_, i) => <span key={i} class="ico ico--star" />)}

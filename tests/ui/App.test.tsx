@@ -86,9 +86,17 @@ const tap = (sel: string): void => {
   act(() => need(sel).click());
 };
 
+/**
+ * The side pick with nobody logged in (as phase 1 had it, and `?scene=battle`): the logged-in
+ * way there, Title → Players → number → Home → Play, is tested in players.test.tsx.
+ */
+function toSidePick(): void {
+  act(() => go({ name: 'sidepick' }));
+}
+
 function toBattle(factory: SessionFactory): void {
   act(() => render(<App createSession={factory} />, root));
-  tap('[data-action="play"]');
+  toSidePick();
   tap('[data-side="zombies"]');
   tap('[data-skill="hard"]');
   tap('[data-action="start"]');
@@ -100,9 +108,15 @@ describe('App flow', () => {
     expect(need('[data-screen="title"]').textContent).toContain('PLAY');
   });
 
-  it('PLAY opens the side pick, with Medium preselected', () => {
+  it('PLAY on the title opens the players’ pictures', () => {
     act(() => render(<App />, root));
     tap('[data-action="play"]');
+    expect(screen.value.name).toBe('players');
+  });
+
+  it('the side pick with nobody logged in has Medium preselected', () => {
+    act(() => render(<App />, root));
+    toSidePick();
     expect(screen.value.name).toBe('sidepick');
     const pick = need('[data-screen="sidepick"]');
     expect(pick.textContent).toContain('LUKAS');
@@ -112,7 +126,7 @@ describe('App flow', () => {
 
   it('picking Toby selects Easy and picking Lukas selects Medium, and the choice stays changeable', () => {
     act(() => render(<App />, root));
-    tap('[data-action="play"]');
+    toSidePick();
     const pressed = (): string[] => [...root.querySelectorAll('[data-skill][aria-pressed="true"]')]
       .map((el) => el.getAttribute('data-skill') ?? '');
     tap('[data-side="zombies"]');
@@ -131,7 +145,7 @@ describe('App flow', () => {
 
   it('START before a boy is picked stays put and makes both boy cards hop, again on every tap', () => {
     act(() => render(<App />, root));
-    tap('[data-action="play"]');
+    toSidePick();
     const hops = (): string[] => [...root.querySelectorAll('[data-side]')]
       .map((el) => [...el.classList].find((c) => c.startsWith('is-nudged')) ?? '');
     expect(hops()).toEqual(['', '']);
@@ -146,7 +160,7 @@ describe('App flow', () => {
 
   it('the back arrow on the side pick returns to the title', () => {
     act(() => render(<App />, root));
-    tap('[data-action="play"]');
+    toSidePick();
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('title');
   });
@@ -345,7 +359,7 @@ describe('App flow', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       act(() => render(<App />, root));
-      tap('[data-action="play"]');
+      toSidePick();
       tap('[data-side="plants"]');
       tap('[data-action="start"]');
       expect(screen.value.name).toBe('unsupported');
@@ -376,7 +390,7 @@ describe('hudOnlySession (development stand-in)', () => {
 
   it('App uses it when no factory is passed in development', () => {
     act(() => render(<App />, root));
-    tap('[data-action="play"]');
+    toSidePick();
     tap('[data-side="zombies"]');
     tap('[data-action="start"]');
     expect(q('[data-screen="battle"]')).not.toBeNull();

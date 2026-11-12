@@ -68,6 +68,8 @@ export interface BattleScreenProps {
   energyRef?: Ref<HTMLDivElement>;
   /** Hero power and spells; absent until the controller provides them. */
   powers?: BattlePowers;
+  /** Coins the logged-in player earned from this battle, shown falling on the result (none: no player). */
+  coins?: number | null;
 }
 
 /**
@@ -97,7 +99,7 @@ const SHAKE_MS = 300;
  * when a second passes, a card when its recharge steps), never the whole screen.
  */
 export function BattleScreen(props: BattleScreenProps) {
-  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers } = props;
+  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
@@ -136,7 +138,7 @@ export function BattleScreen(props: BattleScreenProps) {
       <IntroBanner session={session} />
       <Overlays
         ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
-        onRestart={onRestart} onQuit={onQuit}
+        onRestart={onRestart} onQuit={onQuit} coins={coins}
       />
     </div>
   );
@@ -350,10 +352,11 @@ interface OverlaysProps {
   onSettingsChange(s: Settings): void;
   onRestart(): void;
   onQuit(): void;
+  coins: number | null;
 }
 
 /** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
-function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit }: OverlaysProps) {
+function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins }: OverlaysProps) {
   const hud = ctl.hud;
   const paused = hud.paused.value;
   const result = hud.result.value;
@@ -365,7 +368,7 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
     return (
       <ResultOverlay
         result={result} playerFaction={ctl.playerFaction} seconds={hud.seconds.value} portraits={boys}
-        onPlayAgain={onRestart} onMenu={onQuit}
+        onPlayAgain={onRestart} onMenu={onQuit} coins={coins}
       />
     );
   }

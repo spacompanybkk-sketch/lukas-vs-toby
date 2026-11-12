@@ -6,7 +6,10 @@ import { BattleController } from '../app/BattleController';
 import type { BattleOptions } from '../app/BattleController';
 import { loadSettings, saveSettings } from '../app/settings';
 import type { Settings } from '../app/settings';
+import { session as players } from '../app/session';
 import { go, screen } from '../app/store';
+import type { SfxName } from '../audio/sfx';
+import { applyBattleResult, rewardFor } from '../progress/rewards';
 import { TICKS_PER_SECOND } from '../sim/types';
 import { SettingsPanel } from './SettingsPanel';
 import { Unsupported } from './Unsupported';
@@ -15,8 +18,13 @@ import type { FpsStats } from './hud/FpsReadout';
 import type { BoyPortraits } from './hud/BaseBars';
 import { BattleScreen } from './screens/BattleScreen';
 import type { BattleSessionLike, SessionFactory } from './screens/BattleScreen';
+import { CreatePlayer } from './screens/CreatePlayer';
+import { GrownUp } from './screens/GrownUp';
+import { Home, Soon } from './screens/Home';
+import { Players } from './screens/Players';
 import { SidePick } from './screens/SidePick';
 import { Title } from './screens/Title';
+import { setUiSound } from './uiSound';
 import './screens/screens.css';
 
 export interface AppProps {
@@ -41,6 +49,8 @@ export interface AppProps {
   energyRef?: Ref<HTMLDivElement>;
   /** With `?fps`: where the corner readout reads fps, render scale and draw calls. */
   fpsSource?: () => FpsStats;
+  /** Plays a menu sound (a key, a refusal, a coin). */
+  onSound?(name: SfxName): void;
 }
 
 /** Production fallback: there is no stand-in, so a missing factory is a loud error. */
@@ -132,7 +142,7 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   }, []);
 }
 
-export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound }: AppProps) {
   const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
@@ -145,6 +155,11 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
     // Only the initial settings: later changes go through `changeSettings`.
   }, []);
 
+  useEffect(() => {
+    setUiSound(onSound ?? null);
+    return () => setUiSound(null);
+  }, [onSound]);
+
   const changeSettings = (next: Settings): void => {
     setSettings(next);
     saveSettings(next);
@@ -156,8 +171,25 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
     case 'title':
       body = <Title onSettings={() => setSettingsOpen(true)} />;
       break;
+    case 'players':
+      body = <Players portraits={portraits} login={s.login} />;
+      break;
+    case 'create':
+      body = <CreatePlayer key={s.boy ?? 'new'} portraits={portraits} boy={s.boy} />;
+      break;
+    case 'home':
+      body = <Home portraits={portraits} />;
+      break;
+    case 'leaderboard':
+    case 'marketplace':
+    case 'almanac':
+      body = <Soon place={s.name} />;
+      break;
+    case 'grownup':
+      body = <GrownUp portraits={portraits} />;
+      break;
     case 'sidepick':
-      body = <SidePick portraits={boys} />;
+      body = <PlayerSidePick boys={boys} />;
       break;
     case 'battle':
       body = (
@@ -222,12 +254,56 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
     };
   }, [options, createSession]);
 
+  const coins = useBattleCoins(live, options);
+
   if (live === null) return null;
   const again = (): void => go({ name: 'battle', options: { ...options, seed: (Date.now() + live.id) >>> 0 } });
+  // A logged-in player goes back to their Home; a battle opened without one, to the title.
+  const quit = (): void => go({ name: players.player.peek() !== null ? 'home' : 'title' });
   return (
     <BattleScreen
       key={live.id} session={live.session} {...rest}
-      onRestart={again} onQuit={() => go({ name: 'title' })}
+      onRestart={again} onQuit={quit} coins={coins}
+    />
+  );
+}
+
+/**
+ * When the battle is decided and a player is logged in: its coins and win go into the save
+ * (`applyBattleResult` through `session.update`), once per battle. Returns the coins earned.
+ */
+function useBattleCoins(live: { id: number; session: BattleSessionLike } | null, options: BattleOptions): number | null {
+  const [coins, setCoins] = useState<number | null>(null);
+  useEffect(() => {
+    setCoins(null);
+    if (live === null) return undefined;
+    const ctl = live.session.controller;
+    let done = false;
+    return ctl.hud.result.subscribe((result) => {
+      if (result === null || done || players.player.peek() === null) return;
+      done = true;
+      const base = ctl.hud.base.peek()[ctl.playerFaction];
+      const r = { won: result.playerWon, skill: options.skill, baseHpShare: base.max > 0 ? base.hp / base.max : 0 };
+      players.update((save) => applyBattleResult(save, { ...r, versus: false }, players.now()));
+      setCoins(rewardFor(r));
+    });
+  }, [live, options]);
+  return coins;
+}
+
+/**
+ * The side pick, for the logged-in player: preset from their save (Lukas on plants, Toby on
+ * zombies, each side at its saved difficulty); a change of difficulty is saved. Back goes Home.
+ */
+function PlayerSidePick({ boys }: { boys: BoyPortraits | undefined }) {
+  const me = players.player.value;
+  if (me === null) return <SidePick portraits={boys} />;
+  return (
+    <SidePick
+      portraits={boys} difficulty={me.difficulty}
+      side={me.slot === 'p01' ? 'plants' : me.slot === 'p02' ? 'zombies' : null}
+      onSkill={(side, skill) => players.update((save) => ({ ...save, difficulty: { ...save.difficulty, [side]: skill } }))}
+      onBack={() => go({ name: 'home' })}
     />
   );
 }
