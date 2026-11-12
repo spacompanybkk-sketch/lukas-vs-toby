@@ -1,0 +1,32 @@
+/* ?scene=hud-gallery: the states sheet sits on a plain backdrop instead of the lawn. */
+
+body.hudg-plain { background: #3a5a3a; }
+
+.hudg--states {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  padding: var(--gutter-top) var(--gutter-x) var(--gutter-bottom);
+  overflow: auto;
+  background: repeating-conic-gradient(#3e6b3a 0 25%, #46773f 0 50%) 0 0 / 32px 32px;
+  --hero-size: 96px;
+  --tray-gap: 8px;
+}
+.hudg__side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 18px 28px;
+}
+.hudg__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+}
+.hudg__row--spells .power-spells { flex-direction: row; --spell-size: 64px; }
+.hudg__row--spells { gap: 28px; }

@@ -2,6 +2,7 @@ import { Component } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CardVM } from '../../app/BattleController';
 import type { Faction, UnitKey } from '../../sim/types';
+import { trayLayout, useTrayLayout, CARD_ASPECT } from './trayLayout';
 import './hud.css';
 
 export interface CardTrayProps {
@@ -25,6 +26,17 @@ export interface CardTrayProps {
 const RECHARGE_STEPS = 8;
 const SHAKE_MS = 300;
 
+/**
+ * Rows for a hand of `count` cards in a window `width` x `height` CSS px (default gutters), with
+ * the hero and spell buttons beside it: see `trayLayout`.
+ */
+export function trayRows(count: number, width: number, height: number): 1 | 2 {
+  return trayLayout(count, { width, height, gutterX: 12, gutterBottom: 10 }).rows;
+}
+
+/** `trayLayout(count)` for the current window; shared with the bar the tray sits in. */
+export { useTrayLayout };
+
 export function rechargeStep(fraction: number): number {
   return Math.ceil(Math.min(1, Math.max(0, fraction)) * RECHARGE_STEPS) / RECHARGE_STEPS;
 }
@@ -40,6 +52,8 @@ export function CardTray(props: CardTrayProps) {
   const latest = useRef(props);
   latest.current = props;
   const shake = useShake(denied);
+  const layout = useTrayLayout(cards.length);
+  const { rows, cols } = layout;
   const { down, click } = useMemo(() => {
     // The unit that this press selected on pointer down, so its click does not deselect it again.
     let pressSelected: UnitKey | null = null;
@@ -69,7 +83,14 @@ export function CardTray(props: CardTrayProps) {
 
   const shakeClass = shake === 0 ? '' : shake % 2 === 1 ? ' is-denied is-denied-a' : ' is-denied is-denied-b';
   return (
-    <div data-hud="tray" class={`hud-tray px pal-wood side-${side}${shakeClass}`} role="toolbar" aria-label="Cards">
+    <div
+      data-hud="tray" class={`hud-tray px pal-wood side-${side} hud-tray--rows-${rows}${shakeClass}`}
+      style={{
+        '--tray-cols': String(cols), '--tray-gap': `${layout.gap}px`,
+        '--card-w': `${layout.card}px`, '--card-h': `${layout.card * CARD_ASPECT}px`,
+      }}
+      role="toolbar" aria-label="Cards"
+    >
       <div class="hud-tray__cards">
         {cards.map((c) => (
           <Card

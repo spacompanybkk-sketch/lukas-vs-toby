@@ -4,7 +4,8 @@ import { defineConfig } from '@playwright/test';
 // then plays it in Chromium with the real GPU (software GL if the probe in e2e/global-setup.ts
 // finds no WebGL2). Two projects: a desktop with a mouse, and an iPad with touch. A WebKit
 // project can be added later with the same specs.
-const PORT = 5314;
+// LVT_E2E_PORT moves it, for a second checkout running its own e2e at the same time.
+const PORT = Number(process.env.LVT_E2E_PORT) || 5314;
 
 export default defineConfig({
   testDir: 'e2e',

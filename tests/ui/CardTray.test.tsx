@@ -3,7 +3,8 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CardVM } from '../../src/app/BattleController';
-import { CardTray, rechargeStep } from '../../src/ui/hud/CardTray';
+import { PLANT_KEYS, UNIT_INFO } from '../../src/data/units';
+import { CardTray, rechargeStep, trayRows } from '../../src/ui/hud/CardTray';
 import type { CardTrayProps } from '../../src/ui/hud/CardTray';
 
 const CARDS: CardVM[] = [
@@ -12,9 +13,23 @@ const CARDS: CardVM[] = [
   { unit: 'cherryBomber', name: 'Cherry Bomber', price: 150, hotkey: '3', affordable: false, rechargeFraction: 0 },
 ];
 
+const TEN: CardVM[] = PLANT_KEYS.map((unit, i) => ({
+  unit, name: UNIT_INFO[unit].name, price: 50 + i * 25, hotkey: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'][i] ?? '',
+  affordable: i % 3 !== 2, rechargeFraction: i === 4 ? 0.5 : 0,
+}));
+
+/** Sets the window size the tray lays itself out for, and tells it so. */
+function viewport(width: number, height: number): void {
+  act(() => {
+    (window as unknown as { happyDOM: { setViewport(v: { width: number; height: number }): void } }).happyDOM.setViewport({ width, height });
+    window.dispatchEvent(new Event('resize'));
+  });
+}
+
 let root: HTMLElement;
 
 beforeEach(() => {
+  viewport(1440, 900);
   root = document.createElement('div');
   document.body.appendChild(root);
 });
@@ -153,5 +168,57 @@ describe('CardTray', () => {
     expect(rechargeStep(-0.2)).toBe(0);
     mount({ cards: [{ ...CARDS[0]!, rechargeFraction: 0.3 }] });
     expect(card('peashooter').querySelector<HTMLElement>('.card__recharge')?.style.height).toBe('37.5%');
+  });
+
+  it('renders ten cards, each selectable, with the hotkeys 1 to 0', () => {
+    const props = mount({ cards: TEN });
+    expect(cards()).toHaveLength(10);
+    expect(cards().map((c) => c.querySelector('.card__hotkey')?.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+    for (const c of TEN) {
+      act(() => card(c.unit).click());
+      expect(props.onSelect).toHaveBeenLastCalledWith(c.unit);
+    }
+    expect(props.onSelect).toHaveBeenCalledTimes(10);
+    mount({ ...props, selected: 'pumpkinSquash' });
+    expect(card('pumpkinSquash').classList.contains('is-selected')).toBe(true);
+    expect(cards().filter((c) => c.classList.contains('is-selected'))).toHaveLength(1);
+  });
+
+  it('lays ten cards in one row on a wide window and in two rows of five at 1024 x 768, sized by trayLayout', () => {
+    mount({ cards: TEN });
+    expect(tray().classList.contains('hud-tray--rows-2')).toBe(false);
+    expect(tray().style.getPropertyValue('--tray-cols')).toBe('10');
+    viewport(1024, 768);
+    expect(tray().classList.contains('hud-tray--rows-2')).toBe(true);
+    expect(tray().style.getPropertyValue('--tray-cols')).toBe('5');
+    viewport(1180, 820);
+    expect(tray().classList.contains('hud-tray--rows-2')).toBe(true);
+    viewport(1280, 800);
+    expect(tray().classList.contains('hud-tray--rows-2')).toBe(false);
+    viewport(1024, 768);
+    expect(tray().style.getPropertyValue('--card-w')).toBe('67.5px');
+  });
+
+  it('keeps a short hand in one row at any size', () => {
+    viewport(1024, 768);
+    mount();
+    expect(tray().classList.contains('hud-tray--rows-2')).toBe(false);
+    expect(tray().style.getPropertyValue('--tray-cols')).toBe('3');
+  });
+
+  it('trayRows: two rows only when they give bigger cards than one row (the iPad sizes)', () => {
+    expect(trayRows(10, 1024, 768)).toBe(2);
+    expect(trayRows(10, 1024, 704)).toBe(2);
+    expect(trayRows(10, 1180, 820)).toBe(2);
+    // Safari with its bars showing: too short for two rows above the lawn's edge.
+    expect(trayRows(10, 1024, 650)).toBe(1);
+    expect(trayRows(10, 1180, 746)).toBe(1);
+    expect(trayRows(10, 1194, 760)).toBe(1);
+    expect(trayRows(10, 1366, 950)).toBe(1);
+    expect(trayRows(10, 1440, 900)).toBe(1);
+    expect(trayRows(10, 1152, 648)).toBe(1);
+    expect(trayRows(5, 1024, 768)).toBe(1);
+    expect(trayRows(6, 1024, 768)).toBe(1);
+    expect(trayRows(0, 1024, 768)).toBe(1);
   });
 });
