@@ -106,7 +106,7 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
   switch (cmd.spell) {
     case 'thunderbolt':
     case 'meteor':
-      for (const u of enemies()) damageUnit(s, u, need(stats.damage, cmd.spell), events, true);
+      for (const u of enemies()) damageUnit(s, b, u, need(stats.damage, cmd.spell), events, true);
       break;
     case 'vines':
       putOn(s, enemies(), 'tied', stats, cmd.spell, events);

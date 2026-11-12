@@ -185,7 +185,7 @@ describe('shots and projectiles', () => {
     const pea = eventsOf(fired, 'projectileSpawned')[0]!.projectileId;
 
     m.step(); // in flight
-    damageUnit(m.state, target, 9999, []); // killed by something else
+    damageUnit(m.state, m.balance, target, 9999, []); // killed by something else
     const death = m.step();
     expect(eventsOf(death, 'unitDied').map((e) => e.unitId)).toEqual([target.id]);
     expect(m.state.projectiles.map((p) => p.id)).toEqual([pea]);
@@ -583,8 +583,8 @@ describe('damageUnit and damageBase', () => {
     const z = spawnUnit(m.state, b, 'brainEater', 0, 5);
     const events: SimEvent[] = [];
 
-    damageUnit(m.state, z, 20, events);
-    damageUnit(m.state, z, 10, events);
+    damageUnit(m.state, m.balance, z, 20, events);
+    damageUnit(m.state, m.balance, z, 10, events);
 
     expect(events).toEqual([
       { type: 'unitDamaged', unitId: z.id, amount: 5, hp: 395 },

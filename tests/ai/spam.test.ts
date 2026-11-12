@@ -11,7 +11,7 @@ import { phase1RulesKnobs } from './phase1Rules';
 const SEEDS = 100;
 const LIMIT = 0.55;
 const BULK_MS = 120_000;
-const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false
+const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false and the Sunflower pause
 
 describe.each(['zombies', 'plants'] as Faction[])('one-card spam as %s against the Medium computer', (side) => {
   it.each(PHASE1_CARDS[side])(`%s: spam and merge-spam each win at most ${LIMIT * 100}% of ${SEEDS}`, (unit) => {

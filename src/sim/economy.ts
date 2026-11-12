@@ -21,8 +21,11 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
  *     thousandths of a tick (`hasteCarry`) and each whole tick of it takes one more off both;
  * (a2) every unit with `expires` counts it down, whether it can act or not, and leaves the lawn
  *     on reaching 0 (`unitDied`, cause `'spent'`, no bounty);
+ * (a3) a Sun maker that is `hurt` keeps its Sun timer still (see (c)); `hurt` itself counts down
+ *     at the end of the stage, stunned or not, so a unit hurt during tick T makes no Sun on ticks
+ *     T+1 .. T+n and carries on from where it stopped on T+n+1;
  * (b) trickle income is added to each side's carry and paid out in whole energy;
- * (c) every ready Sunflower that can act pays.
+ * (c) every ready Sunflower that can act and is not hurt pays.
  */
 export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
   countDownTimers(s, b);
@@ -31,6 +34,7 @@ export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
   expireUnits(s, events);
   payTrickle(s, b);
   paySunflowers(s, b, events);
+  for (const u of s.units) if (u.hurt > 0) u.hurt -= 1;
 }
 
 /** A whole tick of hasted countdown, in `hasteCarry` units. */
@@ -42,7 +46,7 @@ function countDownTimers(s: SimState, b: Balance): void {
     if (!canAct(u)) continue;
     u.meleeTimer = Math.max(0, u.meleeTimer - 1);
     u.shotTimer = Math.max(0, u.shotTimer - 1);
-    u.abilityTimer = Math.max(0, u.abilityTimer - 1);
+    if (!(u.hurt > 0 && b.units[u.key]?.sun)) u.abilityTimer = Math.max(0, u.abilityTimer - 1); // a hurt Sun maker's timer waits
     u.auraTimer = Math.max(0, u.auraTimer - 1);
     if (u.haste <= 0) {
       u.hasteCarry = 0;
@@ -118,7 +122,7 @@ function payTrickle(s: SimState, b: Balance): void {
 function paySunflowers(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
     const sun = b.units[u.key]?.sun;
-    if (!sun || u.abilityTimer > 0 || !canAct(u)) continue;
+    if (!sun || u.abilityTimer > 0 || !canAct(u) || u.hurt > 0) continue;
     const amount = Math.round(sun.amount * levelScale(b, u.faction, u.level, 'special')); // keeps energy whole if a tuned table is fractional
     s.players[u.faction].energy += amount;
     u.abilityTimer = seconds(sun.interval);

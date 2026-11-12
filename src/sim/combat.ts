@@ -61,7 +61,7 @@ function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeSt
     events.push({ type: 'attackMissed', unitId: z.id });
   } else if (plant) {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: plant.id, targetBase: null });
-    damageUnit(s, plant, amount, events);
+    damageUnit(s, b, plant, amount, events);
     if (stats.grow && !isStanding(plant)) grow(b, z, stats.grow, events); // only a standing plant is bitten
   } else {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
@@ -136,7 +136,7 @@ export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): vo
     const target = biterAtBase(s, lane);
     if (target === null) continue;
     events.push({ type: 'baseStruck', lane, targetId: target.id });
-    damageUnit(s, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
+    damageUnit(s, b, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
     if (!paysBounty && !isStanding(target)) felledByBase.add(target); // this strike was the killing blow
     s.baseDefenseTimers[lane] = seconds(interval);
   }
@@ -360,7 +360,7 @@ function hitUnit(s: SimState, b: Balance, p: Projectile, target: Unit, events: S
  * shot carries, if any (see `ShotStatus`).
  */
 function wound(s: SimState, b: Balance, p: Projectile, u: Unit, events: SimEvent[]): void {
-  damageUnit(s, u, p.damage, events);
+  damageUnit(s, b, u, p.damage, events);
   burnOnHit(s, p, u, events);
   const status = b.units[p.sourceKey]?.shot?.status;
   if (!status) return;

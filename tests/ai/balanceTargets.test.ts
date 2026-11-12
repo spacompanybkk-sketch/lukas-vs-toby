@@ -10,7 +10,7 @@ import { phase1RulesKnobs } from './phase1Rules';
 
 const BULK_MS = 120_000;
 const MINUTE = 1800; // ticks
-const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false
+const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false and the Sunflower pause
 
 describe('computer against computer', () => {
   it('Medium v Medium: each side wins 40-60% of 200, median 3-6 minutes, under 25% into sudden death', () => {

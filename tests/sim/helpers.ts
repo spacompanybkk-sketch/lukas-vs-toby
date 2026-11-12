@@ -19,7 +19,7 @@ export function classicBalance(): Balance {
     },
     sunflower: {
       recharge: 5, hp: 200, armor: 0, speed: 0,
-      sun: { amount: 25, interval: 10 },
+      sun: { amount: 25, interval: 10, pauseSeconds: 0 }, // phase 2 ships 2: a hurt Sunflower pauses
     },
     walnutBomb: {
       recharge: 15, hp: 1200, armor: 0, speed: 0,

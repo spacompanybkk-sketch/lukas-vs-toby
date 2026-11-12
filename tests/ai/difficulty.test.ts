@@ -14,7 +14,7 @@ import { phase1RulesKnobs } from './phase1Rules';
 const SEEDS = 100;
 const BULK_MS = 120_000;
 const SKILLS: readonly Skill[] = ['easy', 'medium', 'hard'];
-const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false
+const KNOBS = phase1RulesKnobs(); // TODO(phase 2 Task 8): re-measure with paysBounty false and the Sunflower pause
 
 const BANDS: Record<HumanStandIn, Record<Skill, readonly [number, number]>> = {
   child: { easy: [0.55, 0.85], medium: [0.15, 0.45], hard: [0, 0.15] },

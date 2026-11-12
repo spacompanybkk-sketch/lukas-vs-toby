@@ -57,6 +57,7 @@ export interface Unit {
   expires: number; // ticks until it leaves the lawn (cause 'spent'), 0 = never; a Rock Wall's rock
   haste: number; // ticks left of Frenzy's haste, 0 = not hasted
   hasteCarry: number; // hasted timer countdown not yet taken, in 1/1000 of a tick; always whole
+  hurt: number; // ticks left in which a Sun maker that took damage makes no Sun; 0 for everyone else
 }
 
 export interface Projectile {

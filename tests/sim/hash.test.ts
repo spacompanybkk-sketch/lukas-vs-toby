@@ -4,8 +4,9 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1404 bytes). Re-pinned in phase 2,
- * Task 4b, when units gained `expires`, `haste` and `hasteCarry`, players their dealt spells and
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1420 bytes). Re-pinned in phase 2
+ * for the owner's Sunflower rule, when units gained `hurt`; in Task 4b it was 1072679369 over 1404
+ * bytes, when units gained `expires`, `haste` and `hasteCarry`, players their dealt spells and
  * the setup its `spells`; for the Task 3 review it was 3875909580 over 1232 bytes, when hazards
  * gained `poisonTicks`; in Task 4 it was 3625389926 over 1224
  * bytes, when players gained their hero timers (`heroTimer`) and the setup its `heroes`; in Task 3
@@ -16,7 +17,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 1072679369;
+const GOLDEN_HASH = 2247931455;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -29,13 +30,13 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
-        expires: 0, haste: 0, hasteCarry: 0,
+        expires: 0, haste: 0, hasteCarry: 0, hurt: 0,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
-        expires: 0, haste: 45, hasteCarry: 1,
+        expires: 0, haste: 45, hasteCarry: 1, hurt: 15,
       },
     ],
     projectiles: [
@@ -206,6 +207,8 @@ describe('hashState', () => {
     ['a unit expires', (s) => { unit(s, 0).expires = 1; }],
     ['a unit haste', (s) => { unit(s, 1).haste -= 1; }],
     ['a unit hasteCarry', (s) => { unit(s, 1).hasteCarry = 0; }],
+    ['a unit hurt', (s) => { unit(s, 1).hurt -= 1; }],
+    ['a unit hurt of 0 becoming 1', (s) => { unit(s, 0).hurt = 1; }],
     ['a dealt spell key', (s) => { s.players.plants.spells[0]!.key = 'vines'; }],
     ['a dealt spell timer', (s) => { s.players.plants.spells[1]!.timer -= 1; }],
     ['the order of the dealt spells', (s) => { s.players.plants.spells.reverse(); }],

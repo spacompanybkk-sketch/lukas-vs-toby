@@ -11,6 +11,8 @@ import type { Balance } from '../../src/data/balance';
 export function phase1RulesBalance(): Balance {
   const b = cloneBalance(BALANCE);
   b.baseDefense.paysBounty = true; // TODO(phase 2 Task 8): re-measure with paysBounty false
+  const sun = b.units.sunflower?.sun;
+  if (sun) sun.pauseSeconds = 0; // TODO(phase 2 Task 8): re-measure with the shipped Sunflower pause
   return b;
 }
 

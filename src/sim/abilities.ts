@@ -102,7 +102,7 @@ function pumpkinLeap(s: SimState, b: Balance, u: Unit, leap: Leap, events: SimEv
   const at = target.x;
   for (const z of s.units) {
     if (z.faction === u.faction || z.lane !== u.lane || !isStanding(z)) continue;
-    if (Math.abs(z.x - at) <= leap.radius) damageUnit(s, z, amount, events);
+    if (Math.abs(z.x - at) <= leap.radius) damageUnit(s, b, z, amount, events);
   }
   u.abilityTimer = seconds(leap.recoverSeconds);
 }

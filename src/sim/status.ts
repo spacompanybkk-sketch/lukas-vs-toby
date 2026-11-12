@@ -49,15 +49,15 @@ export function applyStatus(
  * (`tick % 30 === 0`), so `n` seconds of it deal `n` times its dps whenever it was put on. A unit
  * it brings to 0 is removed by `resolveDeaths` like any other: cause `'damage'`, bounty paid.
  */
-export function tickStatuses(s: SimState, _b: Balance, events: SimEvent[]): void {
+export function tickStatuses(s: SimState, b: Balance, events: SimEvent[]): void {
   const wholeSecond = s.tick % TICKS_PER_SECOND === 0;
   for (const u of s.units) {
     if (!isStanding(u)) continue;
     for (const kind of KINDS) {
       if (u[kind] <= 0) continue;
       if (wholeSecond && isStanding(u)) {
-        if (kind === 'poison' && u.poisonDps > 0) damageUnit(s, u, u.poisonDps, events, true);
-        if (kind === 'burn' && u.burnDps > 0) damageUnit(s, u, u.burnDps, events, true);
+        if (kind === 'poison' && u.poisonDps > 0) damageUnit(s, b, u, u.poisonDps, events, true);
+        if (kind === 'burn' && u.burnDps > 0) damageUnit(s, b, u, u.burnDps, events, true);
       }
       u[kind] -= 1;
       if (u[kind] > 0) continue;

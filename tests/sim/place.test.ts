@@ -117,7 +117,7 @@ describe('spawnUnit', () => {
       hp: 700, maxHp: 700, spent: 125, armor: 0,
       meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, auraTimer: 0, blocked: false, // its shield is ready at once
       stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0, stacks: 0, ownerId: null,
-      expires: 0, haste: 0, hasteCarry: 0,
+      expires: 0, haste: 0, hasteCarry: 0, hurt: 0,
     });
     expect(m.state.nextId).toBe(2);
     expect(m.state.players.zombies.energy).toBe(200);

@@ -34,6 +34,6 @@ export function useHero(s: SimState, b: Balance, cmd: HeroCommand, events: SimEv
   events.push({ type: 'heroUsed', faction: cmd.faction, lane: cmd.lane });
   for (const u of s.units) {
     if (u.faction === cmd.faction || u.lane !== cmd.lane || !isStanding(u)) continue;
-    damageUnit(s, u, power.damage, events, true);
+    damageUnit(s, b, u, power.damage, events, true);
   }
 }

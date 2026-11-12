@@ -29,7 +29,11 @@ export interface ShotStats {
 export interface UnitStats {
   recharge: number; hp: number; armor: number; speed: number; // seconds, tiles/s
   melee?: MeleeStats; shot?: ShotStats;
-  sun?: { amount: number; interval: number };
+  /**
+   * Makes `amount` energy every `interval` s. Hurt (any damage), it makes none for `pauseSeconds`:
+   * its timer stands still that long and then carries on (see `Unit.hurt`).
+   */
+  sun?: { amount: number; interval: number; pauseSeconds: number };
   deathBlast?: { damage: number; radius: number };
   shield?: { interval: number };
   /**
@@ -171,7 +175,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
     sunflower: {
       recharge: 5, hp: 200, armor: 0, speed: 0,
-      sun: { amount: 25, interval: 10 },
+      sun: { amount: 25, interval: 10, pauseSeconds: 2 },
     },
     walnutBomb: {
       recharge: 15, hp: 1200, armor: 0, speed: 0,

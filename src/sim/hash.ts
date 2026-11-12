@@ -108,7 +108,7 @@ const UNIT: Fields<Unit> = {
   blocked: bool,
   stun: num, blind: num, tied: num, poison: num, poisonDps: num, burn: num, burnDps: num,
   stacks: num, ownerId: nullableNum,
-  expires: num, haste: num, hasteCarry: num,
+  expires: num, haste: num, hasteCarry: num, hurt: num,
 };
 
 const PROJECTILE: Fields<Projectile> = {
