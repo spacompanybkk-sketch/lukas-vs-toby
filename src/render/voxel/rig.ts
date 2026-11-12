@@ -51,6 +51,9 @@ interface Joint {
   /** What is on screen: `target`, or a blend from `from` while fading. */
   shown: PartPose;
   blinks: boolean;
+  /** Extra offset in tiles, set by the owner (see `shiftPart`), on top of the clip. */
+  shiftX: number;
+  shiftY: number;
 }
 
 /** A material of this instance's own, standing in for a shared one while it flashes. */
@@ -132,6 +135,8 @@ export class ModelInstance {
         from: atRest(),
         shown: atRest(),
         blinks: eyes.has(part.name),
+        shiftX: 0,
+        shiftY: 0,
       };
       this.joints.push(joint);
       this.pose[part.name] = joint.target;
@@ -324,6 +329,22 @@ export class ModelInstance {
   }
 
   /**
+   * Holds a part `x`, `y` tiles off where the clip puts it, until shifted back to 0, 0: a
+   * Pumpkin's soil pad stays home while the view carries the pumpkin off on its leap.
+   */
+  shiftPart(name: string, x: number, y: number): void {
+    for (let i = 0; i < this.joints.length; i++) {
+      const joint = this.joints[i] as Joint;
+      if (joint.object.name !== name) continue;
+      if (joint.shiftX === x && joint.shiftY === y) return;
+      joint.shiftX = x;
+      joint.shiftY = y;
+      this.apply();
+      return;
+    }
+  }
+
+  /**
    * The same unit at another level: a new instance that takes this one's place under the
    * same parent, with the same transform, clip, clip time and flash. This instance is
    * disposed, and anything else that was hung on its `root` goes with it: hang health bars
@@ -446,8 +467,8 @@ export class ModelInstance {
         copyPose(shown, target);
       }
       object.position.set(
-        joint.restX + shown.px * VOXEL,
-        joint.restY + shown.py * VOXEL,
+        joint.restX + shown.px * VOXEL + joint.shiftX,
+        joint.restY + shown.py * VOXEL + joint.shiftY,
         joint.restZ + shown.pz * VOXEL,
       );
       // The clip's turn happens in the part's own rest frame: a torso that rests leaning

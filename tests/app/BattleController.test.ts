@@ -487,6 +487,26 @@ describe('BattleController merging, as a child plays it', () => {
     expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
   });
 
+  it('plants: a low tap on a level-5 plant\'s own tile with its card selected is refused max-level (no nearby merge for plants)', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 3 }, null);
+    c.step();
+    const p = playerUnits(c)[0];
+    if (p === undefined) throw new Error('no peashooter');
+    p.level = 5;
+    c.match.state.players.plants.recharge = {};
+    // The ray missed the model (a low tap): the ground names the plant's own tile.
+    expect(c.aimAt(p.id)).toBeNull();
+    expect(c.hover({ lane: 2, col: 3 }, null)).toMatchObject({ ok: false, mergeTargetId: p.id });
+    const denied = c.hud.denied.value;
+    expect(c.click({ lane: 2, col: 3 }, null)).toBe('max-level');
+    expect(c.click({ lane: 2, col: 3 }, p.id)).toBe('max-level');
+    expect(c.hud.denied.value).toBe(denied + 2);
+    expect(c.step().some((e) => e.type === 'unitSpawned' || e.type === 'unitMerged')).toBe(false);
+  });
+
   it('zombies: a direct tap on the player\'s own level-5 zombie of the selected card merges into a nearby one instead', () => {
     const { c, made } = zombieScene([{ key: 'brainEater', lane: 2, x: 4.5, level: 5 }, { key: 'brainEater', lane: 2, x: 4.9 }]);
     c.select('brainEater');

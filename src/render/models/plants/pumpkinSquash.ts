@@ -1,5 +1,5 @@
 import { cheerJump, hitWobble, idleBob, leapSlam, spawnRise, wilt } from '../../voxel/clips';
-import type { Box, ModelDef } from '../../voxel/types';
+import type { Box, Clip, ModelDef } from '../../voxel/types';
 import { bothSides, lv, round, span } from './kit';
 
 // Pumpkin Squash. Faces +X. A big ribbed orange pumpkin standing on two short vine legs, a
@@ -52,6 +52,19 @@ const PAD: Box[] = [
   span(-0.5, 0, 10.5, 11, 3, 5, 'leafDark'),
 ];
 
+/** Two clips played as one (the pad and the pumpkin rise out of the soil together). */
+function both(a: Clip, b: Clip): Clip {
+  return {
+    duration: Math.max(a.duration, b.duration),
+    loop: false,
+    parts: [...(a.parts ?? []), ...(b.parts ?? [])],
+    sample(t, pose) {
+      a.sample(t, pose);
+      b.sample(t, pose);
+    },
+  };
+}
+
 export const pumpkinSquash: ModelDef = {
   key: 'pumpkinSquash',
   trim: [BAND],
@@ -65,9 +78,9 @@ export const pumpkinSquash: ModelDef = {
       boxes: round(0, 0, [[4, 3], [3, 4]], 0, 1, 'soil'),
     },
     {
-      // The pumpkin and its legs, all one: it leaps, squashes and wobbles as one.
+      // The pumpkin and its legs, all one: it leaps, squashes and wobbles as one. Not on the
+      // soil pad: the pad stays on its tile while the pumpkin leaps.
       name: 'body',
-      parent: 'root',
       pivot: [0, 1, 0],
       rot: [0, -22, 6],
       shadedBy: ['eyes'],
@@ -156,7 +169,7 @@ export const pumpkinSquash: ModelDef = {
     // The leap onto a zombie (the view carries it to the target tile and back).
     ability: leapSlam({ body: 'body' }),
     hit: hitWobble('body', -1),
-    spawn: spawnRise('root'),
+    spawn: both(spawnRise('root'), spawnRise('body')),
     die: wilt({ body: 'body', head: 'stem' }),
     cheer: cheerJump('body'),
   },

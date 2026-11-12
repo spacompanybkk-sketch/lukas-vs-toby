@@ -139,6 +139,8 @@ export class UnitView {
   marksHeight = -1;
   /** True when it went off rather than died (a mine, a cherry): it vanishes with no crumble. */
   spent = false;
+  /** View time (seconds) it was last tied, or −1: see `BattleView`. */
+  tiedAt = -1;
   /** A Potato Mine showing its armed light. */
   armed = false;
   /** While leaping: seconds in, and how far along the lane its target stands from it. */
@@ -162,6 +164,8 @@ export class UnitView {
   private readonly hooks: UnitHooks;
   private readonly hasCracks: boolean;
   private readonly hasBrain: boolean;
+  /** A soil pad that is not the body's parent (the Pumpkin): it stays home through a leap. */
+  private readonly hasPad: boolean;
   private cracked = false;
   private time = 0;
 
@@ -183,8 +187,14 @@ export class UnitView {
     const parts = new Set(this.def.parts.map((p) => p.name));
     this.hasCracks = parts.has('cracks');
     this.hasBrain = parts.has('brain');
+    this.hasPad = key === 'pumpkinSquash';
     this.loopName = faction === 'zombies' && this.def.clips.walk ? 'walk' : 'idle';
     this.model.play(this.loopName);
+  }
+
+  /** True while it is off on a leap (its health bar is not drawn). */
+  get leaping(): boolean {
+    return this.leapFor >= 0;
   }
 
   get dying(): boolean {
@@ -361,6 +371,8 @@ export class UnitView {
       }
     }
     this.wrapper.position.set(x + this.offsetX + leapX, this.offsetY + leapY, this.lane + 0.5 + this.offsetZ);
+    // The soil pad stays on its own tile: only the pumpkin leaps.
+    if (this.hasPad) this.model.shiftPart('root', -leapX, -leapY);
 
     if (this.mergeFor >= 0) this.stepMerge(dt);
 

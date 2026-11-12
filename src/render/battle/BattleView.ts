@@ -105,6 +105,10 @@ const SOIL = hex('#8A5A2B');
 /** The statuses a unit can carry, each with its bit in `UnitView.statusBits`. */
 const STATUSES: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn'];
 const TIED_BIT = 1 << STATUSES.indexOf('tied');
+/** Stars and flames on a zombie are drawn this much bigger: on a busy lawn they are the ones that get lost. */
+const ZOMBIE_MARK_SIZE = 1.45;
+/** For this long after a unit is tied, hits on it do not flash it white: the rope wrapping it is the show. */
+const TIE_QUIET_SECONDS = 0.35;
 
 /** A lobbed shot comes down to this height over its target (about a unit's middle). */
 const LOB_LAND_Y = 0.45;
@@ -160,6 +164,8 @@ interface ProjectileView {
   hit: Vector3;
   hitBlocked: boolean;
   hitTarget: number | null;
+  /** Already in flight when the view joined: shown at once from where it is. */
+  late: boolean;
 }
 
 interface TokenView { object: Object3D; kind: TokenKind; age: number; at: Vector3; active: boolean }
@@ -200,6 +206,7 @@ export class BattleView {
   private smokeIn = 0;
   private readonly lastBaseHit: Record<Faction, number> = { plants: -1e9, zombies: -1e9 };
   private readonly bars = new HealthBars();
+  private barCount = 0;
   private readonly views = new Map<number, UnitView>();
   private readonly list: UnitView[] = [];
   private readonly projectiles = new Map<number, ProjectileView>();
@@ -282,6 +289,11 @@ export class BattleView {
     return this.markersShown;
   }
 
+  /** How many health bars were drawn last frame, for tests. */
+  get barsShown(): number {
+    return this.barCount;
+  }
+
   /** How many lasso ropes are showing, for tests. */
   get ropesShown(): number {
     let n = 0;
@@ -349,8 +361,10 @@ export class BattleView {
     const stamp = ++this.stamp;
     for (let i = 0; i < state.projectiles.length; i++) {
       const p = state.projectiles[i];
-      const view = p && this.projectiles.get(p.id);
-      if (!p || !view) continue;
+      if (!p) continue;
+      let view = this.projectiles.get(p.id);
+      // In flight before this view was made (it joined late): drawn from where it is now.
+      if (!view) view = this.addProjectile(p.id, p.kind, p.faction, p.flight, p.targetX, p.lane, p.x, p.ownerId, true);
       view.stamp = stamp;
       view.prevX = view.currX;
       view.currX = p.x;
@@ -384,7 +398,9 @@ export class BattleView {
     for (let i = 0; i < STATUSES.length; i++) {
       const on = (bits & (1 << i)) !== 0;
       const was = (view.statusBits & (1 << i)) !== 0;
-      if (on !== was || (on && moved)) this.marks.set(view.id, view.wrapper, STATUSES[i] as StatusKind, on, view.height);
+      if (on !== was || (on && moved)) {
+        this.marks.set(view.id, view.wrapper, STATUSES[i] as StatusKind, on, view.height, view.faction === 'zombies' ? ZOMBIE_MARK_SIZE : 1);
+      }
     }
     view.statusBits = bits;
     view.marksHeight = view.height;
@@ -429,10 +445,11 @@ export class BattleView {
 
     // Health bars, back lane first so nearer bars are drawn over farther ones.
     this.bars.begin(this.camera);
+    this.barCount = 0;
     for (let lane = 0; lane < 5; lane++) {
       for (let i = 0; i < this.list.length; i++) {
         const view = this.list[i] as UnitView;
-        if (view.lane !== lane || view.dying || !(view.hp < view.maxHp)) continue;
+        if (view.lane !== lane || view.dying || view.leaping || !(view.hp < view.maxHp)) continue;
         v1.copy(view.wrapper.position);
         v1.x += view.faction === 'plants' ? -BAR_SHIFT : BAR_SHIFT;
         // A stack's bars stand in a column over the lane's centre line, one bar height apart, so
@@ -442,6 +459,7 @@ export class BattleView {
         const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
         v1.y = top + 0.14 + BAR_LIFT * Math.min(view.stackPlace, 4);
         this.bars.add(v1, view.hp / view.maxHp, view.level);
+        this.barCount++;
       }
     }
     this.bars.end();
@@ -775,9 +793,11 @@ export class BattleView {
       case 'projectileHit':
         this.hitProjectile(e.projectileId, e.lane, e.x, e.targetId, e.targetBase, e.blocked, stillFlying(state, e.projectileId));
         break;
-      case 'unitDamaged':
-        this.views.get(e.unitId)?.hurt();
+      case 'unitDamaged': {
+        const view = this.views.get(e.unitId);
+        if (view && !this.justTied(view)) view.hurt();
         break;
+      }
       case 'unitDied': {
         const view = this.views.get(e.unitId);
         if (!view) break;
@@ -855,6 +875,7 @@ export class BattleView {
       case 'statusEnded': {
         const view = this.views.get(e.unitId);
         if (!view || view.dying) break;
+        if (e.type === 'statusApplied' && e.status === 'tied') view.tiedAt = this.time;
         const bit = 1 << STATUSES.indexOf(e.status);
         this.showStatuses(view, e.type === 'statusApplied' ? view.statusBits | bit : view.statusBits & ~bit);
         break;
@@ -895,6 +916,11 @@ export class BattleView {
         void unhandled;
       }
     }
+  }
+
+  /** Tied a moment ago: hits on it stay quiet so the rope reads as a tie, not a blow. */
+  private justTied(view: UnitView): boolean {
+    return view.tiedAt >= 0 && this.time - view.tiedAt < TIE_QUIET_SECONDS;
   }
 
   private setBaseHealth(side: Faction, hp: number, max: number): void {
@@ -1024,6 +1050,11 @@ export class BattleView {
       rope = { group, segments, from, to, age: 0, active: false };
       this.ropes.push(rope);
     }
+    // A second Cowboy roping the same plant takes the rope over: the first gets its coil back.
+    if (rope.active && rope.from !== from) {
+      const before = this.views.get(rope.from);
+      if (before && !before.dying) before.showPart('lasso', true);
+    }
     rope.from = from;
     rope.to = to;
     rope.age = 0;
@@ -1088,9 +1119,14 @@ export class BattleView {
 
   // ---- Projectiles -----------------------------------------------------------------------
 
+  /**
+   * A projectile on screen. `late`: it was already flying when this view joined, so it shows at
+   * once from where it is (at flight height, not out of a muzzle); a lobbed one arcs from there.
+   */
   private addProjectile(
     id: number, kind: ProjectileKind, faction: Faction, flight: Flight, targetX: number | null, lane: number, x: number, ownerId: number,
-  ): void {
+    late = false,
+  ): ProjectileView {
     const object = this.spare[kind].pop() ?? makeProjectile(kind);
     object.visible = false;
     object.scale.setScalar(PROJECTILE_SCALE[kind]);
@@ -1101,12 +1137,13 @@ export class BattleView {
       id, kind, faction, flight, burning: false, targetX, stamp: this.stamp,
       lane, object, prevX: x, currX: x, age: 0,
       // Leaves at the snap of the shot, if the shooter has one to show.
-      revealAt: owner && owner.has('shoot') ? RELEASE_SECONDS : 0,
+      revealAt: !late && owner && owner.has('shoot') ? RELEASE_SECONDS : 0,
       shown: false, ownerId, fromX: 0, fromY: 0.6, fromZ: 0, flightY: 0.6,
-      doomed: false, start: new Vector3(), hit: new Vector3(), hitBlocked: false, hitTarget: null,
+      doomed: false, start: new Vector3(), hit: new Vector3(), hitBlocked: false, hitTarget: null, late,
     };
     this.projectiles.set(id, view);
     this.flying.push(view);
+    return view;
   }
 
   private release(view: ProjectileView): void {
@@ -1173,6 +1210,7 @@ export class BattleView {
 
   /** A projectile lands at `at`: a spark, or a block flash and the shield going up. */
   private impact(at: Vector3, blocked: boolean, target: UnitView | undefined): void {
+    if (target && this.justTied(target)) return;
     if (blocked) {
       this.fx.blockFlash(at);
       target?.play('shoot'); // the shield goes up
@@ -1189,7 +1227,7 @@ export class BattleView {
         if (p.age < p.revealAt) continue;
         p.shown = true;
         p.object.visible = true;
-        const owner = this.views.get(p.ownerId);
+        const owner = p.late ? undefined : this.views.get(p.ownerId);
         const simX = p.prevX + (p.currX - p.prevX) * alpha;
         if (owner && !owner.dying) {
           owner.model.muzzleWorld(v2);

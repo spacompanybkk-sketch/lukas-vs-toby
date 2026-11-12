@@ -61,6 +61,8 @@ interface Mark {
   time: number;
   /** Where in the active list it sits, or −1 when it is in the pool. */
   slot: number;
+  /** How big its stars and flames are drawn (1: as built; zombies get them bigger). */
+  size: number;
 }
 
 const here = new Vector3();
@@ -219,7 +221,7 @@ export class StatusMarks {
           return mesh;
         });
         this.group.add(root);
-        pool.push({ status, root, pieces, unitId: -1, anchor: null, height: 1, time: 0, slot: -1 });
+        pool.push({ status, root, pieces, unitId: -1, anchor: null, height: 1, time: 0, slot: -1, size: 1 });
       }
       this.pools.set(status, pool);
     }
@@ -248,7 +250,7 @@ export class StatusMarks {
    * `anchor` when the mark goes on. Turning on a status already shown keeps the one mark;
    * turning off one not shown does nothing. When a pool runs dry, the new mark is skipped.
    */
-  set(unitId: number, anchor: Object3D, status: StatusKind, on: boolean, height?: number): void {
+  set(unitId: number, anchor: Object3D, status: StatusKind, on: boolean, height?: number, size = 1): void {
     const mark = this.find(unitId, status);
     if (!on) {
       if (mark) this.release(mark);
@@ -257,6 +259,7 @@ export class StatusMarks {
     if (mark) {
       mark.anchor = anchor;
       if (height !== undefined) mark.height = height;
+      mark.size = size;
       return;
     }
     const pool = this.pools.get(status) as Mark[];
@@ -268,6 +271,7 @@ export class StatusMarks {
     // Units start their animations at different points, so two side by side do not move as one.
     next.time = (unitId * 0.37) % 1;
     next.slot = this.live.length;
+    next.size = size;
     next.root.visible = true;
     this.live.push(next);
     this.place(next);
@@ -354,7 +358,7 @@ export class StatusMarks {
           p.position.set(Math.cos(a) * STAR_RADIUS, h - 0.14 + Math.sin(t * 6 + i * 2) * 0.01, Math.sin(a) * STAR_RADIUS);
           p.rotation.set(0, Math.PI / 2 - a, 0);
           // A twinkle in two steps.
-          p.scale.setScalar(0.88 + 0.12 * Math.round(0.5 + 0.5 * Math.sin(t * 9 + i * 2)));
+          p.scale.setScalar(mark.size * (0.88 + 0.12 * Math.round(0.5 + 0.5 * Math.sin(t * 9 + i * 2))));
         }
         break;
       }
@@ -410,7 +414,7 @@ export class StatusMarks {
         break;
       }
       case 'burn': {
-        const grow = Math.max(1, h);
+        const grow = Math.max(1, h) * mark.size;
         const r = 0.27 * grow;
         for (let i = 0; i < FLAMES; i++) {
           const p = pieces[i] as Mesh;

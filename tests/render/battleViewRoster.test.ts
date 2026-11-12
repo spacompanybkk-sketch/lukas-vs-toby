@@ -471,3 +471,130 @@ describe('BattleView phase-1 fixes and pools', () => {
     expect(counts).toEqual({});
   });
 });
+
+describe('BattleView review fixes (wiring A)', () => {
+  it('a view that joins late shows every projectile already flying: straight, lobbed, piercing and burning', () => {
+    const first = setUp();
+    const pea = first.spawn('peashooter', 0, 1.5);
+    const pult = first.spawn('kernelPult', 1, 1.5);
+    const z = first.spawn('brainEater', 1, 7.5);
+    const trident = first.spawn('tridentZombie', 3, 8.5);
+    const fire = first.spawn('peashooter', 4, 1.5);
+    const s = first.match.state;
+    const base = { speed: 0.2, damage: 10, spawnTick: 0, level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0 };
+    s.projectiles.push(
+      { ...base, id: 1, kind: 'pea', faction: 'plants', lane: 0, x: 4, ownerId: pea.id, flight: 'straight', sourceKey: 'peashooter' },
+      { ...base, id: 2, kind: 'kernel', faction: 'plants', lane: 1, x: 4.5, ownerId: pult.id, flight: 'lobbed', sourceKey: 'kernelPult', targetId: z.id, targetX: 7.5 },
+      { ...base, id: 3, kind: 'trident', faction: 'zombies', lane: 3, x: 6, ownerId: trident.id, flight: 'piercing', sourceKey: 'tridentZombie', pierceLeft: 2 },
+      { ...base, id: 4, kind: 'pea', faction: 'plants', lane: 4, x: 5, ownerId: fire.id, flight: 'straight', sourceKey: 'peashooter', burning: true },
+    );
+    // A second view on the same match, made now: it has seen none of the shots fired.
+    const late = new BattleView(first.scene, first.camera, first.lawn, first.fx, 'plants');
+    late.applyEvents([], s);
+    late.frame(s, 0, DT, 1);
+    const shown = (name: string): Object3D[] => {
+      const out: Object3D[] = [];
+      first.scene.traverse((o) => { if (o.name === name && o.visible && o.parent === first.scene) out.push(o); });
+      return out;
+    };
+    // The first view never ran a frame, so its objects are still hidden: only the late view's show.
+    expect(shown('projectile-pea')).toHaveLength(1);
+    expect(shown('projectile-pea-burning')).toHaveLength(1);
+    expect(shown('projectile-trident')).toHaveLength(1);
+    const kernel = shown('projectile-kernel');
+    expect(kernel).toHaveLength(1);
+    // Where it is now, not back at a muzzle.
+    expect((kernel[0] as Object3D).position.x).toBeCloseTo(4.5, 1);
+    // The lob arcs on from there: higher in the middle of the rest of its way.
+    (s.projectiles[1] as Projectile).x = 6;
+    late.applyEvents([], s);
+    late.applyEvents([], s);
+    late.frame(s, 1, DT, 1 + DT);
+    expect((kernel[0] as Object3D).position.y).toBeGreaterThan(0.7);
+    late.dispose();
+  });
+
+  it('a second Cowboy roping the same plant takes the rope over and the first gets its coil back', () => {
+    const ctx = setUp();
+    const a = ctx.spawn('cowboyZombie', 2, 7.5);
+    const b = ctx.spawn('cowboyZombie', 2, 8.5);
+    const plant = ctx.spawn('peashooter', 2, 3.5);
+    ctx.run(0.6);
+    plant.tied = 90;
+    const coil = (id: number): boolean => (ctx.view.unit(id)?.wrapper.getObjectByName('lasso') as Object3D).visible;
+    ctx.apply({ type: 'abilityUsed', unitId: a.id, ability: 'lasso', lane: 2, x: 7.5, targetId: plant.id });
+    expect(coil(a.id)).toBe(false);
+    ctx.apply({ type: 'abilityUsed', unitId: b.id, ability: 'lasso', lane: 2, x: 8.5, targetId: plant.id });
+    expect(coil(a.id)).toBe(true);
+    expect(coil(b.id)).toBe(false);
+    expect(ctx.view.ropesShown).toBe(1);
+    plant.tied = 0;
+    ctx.apply({ type: 'statusEnded', unitId: plant.id, status: 'tied' });
+    ctx.run(DT);
+    expect(coil(b.id)).toBe(true);
+  });
+
+  it('a plant being tied is not flashed white or sparked by a hit in that moment; later hits flash as ever', () => {
+    const ctx = setUp();
+    const cowboy = ctx.spawn('cowboyZombie', 2, 7.5);
+    const plant = ctx.spawn('peashooter', 2, 3.5);
+    ctx.run(0.6);
+    const view = ctx.view.unit(plant.id) as NonNullable<ReturnType<typeof ctx.view.unit>>;
+    const hurt = vi.spyOn(view, 'hurt');
+    const spark = vi.spyOn(ctx.fx, 'spark');
+    plant.tied = 90;
+    ctx.apply(
+      { type: 'abilityUsed', unitId: cowboy.id, ability: 'lasso', lane: 2, x: 7.5, targetId: plant.id },
+      { type: 'statusApplied', unitId: plant.id, status: 'tied', ticks: 90, sourceId: cowboy.id },
+      { type: 'unitDamaged', unitId: plant.id, amount: 10, hp: 290 },
+      { type: 'projectileHit', projectileId: 1, lane: 2, x: 3.6, targetId: plant.id, targetBase: null, blocked: false, burning: false },
+    );
+    expect(hurt).not.toHaveBeenCalled();
+    expect(spark).not.toHaveBeenCalled();
+    ctx.run(0.5);
+    ctx.apply({ type: 'unitDamaged', unitId: plant.id, amount: 10, hp: 280 });
+    expect(hurt).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws stun stars and burn flames bigger on a zombie than on a plant', () => {
+    const ctx = setUp();
+    const plant = ctx.spawn('peashooter', 1, 2.5);
+    const zombie = ctx.spawn('skeletonWarrior', 3, 7.5);
+    plant.stun = 60;
+    zombie.stun = 60;
+    plant.burn = 60;
+    zombie.burn = 60;
+    ctx.apply();
+    ctx.run(0.2);
+    const sizes = (status: string): number[] => named(ctx.scene, `status-${status}`).filter((o) => o.visible)
+      .map((o) => (o.children[0] as Object3D).scale.x).sort((x, y) => x - y);
+    for (const status of ['stun', 'burn']) {
+      const [small, big] = sizes(status);
+      expect(big as number).toBeGreaterThan((small as number) * 1.3);
+    }
+  });
+
+  it('hides the Pumpkin\'s health bar while it is in the air, and leaves its soil pad on its own tile', () => {
+    const ctx = setUp();
+    const pumpkin = ctx.spawn('pumpkinSquash', 4, 2.5);
+    const z = ctx.spawn('brainEater', 4, 4.2);
+    pumpkin.hp = pumpkin.maxHp / 2;
+    ctx.apply();
+    ctx.run(0.6);
+    expect(ctx.view.barsShown).toBe(1);
+    ctx.apply({ type: 'abilityUsed', unitId: pumpkin.id, ability: 'leap', lane: 4, x: 2.5, targetId: z.id });
+    ctx.run(0.3);
+    expect(ctx.view.barsShown).toBe(0);
+    const view = ctx.view.unit(pumpkin.id) as NonNullable<ReturnType<typeof ctx.view.unit>>;
+    const pad = view.wrapper.getObjectByName('root') as Object3D;
+    const body = view.wrapper.getObjectByName('body') as Object3D;
+    pad.updateMatrixWorld(true);
+    const at = new Object3D().position;
+    pad.getWorldPosition(at);
+    expect(at.x).toBeCloseTo(2.5, 1); // the pad stays home
+    body.getWorldPosition(at);
+    expect(at.x).toBeGreaterThan(3); // the pumpkin is off over its target
+    ctx.run(1.2);
+    expect(ctx.view.barsShown).toBe(1);
+  });
+});
