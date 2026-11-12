@@ -41,15 +41,13 @@ export interface SkillTable {
   readonly mergeSpareSeconds: number;
   /** Zombies: Peashooter levels in the target lane from which it sends a Skeleton Warrior. */
   readonly tankAt: number;
-  /** Zombies: keep feeding a lane with no plant at all (zombies biting the base together outlast its strikes). */
-  readonly stackEmpty: boolean;
 }
 
 /** Everything the skills change, and nothing else: per side, per skill. */
 export type SkillTables = Readonly<Record<Faction, Readonly<Record<Skill, SkillTable>>>>;
 
 /** The fields a side does not use, filled in so every table has the same shape. */
-const UNUSED = { sunflowers: 0, sunflowerLevel: 1, sunflowerFloor: 1, defenceMargin: 1, reserve: 0, mergeSpareSeconds: 0, tankAt: 0, stackEmpty: false };
+const UNUSED = { sunflowers: 0, sunflowerLevel: 1, sunflowerFloor: 1, defenceMargin: 1, reserve: 0, mergeSpareSeconds: 0, tankAt: 0 };
 
 export const SKILLS: SkillTables = {
   plants: {
@@ -60,7 +58,7 @@ export const SKILLS: SkillTables = {
   zombies: {
     easy: { ...UNUSED, thinkEvery: 120, randomShare: 0.8, mergeSpareSeconds: 0, tankAt: 2 },
     medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, mergeSpareSeconds: 0, tankAt: 2 },
-    hard: { ...UNUSED, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2, stackEmpty: true },
+    hard: { ...UNUSED, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2 },
   },
 };
 

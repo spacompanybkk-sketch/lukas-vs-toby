@@ -8,13 +8,12 @@
  *    healthiest walking zombie in the lane it last sent to.
  * 2. From energy beyond its next real card (`RUSH_RESERVE`), a Very Fast Walker down a lane with no
  *    plant and none of its own zombies: it runs to the base for a chip.
- * 3. Every 20 s at most, a siege zombie (Trident, Brain Rot, Archer) against the lane with the most
- *    plants (four or more) when none of its siege zombies is there yet: a fortress lane is worn
- *    down from range while the rest of the lawn is pressed. It waits for the energy.
+ * 3. Once no lane is open (every lane has a plant), every 20 s at most, a siege zombie (Trident,
+ *    Brain Rot, Archer) against the lane with the most plants (four or more) when none of its
+ *    siege zombies is there yet: a stack is worn down from range. Only from energy it has at once.
  * 4. One zombie into the lane where a fresh Brain Eater would get furthest past the plants' fire,
  *    skipping lanes its zombies are already reckoned to break (they are taken care of), waiting
- *    for the energy. With `stackEmpty` (Hard) a lane with no plant at all is never taken care of:
- *    zombies biting the base together outlast its strikes, so it keeps feeding an open lane.
+ *    for the energy.
  *
  * Which zombie (the first that is not recharging; it waits for the energy for it):
  * - a Necromancer behind a tank already walking the lane (its heal and minions back the tank up);
@@ -48,8 +47,6 @@ export interface ZombiePlan {
   readonly mergeSpareSeconds: number;
   /** Peashooter levels in the target lane from which it sends a Skeleton Warrior. */
   readonly tankAt: number;
-  /** Keep feeding a lane with no plant at all (see rule 3). */
-  readonly stackEmpty: boolean;
 }
 
 /** What a zombie bot remembers between thinks. */
@@ -104,17 +101,16 @@ function* zombieWants(
   const rush = energy >= RUSH_RESERVE + 50 ? rushLane(lawn, rng) : undefined;
   if (rush !== undefined) yield { cmd: sendCommand('veryFastWalker', rush), onChosen: () => { memory.lastLane = rush; } };
 
-  const stack = memory.siegeTick !== null && s.tick - memory.siegeTick < SIEGE_EVERY ? undefined : stackLane(lawn);
+  // Open lanes come first: while any lane has no plant at all, every zombie goes to press it.
+  const open = lawn.some((view) => view.plants.length === 0);
+  const stack = open || (memory.siegeTick !== null && s.tick - memory.siegeTick < SIEGE_EVERY) ? undefined : stackLane(lawn);
   if (stack !== undefined) {
     for (const card of rotated(SIEGE, rng)) {
-      yield {
-        cmd: sendCommand(card, stack.lane), wait: 'energy',
-        onChosen: () => { memory.lastLane = stack.lane; memory.siegeTick = s.tick; },
-      };
+      yield { cmd: sendCommand(card, stack.lane), onChosen: () => { memory.lastLane = stack.lane; memory.siegeTick = s.tick; } };
     }
   }
 
-  const view = weakestLane(match.balance, lawn, rng, plan.stackEmpty);
+  const view = weakestLane(match.balance, lawn, rng);
   for (const card of cardsFor(view, plan, rng)) {
     yield { cmd: sendCommand(card, view.lane), wait: 'energy', onChosen: () => { memory.lastLane = view.lane; } };
   }
@@ -144,7 +140,7 @@ export function laneSurplus(b: Balance, view: LaneView, withProbe: boolean): num
  * Brain Eater gets furthest (the largest surplus); if every lane is breaking, the one breaking
  * least. Ties in a random order.
  */
-function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng, stackEmpty: boolean): LaneView {
+function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng): LaneView {
   const order = shuffledLanes(rng);
   let best: LaneView | undefined;
   let bestScore = -Infinity;
@@ -152,8 +148,7 @@ function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng, stackEm
   let fallbackSurplus = Infinity;
   for (const lane of order) {
     const view = laneOf(lawn, lane);
-    const open = stackEmpty && view.plants.length === 0;
-    const already = view.zombies.length > 0 && !open ? laneSurplus(b, view, false) : -Infinity;
+    const already = view.zombies.length > 0 ? laneSurplus(b, view, false) : -Infinity;
     if (already >= BREAKING_HP) {
       if (already < fallbackSurplus) {
         fallback = view;

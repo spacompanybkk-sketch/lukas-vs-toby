@@ -130,7 +130,9 @@ function* plantWants(
       if (mine !== undefined) yield mine;
       continue;
     }
-    const walled = shooters(view).length >= 2 ? wallWant(view, rng, energy) : undefined;
+    // A wall in front protects two shooters from biters; against zombies that shoot it only soaks.
+    const biters = view.zombies.every((z) => (b.units[z.key]?.shot?.range ?? 0) < 4);
+    const walled = biters && shooters(view).length >= 2 ? wallWant(view, rng, energy) : undefined;
     const help = walled ?? (r.zombieHp <= MINE_PUSH_HP ? mineWant(b, view, false) : undefined)
       ?? shooterWant(view, true, rng) ?? wallWant(view, rng, energy);
     if (help !== undefined) yield help;
