@@ -309,11 +309,12 @@ function poison(v: Voice, t: number, p: number): void {
   });
 }
 
-/** Burning ticking: a fizzle of tiny crackles over a faint warm hiss. Quiet, since it repeats. */
+/** Burning ticking: a soft falling "fwoosh" with a few low, round crackle pops. Quiet, it repeats. */
 function burn(v: Voice, t: number, p: number): void {
-  noise(v, { at: t, attack: 0.03, peak: 0.07, decay: 0.28, filter: 'bandpass', freq: 1300 * p, q: 0.7 });
-  [0, 0.06, 0.11, 0.19, 0.25].forEach((off, i) => {
-    noise(v, { at: t + off, attack: 0.001, peak: 0.12, decay: 0.015 + (i % 2) * 0.01, filter: 'highpass', freq: 4200 + i * 300 });
+  noise(v, { at: t, attack: 0.02, peak: 0.1, decay: 0.28, filter: 'lowpass', freq: 1100 * p, to: 240 * p, glide: 0.3, q: 0.7 });
+  [0.03, 0.09, 0.14, 0.22].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.002, peak: 0.1, decay: 0.03, filter: 'bandpass', freq: (520 + i * 130) * p, q: 2.5 });
+    tone(v, { type: 'sine', freq: (190 + i * 25) * p, to: 120 * p, glide: 0.04, at: t + off, attack: 0.002, peak: 0.06, decay: 0.04 });
   });
 }
 
@@ -358,13 +359,13 @@ function mineBoom(v: Voice, t: number, p: number): void {
   noise(v, { at: t + 0.01, peak: 0.1, decay: 0.08, filter: 'highpass', freq: 2800 });
 }
 
-/** A fuse: a bright sizzle that flickers, as long as the sound may be. */
+/** A fuse: ticks that speed up and climb in pitch over a rising sizzle, ending on a little upward blip. */
 function fuse(v: Voice, t: number, p: number): void {
-  noise(v, { at: t, attack: 0.03, peak: 0.1, hold: 0.25, decay: 0.2, filter: 'bandpass', freq: 5200 * p, q: 1.5 });
-  [0.04, 0.12, 0.17, 0.26, 0.33, 0.4].forEach((off, i) => {
-    noise(v, { at: t + off, attack: 0.001, peak: 0.1, decay: 0.012 + (i % 3) * 0.006, filter: 'highpass', freq: 3500 + i * 400 });
+  noise(v, { at: t, attack: 0.1, peak: 0.07, hold: 0.25, decay: 0.1, filter: 'bandpass', freq: 3500 * p, to: 7000 * p, glide: 0.45, q: 1.2 });
+  [0, 0.12, 0.21, 0.28, 0.34, 0.39, 0.43, 0.46].forEach((off, i) => {
+    tone(v, { type: 'triangle', freq: (900 + i * 170) * p, at: t + off, attack: 0.001, peak: 0.1, decay: 0.02 });
   });
-  tone(v, { type: 'sine', freq: 700 * p, to: 1500 * p, glide: 0.5, at: t, attack: 0.05, peak: 0.04, hold: 0.2, decay: 0.2 });
+  tone(v, { type: 'sine', freq: 1200 * p, to: 2400 * p, glide: 0.06, at: t + 0.48, attack: 0.003, peak: 0.12, decay: 0.07 });
 }
 
 /** The Cherry Bomb: a round fruity "bwoomp" with a pop on top and a bright little bell. */
