@@ -258,6 +258,73 @@ describe('AudioEngine.unlock', () => {
     }
   });
 
+  it('a tap that arrives while an earlier attempt is still waiting calls resume() inside its own gesture', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, fake } = engineWith({ resume: 'hang' });
+      const first = engine.unlock();
+      expect(fake.resumeCalls).toBe(1);
+      await vi.advanceTimersByTimeAsync(150); // a later, separate tap, the first still pending
+      const second = engine.unlock();
+      expect(second).toBe(first); // still one shared attempt...
+      expect(fake.resumeCalls).toBe(2); // ...but this gesture asked the browser itself
+      fake.resumeMode = 'run';
+      await vi.advanceTimersByTimeAsync(1000);
+      await Promise.all([first, second]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe('when the page becomes visible again', () => {
+    function fakeDocument(): { doc: EventTarget & { visibilityState: string }; show: () => void; hide: () => void } {
+      const doc = Object.assign(new EventTarget(), { visibilityState: 'hidden' });
+      return {
+        doc,
+        show: () => { doc.visibilityState = 'visible'; doc.dispatchEvent(new Event('visibilitychange')); },
+        hide: () => { doc.visibilityState = 'hidden'; doc.dispatchEvent(new Event('visibilitychange')); },
+      };
+    }
+
+    it('tries resume() on a suspended context, with no gesture needed', async () => {
+      const page = fakeDocument();
+      vi.stubGlobal('document', page.doc);
+      try {
+        const { engine, fake } = engineWith();
+        await engine.unlock();
+        expect(engine.needsGesture).toBe(false);
+        fake.setState('interrupted');
+        const calls = fake.resumeCalls;
+        page.hide();
+        expect(fake.resumeCalls).toBe(calls); // hiding does nothing
+        page.show();
+        await Promise.resolve();
+        expect(fake.resumeCalls).toBeGreaterThan(calls);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(fake.state).toBe('running');
+        expect(engine.needsGesture).toBe(false);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('does nothing before the first unlock (no context is made) or while audio runs', async () => {
+      const page = fakeDocument();
+      vi.stubGlobal('document', page.doc);
+      try {
+        const { engine, fake, made } = engineWith();
+        page.show();
+        expect(made()).toBe(0);
+        await engine.unlock();
+        const calls = fake.resumeCalls;
+        page.show();
+        expect(fake.resumeCalls).toBe(calls);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   it('a context closed under it (statechange) is dropped, and the next gesture makes a new one', async () => {
     const fakes = [new FakeAudioContext(), new FakeAudioContext()];
     let made = 0;

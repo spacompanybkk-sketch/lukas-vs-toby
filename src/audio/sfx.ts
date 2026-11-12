@@ -14,7 +14,12 @@ import type { Voice } from './synth';
 
 export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | 'chomp' | 'block' | 'explode'
   | 'merge' | 'sun' | 'bounty' | 'baseHit' | 'click' | 'deny' | 'suddenDeath' | 'win' | 'lose' | 'collapse'
-  | 'baseStrike';
+  | 'baseStrike'
+  // phase 2: projectiles, effects on units, the new plants and zombies, heroes and spells
+  | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot' | 'stun' | 'blind' | 'lasso'
+  | 'poison' | 'burn' | 'heal' | 'raise' | 'mineArm' | 'mineBoom' | 'fuse' | 'cherryBoom' | 'squash' | 'grow'
+  | 'miss' | 'heroReady' | 'megaMower' | 'boneStorm' | 'spellReady' | 'thunderbolt' | 'vines' | 'sunShower'
+  | 'healingRain' | 'rockWall' | 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise';
 
 export type Recipe = (v: Voice, t: number, p: number) => void;
 
@@ -205,9 +210,366 @@ function collapse(v: Voice, t: number, p: number): void {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Phase 2. Every new sound is kept friendly (soft attacks, rounded tops, no harsh highs) and has
+// its own shape so it can be told apart by ear: pops and plops for plant shots, whooshes and
+// pings for zombie shots, little tunes for status effects, thumps for explosions, bells for the
+// "ready" calls. All under 0.6 s except the four big ones (under 1.5 s).
+// ---------------------------------------------------------------------------------------------
+
+/** Corn: a dry double "pok-pok", the second a little higher. Very short: it is fired often. */
+function kernel(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'triangle', freq: 980 * p, to: 640 * p, glide: 0.04, at: t, attack: 0.001, peak: 0.26, decay: 0.05 });
+  tone(v, { type: 'triangle', freq: 1240 * p, to: 800 * p, glide: 0.04, at: t + 0.05, attack: 0.001, peak: 0.2, decay: 0.05 });
+  noise(v, { at: t, attack: 0.001, peak: 0.05, decay: 0.015, filter: 'highpass', freq: 3000 });
+}
+
+/** Butter: a soft wobbling "bloo-oop", up then down, with a wet smack. */
+function butter(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 220 * p, to: 430 * p, glide: 0.08, at: t, attack: 0.004, peak: 0.3, decay: 0.09 });
+  tone(v, { type: 'sine', freq: 430 * p, to: 200 * p, glide: 0.13, at: t + 0.08, attack: 0.004, peak: 0.28, decay: 0.15 });
+  noise(v, { at: t + 0.1, attack: 0.004, peak: 0.1, decay: 0.08, filter: 'bandpass', freq: 800 * p, q: 1.2 });
+}
+
+/** Mango: a juicy "plip" with a bright wet spritz on top. */
+function mango(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 640 * p, to: 260 * p, glide: 0.07, at: t, attack: 0.002, peak: 0.3, decay: 0.1 });
+  tone(v, { type: 'sine', freq: 1500 * p, to: 1050 * p, glide: 0.06, at: t + 0.015, attack: 0.002, peak: 0.1, decay: 0.08 });
+  noise(v, { at: t, attack: 0.003, peak: 0.1, decay: 0.09, filter: 'bandpass', freq: 2300 * p, to: 1400 * p, glide: 0.09, q: 1.5 });
+}
+
+/** Sand: a dry hushed puff that never quite becomes a note. */
+function sand(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.02, peak: 0.2, decay: 0.16, filter: 'bandpass', freq: 3200 * p, to: 1500 * p, glide: 0.18, q: 0.8 });
+  tone(v, { type: 'sine', freq: 170 * p, to: 110 * p, glide: 0.1, at: t, attack: 0.005, peak: 0.12, decay: 0.12 });
+}
+
+/** Arrow: a quick air-whoosh, a bow "twang", and a soft "thk" where it lands. */
+function arrow(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.015, peak: 0.16, decay: 0.1, filter: 'highpass', freq: 2600 * p, to: 900 * p, glide: 0.1 });
+  tone(v, { type: 'triangle', freq: 1150 * p, to: 700 * p, glide: 0.08, at: t, attack: 0.002, peak: 0.16, decay: 0.09 });
+  tone(v, { type: 'sine', freq: 210 * p, to: 140 * p, glide: 0.04, at: t + 0.12, attack: 0.001, peak: 0.28, decay: 0.05 });
+}
+
+/** Bullet: a cartoon "pew" (a square wave falling fast, softened) with a puff of smoke. */
+function bullet(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'square', freq: 1500 * p, to: 320 * p, glide: 0.09, at: t, attack: 0.002, peak: 0.16, decay: 0.1, lowpass: 2400 });
+  noise(v, { at: t, attack: 0.001, peak: 0.12, decay: 0.03, filter: 'bandpass', freq: 2000 * p, q: 1 });
+}
+
+/** Trident: three quick rising pings, "tri-den-t", over a splash of water. */
+function trident(v: Voice, t: number, p: number): void {
+  [740, 932, 1175].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + i * 0.055, attack: 0.002, peak: 0.2, decay: 0.09 });
+  });
+  noise(v, { at: t, attack: 0.01, peak: 0.1, decay: 0.2, filter: 'bandpass', freq: 1800 * p, to: 700 * p, glide: 0.2, q: 1 });
+}
+
+/** Brain Rot: a gloopy burble, a low saw wobbling fast through a muffled filter. Silly, not scary. */
+function rot(v: Voice, t: number, p: number): void {
+  const env = envelope(v, t, 0.03, 0.22, 0.12, 0.2);
+  const lp = filter(v, 'lowpass', 520, 3);
+  const saw = v.ctx.createOscillator();
+  saw.type = 'sawtooth';
+  saw.frequency.setValueAtTime(130 * p, t);
+  saw.frequency.exponentialRampToValueAtTime(80 * p, t + 0.35);
+  saw.connect(lp);
+  v.play(saw, t, env.end);
+  vibrato(v, [saw.frequency], 15, 9 * p, t, 0, env.end);
+  lp.connect(env.gain);
+  env.gain.connect(v.input);
+  noise(v, { at: t, attack: 0.02, peak: 0.08, decay: 0.3, filter: 'bandpass', freq: 400 * p, q: 3 });
+}
+
+/** Stunned: dizzy little birds, "tweet-tweet-tweet", alternating high and low. */
+function stun(v: Voice, t: number, p: number): void {
+  [1320, 990, 1320, 990, 1480].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, to: f * 1.12 * p, glide: 0.04, at: t + i * 0.065, attack: 0.003, peak: 0.17, decay: 0.07 });
+  });
+}
+
+/** Blinded: a soft "poof" of ink, a falling bubble under a puff of dark air. */
+function blind(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.04, peak: 0.2, decay: 0.28, filter: 'lowpass', freq: 1600 * p, to: 300 * p, glide: 0.3 });
+  tone(v, { type: 'sine', freq: 520 * p, to: 230 * p, glide: 0.25, at: t, attack: 0.01, peak: 0.2, decay: 0.28 });
+}
+
+/** Lasso: a rope whirling round (two sweeps of airy noise) and a "snap" as it catches. */
+function lasso(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.05, peak: 0.12, decay: 0.1, filter: 'bandpass', freq: 800 * p, to: 2000 * p, glide: 0.12, q: 3 });
+  noise(v, { at: t + 0.12, attack: 0.03, peak: 0.14, decay: 0.1, filter: 'bandpass', freq: 900 * p, to: 2200 * p, glide: 0.1, q: 3 });
+  noise(v, { at: t + 0.26, attack: 0.001, peak: 0.28, decay: 0.03, filter: 'highpass', freq: 2800 });
+  tone(v, { type: 'sine', freq: 420 * p, to: 210 * p, glide: 0.07, at: t + 0.26, attack: 0.002, peak: 0.25, decay: 0.08 });
+}
+
+/** Poison ticking: three small bubbles "blip-blup-blip". Quiet, since it repeats. */
+function poison(v: Voice, t: number, p: number): void {
+  [[0, 1], [0.075, 1.35], [0.15, 0.8]].forEach(([off, k]) => {
+    tone(v, { type: 'sine', freq: 300 * k! * p, to: 720 * k! * p, glide: 0.05, at: t + off!, attack: 0.003, peak: 0.14, decay: 0.07 });
+  });
+}
+
+/** Burning ticking: a soft falling "fwoosh" with a few low, round crackle pops. Quiet, it repeats. */
+function burn(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.02, peak: 0.1, decay: 0.28, filter: 'lowpass', freq: 1100 * p, to: 240 * p, glide: 0.3, q: 0.7 });
+  [0.03, 0.09, 0.14, 0.22].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.002, peak: 0.1, decay: 0.03, filter: 'bandpass', freq: (520 + i * 130) * p, q: 2.5 });
+    tone(v, { type: 'sine', freq: (190 + i * 25) * p, to: 120 * p, glide: 0.04, at: t + off, attack: 0.002, peak: 0.06, decay: 0.04 });
+  });
+}
+
+/** Healing: a warm slide up a sixth (C5 to A5) in sine, an octave shimmer, and two sparkles. */
+function heal(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 523.25 * p, to: 880 * p, glide: 0.2, at: t, attack: 0.02, peak: 0.24, hold: 0.1, decay: 0.2 });
+  tone(v, { type: 'sine', freq: 1046.5 * p, to: 1760 * p, glide: 0.2, at: t, attack: 0.03, peak: 0.07, hold: 0.1, decay: 0.2 });
+  tone(v, { type: 'sine', freq: 2637 * p, at: t + 0.22, attack: 0.003, peak: 0.07, decay: 0.12 });
+  tone(v, { type: 'sine', freq: 3136 * p, at: t + 0.28, attack: 0.003, peak: 0.05, decay: 0.12 });
+}
+
+/** The Necromancer raises a zombie: a comic wobbling "ooOOP" rising out of the earth, then a pop. */
+function raise(v: Voice, t: number, p: number): void {
+  const env = envelope(v, t, 0.05, 0.22, 0.15, 0.1);
+  const lp = filter(v, 'lowpass', 700, 2);
+  const saw = v.ctx.createOscillator();
+  saw.type = 'sawtooth';
+  saw.frequency.setValueAtTime(90 * p, t);
+  saw.frequency.exponentialRampToValueAtTime(190 * p, t + 0.3);
+  saw.connect(lp);
+  v.play(saw, t, env.end);
+  vibrato(v, [saw.frequency], 9, 5 * p, t, 0, env.end);
+  lp.connect(env.gain);
+  env.gain.connect(v.input);
+  noise(v, { at: t, attack: 0.03, peak: 0.2, decay: 0.3, filter: 'lowpass', freq: 380, to: 160, glide: 0.3 });
+  tone(v, { type: 'triangle', freq: 440 * p, to: 660 * p, glide: 0.05, at: t + 0.32, attack: 0.002, peak: 0.2, decay: 0.08 });
+}
+
+/** A mine arms itself: two tiny soft "bip-bip" beeps. */
+function mineArm(v: Voice, t: number, p: number): void {
+  [0, 0.09].forEach((off) => {
+    tone(v, { type: 'square', freq: 1760 * p, at: t + off, attack: 0.002, peak: 0.1, decay: 0.04, lowpass: 2400 });
+    tone(v, { type: 'sine', freq: 880 * p, at: t + off, attack: 0.002, peak: 0.12, decay: 0.05 });
+  });
+}
+
+/** A mine goes off: a punchy low thump and a short, tight burst, smaller than the Walnut Bomb. */
+function mineBoom(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 130 * p, to: 48 * p, glide: 0.2, at: t, attack: 0.003, peak: 0.55, decay: 0.3 });
+  tone(v, { type: 'triangle', freq: 220 * p, to: 80 * p, glide: 0.15, at: t, attack: 0.003, peak: 0.22, decay: 0.15, lowpass: 600 });
+  noise(v, { at: t, attack: 0.003, peak: 0.4, decay: 0.38, filter: 'lowpass', freq: 2800 * p, to: 300 * p, glide: 0.35, q: 0.8 });
+  noise(v, { at: t + 0.01, peak: 0.1, decay: 0.08, filter: 'highpass', freq: 2800 });
+}
+
+/** A fuse: ticks that speed up and climb in pitch over a rising sizzle, ending on a little upward blip. */
+function fuse(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.1, peak: 0.07, hold: 0.25, decay: 0.1, filter: 'bandpass', freq: 3500 * p, to: 7000 * p, glide: 0.45, q: 1.2 });
+  [0, 0.12, 0.21, 0.28, 0.34, 0.39, 0.43, 0.46].forEach((off, i) => {
+    tone(v, { type: 'triangle', freq: (900 + i * 170) * p, at: t + off, attack: 0.001, peak: 0.1, decay: 0.02 });
+  });
+  tone(v, { type: 'sine', freq: 1200 * p, to: 2400 * p, glide: 0.06, at: t + 0.48, attack: 0.003, peak: 0.12, decay: 0.07 });
+}
+
+/** The Cherry Bomb: a round fruity "bwoomp" with a pop on top and a bright little bell. */
+function cherryBoom(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 190 * p, to: 55 * p, glide: 0.25, at: t, attack: 0.003, peak: 0.55, decay: 0.35 });
+  tone(v, { type: 'triangle', freq: 760 * p, to: 300 * p, glide: 0.08, at: t, attack: 0.002, peak: 0.28, decay: 0.12 });
+  noise(v, { at: t, attack: 0.004, peak: 0.34, decay: 0.3, filter: 'lowpass', freq: 3600 * p, to: 400 * p, glide: 0.3, q: 0.8 });
+  tone(v, { type: 'sine', freq: 1568 * p, at: t + 0.06, attack: 0.003, peak: 0.08, decay: 0.2 });
+}
+
+/** The Squash drops: a flat "splat" thud then a cartoon "boing" as it bounces. */
+function squash(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 190 * p, to: 55 * p, glide: 0.12, at: t, attack: 0.002, peak: 0.55, decay: 0.16 });
+  noise(v, { at: t, attack: 0.002, peak: 0.28, decay: 0.1, filter: 'lowpass', freq: 900 * p, q: 0.8 });
+  tone(v, { type: 'sine', freq: 240 * p, to: 520 * p, glide: 0.14, at: t + 0.1, attack: 0.004, peak: 0.2, decay: 0.2 });
+}
+
+/** A unit levels up: a springy rising "boi-oing" with a tiny pop at the top. */
+function grow(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 200 * p, to: 640 * p, glide: 0.24, at: t, attack: 0.01, peak: 0.28, decay: 0.28 });
+  tone(v, { type: 'triangle', freq: 400 * p, to: 1280 * p, glide: 0.24, at: t, attack: 0.01, peak: 0.08, decay: 0.28 });
+  tone(v, { type: 'sine', freq: 1900 * p, at: t + 0.25, attack: 0.002, peak: 0.1, decay: 0.08 });
+}
+
+/** A swing hits nothing: a soft airy "whff" and a sagging "wuh". Quiet and gentle. */
+function miss(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.04, peak: 0.12, decay: 0.15, filter: 'bandpass', freq: 1500 * p, to: 500 * p, glide: 0.18, q: 1 });
+  tone(v, { type: 'sine', freq: 320 * p, to: 190 * p, glide: 0.18, at: t + 0.02, attack: 0.01, peak: 0.1, decay: 0.2 });
+}
+
+/** The hero power is ready: a warm brassy "ta-DAA", C5 up to G5, a fifth, held. Mid register. */
+function heroReady(v: Voice, t: number, p: number): void {
+  [[523.25, 0, 0.12], [783.99, 0.14, 0.26]].forEach(([f, off, decay]) => {
+    const at = t + off!;
+    const lp = filter(v, 'lowpass', 1800, 1);
+    const env = envelope(v, at, 0.01, 0.2, 0.03, decay!);
+    const o = v.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f! * p, at);
+    o.connect(lp);
+    v.play(o, at, env.end);
+    lp.connect(env.gain);
+    env.gain.connect(v.input);
+    const tri = v.ctx.createOscillator();
+    tri.type = 'triangle';
+    tri.frequency.setValueAtTime(f! * p, at);
+    const env2 = envelope(v, at, 0.008, 0.2, 0.03, decay!);
+    tri.connect(env2.gain);
+    env2.gain.connect(v.input);
+    v.play(tri, at, env2.end);
+  });
+}
+
+/** A spell is ready: two high bell notes, E6 then A6, each with a glassy overtone. Above heroReady. */
+function spellReady(v: Voice, t: number, p: number): void {
+  [[1318.5, 0], [1760, 0.13]].forEach(([f, off]) => {
+    const at = t + off!;
+    tone(v, { type: 'sine', freq: f! * p, at, attack: 0.002, peak: 0.2, decay: 0.2 });
+    tone(v, { type: 'sine', freq: f! * 2.76 * p, at, attack: 0.001, peak: 0.05, decay: 0.1 });
+  });
+  tone(v, { type: 'sine', freq: 3520 * p, at: t + 0.13, attack: 0.003, peak: 0.04, decay: 0.18 });
+}
+
+/**
+ * The Mega Mower: an engine revving up (a saw sliding up through a filter with a fast chug), a
+ * rush of cut grass for the lane's 0.9 s, and a happy bell at the end.
+ */
+function megaMower(v: Voice, t: number, p: number): void {
+  const env = envelope(v, t, 0.08, 0.2, 0.7, 0.3);
+  const lp = filter(v, 'lowpass', 500, 1.5);
+  lp.frequency.setValueAtTime(500, t);
+  lp.frequency.linearRampToValueAtTime(1500, t + 0.8);
+  const saw = v.ctx.createOscillator();
+  saw.type = 'sawtooth';
+  saw.frequency.setValueAtTime(65 * p, t);
+  saw.frequency.exponentialRampToValueAtTime(150 * p, t + 0.8);
+  saw.connect(lp);
+  v.play(saw, t, env.end);
+  vibrato(v, [saw.frequency], 22, 8 * p, t, 0, env.end);
+  lp.connect(env.gain);
+  env.gain.connect(v.input);
+  noise(v, { at: t, attack: 0.1, peak: 0.2, hold: 0.7, decay: 0.2, filter: 'bandpass', freq: 1200 * p, to: 2600 * p, glide: 0.9, q: 0.7 });
+  tone(v, { type: 'sine', freq: 70 * p, to: 110 * p, glide: 0.8, at: t, attack: 0.05, peak: 0.3, hold: 0.7, decay: 0.2 });
+  tone(v, { type: 'sine', freq: 1568 * p, at: t + 0.95, attack: 0.003, peak: 0.12, decay: 0.3 });
+}
+
+/** The Bone Storm: a rattle of xylophone-like clacks falling across 1 s, over a soft rumble. */
+function boneStorm(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.15, peak: 0.16, hold: 0.6, decay: 0.4, filter: 'lowpass', freq: 300, q: 0.7 });
+  const offsets = [0, 0.07, 0.11, 0.19, 0.24, 0.3, 0.37, 0.41, 0.5, 0.55, 0.62, 0.68, 0.75, 0.81, 0.9, 0.97];
+  const notes = [740, 880, 660, 988, 784, 587, 932, 698];
+  offsets.forEach((off, i) => {
+    const f = notes[(i * 3) % notes.length]! * p;
+    tone(v, { type: 'sine', freq: f, at: t + off, attack: 0.001, peak: 0.15, decay: 0.06 });
+    noise(v, { at: t + off, attack: 0.001, peak: 0.09, decay: 0.025, filter: 'bandpass', freq: 1400 + (i % 4) * 300, q: 2 });
+  });
+  tone(v, { type: 'sine', freq: 90 * p, to: 55 * p, glide: 0.3, at: t + 0.97, attack: 0.003, peak: 0.3, decay: 0.3 });
+}
+
+/** A thunderbolt: a stepped zig-zag "krzzt" of three falling squares, a crack, a long soft rumble. */
+function thunderbolt(v: Voice, t: number, p: number): void {
+  [1700, 1250, 900].forEach((f, i) => {
+    tone(v, { type: 'square', freq: f * p, at: t + i * 0.035, attack: 0.001, peak: 0.1, decay: 0.03, lowpass: 3000 });
+  });
+  noise(v, { at: t, attack: 0.002, peak: 0.4, decay: 0.12, filter: 'highpass', freq: 2800 });
+  noise(v, { at: t + 0.05, attack: 0.03, peak: 0.34, hold: 0.1, decay: 0.9, filter: 'lowpass', freq: 700 * p, to: 120 * p, glide: 1, q: 0.7 });
+  tone(v, { type: 'sine', freq: 85 * p, to: 38 * p, glide: 0.9, at: t + 0.04, attack: 0.02, peak: 0.45, decay: 1 });
+}
+
+/** Vines: a leafy rustle of four bursts and a rising wooden "creeak". */
+function vines(v: Voice, t: number, p: number): void {
+  [0, 0.07, 0.14, 0.22].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.02, peak: 0.12, decay: 0.08, filter: 'bandpass', freq: (2200 + i * 350) * p, q: 2 });
+  });
+  tone(v, { type: 'sawtooth', freq: 240 * p, to: 420 * p, glide: 0.3, at: t, attack: 0.03, peak: 0.08, hold: 0.1, decay: 0.15, lowpass: 600 });
+}
+
+/** Sun Shower: warm bells falling like drops down a pentatonic scale. */
+function sunShower(v: Voice, t: number, p: number): void {
+  [1568, 1318.5, 1174.7, 987.77, 880, 783.99, 659.25].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + i * 0.045, attack: 0.002, peak: 0.15, decay: 0.12 });
+  });
+  tone(v, { type: 'sine', freq: 392 * p, at: t, attack: 0.03, peak: 0.1, hold: 0.2, decay: 0.2 });
+}
+
+/** Healing Rain: soft pit-pat of raindrops and a gentle rising pair of sine notes, G5 then B5. */
+function healingRain(v: Voice, t: number, p: number): void {
+  [0, 0.04, 0.09, 0.13, 0.19, 0.24, 0.3, 0.36].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.001, peak: 0.07, decay: 0.02, filter: 'bandpass', freq: 4500 + (i % 3) * 700, q: 3 });
+  });
+  tone(v, { type: 'sine', freq: 783.99 * p, at: t + 0.05, attack: 0.03, peak: 0.16, decay: 0.2 });
+  tone(v, { type: 'sine', freq: 987.77 * p, at: t + 0.22, attack: 0.03, peak: 0.16, decay: 0.25 });
+}
+
+/** Rock Wall: stone grinding up, two heavy knocks, and a low thud. */
+function rockWall(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.05, peak: 0.26, hold: 0.1, decay: 0.2, filter: 'lowpass', freq: 600 * p, to: 250 * p, glide: 0.35, q: 1 });
+  [0.18, 0.3].forEach((off) => {
+    noise(v, { at: t + off, attack: 0.001, peak: 0.28, decay: 0.05, filter: 'bandpass', freq: 750 * p, q: 2 });
+    tone(v, { type: 'triangle', freq: 210 * p, to: 150 * p, glide: 0.06, at: t + off, attack: 0.001, peak: 0.25, decay: 0.08 });
+  });
+  tone(v, { type: 'sine', freq: 95 * p, to: 50 * p, glide: 0.2, at: t + 0.3, attack: 0.003, peak: 0.45, decay: 0.22 });
+}
+
+/** The Meteor: a falling whistle for 0.6 s, then a big soft "BOOM" with debris. */
+function meteor(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 1900 * p, to: 320 * p, glide: 0.6, at: t, attack: 0.05, peak: 0.14, hold: 0.45, decay: 0.1 });
+  noise(v, { at: t, attack: 0.1, peak: 0.1, hold: 0.4, decay: 0.1, filter: 'bandpass', freq: 3000 * p, to: 600 * p, glide: 0.6, q: 2 });
+  const at = t + 0.62;
+  tone(v, { type: 'sine', freq: 140 * p, to: 36 * p, glide: 0.5, at, attack: 0.004, peak: 0.6, decay: 0.6 });
+  tone(v, { type: 'triangle', freq: 110 * p, to: 45 * p, glide: 0.35, at, attack: 0.004, peak: 0.25, decay: 0.4, lowpass: 400 });
+  noise(v, { at, attack: 0.004, peak: 0.45, decay: 0.65, filter: 'lowpass', freq: 3200 * p, to: 220 * p, glide: 0.6, q: 0.8 });
+  noise(v, { at: at + 0.02, peak: 0.1, decay: 0.15, filter: 'highpass', freq: 2500 });
+}
+
+/** Fog: a soft airy "whooo", a wide band of breath with a slow tremble of a low sine. */
+function fog(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.18, peak: 0.2, hold: 0.1, decay: 0.22, filter: 'bandpass', freq: 650 * p, to: 420 * p, glide: 0.5, q: 0.8 });
+  const env = envelope(v, t, 0.15, 0.12, 0.1, 0.25);
+  const o = v.ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(230 * p, t);
+  o.connect(env.gain);
+  env.gain.connect(v.input);
+  v.play(o, t, env.end);
+  vibrato(v, [o.frequency], 5, 6 * p, t, 0, env.end);
+}
+
+/** Brain Feast: a happy "nom nom nom" (three round chews) and a satisfied rising hum. */
+function brainFeast(v: Voice, t: number, p: number): void {
+  [0, 0.12, 0.24].forEach((off) => {
+    tone(v, { type: 'triangle', freq: 230 * p, to: 130 * p, glide: 0.07, at: t + off, attack: 0.006, peak: 0.26, decay: 0.08, lowpass: 800 });
+    noise(v, { at: t + off, attack: 0.004, peak: 0.12, decay: 0.05, filter: 'bandpass', freq: 800 * p, q: 2 });
+  });
+  tone(v, { type: 'sine', freq: 300 * p, to: 450 * p, glide: 0.15, at: t + 0.38, attack: 0.02, peak: 0.16, decay: 0.15 });
+}
+
+/** Frenzy: a fast, bouncy run up six notes in a square wave with two drum beats under it. */
+function frenzy(v: Voice, t: number, p: number): void {
+  [392, 440, 493.88, 523.25, 587.33, 659.25].forEach((f, i) => {
+    tone(v, { type: 'square', freq: f * p, at: t + i * 0.05, attack: 0.002, peak: 0.1, decay: 0.07, lowpass: 1800 });
+  });
+  [0, 0.15].forEach((off) => {
+    tone(v, { type: 'sine', freq: 140 * p, to: 70 * p, glide: 0.08, at: t + off, attack: 0.002, peak: 0.35, decay: 0.1 });
+  });
+}
+
+/** Grave Rise: earth rumbling, three crumbling dirt pops, and a soft ghostly minor third (A4, C5). */
+function graveRise(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.08, peak: 0.28, hold: 0.15, decay: 0.28, filter: 'lowpass', freq: 320, to: 140, glide: 0.5, q: 0.8 });
+  [0.12, 0.22, 0.32].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.001, peak: 0.16, decay: 0.05, filter: 'bandpass', freq: 600 + i * 250, q: 3 });
+    tone(v, { type: 'sine', freq: (200 + i * 40) * p, to: 120 * p, glide: 0.06, at: t + off, attack: 0.002, peak: 0.18, decay: 0.08 });
+  });
+  tone(v, { type: 'sine', freq: 440 * p, at: t + 0.3, attack: 0.04, peak: 0.1, decay: 0.2 });
+  tone(v, { type: 'sine', freq: 523.25 * p, at: t + 0.3, attack: 0.04, peak: 0.08, decay: 0.2 });
+}
+
 export const SFX: Record<SfxName, Recipe> = {
   place, spawnZombie, pea, brainThrow, hit, chomp, block, explode, merge, sun, bounty, baseHit,
   click, deny, suddenDeath, win: sting('win'), lose: sting('lose'), collapse, baseStrike,
+  kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
+  mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
+  thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
 };
 
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];
