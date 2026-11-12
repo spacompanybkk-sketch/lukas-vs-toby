@@ -6,6 +6,7 @@ import * as battleDemo from './scenes/battleDemo';
 import * as boot from './scenes/boot';
 import * as fx from './scenes/fx';
 import * as lawn from './scenes/lawn';
+import * as stress from './scenes/stress';
 import { App } from './ui/App';
 import './ui/theme.css';
 
@@ -26,6 +27,7 @@ const SCENES = new Map<string, SceneModule>([
   ['gallery', gallery],
   ['fx', fx],
   ['battle-demo', battleDemo],
+  ['stress', stress],
 ]);
 
 installDebug();

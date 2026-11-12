@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "shots": "node tools/shots.mjs",
+    "e2e": "playwright test",
+    "perf": "node tools/perf.mjs",
     "sim:smoke": "tsx tools/sim-smoke.ts"
   },
   "dependencies": {

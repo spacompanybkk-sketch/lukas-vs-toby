@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 
 /** Lets tools/shots.mjs confirm that the server on the dev port serves this checkout. */
@@ -20,6 +20,8 @@ function projectRoot(): Plugin {
 export default defineConfig({
   plugins: [preact(), projectRoot()],
   test: {
+    // The browser tests in e2e/ belong to Playwright, which Vitest would otherwise try to run too.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     // An 8 GB machine running a browser, the dev server and the suite can be slow: a long
     // timeout and a few workers keep load from showing up as false failures.
     testTimeout: 30_000,
