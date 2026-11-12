@@ -125,6 +125,8 @@ class Pool {
     for (let i = 0; i < count; i++) {
       const o = make();
       o.visible = false;
+      // The size it was made at, to go back to when it is returned.
+      o.userData.restScale = o.scale.x;
       group.add(o);
       this.free.push(o);
     }
@@ -135,7 +137,7 @@ class Pool {
   give(o: Object3D | null): void {
     if (!o) return;
     o.visible = false;
-    o.scale.set(1, 1, 1);
+    o.scale.setScalar((o.userData.restScale as number | undefined) ?? 1);
     o.rotation.set(0, 0, 0);
     this.free.push(o);
   }
@@ -172,6 +174,20 @@ function scorchGeometry(): BufferGeometry {
   return b.build();
 }
 
+/** A tangle of leaves lying over a tile: what is left on the ground where the vines grew. */
+function vineMatGeometry(): BufferGeometry {
+  const b = new BoxBatch();
+  const cell = 1 / 9;
+  for (let i = -4; i < 5; i++) {
+    for (let k = -4; k < 5; k++) {
+      const r = hash2(i, k, 41);
+      if (Math.hypot(i, k) > 4.6 || r < 0.25) continue;
+      b.box(i * cell - cell / 2, 0, k * cell - cell / 2, cell, r > 0.8 ? 0.03 : 0.015, cell, PALETTE.leafDark, r > 0.8 ? PALETTE.leaf : PALETTE.stem);
+    }
+  }
+  return b.build();
+}
+
 const at = new Vector3();
 const velocity = new Vector3();
 
@@ -184,6 +200,7 @@ export class SpellFx {
   private readonly jobs: Job[] = [];
   private readonly scorchShape = scorchGeometry();
   private readonly scorchMaterial = new MeshStandardMaterial(MATTE_PLASTIC);
+  private readonly vineMatShape = vineMatGeometry();
   private readonly marks: TileMark[] = [];
   private readonly rockStages: BufferGeometry[];
   private readonly rocksByTile = new Map<number, { mesh: Mesh; stage: RockStage; job: Job | null }>();
@@ -191,6 +208,7 @@ export class SpellFx {
   private readonly bolts: Pool;
   private readonly scorches: Pool;
   private readonly vines: Pool;
+  private readonly vineMats: Pool;
   private readonly suns: Pool;
   private readonly brains: Pool;
   private readonly rockPool: Pool;
@@ -212,7 +230,13 @@ export class SpellFx {
       m.receiveShadow = true;
       return m;
     });
-    this.vines = new Pool(g, 48, makeVine);
+    this.vines = new Pool(g, 64, makeVine);
+    this.vineMats = new Pool(g, 12, () => {
+      const m = new Mesh(this.vineMatShape, this.scorchMaterial);
+      m.name = 'vine-mat';
+      m.receiveShadow = true;
+      return m;
+    });
     this.suns = new Pool(g, 12, () => makeToken('sun'));
     this.brains = new Pool(g, 12, () => makeToken('brain'));
     this.rockPool = new Pool(g, 10, () => {
@@ -220,7 +244,11 @@ export class SpellFx {
       m.name = 'spell-rock';
       return m;
     });
-    this.meteors = new Pool(g, 3, makeMeteor);
+    this.meteors = new Pool(g, 3, () => {
+      const m = makeMeteor();
+      m.scale.setScalar(1.3);
+      return m;
+    });
     this.fog = new Pool(g, 60, makeFogBlock);
     this.graves = new Pool(g, 9, makeGravestone);
     for (let i = 0; i < 9; i++) {
@@ -315,6 +343,7 @@ export class SpellFx {
   dispose(): void {
     this.clear();
     this.scorchShape.dispose();
+    this.vineMatShape.dispose();
     this.scorchMaterial.dispose();
     for (const mark of this.marks) mark.dispose();
     this.group.clear();
@@ -441,36 +470,53 @@ export class SpellFx {
 
   private growVines(tiles: Tile[]): Job {
     const seconds = SPELL_SECONDS.vines;
-    const placed: { o: Object3D; delay: number; sway: number }[] = [];
+    const placed: { o: Object3D; delay: number; sway: number; lean: number }[] = [];
+    const mats: Object3D[] = [];
     tiles.forEach((tile, t) => {
-      for (let i = 0; i < 5; i++) {
+      const cx = tile.col + 0.5;
+      const cz = tile.lane + 0.5;
+      const mat = this.vineMats.take();
+      if (mat) {
+        mat.visible = true;
+        mat.position.set(cx, 0.003, cz);
+        mat.rotation.y = (t % 4) * (Math.PI / 2);
+        mats.push(mat);
+      }
+      // A ring of vines round the middle of the tile, each hooked over towards it, so
+      // whatever stands there is caught in the middle of them.
+      for (let i = 0; i < 6; i++) {
         const o = this.vines.take();
         if (!o) continue;
-        const dx = (hash2(tile.col * 5 + i, tile.lane, 1) - 0.5) * 0.75;
-        const dz = (hash2(tile.lane * 7 + i, tile.col, 2) - 0.5) * 0.7;
+        const a = (i / 6) * Math.PI * 2 + hash2(t, tile.col, 1) * 1.2;
+        const r = 0.3 + hash2(i, t, 2) * 0.08;
+        const dx = Math.cos(a) * r;
+        const dz = Math.sin(a) * r;
         o.visible = true;
-        o.position.set(tile.col + 0.5 + dx, 0, tile.lane + 0.5 + dz);
-        o.rotation.y = hash2(i, t, 3) * Math.PI * 2;
-        placed.push({ o, delay: t * 0.05 + i * 0.04, sway: hash2(i, t, 4) * 6 });
+        o.position.set(cx + dx, 0, cz + dz);
+        o.rotation.set(0, Math.atan2(dz, -dx), 0);
+        placed.push({ o, delay: t * 0.05 + i * 0.035, sway: hash2(i, t, 4) * 6, lean: -0.2 - hash2(i, t, 5) * 0.2 });
       }
-      this.effects.burst(at.set(tile.col + 0.5, 0.1, tile.lane + 0.5), C.leaf, 8, 2);
+      this.effects.burst(at.set(cx, 0.1, cz), C.leaf, 8, 2);
       this.effects.dirt(at);
     });
     let time = 0;
     return {
       step: (dt) => {
         time += dt;
-        for (const { o, delay, sway } of placed) {
-          const grow = easeOutBack((time - delay) / 0.35);
-          const wither = Math.min(1, Math.max(0, (seconds - time) / 0.3));
-          const s = Math.max(0.001, Math.min(grow, wither));
-          // Taller than they are wide: they spring up, then sway a little.
-          o.scale.set(1.3 * s, 1.5 * s, 1.3 * s);
-          o.rotation.z = Math.sin(time * 2.4 + sway) * 0.1;
+        const wither = Math.min(1, Math.max(0, (seconds - time) / 0.3));
+        for (const { o, delay, sway, lean } of placed) {
+          const s = Math.max(0.001, Math.min(easeOutBack((time - delay) / 0.35), wither));
+          // They spring up, then sway a little as they squeeze.
+          o.scale.set(1.4 * s, 1.7 * s, 1.4 * s);
+          o.rotation.z = lean + Math.sin(time * 2.4 + sway) * 0.08;
         }
+        for (const mat of mats) mat.scale.setScalar(Math.max(0.001, Math.min(1, time / 0.25, wither)));
         return time >= seconds;
       },
-      stop: () => placed.forEach(({ o }) => this.vines.give(o)),
+      stop: () => {
+        placed.forEach(({ o }) => this.vines.give(o));
+        mats.forEach((m) => this.vineMats.give(m));
+      },
     };
   }
 
@@ -587,8 +633,9 @@ export class SpellFx {
     const cz = tiles.reduce((s, t) => s + t.lane + 0.5, 0) / Math.max(1, tiles.length);
     const meteor = this.meteors.take();
     if (meteor) meteor.visible = true;
-    const FALL = 0.6;
-    const from = new Vector3(cx + 4.5, 6.5, cz - 2.5);
+    const FALL = 0.7;
+    // In from high over the zombies' side, low enough to stay in the picture all the way.
+    const from = new Vector3(cx + 3.6, 4, cz - 1.4);
     let time = 0;
     let landed: Job | null = null;
     return {

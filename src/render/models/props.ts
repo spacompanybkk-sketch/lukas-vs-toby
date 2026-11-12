@@ -24,7 +24,7 @@ export const PROJECTILE_SIZE: Record<ProjectileKind, number> = {
   kernel: 0.2,
   butter: 0.3,
   mango: 0.32,
-  sand: 0.26,
+  sand: 0.32,
   arrow: 0.44,
   bullet: 0.24,
   trident: 0.5,
@@ -158,15 +158,15 @@ export const SHOT_COLORS = {
   kernel: '#FFD83A',
   kernelDark: '#E9A80C',
   kernelTip: '#FFF4C2',
-  butter: '#FFF09A',
-  butterTop: '#FFFBE0',
-  butterDark: '#E3C653',
+  butter: '#FFE070',
+  butterTop: '#FFF1A8',
+  butterDark: '#E0B83A',
   mango: '#FF9A1F',
   mangoBlush: '#F2542D',
   mangoBelly: '#FFC23D',
-  sand: '#E3C58A',
-  sandDark: '#C49C5C',
-  sandLight: '#F5E2B8',
+  sand: '#D9A55A',
+  sandDark: '#A8733A',
+  sandLight: '#EFC98A',
   bulletTail: '#D7DCE3',
   brass: '#D9A441',
   trident: '#A879FF',
@@ -249,14 +249,15 @@ function sandGeometry(): BufferGeometry {
 function arrowGeometry(): BufferGeometry {
   const batch = new BoxBatch();
   const L = PROJECTILE_SIZE.arrow;
-  const t = 0.04;
+  const t = 0.06;
   const x0 = -L / 2;
-  // A bone shaft, a stepped iron head at the front (−X) and purple fletching at the back.
-  batch.box(x0 + 0.08, -t / 2, -t / 2, L - 0.12, t, t, PALETTE.boneShadow, PALETTE.bone);
-  batch.box(x0 + 0.04, -0.035, -0.035, 0.05, 0.07, 0.07, PALETTE.levelIronDark, PALETTE.levelIron);
-  batch.box(x0, -0.018, -0.018, 0.045, 0.036, 0.036, PALETTE.levelIronDark, PALETTE.levelIron);
-  for (const dz of [-1, 1]) batch.box(L / 2 - 0.1, -0.015, dz > 0 ? t / 2 : -t / 2 - 0.05, 0.1, 0.03, 0.05, PALETTE.clothDark, PALETTE.clothPurple);
-  batch.box(L / 2 - 0.1, t / 2, -0.015, 0.1, 0.05, 0.03, PALETTE.clothDark, PALETTE.clothPurple);
+  // A thick bone shaft, a stepped iron head at the front (−X) and purple fletching at the back,
+  // chunky enough to follow from the lawn camera.
+  batch.box(x0 + 0.1, -t / 2, -t / 2, L - 0.14, t, t, PALETTE.boneShadow, PALETTE.bone);
+  batch.box(x0 + 0.05, -0.055, -0.055, 0.06, 0.11, 0.11, PALETTE.levelIronDark, PALETTE.levelIron);
+  batch.box(x0, -0.03, -0.03, 0.06, 0.06, 0.06, PALETTE.levelIronDark, PALETTE.levelIron);
+  for (const dz of [-1, 1]) batch.box(L / 2 - 0.12, -0.02, dz > 0 ? t / 2 : -t / 2 - 0.07, 0.12, 0.04, 0.07, PALETTE.clothDark, PALETTE.clothPurple);
+  batch.box(L / 2 - 0.12, t / 2, -0.02, 0.12, 0.07, 0.04, PALETTE.clothDark, PALETTE.clothPurple);
   return batch.build();
 }
 
@@ -264,9 +265,9 @@ function bulletGeometry(): BufferGeometry {
   const batch = new BoxBatch();
   const L = PROJECTILE_SIZE.bullet;
   // A short iron slug with a brass back, and a pale streak behind it: a pistol shot.
-  batch.box(-L / 2, -0.04, -0.04, 0.09, 0.08, 0.08, PALETTE.levelIronDark, PALETTE.levelIron);
-  batch.box(-L / 2 + 0.09, -0.045, -0.045, 0.04, 0.09, 0.09, SHOT_COLORS.brass);
-  batch.box(-L / 2 + 0.13, -0.025, -0.025, L - 0.13, 0.05, 0.05, SHOT_COLORS.bulletTail, '#FFFFFF');
+  batch.box(-L / 2, -0.05, -0.05, 0.1, 0.1, 0.1, PALETTE.levelIronDark, PALETTE.levelIron);
+  batch.box(-L / 2 + 0.1, -0.055, -0.055, 0.04, 0.11, 0.11, SHOT_COLORS.brass);
+  batch.box(-L / 2 + 0.14, -0.035, -0.035, L - 0.14, 0.07, 0.07, SHOT_COLORS.bulletTail, '#FFFFFF');
   return batch.build();
 }
 
@@ -416,7 +417,7 @@ export const LOB_STEP = 1 / 16;
  */
 export function lobHeight(distance: number, t: number): number {
   if (!(t > 0 && t < 1)) return 0;
-  const peak = Math.min(2.2, 0.45 + 0.2 * Math.max(0, distance));
+  const peak = Math.min(1.5, 0.35 + 0.13 * Math.max(0, distance));
   return Math.round((4 * t * (1 - t) * peak) / LOB_STEP) * LOB_STEP;
 }
 
@@ -589,11 +590,24 @@ function rockGeometry(stage: RockStage): () => BufferGeometry {
       if (stage >= 2 && ((i === 0 && j >= 2) || (k === nz - 1 && i >= 4 && j >= 2) || (j === ny - 1 && i <= 2))) return false;
       return true;
     };
+    // Cracks zig-zag down from the top on the faces the camera sees (+Z, and +X at stage 2),
+    // stopping short of the ground so they never read as a doorway.
+    const cracks: [number, number][][] = [
+      [],
+      [[3, 4], [3, 3], [4, 2]],
+      [[3, 4], [3, 3], [4, 2], [4, 1], [2, 3], [1, 2]],
+    ];
+    const sideCrack: [number, number][] = [[2, 4], [3, 3], [3, 2]];
+    const isCrack = (i: number, j: number, k: number): boolean => {
+      const front = !solid(i, j, k + 1);
+      if (front && (cracks[stage] as [number, number][]).some(([ci, cj]) => ci === i && cj === j)) return true;
+      const side = !solid(i + 1, j, k);
+      return stage >= 2 && side && sideCrack.some(([ck, cj]) => ck === k && cj === j);
+    };
     const color = (i: number, j: number, k: number): Color => {
-      const front = k === nz - 1 || !solid(i, j, k + 1);
-      if (stage >= 1 && front && (i === 3 || (i === 4 && j >= 2) || (i === 2 && j <= 1))) return c.crack;
-      if (stage >= 2 && front && (i === 5 && j <= 2)) return c.crack;
-      if (!solid(i, j + 1, k)) return hash2(i, k, 11) < 0.7 && stage < 2 ? c.moss : c.light;
+      if (isCrack(i, j, k)) return c.crack;
+      // Moss only on the crown, so the rock reads as stone with a green cap, not a green block.
+      if (!solid(i, j + 1, k)) return j >= ny - 1 && hash2(i, k, 11) < 0.75 && stage < 2 ? c.moss : c.light;
       if (j === 0) return c.dark;
       return hash2(i * 3 + j, k, 6) < 0.3 ? c.dark : c.rock;
     };
@@ -725,23 +739,24 @@ export function makeBolt(side: Faction): Object3D {
 function vineGeometry(): BufferGeometry {
   const b = new BoxBatch();
   const { stem, leaf, leafDark, leafLight } = PALETTE;
-  // A stalk that climbs in steps, swaying side to side, with a pair of leaves at each bend
-  // and a curl at the top.
+  const t = 0.08;
+  // A thick stalk that climbs in steps and hooks over at the top towards +X, like a hand
+  // reaching for whatever stands there, with leaves sticking out to either side.
   const steps: [number, number][] = [
     [0, 0],
-    [0.04, 0.09],
-    [0.07, 0.18],
-    [0.03, 0.27],
-    [-0.03, 0.36],
+    [0.02, 0.1],
+    [0.05, 0.2],
+    [0.06, 0.3],
+    [0.1, 0.38],
+    [0.17, 0.42],
   ];
-  for (const [x, y] of steps) b.box(x - 0.03, y, -0.03, 0.06, 0.1, 0.06, stem, leafDark);
-  for (const [i, [x, y]] of steps.entries()) {
-    if (i === 0) continue;
-    const dir = i % 2 === 0 ? 1 : -1;
-    b.box(x + (dir > 0 ? 0.03 : -0.11), y + 0.04, -0.04, 0.08, 0.03, 0.08, leafDark, i % 3 === 0 ? leafLight : leaf);
-  }
-  b.box(-0.07, 0.44, -0.03, 0.08, 0.05, 0.06, stem, leaf);
-  b.box(-0.09, 0.4, -0.03, 0.04, 0.05, 0.06, stem, leaf);
+  for (const [x, y] of steps) b.box(x - t / 2, y, -t / 2, t, 0.11, t, stem, leafDark);
+  b.box(0.2, 0.36, -t / 2, t, 0.08, t, stem, leaf);
+  steps.forEach(([x, y], i) => {
+    if (i === 0 || i === steps.length - 1) return;
+    const side = i % 2 === 0 ? 1 : -1;
+    b.box(x - 0.05, y + 0.05, side > 0 ? t / 2 : -t / 2 - 0.1, 0.1, 0.035, 0.1, leafDark, i % 3 === 0 ? leafLight : leaf);
+  });
   return b.build();
 }
 

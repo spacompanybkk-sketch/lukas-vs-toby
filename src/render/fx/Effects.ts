@@ -143,7 +143,7 @@ function steppedRing(): BufferGeometry {
  * A flat sign of voxels facing +Z, 5 × 5 cells of `cell` tiles: the cells `lit` picks are
  * pale, and each has a dark border cell behind it, so the sign reads on any ground.
  */
-function voxelSign(lit: (i: number, j: number) => boolean, cell = 0.055): BufferGeometry {
+function voxelSign(lit: (i: number, j: number) => boolean, cell = 0.065): BufferGeometry {
   const batch = new BoxBatch();
   const pale = new Color(1, 1, 1);
   const dark = new Color(0.16, 0.16, 0.18);

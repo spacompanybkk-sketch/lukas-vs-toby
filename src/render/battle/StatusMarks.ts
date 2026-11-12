@@ -9,7 +9,7 @@ import { BoxBatch } from '../world/boxes';
 // `statusEnded` alone:
 //
 //   stun    three yellow voxel stars circling the head
-//   blind   a band of tan sand over the eyes, a few grains jiggling on top
+//   blind   a little sandstorm of tan clumps whirling round the eyes, grains trickling out
 //   tied    two brown stepped rope rings round the body and a knot
 //   poison  green bubbles rising off the body, and a green ring pulsing at its feet
 //   burn    orange flame voxels flickering up the body
@@ -35,11 +35,12 @@ const C = {
 } as const;
 
 const STARS = 3;
-const STAR_RADIUS = 0.36;
+const STAR_RADIUS = 0.38;
 const BUBBLES = 4;
 const FLAMES = 6;
 const STREAKS = 3;
 const GRAINS = 3;
+const CLUMPS = 7;
 
 interface Mark {
   status: StatusKind;
@@ -64,15 +65,39 @@ function cube(edge: number, color: string, top?: string): BufferGeometry {
   return b.build();
 }
 
-/** A four-pointed voxel star in the XY plane, 3 × 3 cells with points, centred. */
+/**
+ * A five-cell voxel star in the XY plane (a plus with a bright core), with a dark-orange
+ * border behind it: the glow washes yellow towards white, and the border keeps the shape.
+ */
 function star(): BufferGeometry {
   const b = new BoxBatch();
-  const c = 0.04;
-  const color = PALETTE.stunStars;
-  const core = '#FFF6B8';
-  b.box(-c * 1.5, -c / 2, -c / 2, c * 3, c, c, color);
-  b.box(-c / 2, -c * 1.5, -c / 2, c, c * 3, c, color);
-  b.box(-c / 2, -c / 2, -c * 0.7, c, c, c * 1.4, core);
+  const c = 0.05;
+  const lit = (i: number, j: number): boolean => (i === 0 && Math.abs(j) <= 1) || (j === 0 && Math.abs(i) <= 1);
+  for (let i = -2; i <= 2; i++) {
+    for (let j = -2; j <= 2; j++) {
+      if (lit(i, j)) {
+        b.box(i * c - c / 2, j * c - c / 2, -c / 2, c, c, c, i === 0 && j === 0 ? '#FFF6B8' : PALETTE.stunStars);
+        continue;
+      }
+      let edge = false;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) if (Math.abs(di) + Math.abs(dj) === 1 && lit(i + di, j + dj)) edge = true;
+      if (edge) b.box(i * c - c / 2, j * c - c / 2, -c, c, c, c, '#B9600A');
+    }
+  }
+  return b.build();
+}
+
+/**
+ * A flame: a stepped column, wide and deep orange at the foot, narrowing to yellow and a
+ * pale tip, standing on its origin. Painted deep so the glow stays orange.
+ */
+function flame(scale: number): BufferGeometry {
+  const b = new BoxBatch();
+  const u = 0.045 * scale;
+  b.box(-1.5 * u, 0, -1.5 * u, 3 * u, 1.5 * u, 3 * u, '#D8380A', '#F2560F');
+  b.box(-1 * u, 1.5 * u, -1 * u, 2 * u, 1.5 * u, 2 * u, '#F2560F', PALETTE.fire);
+  b.box(-0.5 * u, 3 * u, -0.5 * u, 1 * u, 1.2 * u, 1 * u, PALETTE.fireLight, '#FFF1A6');
+  b.box(0.5 * u, 1 * u, 1 * u, 1 * u, 1.2 * u, 1 * u, PALETTE.fire, PALETTE.fireLight);
   return b.build();
 }
 
@@ -90,21 +115,11 @@ function steppedRing(r: number, cell: number, h: number, a: string, b2: string, 
   return b.build();
 }
 
-/** A blindfold of sand: a band of blocks round the head, thicker over the eyes in front. */
-function sandBand(): BufferGeometry {
+/** A clump of sand: a stepped lump, darker underneath, paler on top. */
+function sandClump(): BufferGeometry {
   const b = new BoxBatch();
-  const hx = 0.34;
-  const hz = 0.31;
-  const t = 0.07;
-  const h = 0.13;
-  b.box(-hx, -h / 2, -hz, 2 * hx, h, t, C.sandDark, C.sand);
-  b.box(-hx, -h / 2, hz - t, 2 * hx, h, t, C.sandDark, C.sand);
-  b.box(-hx, -h / 2, -hz, t, h, 2 * hz, C.sandDark, C.sand);
-  b.box(hx - t, -h / 2, -hz, t, h, 2 * hz, C.sandDark, C.sand);
-  // Lumps over the eyes on the camera side and the facing side, paler on top.
-  b.box(-0.22, -h / 2 - 0.02, hz - 0.02, 0.44, h + 0.04, 0.06, C.sand, C.sandLight);
-  b.box(hx - 0.02, -h / 2 - 0.02, -0.2, 0.06, h + 0.04, 0.4, C.sand, C.sandLight);
-  b.box(-hx - 0.04, -h / 2 - 0.02, -0.2, 0.06, h + 0.04, 0.4, C.sand, C.sandLight);
+  b.box(-0.085, -0.06, -0.085, 0.17, 0.09, 0.17, C.sandDark, C.sand);
+  b.box(-0.055, 0.03, -0.055, 0.11, 0.05, 0.11, C.sand, C.sandLight);
   return b.build();
 }
 
@@ -120,8 +135,9 @@ function knot(): BufferGeometry {
 /** A speed streak: a long thin bar along X with a bright head at its front (−X) end. */
 function streak(): BufferGeometry {
   const b = new BoxBatch();
-  b.box(0, -0.025, -0.025, 0.42, 0.05, 0.05, PALETTE.speedRed);
-  b.box(-0.06, -0.035, -0.035, 0.08, 0.07, 0.07, '#FF9A7A');
+  // Painted deep: a glowing colour comes out paler on screen, and this has to stay red.
+  b.box(0, -0.035, -0.035, 0.5, 0.07, 0.07, '#B81E12');
+  b.box(-0.07, -0.045, -0.045, 0.09, 0.09, 0.09, '#E0301C');
   return b.build();
 }
 
@@ -139,19 +155,22 @@ export class StatusMarks {
     this.group.name = 'status-marks';
     const g = {
       star: this.keep(star()),
-      band: this.keep(sandBand()),
-      grain: this.keep(cube(0.06, C.sand, C.sandLight)),
+      clump: this.keep(sandClump()),
+      grain: this.keep(cube(0.05, C.sand, C.sandLight)),
       rope: this.keep(steppedRing(0.38, 0.06, 0.06, C.rope, C.ropeDark, C.ropeLight)),
       knot: this.keep(knot()),
       bubble: this.keep(cube(0.075, PALETTE.poison, '#D4FF8A')),
       poisonRing: this.keep(steppedRing(0.4, 0.07, 0.03, PALETTE.poison, '#5FA81E')),
-      flame: this.keep(cube(0.11, PALETTE.fire, PALETTE.fireLight)),
-      flameLight: this.keep(cube(0.085, PALETTE.fireLight, '#FFF1A6')),
+      flame: this.keep(flame(1)),
+      flameLight: this.keep(flame(0.75)),
       streak: this.keep(streak()),
     };
     const parts: Record<StatusKind, [BufferGeometry, boolean][]> = {
       stun: Array.from({ length: STARS }, () => [g.star, true]),
-      blind: [[g.band, false], ...Array.from({ length: GRAINS }, (): [BufferGeometry, boolean] => [g.grain, false])],
+      blind: [
+        ...Array.from({ length: CLUMPS }, (): [BufferGeometry, boolean] => [g.clump, false]),
+        ...Array.from({ length: GRAINS }, (): [BufferGeometry, boolean] => [g.grain, false]),
+      ],
       tied: [[g.rope, false], [g.rope, false], [g.knot, false]],
       poison: [[g.poisonRing, true], ...Array.from({ length: BUBBLES }, (): [BufferGeometry, boolean] => [g.bubble, true])],
       burn: Array.from({ length: FLAMES }, (_, i): [BufferGeometry, boolean] => [i % 2 ? g.flameLight : g.flame, true]),
@@ -288,23 +307,37 @@ export class StatusMarks {
     root.position.copy(here);
     switch (mark.status) {
       case 'stun': {
-        // Round the top of the head, the stars bobbing out of step and each turning.
+        // Round the top of the head, the stars bobbing out of step.
         const spin = t * 3.4;
         pieces.forEach((p, i) => {
           const a = spin + (i / STARS) * Math.PI * 2;
-          p.position.set(Math.cos(a) * STAR_RADIUS, h - 0.1 + Math.sin(t * 6 + i * 2) * 0.02, Math.sin(a) * STAR_RADIUS);
-          p.rotation.set(0, -a, t * 5 + i);
+          p.position.set(Math.cos(a) * STAR_RADIUS, h - 0.045 + Math.sin(t * 6 + i * 2) * 0.01, Math.sin(a) * STAR_RADIUS);
+          // Each star faces out from the head, so the ring shows its faces, and twinkles.
+          p.rotation.set(0, Math.PI / 2 - a, 0);
+          p.scale.setScalar(0.85 + 0.15 * Math.round((0.5 + 0.5 * Math.sin(t * 9 + i * 2)) * 2) / 2);
         });
         break;
       }
       case 'blind': {
-        const [band, ...grains] = pieces;
-        (band as Mesh).position.set(0, h * 0.68, 0);
-        (band as Mesh).scale.setScalar(Math.max(0.8, h));
-        grains.forEach((p, i) => {
-          const hop = Math.abs(Math.sin(t * 7 + i * 1.9)) * 0.05;
-          p.position.set((i - 1) * 0.16, h * 0.68 + 0.08 + hop, 0.26 - i * 0.05);
-        });
+        // A little sandstorm round the head at eye height: clumps of sand whirling round it,
+        // bunched on the side the camera sees, and grains trickling down out of it.
+        const eyes = Math.min(h * 0.72, h - 0.16);
+        const reach = 0.36 * Math.min(1.25, Math.max(0.9, h));
+        const whirl = t * 2.2;
+        for (let i = 0; i < CLUMPS; i++) {
+          const p = pieces[i] as Mesh;
+          const a = whirl + (i / CLUMPS) * Math.PI * 2;
+          const bob = Math.round(Math.sin(t * 5 + i * 1.7) * 2) / 32;
+          p.position.set(Math.cos(a) * reach, eyes + bob, Math.sin(a) * reach);
+          p.rotation.y = -a;
+        }
+        for (let i = 0; i < GRAINS; i++) {
+          const p = pieces[CLUMPS + i] as Mesh;
+          const u = (t * 1.4 + i / GRAINS) % 1;
+          const a = i * 2.1 + 0.6;
+          p.position.set(Math.cos(a) * reach, eyes - 0.06 - u * 0.32, Math.sin(a) * reach);
+          p.scale.setScalar(1 - 0.5 * u);
+        }
         break;
       }
       case 'tied': {
@@ -334,11 +367,14 @@ export class StatusMarks {
       }
       case 'burn': {
         pieces.forEach((p, i) => {
-          // Flames lick up the body: each rises a little and shrinks, flickering, then relights.
-          const u = (t * 2.2 + i * 0.37) % 1;
-          const a = i * 1.05 + 0.4;
-          p.position.set(Math.cos(a) * 0.27, h * (0.12 + 0.11 * i) + u * 0.12, Math.sin(a) * 0.27);
-          p.scale.setScalar(Math.max(0.15, (1 - u) * (0.85 + 0.25 * Math.sin(t * 19 + i))));
+          // Each flame leaps up, flickering in stepped jumps, and dies back down.
+          const u = (t * 1.8 + i * 0.37) % 1;
+          const a = i * 2.4 + 0.4;
+          const flicker = Math.round((0.75 + 0.35 * Math.sin(t * 17 + i * 2)) * 4) / 4;
+          const r = 0.27 * Math.max(1, h);
+          p.position.set(Math.cos(a) * r, h * (0.08 + 0.1 * i), Math.sin(a) * r);
+          p.scale.x = p.scale.z = Math.max(1, h);
+          p.scale.y = Math.max(1, h) * Math.max(0.2, flicker * (1 - 0.6 * u));
         });
         break;
       }
@@ -346,7 +382,7 @@ export class StatusMarks {
         pieces.forEach((p, i) => {
           // Streaks stream out behind the unit and thin as they go.
           const u = (t * 2.6 + i * 0.41) % 1;
-          p.position.set(0.3 + u * 0.28, h * (0.28 + 0.2 * i), (i - 1) * 0.12);
+          p.position.set(0.32 + u * 0.3, h * (0.2 + 0.25 * i), (i - 1) * 0.2);
           p.scale.set(1 - 0.6 * u, 1, 1);
         });
         break;

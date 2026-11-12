@@ -85,7 +85,12 @@ export class HeroFx {
     this.group.name = 'hero-fx';
     const bones = Math.ceil(LAWN_COLS / BONE_SPACING) + 1;
     for (let i = 0; i < 2; i++) this.mowers.push(this.keep(makeMegaMower()));
-    for (let i = 0; i < bones * 2; i++) this.bonePool.push(this.keep(makeBone()));
+    for (let i = 0; i < bones * 2; i++) {
+      // Storm bones are bigger than the ones lying about the graveyard, so they read falling.
+      const bone = makeBone();
+      bone.scale.setScalar(1.4);
+      this.bonePool.push(this.keep(bone));
+    }
     for (let i = 0; i < BOLTS * 2; i++) this.boltPool.push(this.keep(makeBolt('zombies')));
   }
 
