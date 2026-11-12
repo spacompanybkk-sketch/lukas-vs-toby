@@ -35,20 +35,23 @@ export const DIFFICULTY: DifficultyTable = {
   easy: {
     // Lukas on Easy: the Easy zombies, playing at random half the time, and 40% more income.
     plants: { skill: 'easy', income: { human: 1.4, computer: 1.05 }, randomShare: 0.5 },
-    // Toby on Easy: plants that build well but play a random card more often than not, and 40%
-    // more income for him. (The Easy plant table itself is too slow to give an attentive player
+    // Toby on Easy: plants that build well but play a random card more often than not, and 10%
+    // more income for him (a child tapping once every 6 s still wins about half). (The Easy plant table itself is too slow to give an attentive player
     // any game; this one still loses most matches to a child tapping at random.)
-    zombies: { skill: 'hard', income: { human: 1.4, computer: 1 }, randomShare: 0.6 },
+    zombies: { skill: 'hard', income: { human: 1.1, computer: 1 }, randomShare: 0.7 },
   },
   medium: {
     // Medium zombies that sometimes play at random, so a child finds openings, earning a fifth
     // more to make up for it against a player who leaves none.
     plants: { skill: 'medium', income: { human: 1, computer: 1.2 }, randomShare: 0.3 },
-    zombies: { skill: 'medium', income: { human: 1, computer: 1 }, randomShare: 0 },
+    // An adult sending steady waves wins about half (steadyZombies 40-65%): the computer plants'
+    // hero and peas out-play plain waves at equal income, so the zombies earn 40% more.
+    zombies: { skill: 'medium', income: { human: 1.4, computer: 1 }, randomShare: 0 },
   },
   hard: {
     plants: { skill: 'hard', income: { human: 1, computer: 1.15 }, randomShare: 0 },
-    zombies: { skill: 'hard', income: { human: 1, computer: 1.4 }, randomShare: 0 },
+    // Hard but not hopeless (Michal, 2026-11-12): steady waves win 15-40%.
+    zombies: { skill: 'hard', income: { human: 1.3, computer: 1.2 }, randomShare: 0 },
   },
 };
 

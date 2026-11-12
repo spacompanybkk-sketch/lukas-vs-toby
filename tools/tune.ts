@@ -40,7 +40,7 @@ export function cloneKnobs(k: Knobs): Knobs {
 }
 
 /** Sets the number (or boolean) at a dot path (see the note at the top). */
-export function setKnob(k: Knobs, path: string, value: number | boolean): void {
+export function setKnob(k: Knobs, path: string, value: number | boolean | string): void {
   const parts = path.split('.');
   let node: Record<string, unknown> = k as unknown as Record<string, unknown>;
   for (const part of parts.slice(0, -1)) {
