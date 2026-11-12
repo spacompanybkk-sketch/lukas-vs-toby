@@ -4,7 +4,7 @@ import type { Balance } from '../../src/data/balance';
 import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
-import type { Command, CommandRejection, Unit, UnitKey } from '../../src/sim/types';
+import type { Command, CommandRejection, Unit, UnitKey, CardKey } from '../../src/sim/types';
 import { classicBalance, eventsOf, merge, place, remove } from './helpers';
 
 /** The numbers these rules tests were written for (see `classicBalance`). */
@@ -78,7 +78,7 @@ describe('merging', () => {
     }
 
     /** Merges `key` from level 1 to 5, setting its health with `hpBefore` before each merge. */
-    function climb(key: UnitKey, hpBefore: (u: Unit) => number): Array<[number, number, number]> {
+    function climb(key: CardKey, hpBefore: (u: Unit) => number): Array<[number, number, number]> {
       const b = tuned();
       const config = defaultConfig(7, b);
       config.startEnergy = { plants: 10_000, zombies: 10_000 };
@@ -118,7 +118,7 @@ describe('merging', () => {
       expectWholeAndInRange(seen);
     });
 
-    it.each(['peashooter', 'sunflower', 'walnutBomb', 'brainEater', 'veryFastWalker', 'skeletonWarrior'] as UnitKey[])(
+    it.each(['peashooter', 'sunflower', 'walnutBomb', 'brainEater', 'veryFastWalker', 'skeletonWarrior'] as CardKey[])(
       '%s stays whole and within its max at full health, at 1 hp and in between',
       (key) => {
         expectWholeAndInRange(climb(key, (u) => u.maxHp));

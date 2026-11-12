@@ -2,7 +2,7 @@ import {
   BackSide, Color, DirectionalLight, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster, Vector2, Vector3,
   type Camera, type Object3D, type Scene,
 } from 'three';
-import { UNIT_INFO } from '../../data/units';
+import { factionOf } from '../../data/units';
 import type { Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../../sim/types';
 import { BASE_STOP_X, ZOMBIE_SPAWN_X } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
@@ -69,7 +69,10 @@ const BAR_LIFT = 0.19;
 /** The lowest a zombie's bar sits (tiles above its feet, before the 0.14 gap). */
 const ZOMBIE_BAR_FLOOR = 1.1;
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
-const PROJECTILE_SCALE: Record<ProjectileKind, number> = { pea: 1.2, brain: 1.1 };
+const PROJECTILE_SCALE: Record<ProjectileKind, number> = {
+  pea: 1.2, brain: 1.1, // the phase-2 kinds borrow the pea's (plants) or the brain's (zombies) until they get their own
+  kernel: 1.2, butter: 1.2, mango: 1.2, sand: 1.1, arrow: 1.1, bullet: 1.1, trident: 1.1, rot: 1.1,
+};
 /** Sudden death warms the sun and sky towards this over two seconds. */
 const SUDDEN_DEATH_TINT = new Color('#FF8A3D');
 const SUDDEN_DEATH_SHARE = 0.4;
@@ -85,7 +88,12 @@ const MARKER_STEP_SCALE = 1.18;
 const CONFETTI_EVERY = 0.14;
 const LEVEL_COLOR = [0, hex('#FFFFFF'), hex('#FFFFFF'), hex(PALETTE.levelIron), hex(PALETTE.levelCrystal), hex(PALETTE.levelGold)];
 const STONE = [hex(PALETTE.stone), hex(PALETTE.stoneDark), hex(PALETTE.graveRock), hex(PALETTE.graveSoil)];
-const TRAIL: Record<ProjectileKind, number> = { pea: hex(PEA_COLORS.body), brain: hex(PALETTE.brainPink) };
+const TRAIL: Record<ProjectileKind, number> = {
+  pea: hex(PEA_COLORS.body), brain: hex(PALETTE.brainPink),
+  kernel: hex(PEA_COLORS.body), butter: hex(PEA_COLORS.body), mango: hex(PEA_COLORS.body),
+  sand: hex(PALETTE.brainPink), arrow: hex(PALETTE.brainPink), bullet: hex(PALETTE.brainPink),
+  trident: hex(PALETTE.brainPink), rot: hex(PALETTE.brainPink),
+};
 
 interface ProjectileView {
   id: number;
@@ -151,7 +159,9 @@ export class BattleView {
   private readonly list: UnitView[] = [];
   private readonly projectiles = new Map<number, ProjectileView>();
   private readonly flying: ProjectileView[] = [];
-  private readonly spare: Record<ProjectileKind, Object3D[]> = { pea: [], brain: [] };
+  private readonly spare: Record<ProjectileKind, Object3D[]> = {
+    pea: [], brain: [], kernel: [], butter: [], mango: [], sand: [], arrow: [], bullet: [], trident: [], rot: [],
+  };
   private readonly tokens: TokenView[] = [];
   private readonly graves: GraveView[] = [];
   private readonly blasts: PendingBlast[] = [];
@@ -389,7 +399,7 @@ export class BattleView {
         return;
       }
     }
-    const isPlant = UNIT_INFO[p.unit].faction === 'plants';
+    const isPlant = factionOf(p.unit) === 'plants';
     if (isPlant) this.lawn.highlightTile(p.lane, p.col, state, 'plants');
     else this.lawn.highlightLane(p.lane, state, 'zombies');
 
@@ -719,6 +729,13 @@ export class BattleView {
         this.onFeel({ slowMo: 1.5 });
         break;
       case 'commandRejected':
+      case 'statusApplied': // the phase-2 events are drawn from Task 5 on
+      case 'statusEnded':
+      case 'attackMissed':
+      case 'unitHealed':
+      case 'hazardSpawned':
+      case 'hazardEnded':
+      case 'abilityUsed':
         break;
       default: {
         const unhandled: never = e;

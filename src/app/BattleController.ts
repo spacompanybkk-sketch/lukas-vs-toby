@@ -5,7 +5,7 @@ import type { Bot, Skill } from '../ai/bot';
 import { DIFFICULTY, battleConfig, computerTable } from '../ai/difficulty';
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { UNIT_INFO } from '../data/units';
+import { UNIT_INFO, isCard, priceOf } from '../data/units';
 import { Match } from '../sim/match';
 import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
@@ -104,7 +104,7 @@ export class BattleController {
 
   select(unit: UnitKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
-    if (unit !== null && !this.match.state.config.cards[this.playerFaction].includes(unit)) return;
+    if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
     this.hud.selected.value = unit;
     if (unit !== null) this.hud.shovel.value = false;
   }
@@ -159,7 +159,7 @@ export class BattleController {
     const unit = this.hud.selected.peek();
     if (unit === null || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
     const me = this.match.state.players[this.playerFaction];
-    if ((me.recharge[unit] ?? 0) > 0 || me.energy < UNIT_INFO[unit].price) return null;
+    if ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit)) return null;
     const units = this.match.state.units;
     for (let i = 0; i < units.length; i++) {
       const u = units[i] as Unit;
@@ -255,6 +255,7 @@ export class BattleController {
   }
 
   private commandFor(unit: UnitKey, tile: Tile, under: Unit | null): Command {
+    if (!isCard(unit)) throw new Error(`"${unit}" is not a card`); // select() only ever keeps a card
     const faction = this.playerFaction;
     if (under !== null && under.faction === faction && under.key === unit) {
       return { type: 'merge', faction, unit, targetId: under.id };

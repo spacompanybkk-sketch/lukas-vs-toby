@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cloneBalance, seconds } from '../../src/data/balance';
 import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
-import type { Command, CommandRejection, SimEvent, UnitKey } from '../../src/sim/types';
+import type { Command, CommandRejection, SimEvent, UnitKey, CardKey } from '../../src/sim/types';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import { classicBalance, classicConfig, eventsOf, place } from './helpers';
 
@@ -115,7 +115,8 @@ describe('spawnUnit', () => {
     expect(u).toEqual({
       id: 1, key: 'skeletonWarrior', faction: 'zombies', lane: 3, x: 5.5, level: 1,
       hp: 700, maxHp: 700, spent: 125, armor: 0,
-      meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, blocked: false, // its shield is ready at once
+      meleeTimer: seconds(1.2), shotTimer: 0, abilityTimer: 0, auraTimer: 0, blocked: false, // its shield is ready at once
+      stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0, stacks: 0, ownerId: null,
     });
     expect(m.state.nextId).toBe(2);
     expect(m.state.players.zombies.energy).toBe(200);
@@ -148,7 +149,7 @@ describe('spawnUnit', () => {
       const u = spawnUnit(m.state, BALANCE, key as UnitKey, 0, 1.5);
       expect([key, u.meleeTimer, u.shotTimer, u.abilityTimer]).toEqual([key, melee, shot, ability]);
       expect(u.hp).toBe(BALANCE.units[key as UnitKey]?.hp);
-      expect(u.spent).toBe(UNIT_INFO[key as UnitKey].price);
+      expect(u.spent).toBe(UNIT_INFO[key as CardKey].price);
     }
   });
 

@@ -1,11 +1,26 @@
 import { TICKS_PER_SECOND } from '../sim/types';
-import type { Faction, ProjectileKind, UnitKey } from '../sim/types';
+import type { Faction, Flight, ProjectileKind, StatusKind, UnitKey } from '../sim/types';
 
 /** A close-range attack. Interval in seconds, reach in tiles. */
 export interface MeleeStats { damage: number; interval: number; reach: number }
 
+/**
+ * What a shot does to whomever it damages: `kind` for `seconds`, with `dps` damage a second for
+ * poison and burn (times the shooter's special level curve). With `chance`, only that share of
+ * shots carries it, rolled on the state rng at firing; a shot that does is of kind `altKind`
+ * (Kernel-pult butter), and only a shot of that kind carries the status, so `chance` needs `altKind`.
+ */
+export interface ShotStatus { kind: StatusKind; seconds: number; dps?: number; chance?: number; altKind?: ProjectileKind }
+
 /** A ranged attack. Interval in seconds, range in tiles, speed in tiles per second. */
-export interface ShotStats { kind: ProjectileKind; damage: number; interval: number; range: number; speed: number }
+export interface ShotStats {
+  kind: ProjectileKind; damage: number; interval: number; range: number; speed: number;
+  flight?: Flight; // default 'straight'
+  splash?: number; // lobbed: radius hit at landing (0 = the target only)
+  pierce?: number; // piercing: units passed through
+  status?: ShotStatus;
+  puddle?: { seconds: number; radius: number; dps: number }; // left where a lobbed shot lands
+}
 
 export interface UnitStats {
   recharge: number; hp: number; armor: number; speed: number; // seconds, tiles/s
@@ -13,6 +28,43 @@ export interface UnitStats {
   sun?: { amount: number; interval: number };
   deathBlast?: { damage: number; radius: number };
   shield?: { interval: number };
+  /**
+   * A zombie that holds keeps its distance: while a standing plant is ahead within
+   * `holdRange ?? shot.range` it does not walk. It is not `blocked` by that, so it still shoots.
+   */
+  holds?: boolean; holdRange?: number;
+  /**
+   * Potato Mine: armed `armSeconds` after it is planted; armed, it goes off when a standing zombie
+   * is `reach` ahead in its lane: `damage` (special curve) to every zombie within `radius`.
+   */
+  mine?: { armSeconds: number; reach: number; damage: number; radius: number };
+  /**
+   * Torchwood: a plant pea that passes it does `factor` times its damage and sets whom it damages
+   * burning, `burnDps` (special curve of the Torchwood's level) for `burnSeconds`.
+   */
+  ignite?: { factor: number; burnDps: number; burnSeconds: number };
+  /** Cherry Bomber: goes off `seconds` after it is planted, `damage` (special curve) within `radius`. */
+  fuse?: { seconds: number; damage: number; radius: number };
+  /**
+   * Pumpkin Squash: when ready, crushes a zombie up to `range` ahead: `damage` (damage curve) to
+   * every zombie in the lane within `radius` of it, then `recoverSeconds` until it is ready again.
+   */
+  leap?: { range: number; damage: number; radius: number; recoverSeconds: number };
+  /**
+   * Hot Topic: each time its bite brings a plant to 0 it gains a stack, up to `maxStacks`; each
+   * stack adds `hpShare` of its level-scaled base health to its health and max, and `damageShare`
+   * of its level-scaled base bite to its bite.
+   */
+  grow?: { hpShare: number; damageShare: number; maxStacks: number };
+  /** Cowboy Zombie: every `interval` s it ties the strongest plant up to `range` ahead for `seconds`. */
+  lasso?: { interval: number; range: number; seconds: number };
+  /**
+   * Necromancer: every `interval` s every other standing zombie within `radius` (straight-line,
+   * lanes one apart) gains `amount` (special curve) health, never above its max.
+   */
+  healAura?: { amount: number; interval: number; radius: number };
+  /** Necromancer: every `interval` s it raises a `key` at its own level (see `Balance.minionCap`). */
+  raise?: { key: 'boneMinion'; interval: number };
 }
 
 /** Every tunable number of the game. The simulation reads these and nothing else. */
@@ -44,6 +96,10 @@ export interface Balance {
    * every `interval` seconds. Damage 0 switches it off.
    */
   baseDefense: { damage: number; interval: number };
+  /** A zombie shoots the plant base only from this close (x <= this), whatever its shot's range. */
+  zombieBaseShotRange: number;
+  /** At most this many of a Necromancer's raised minions stand at once. */
+  minionCap: number;
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -104,6 +160,86 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
     },
+    // Phase 2 plants: starting numbers, tuned in phase 3.
+    potatoMine: {
+      recharge: 20, hp: 150, armor: 0, speed: 0,
+      mine: { armSeconds: 12, reach: 0.6, damage: 450, radius: 0.75 },
+    },
+    kernelPult: {
+      recharge: 5, hp: 300, armor: 0, speed: 0,
+      shot: {
+        kind: 'kernel', damage: 12, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
+        status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
+      },
+    },
+    mangoPult: {
+      recharge: 7, hp: 300, armor: 0, speed: 0,
+      shot: { kind: 'mango', damage: 45, interval: 3.0, range: 10, speed: 5, flight: 'lobbed', splash: 0.75 },
+    },
+    avocadoBunker: {
+      recharge: 20, hp: 2000, armor: 8, speed: 0,
+    },
+    torchwood: {
+      recharge: 10, hp: 500, armor: 0, speed: 0,
+      ignite: { factor: 2, burnDps: 10, burnSeconds: 3 },
+    },
+    cherryBomber: {
+      recharge: 30, hp: 300, armor: 0, speed: 0,
+      fuse: { seconds: 1, damage: 600, radius: 1.6 },
+    },
+    pumpkinSquash: {
+      recharge: 20, hp: 900, armor: 0, speed: 0,
+      leap: { range: 2, damage: 350, radius: 0.5, recoverSeconds: 6 },
+    },
+    // Phase 2 zombies: starting numbers, tuned in phase 3.
+    desertZombie: {
+      recharge: 6, hp: 380, armor: 0, speed: 0.35,
+      melee: { damage: 30, interval: 1.0, reach: 0.6 },
+      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 3 } },
+    },
+    skeletonArcher: {
+      recharge: 6, hp: 220, armor: 0, speed: 0.4,
+      melee: { damage: 15, interval: 1.0, reach: 0.6 },
+      shot: { kind: 'arrow', damage: 28, interval: 1.6, range: 6, speed: 8 },
+      holds: true,
+    },
+    hotTopic: {
+      recharge: 6, hp: 300, armor: 0, speed: 0.5,
+      melee: { damage: 25, interval: 0.5, reach: 0.6 },
+      grow: { hpShare: 0.2, damageShare: 0.2, maxStacks: 5 },
+    },
+    cowboyZombie: {
+      recharge: 10, hp: 450, armor: 0, speed: 0.35,
+      melee: { damage: 30, interval: 1.0, reach: 0.6 },
+      shot: { kind: 'bullet', damage: 22, interval: 1.5, range: 4.5, speed: 10 },
+      lasso: { interval: 9, range: 5, seconds: 3 },
+    },
+    necromancer: {
+      recharge: 15, hp: 400, armor: 0, speed: 0.3,
+      melee: { damage: 15, interval: 1.2, reach: 0.6 },
+      holds: true, holdRange: 4,
+      healAura: { amount: 40, interval: 2, radius: 1.5 },
+      raise: { key: 'boneMinion', interval: 10 },
+    },
+    tridentZombie: {
+      recharge: 12, hp: 500, armor: 0, speed: 0.2,
+      melee: { damage: 40, interval: 1.2, reach: 0.6 },
+      shot: { kind: 'trident', damage: 70, interval: 3.5, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
+    },
+    brainRot: {
+      recharge: 15, hp: 450, armor: 0, speed: 0.25,
+      melee: { damage: 20, interval: 1.2, reach: 0.6 },
+      shot: {
+        kind: 'rot', damage: 30, interval: 4, range: 6, speed: 4, flight: 'lobbed',
+        puddle: { seconds: 4, radius: 0.75, dps: 15 },
+      },
+      holds: true,
+    },
+    // Never a card, so never played: its recharge is a placeholder that nothing reads.
+    boneMinion: {
+      recharge: 1, hp: 150, armor: 0, speed: 0.6,
+      melee: { damage: 20, interval: 0.8, reach: 0.6 },
+    },
   },
   trickle: { plants: 1.8, zombies: 9.3 },
   bountyShare: { plants: 0.2, zombies: 0.5 },
@@ -118,6 +254,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   startEnergy: 190,
   baseHp: 7000,
   baseDefense: { damage: 100, interval: 2 },
+  zombieBaseShotRange: 3.5,
+  minionCap: 3,
 });
 
 /** Seconds to whole ticks. */

@@ -43,7 +43,7 @@ describe('new Match', () => {
     const { startEnergy: energy, baseHp: hp } = BALANCE;
     expect(m.balance).toBe(BALANCE);
     expect(m.state).toEqual({
-      tick: 0, rng: 42, nextId: 1, units: [], projectiles: [],
+      tick: 0, rng: 42, nextId: 1, units: [], projectiles: [], hazards: [],
       players: {
         plants: { energy, carry: 0, recharge: {} },
         zombies: { energy, carry: 0, recharge: {} },

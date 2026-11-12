@@ -123,17 +123,17 @@ describe('BattleView', () => {
     run(0.4);
     const spawned: SimEvent[] = [
       { type: 'unitAttacked', unitId: shooter.id, attack: 'shot', targetId: null, targetBase: 'zombies' },
-      { type: 'projectileSpawned', projectileId: 99, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: shooter.id },
+      { type: 'projectileSpawned', projectileId: 99, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: shooter.id, flight: 'straight', targetX: null },
     ];
     match.state.projectiles.push({
-      id: 99, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: shooter.id, spawnTick: 0,
+      id: 99, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: shooter.id, spawnTick: 0, flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0
     });
     view.applyEvents(spawned, match.state);
     run(0.2);
     expect(countNamed(scene, 'projectile-')).toBe(1);
     match.state.projectiles.length = 0;
     view.applyEvents(
-      [{ type: 'projectileHit', projectileId: 99, lane: 2, x: 2.5, targetId: null, targetBase: 'zombies', blocked: false }],
+      [{ type: 'projectileHit', projectileId: 99, lane: 2, x: 2.5, targetId: null, targetBase: 'zombies', blocked: false, burning: false }],
       match.state,
     );
     run(DT);
@@ -419,7 +419,7 @@ describe('BattleView details', () => {
         { type: 'unitDamaged', unitId: 999, amount: 5, hp: 1 },
         { type: 'unitAttacked', unitId: 999, attack: 'melee', targetId: null, targetBase: 'plants' },
         { type: 'unitMerged', unitId: 999, level: 2 },
-        { type: 'projectileHit', projectileId: 999, lane: 2, x: 4, targetId: 999, targetBase: null, blocked: true },
+        { type: 'projectileHit', projectileId: 999, lane: 2, x: 4, targetId: 999, targetBase: null, blocked: true, burning: false },
         { type: 'baseStruck', lane: 2, targetId: 999 },
         { type: 'energyGained', faction: 'plants', amount: 25, source: 'sunflower', unitId: 999, lane: 2, x: 3 },
       ], ctx.match.state),
@@ -438,13 +438,13 @@ describe('BattleView details', () => {
     const spark = vi.spyOn(ctx.fx, 'spark');
     const [p] = spawn(ctx, ['peashooter', 2, 1.5]);
     ctx.run(0.4);
-    ctx.match.state.projectiles.push({ id: 50, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: p?.id as number, spawnTick: 0 });
+    ctx.match.state.projectiles.push({ id: 50, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: p?.id as number, spawnTick: 0, flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0 });
     ctx.view.applyEvents([
       { type: 'unitAttacked', unitId: p?.id as number, attack: 'shot', targetId: null, targetBase: null },
-      { type: 'projectileSpawned', projectileId: 50, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: p?.id as number },
+      { type: 'projectileSpawned', projectileId: 50, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: p?.id as number, flight: 'straight', targetX: null },
     ], ctx.match.state);
     ctx.match.state.projectiles.length = 0;
-    ctx.view.applyEvents([{ type: 'projectileHit', projectileId: 50, lane: 2, x: 2.1, targetId: null, targetBase: null, blocked: false }], ctx.match.state);
+    ctx.view.applyEvents([{ type: 'projectileHit', projectileId: 50, lane: 2, x: 2.1, targetId: null, targetBase: null, blocked: false, burning: false }], ctx.match.state);
     ctx.run(0.05);
     expect(spark).not.toHaveBeenCalled();
     ctx.run(0.1); // released at the snap and in flight
@@ -459,9 +459,9 @@ describe('BattleView details', () => {
   it('leaves the scene as it found it when disposed, and ends a celebration', async () => {
     const ctx = setUp();
     const [p] = spawn(ctx, ['peashooter', 2, 1.5], ['brainEater', 1, 9.5]);
-    ctx.match.state.projectiles.push({ id: 77, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: p?.id as number, spawnTick: 0 });
+    ctx.match.state.projectiles.push({ id: 77, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: p?.id as number, spawnTick: 0, flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0 });
     ctx.view.applyEvents([
-      { type: 'projectileSpawned', projectileId: 77, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: p?.id as number },
+      { type: 'projectileSpawned', projectileId: 77, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: p?.id as number, flight: 'straight', targetX: null },
       { type: 'energyGained', faction: 'plants', amount: 25, source: 'sunflower', unitId: null, lane: 1, x: 2.5 },
       { type: 'explosion', lane: 2, x: 4, radius: 1, sourceKey: 'walnutBomb' },
     ], ctx.match.state);

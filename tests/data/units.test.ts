@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PHASE1_CARDS, PLANT_KEYS, UNIT_INFO, ZOMBIE_KEYS } from '../../src/data/units';
+import { cloneBalance, BALANCE } from '../../src/data/balance';
+import { ALL_CARDS, PHASE1_CARDS, PLANT_KEYS, UNIT_INFO, ZOMBIE_KEYS, factionOf, isCard, priceOf } from '../../src/data/units';
+import { statsFor } from '../../src/sim/lookup';
+import type { UnitKey } from '../../src/sim/types';
 
 // Spec section 6.6, written out literally: unit key -> [name, price, role], in unlock order.
 const SPEC_PLANTS = [
@@ -66,5 +69,43 @@ describe('unit roster', () => {
     });
     expect(PHASE1_CARDS.plants).toEqual(PLANT_KEYS.slice(0, 3));
     expect(PHASE1_CARDS.zombies).toEqual(ZOMBIE_KEYS.slice(0, 3));
+  });
+
+  it('deals all ten cards of each side, in unlock order, as ALL_CARDS', () => {
+    expect(ALL_CARDS).toEqual({ plants: [...PLANT_KEYS], zombies: [...ZOMBIE_KEYS] });
+    expect(ALL_CARDS.plants).toEqual(SPEC_PLANTS.map(([key]) => key));
+    expect(ALL_CARDS.zombies).toEqual(SPEC_ZOMBIES.map(([key]) => key));
+    expect(ALL_CARDS.plants).not.toBe(PLANT_KEYS); // a copy: changing a hand cannot change the roster
+  });
+
+  it('keys UNIT_INFO by card only: the Bone Minion is a zombie that costs nothing and is no card', () => {
+    expect(Object.keys(UNIT_INFO)).not.toContain('boneMinion');
+    expect(isCard('boneMinion')).toBe(false);
+    expect(factionOf('boneMinion')).toBe('zombies');
+    expect(priceOf('boneMinion')).toBe(0);
+    for (const key of [...PLANT_KEYS, ...ZOMBIE_KEYS]) {
+      expect(isCard(key)).toBe(true);
+      expect(factionOf(key)).toBe(UNIT_INFO[key].faction);
+      expect(priceOf(key)).toBe(UNIT_INFO[key].price);
+    }
+  });
+
+  it('counts as a card only a key of the roster, so a later non-card unit cannot slip through', () => {
+    for (const key of ['rock', 'toString', 'constructor', '']) {
+      expect(isCard(key as UnitKey), key).toBe(false);
+      expect(priceOf(key as UnitKey), key).toBe(0);
+    }
+  });
+});
+
+describe('statsFor', () => {
+  it('takes any unit key, the Bone Minion included, and refuses one the table has no numbers for', () => {
+    const b = cloneBalance(BALANCE);
+    expect(statsFor(b, 'boneMinion').hp).toBe(150); // the shipped table has its numbers (phase 2, Task 3)
+    delete b.units.boneMinion;
+    expect(() => statsFor(b, 'boneMinion')).toThrow('boneMinion');
+    b.units.boneMinion = { recharge: 1, hp: 150, armor: 0, speed: 0.6 };
+    expect(statsFor(b, 'boneMinion').hp).toBe(150);
+    expect(statsFor(b, 'peashooter')).toBe(b.units.peashooter);
   });
 });

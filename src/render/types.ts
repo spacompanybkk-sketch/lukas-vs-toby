@@ -6,7 +6,7 @@ export type { Faction } from '../sim/types';
 // these becomes a one-line re-export from '../sim/types'.
 
 /** Everything that flies: the ten kinds of shot. */
-export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot';
+export type { ProjectileKind } from '../sim/types';
 /** The six statuses a unit can carry (haste comes from the Frenzy spell). */
 export type StatusKind = 'stun' | 'blind' | 'tied' | 'poison' | 'burn' | 'haste';
 export type PlantSpell = 'thunderbolt' | 'vines' | 'sunShower' | 'healingRain' | 'rockWall';

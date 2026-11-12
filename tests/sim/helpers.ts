@@ -1,7 +1,7 @@
 import { BALANCE, cloneBalance } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { defaultConfig } from '../../src/sim/match';
-import type { Command, Faction, MatchConfig, SimEvent, UnitKey } from '../../src/sim/types';
+import type { CardKey, Command, Faction, MatchConfig, SimEvent } from '../../src/sim/types';
 
 /**
  * The numbers the rules tests were written for (the phase 1 table before the final balance wave),
@@ -53,6 +53,7 @@ export function classicBalance(): Balance {
   b.startEnergy = 190;
   b.baseHp = 7000;
   b.baseDefense = { damage: 100, interval: 2 };
+  b.zombieBaseShotRange = 3.5; // phase 2: what the base-shot rule read before it had a number of its own (the Brain Eater's range)
   b.suddenDeath = { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 };
   return b;
 }
@@ -83,11 +84,11 @@ export type PlaceCommand = Extract<Command, { type: 'place' }>;
 export type MergeCommand = Extract<Command, { type: 'merge' }>;
 export type RemoveCommand = Extract<Command, { type: 'remove' }>;
 
-export function place(faction: Faction, unit: UnitKey, lane: number, col: number): PlaceCommand {
+export function place(faction: Faction, unit: CardKey, lane: number, col: number): PlaceCommand {
   return { type: 'place', faction, unit, lane, col };
 }
 
-export function merge(faction: Faction, unit: UnitKey, targetId: number): MergeCommand {
+export function merge(faction: Faction, unit: CardKey, targetId: number): MergeCommand {
   return { type: 'merge', faction, unit, targetId };
 }
 

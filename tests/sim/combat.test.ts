@@ -40,7 +40,11 @@ type Flight = Pick<Projectile, 'faction' | 'kind' | 'lane' | 'x' | 'speed' | 'da
 
 /** Puts a projectile in flight as if fired on the previous tick, so it moves on the next one. */
 function launch(m: Match, flight: Flight): Projectile {
-  const p: Projectile = { ...flight, id: m.state.nextId, ownerId: 0, spawnTick: m.state.tick - 1 };
+  const p: Projectile = {
+    ...flight, id: m.state.nextId, ownerId: 0, spawnTick: m.state.tick - 1,
+    flight: 'straight', sourceKey: flight.faction === 'plants' ? 'peashooter' : 'brainEater', level: 1,
+    targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0,
+  };
   m.state.nextId += 1;
   m.state.projectiles.push(p);
   return p;
@@ -101,6 +105,7 @@ describe('shots and projectiles', () => {
     if (!p) throw new Error('no projectile');
     expect(events[1]).toEqual({
       type: 'projectileSpawned', projectileId: p.id, kind: 'pea', faction: 'plants', lane: 1, x: 2.5, ownerId: shooter.id,
+      flight: 'straight', targetX: null,
     });
     expect(p.x).toBe(2.5);
     expect(shooter.shotTimer).toBe(seconds(1.5));
@@ -129,7 +134,7 @@ describe('shots and projectiles', () => {
     });
 
     expect(eventsOf(events, 'projectileHit')).toEqual([
-      { type: 'projectileHit', projectileId: brain.id, lane: 1, x: 2.5, targetId: first.id, targetBase: null, blocked: false },
+      { type: 'projectileHit', projectileId: brain.id, lane: 1, x: 2.5, targetId: first.id, targetBase: null, blocked: false, burning: false },
     ]);
     expect(eventsOf(events, 'unitDamaged')).toEqual([
       { type: 'unitDamaged', unitId: first.id, amount: 15, hp: 1185 },
@@ -145,7 +150,7 @@ describe('shots and projectiles', () => {
 
     const [hit] = eventsOf(events, 'projectileHit');
     expect(events.slice(-2)).toEqual([
-      { type: 'projectileHit', projectileId: hit?.projectileId, lane: 3, x: 10, targetId: null, targetBase: 'zombies', blocked: false },
+      { type: 'projectileHit', projectileId: hit?.projectileId, lane: 3, x: 10, targetId: null, targetBase: 'zombies', blocked: false, burning: false },
       { type: 'baseDamaged', faction: 'zombies', amount: 10, hp: 2990, lane: 3 },
     ]);
     expect(m.state.baseHp.zombies).toBe(2990);
@@ -159,7 +164,7 @@ describe('shots and projectiles', () => {
     const events = stepUntil(m, anyHit);
 
     expect(events.slice(-2)).toEqual([
-      { type: 'projectileHit', projectileId: expect.any(Number), lane: 3, x: 0, targetId: null, targetBase: 'plants', blocked: false },
+      { type: 'projectileHit', projectileId: expect.any(Number), lane: 3, x: 0, targetId: null, targetBase: 'plants', blocked: false, burning: false },
       { type: 'baseDamaged', faction: 'plants', amount: 15, hp: 2985, lane: 3 },
     ]);
     expect(z.x).toBeGreaterThan(0.3); // a thrown brain, not a bite

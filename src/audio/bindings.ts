@@ -73,6 +73,13 @@ export function playEventSounds(audio: AudioEngine, events: readonly SimEvent[],
         break;
       case 'unitDamaged':
       case 'matchEnded': // the app plays win or lose
+      case 'statusApplied': // the phase-2 events get their sounds later
+      case 'statusEnded':
+      case 'attackMissed':
+      case 'unitHealed':
+      case 'hazardSpawned':
+      case 'hazardEnded':
+      case 'abilityUsed':
         break;
       default: {
         const unhandled: never = e;

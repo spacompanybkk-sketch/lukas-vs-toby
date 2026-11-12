@@ -3,11 +3,12 @@
  * random legal move that Easy sometimes makes instead. Everything here only reads the match.
  */
 
+import { isCard } from '../data/units';
 import type { Match } from '../sim/match';
 import { isStanding } from '../sim/lookup';
 import { randomInt } from '../sim/rng';
 import { COLS, LANES, PLANT_COLS } from '../sim/types';
-import type { Command, Faction, SimState, Unit, UnitKey } from '../sim/types';
+import type { CardKey, Command, Faction, SimState, Unit, UnitKey } from '../sim/types';
 
 /** A bot's private random numbers: the same shape as the match's, never the match's own. */
 export type BotRng = { rng: number };
@@ -71,17 +72,20 @@ export function shuffledLanes(rng: BotRng): number[] {
   return lanes;
 }
 
-export function placeCommand(faction: Faction, unit: UnitKey, lane: number, col: number): Command {
+export function placeCommand(faction: Faction, unit: CardKey, lane: number, col: number): Command {
   return { type: 'place', faction, unit, lane, col };
 }
 
 /** Sending a zombie: the column plays no part, so it names the graveyard column. */
-export function sendCommand(unit: UnitKey, lane: number): Command {
+export function sendCommand(unit: CardKey, lane: number): Command {
   return placeCommand('zombies', unit, lane, COLS - 1);
 }
 
+/** A merge onto `target` with its own card. Only a card can be merged into (never a Bone Minion). */
 export function mergeCommand(target: Unit): Command {
-  return { type: 'merge', faction: target.faction, unit: target.key, targetId: target.id };
+  const key = target.key;
+  if (!isCard(key)) throw new Error(`${key} is not a card and cannot be merged into`);
+  return { type: 'merge', faction: target.faction, unit: key, targetId: target.id };
 }
 
 /**
@@ -102,7 +106,7 @@ export function randomLegal(match: Match, faction: Faction, rng: BotRng): Comman
     }
   }
   for (const u of s.units) {
-    if (u.faction === faction && isStanding(u)) offer(mergeCommand(u));
+    if (u.faction === faction && isStanding(u) && isCard(u.key)) offer(mergeCommand(u));
   }
   return legal.length === 0 ? null : (legal[randomInt(rng, legal.length)] ?? null);
 }

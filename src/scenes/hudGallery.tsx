@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from '../app/settings';
 import { PLANT_KEYS, UNIT_INFO, ZOMBIE_KEYS } from '../data/units';
 import { worldToClient } from '../render/coords';
 import { createPortraitPainter, renderPortraits, setPortraitPainter } from '../render/portraits';
-import type { Faction, UnitKey } from '../sim/types';
+import type { CardKey, Faction } from '../sim/types';
 import type { BoyPortraits } from '../ui/hud/BaseBars';
 import { CardTray } from '../ui/hud/CardTray';
 import { HeroButton } from '../ui/hud/HeroButton';
@@ -38,7 +38,7 @@ const SPELLS: Record<Faction, string[]> = {
 const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
 function hand(side: Faction, count: number): CardVM[] {
-  const keys: UnitKey[] = side === 'plants' ? PLANT_KEYS : ZOMBIE_KEYS;
+  const keys: CardKey[] = side === 'plants' ? PLANT_KEYS : ZOMBIE_KEYS;
   return keys.slice(0, count).map((unit, i) => ({
     unit, name: UNIT_INFO[unit].name, price: UNIT_INFO[unit].price, hotkey: HOTKEYS[i] ?? '',
     affordable: UNIT_INFO[unit].price <= 125, rechargeFraction: i === 1 ? 0.55 : i === 4 ? 0.2 : 0,

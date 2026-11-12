@@ -12,7 +12,7 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { PHASE1_CARDS } from '../data/units';
 import { defaultConfig } from '../sim/match';
-import type { Faction, MatchConfig, UnitKey } from '../sim/types';
+import type { Faction, MatchConfig, CardKey } from '../sim/types';
 import { SKILLS, createBasicBot } from './basicBot';
 import type { SkillTables } from './basicBot';
 import type { Bot, Skill } from './bot';
@@ -140,12 +140,12 @@ function againstMedium(title: string, faction: Faction, make: (seed: number) => 
 }
 
 /** Spam of one card against the Medium computer. */
-export function spamMatchup(faction: Faction, unit: UnitKey): Matchup {
+export function spamMatchup(faction: Faction, unit: CardKey): Matchup {
   return againstMedium(`${unit} spam (${faction}) vs Medium`, faction, (seed) => createSpamBot(faction, unit, seed));
 }
 
 /** Merge-spam of one card against the Medium computer. */
-export function mergeSpamMatchup(faction: Faction, unit: UnitKey): Matchup {
+export function mergeSpamMatchup(faction: Faction, unit: CardKey): Matchup {
   return againstMedium(`${unit} merge-spam (${faction}) vs Medium`, faction, (seed) => createMergeSpamBot(faction, unit, seed));
 }
 
