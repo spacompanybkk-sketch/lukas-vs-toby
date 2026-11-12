@@ -191,7 +191,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       melee: { damage: 15, interval: 0.7, reach: 0.6 },
     },
     skeletonWarrior: {
-      recharge: 10, hp: 500, armor: 0, speed: 0.3,
+      recharge: 10, hp: 800, armor: 0, speed: 0.3,
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
     },
@@ -223,7 +223,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       fuse: { seconds: 1, damage: 600, radius: 1.6 },
     },
     pumpkinSquash: {
-      recharge: 20, hp: 900, armor: 0, speed: 0,
+      recharge: 15, hp: 900, armor: 0, speed: 0,
       leap: { range: 3, damage: 350, radius: 0.5, recoverSeconds: 6 },
     },
     // Phase 2 zombies: starting numbers, tuned in phase 3.
@@ -278,7 +278,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
     rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
   },
-  trickle: { plants: 2.5, zombies: 13 },
+  trickle: { plants: 2.5, zombies: 14 },
   bountyShare: { plants: 0.5, zombies: 0.5 },
   baseShotFactor: 0.3,
   hitRadius: 0.35,

@@ -18,10 +18,11 @@
  * Which zombie (the first that is not recharging; it waits for the energy for it):
  * - a Necromancer behind a tank already walking the lane (its heal and minions back the tank up);
  * - a Cowboy Zombie when the lane holds a merged plant (level 2 or more: its lasso ties the strongest);
- * - siege against a deep row (3 or more plants): Trident Zombie, Brain Rot, Skeleton Archer, which
- *   hit from range or through several plants;
- * - a Skeleton Warrior or Desert Zombie (shield, blinding sand) to lead into a lane that shoots,
- *   when no tank walks there yet;
+ * - siege against a row (2 or more plants): Trident Zombie, Brain Rot, Skeleton Archer in
+ *   turn, which hit from range or through several plants;
+ * - a Skeleton Warrior or Desert Zombie to lead into a lane that shoots, when no tank walks there
+ *   yet: the shield first where Peashooters are as many as the pults (it blocks peas), the
+ *   blinding sand first where pults are more (their lobs ignore shields);
  * - a Hot Topic against a thin lane (one or two plants: it grows on each one it eats);
  * - otherwise a Brain Eater.
  *
@@ -72,7 +73,7 @@ const BREAKING_HP = 150;
 /** Energy it keeps for its next real card before it spends any on a Very Fast Walker. */
 const RUSH_RESERVE = 125;
 /** Plants in a lane from which it counts as a deep row. */
-const DEEP_ROW = 3;
+const DEEP_ROW = 2;
 /** Plants in a lane from which it counts as a stack worth a siege zombie of its own. */
 const STACK_ROW = 4;
 /** Ticks between siege zombies sent against stacks (30 s). */
@@ -118,8 +119,11 @@ function* zombieWants(
   }
 
   const view = weakestLane(match.balance, lawn, rng);
-  for (const card of cardsFor(view, plan, rng)) {
-    yield { cmd: sendCommand(card, view.lane), wait: 'energy', onChosen: () => { memory.lastLane = view.lane; } };
+  for (const card of cardsFor(view, plan, rng, memory)) {
+    yield {
+      cmd: sendCommand(card, view.lane), wait: 'energy',
+      onChosen: () => { memory.lastLane = view.lane; if (SIEGE.includes(card)) memory.sieges += 1; },
+    };
   }
 }
 
@@ -173,15 +177,20 @@ function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng): LaneVi
 }
 
 /** The zombies to try for a lane, best answer first, a Brain Eater last (see the note at the top). */
-function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng): CardKey[] {
+function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng, memory: ZombieMemory): CardKey[] {
   const out: CardKey[] = [];
   const plants = view.plants.filter((p) => isCard(p.key));
   const tank = view.zombies.some((z) => TANKS.has(z.key) && z.x > 2 && z.hp >= 250);
   if (tank && !view.zombies.some((z) => z.key === 'necromancer')) out.push('necromancer');
   if (plants.some((p) => p.level >= COWBOY_LEVEL)) out.push('cowboyZombie');
-  if (plants.length >= DEEP_ROW) out.push(...rotated(SIEGE, rng));
+  if (plants.length >= DEEP_ROW) out.push(...SIEGE.map((_, i) => SIEGE[(memory.sieges + i) % SIEGE.length] as CardKey));
   const shooting = plants.some((p) => SHOOTERS.has(p.key));
-  if (!tank && (shooting || shooterLevels(view) >= plan.tankAt)) out.push(...rotated(['skeletonWarrior', 'desertZombie'], rng));
+  if (!tank && (shooting || shooterLevels(view) >= plan.tankAt)) {
+    // A shield blocks peas; lobs ignore it, so against more pults than Peashooters the sand leads.
+    const count = (keys: readonly string[]): number => plants.filter((p) => keys.includes(p.key)).length;
+    const peas = count(['peashooter']) >= count(['kernelPult', 'mangoPult']);
+    out.push(...(peas ? ['skeletonWarrior', 'desertZombie'] as const : ['desertZombie', 'skeletonWarrior'] as const));
+  }
   if (plants.length >= 1 && plants.length <= 2) out.push('hotTopic');
   out.push('brainEater');
   return out;

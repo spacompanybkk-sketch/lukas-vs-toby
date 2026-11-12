@@ -21,14 +21,16 @@
  * 5. Its Sunflowers: first each one merged up to its skill's floor (a level-2 Sunflower outlives a
  *    Bone Storm), then the rest of them on column 0 then 1 of a lane that has a shooter and no
  *    zombie on the lawn; then it merges its lowest-level Sunflower up to its skill's level.
- * 6. Margin: a lane under its skill's margin gets another shooter, then a wall.
- * 7. Build-up, from what is left above its reserve: a Torchwood just in front of two or more
- *    Peashooters; a Potato Mine at the front of a quiet lane (two on the lawn at most); a wall in front of two shooters (an
- *    Avocado Bunker where a Torchwood is worth guarding, else a Walnut Bomb), then a Pumpkin Squash
- *    behind that wall; then another shooter in the lane with the fewest (merging where the
- *    columns are used up).
+ * 6. Margin: a lane under its skill's margin gets another shooter, then a wall (the wall first
+ *    when it already has two shooters).
+ * 7. Build-up, from what is left above its reserve: a wall in front of two shooters (an Avocado
+ *    Bunker where it is worth guarding or fast biters are about, else a Walnut Bomb), then a
+ *    Pumpkin Squash behind that wall; a Torchwood just in front of two or more Peashooters; a
+ *    Potato Mine at the front of a quiet lane (one on the lawn at most); then another shooter
+ *    in the lane with the fewest (merging where the columns are used up).
  *
- * Which shooter: a Kernel-pult against shields (its lobs ignore them, its butter stuns), a
+ * Which shooter: a Kernel-pult against shields (its lobs ignore them, its butter stuns) or as the
+ * urgent help against a zombie already within 4 tiles of the base (cheaper, and it stuns), a
  * Mango-pult against two or more zombies (its splash), otherwise a Peashooter (a Torchwood doubles its peas).
  * Which wall: a Pumpkin Squash against two or more zombies when it can afford one, an Avocado Bunker against heavy or
  * fast-biting zombies (its armor shaves every bite), otherwise a Walnut Bomb.
@@ -56,6 +58,8 @@ const SHOOTER_COLS: readonly number[] = [1, 2, 3, 4];
 const LAST_DITCH_COLS: readonly number[] = [0];
 /** Wall tiles. */
 const WALL_COLS: readonly number[] = [6, 5];
+/** A zombie this close to the base makes the urgent help a Kernel-pult: cheaper, and its butter buys time. */
+const URGENT_X = 4;
 /** Pumpkin Squash tiles: in front of the shooters, behind the wall. */
 const PUMPKIN_COLS: readonly number[] = [4, 5, 3];
 /** Potato Mine tiles at the front of a quiet lane. */
@@ -69,14 +73,18 @@ const OPENING_TICKS = 600;
 /** Zombie health left over, in a lane with no plant, that the plant base is trusted to deal with. */
 const LONE_LEAK_HP = 200;
 /** Potato Mines it keeps planted ahead of quiet lanes, at most. */
-const QUIET_MINES = 2;
+const QUIET_MINES = 1;
 /** A Potato Mine is the help for a push of at most this much zombie health. */
-const MINE_PUSH_HP = 500;
+const MINE_PUSH_HP = 300;
 /** Cherry Bomber: the zombie health its blast must catch (each zombie counted up to the blast). */
-const CHERRY_MIN = 450;
+const CHERRY_MIN = 400;
 
 const SHOOTERS: ReadonlySet<CardKey> = new Set(['peashooter', 'kernelPult', 'mangoPult']);
 const WALLS: ReadonlySet<CardKey> = new Set(['walnutBomb', 'avocadoBunker', 'pumpkinSquash']);
+/** Energy from which a build-up wall is an Avocado Bunker anyway. */
+const RICH_WALL = 175;
+/** Zombie health in a lane from which its wall is an Avocado Bunker (a Brain Eater or more). */
+const AVOCADO_HP = 400;
 /** Zombies whose bites an Avocado Bunker's armor shaves most. */
 const FAST_BITERS: ReadonlySet<string> = new Set(['hotTopic', 'veryFastWalker', 'boneMinion']);
 
@@ -175,13 +183,16 @@ function* plantWants(
   for (const view of threatened) {
     const r = reckonLane(b, view, 0.5);
     if (r.stopping >= r.zombieHp * plan.defenceMargin) continue;
+    const wall = wallWant(view, rng, energy);
+    if (wall !== undefined && shooters(view).length >= 2) yield wall;
     const shooter = shooterWant(view, false, rng);
     if (shooter !== undefined) yield shooter;
-    const wall = wallWant(view, rng, energy);
     if (wall !== undefined) yield wall;
   }
 
   if (!spare(UNIT_INFO.torchwood.price)) return;
+  const built = buildUpWant(lawn, rng, energy);
+  if (built !== undefined) yield built;
   const torch = torchWant(lawn);
   if (torch !== undefined) yield torch;
   const mines = lawn.reduce((n, view) => n + view.plants.filter((p) => p.key === 'potatoMine').length, 0);
@@ -192,8 +203,6 @@ function* plantWants(
       break;
     }
   }
-  const built = buildUpWant(lawn, rng);
-  if (built !== undefined) yield built;
   for (const view of lanesByFewestShooters(lawn, rng)) {
     const shooter = shooterWant(view, false, rng);
     if (shooter !== undefined) {
@@ -205,16 +214,20 @@ function* plantWants(
 
 /**
  * Building a lane up before the zombies come: a lane with two shooters and no wall gets one on
- * column 6 or 5 (an Avocado Bunker where a Torchwood stands behind it, worth guarding, else a
- * Walnut Bomb); a walled lane with two shooters and no Pumpkin Squash gets one in front of them.
+ * column 6 or 5 (an Avocado Bunker where a Torchwood or a merged shooter stands behind it, worth
+ * guarding, while fast biters are on the lawn, whose bites its armor shaves, or when it can
+ * afford one; else a Walnut Bomb); a walled lane with two shooters and no Pumpkin Squash gets one in front of them.
  */
-function buildUpWant(lawn: readonly LaneView[], rng: BotRng): Want | undefined {
+function buildUpWant(lawn: readonly LaneView[], rng: BotRng, energy: number): Want | undefined {
+  const biters = lawn.some((view) => view.zombies.some((z) => FAST_BITERS.has(z.key)));
   for (const lane of shuffledLanes(rng)) {
     const view = lawn[lane] as LaneView;
     const n = shooters(view).length;
     if (n >= 2 && !view.plants.some((p) => WALLS.has(p.key as CardKey))) {
       const col = WALL_COLS.find((c) => view.tiles[c] === undefined);
-      const kind: CardKey = view.plants.some((p) => p.key === 'torchwood') ? 'avocadoBunker' : 'walnutBomb';
+      const guarded = view.plants.some((p) => p.key === 'torchwood' || (SHOOTERS.has(p.key as CardKey) && p.level >= 2));
+      const rich = energy >= RICH_WALL;
+      const kind: CardKey = guarded || biters || rich ? 'avocadoBunker' : 'walnutBomb';
       if (col !== undefined) return { cmd: placeCommand('plants', kind, lane, col), wait: 'energy' };
     }
     if (n >= 2 && view.plants.some((p) => WALLS.has(p.key as CardKey) && p.key !== 'pumpkinSquash')
@@ -239,8 +252,9 @@ function oneMoreShooter(b: Balance): { dps: number; rate: number; hp: number } {
  * a Peashooter while it has fewer than two (a Torchwood doubles peas), then whichever pult it has
  * fewer of.
  */
-function shooterKind(view: LaneView, rng: BotRng): CardKey {
+function shooterKind(view: LaneView, rng: BotRng, urgent = false): CardKey {
   if (view.zombies.some((z) => z.key === 'skeletonWarrior')) return 'kernelPult';
+  if (urgent && view.zombies.some((z) => z.x < URGENT_X)) return 'kernelPult';
   if (view.zombies.length >= 2) return 'mangoPult';
   const count = (key: CardKey): number => view.plants.filter((p) => p.key === key).length;
   if (count('peashooter') < 2) return 'peashooter';
@@ -257,7 +271,7 @@ function shooterKind(view: LaneView, rng: BotRng): CardKey {
  * zombie (any kind when there is none).
  */
 function shooterWant(view: LaneView, urgent: boolean, rng: BotRng, kind?: CardKey): Want | undefined {
-  const unit = kind ?? shooterKind(view, rng);
+  const unit = kind ?? shooterKind(view, rng, urgent);
   const zombieX = nearestZombie(view, 0.5)?.x ?? Infinity;
   const col = freeColLeftOf(view, SHOOTER_COLS, zombieX) ?? (urgent ? freeColLeftOf(view, LAST_DITCH_COLS, zombieX) : undefined);
   if (col !== undefined) return { cmd: placeCommand('plants', unit, view.lane, col), wait: 'energy' };
@@ -270,7 +284,7 @@ function shooterWant(view: LaneView, urgent: boolean, rng: BotRng, kind?: CardKe
 function wallKind(view: LaneView, energy: number): CardKey {
   const hp = view.zombies.reduce((n, z) => n + z.hp, 0);
   if (view.zombies.length >= 2 && energy >= UNIT_INFO.pumpkinSquash.price) return 'pumpkinSquash';
-  if (hp >= 600 || view.zombies.some((z) => FAST_BITERS.has(z.key))) return 'avocadoBunker';
+  if (hp >= AVOCADO_HP || view.zombies.some((z) => FAST_BITERS.has(z.key))) return 'avocadoBunker';
   return 'walnutBomb';
 }
 
