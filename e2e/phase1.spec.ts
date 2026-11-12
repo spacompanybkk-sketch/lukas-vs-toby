@@ -68,8 +68,12 @@ test('plays as Lukas: a Sunflower and a Peashooter go where they were clicked, a
   const before = await snapshot(page);
   const prices = { sunflower: await cardPrice(page, 'sunflower'), peashooter: await cardPrice(page, 'peashooter') };
   const { trickle, sunSeconds } = await page.evaluate(() => {
-    const b = (window.__lvt as any).session.controller.match.balance;
-    return { trickle: b.trickle.plants as number, sunSeconds: b.units.sunflower.sun.interval as number };
+    const m = (window.__lvt as any).session.controller.match;
+    // The trickle as this difficulty pays it to the player.
+    return {
+      trickle: (m.balance.trickle.plants * m.state.config.incomeMultiplier.plants) as number,
+      sunSeconds: m.balance.units.sunflower.sun.interval as number,
+    };
   });
   const startEnergy = await page.evaluate(() => (window.__lvt as any).session.controller.match.balance.startEnergy as number);
   expect(before.energy).toBeGreaterThanOrEqual(startEnergy);
@@ -100,7 +104,10 @@ test('merges by clicking a tile that already holds the same plant, and pays the 
   await startBattle(page, 'plants');
   // A Walnut Bomb pays nothing back, so the energy can be checked closely.
   const price = await cardPrice(page, 'walnutBomb');
-  const trickle = await page.evaluate(() => (window.__lvt as any).session.controller.match.balance.trickle.plants as number);
+  const trickle = await page.evaluate(() => {
+    const m = (window.__lvt as any).session.controller.match;
+    return (m.balance.trickle.plants * m.state.config.incomeMultiplier.plants) as number; // as this difficulty pays it
+  });
   await place(page, 'walnutBomb', 1, 1);
   await waitCardReady(page, 'walnutBomb');
   const before = await snapshot(page);
