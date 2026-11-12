@@ -2,7 +2,7 @@ import { signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { Vector3 } from 'three';
 import type { AudioEngine } from '../audio/AudioEngine';
-import { battleIntensity, playEventSounds } from '../audio/bindings';
+import { SoundGate, battleIntensity, playEventSounds } from '../audio/bindings';
 import { BattleView } from '../render/battle/BattleView';
 import type { PlacementPreview } from '../render/battle/types';
 import { LAWN_COLS, LAWN_LANES, tileCenter, worldToClient } from '../render/coords';
@@ -72,6 +72,8 @@ export class BattleSession implements Director, InputTarget {
   private cheerFor = 0;
   private endSounds = false;
   private readonly offEffects: (() => void)[] = [];
+  /** Keeps poison and burn to one sound a second across the battle. */
+  private readonly soundGate = new SoundGate();
 
   constructor(stage: StageLike, audio: AudioEngine, opts: BattleOptions, options: BattleSessionOptions = {}) {
     this.stage = stage;
@@ -230,7 +232,7 @@ export class BattleSession implements Director, InputTarget {
     if (this.ended || this.controller.hud.paused.peek()) return;
     const events: SimEvent[] = this.controller.step();
     this.view.applyEvents(events, this.controller.match.state);
-    if (withSound) playEventSounds(this.audio, events, this.playerFaction);
+    if (withSound) playEventSounds(this.audio, events, this.playerFaction, { state: this.controller.match.state, gate: this.soundGate });
     if (this.controller.hud.result.peek() !== null) this.finish(withSound);
     else if (withSound) this.input.refresh(); // energy or the lawn changed: the ghost may turn red or green
   }

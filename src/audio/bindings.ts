@@ -2,8 +2,9 @@
  * Simulation events to sounds, and how heated the battle is for the music.
  * The engine's repeat limits keep a burst of identical events from stacking up.
  */
-import type { AudioEngine, PlayOptions } from './AudioEngine';
-import type { Faction, SimEvent, SimState } from '../sim/types';
+import type { AudioEngine, PlayOptions, SfxName } from './AudioEngine';
+import type { Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../sim/types';
+import { TICKS_PER_SECOND } from '../sim/types';
 
 /** The lawn runs from x 0 (the plant base, left) to x 10 (the zombie base, right). */
 const LAWN_WIDTH = 10;
@@ -11,6 +12,53 @@ const LAWN_WIDTH = 10;
 const EDGE_PAN = 0.6;
 /** Units on the field at which the unit share of the intensity is full. */
 const FULL_FIELD = 24;
+
+/** Each projectile kind's sound as it is fired. */
+const SHOT_SOUND: Record<ProjectileKind, SfxName> = {
+  pea: 'pea', brain: 'brainThrow', kernel: 'kernel', butter: 'butter', mango: 'mango',
+  sand: 'sand', arrow: 'arrow', bullet: 'bullet', trident: 'trident', rot: 'rot',
+};
+/** Blasts with a sound of their own; any other is the Walnut Bomb's `explode`. */
+const BLAST_SOUND: Partial<Record<UnitKey, SfxName>> = { potatoMine: 'mineBoom', cherryBomber: 'cherryBoom' };
+/** A Torchwood setting a pea alight is a soft crackle, under the burn's own. */
+const IGNITE_VOLUME = 0.5;
+/** The once-a-second damage tick of poison and burn is quieter than their start. */
+const DOT_TICK_VOLUME = 0.6;
+
+/**
+ * Poison and burn are heard at most once a second in total, whatever their source (a status
+ * starting, a Torchwood igniting a pea, the damage ticks): a lawn of burning zombies would
+ * otherwise crackle without pause. One per battle; it counts in match ticks.
+ */
+export class SoundGate {
+  private lastDot = Number.NEGATIVE_INFINITY;
+
+  /** True (and the second starts now) when a poison or burn sound may play at `tick`. */
+  dot(tick: number): boolean {
+    if (tick - this.lastDot < TICKS_PER_SECOND) return false;
+    this.lastDot = tick;
+    return true;
+  }
+}
+
+/** What `playEventSounds` may know beyond the events: the state after them, and the battle's gate. */
+export interface SoundContext {
+  /** Places sounds about a unit (statuses, misses, heals) at its x, and times the damage ticks. */
+  state?: SimState;
+  /** Without one, poison and burn sounds are not limited. */
+  gate?: SoundGate;
+}
+
+/** x of unit `id` in the state, or NaN (centred) when it is not there. */
+function unitX(state: SimState | undefined, id: number): number {
+  if (state === undefined) return Number.NaN;
+  const units = state.units;
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (u !== undefined && u.id === id) return u.x;
+  }
+  return Number.NaN;
+}
 
 /** x 0..10 → pan −0.6..+0.6 (clamped); anything that is not a number is centred. */
 export function panFor(x: number): number {
@@ -29,15 +77,22 @@ function mergePitch(level: number): number {
  * Plays the sounds for one step's (or one frame's) events. Income and refusals are only heard for
  * `playerFaction`; everything on the lawn is heard for both sides.
  */
-export function playEventSounds(audio: AudioEngine, events: readonly SimEvent[], playerFaction: Faction): void {
+export function playEventSounds(
+  audio: AudioEngine, events: readonly SimEvent[], playerFaction: Faction, context: SoundContext = {},
+): void {
   const at = (x: number): PlayOptions => ({ pan: panFor(x) });
+  const { state, gate } = context;
+  const tick = state?.tick ?? 0;
+  const dot = (name: 'poison' | 'burn', x: number, volume?: number): void => {
+    if (gate === undefined || gate.dot(tick)) audio.play(name, volume === undefined ? at(x) : { pan: panFor(x), volume });
+  };
   for (const e of events) {
     switch (e.type) {
       case 'unitSpawned':
         audio.play(e.faction === 'plants' ? 'place' : 'spawnZombie', at(e.x));
         break;
       case 'projectileSpawned':
-        audio.play(e.kind === 'pea' ? 'pea' : 'brainThrow', at(e.x));
+        audio.play(SHOT_SOUND[e.kind], at(e.x));
         break;
       case 'projectileHit':
         audio.play(e.blocked ? 'block' : 'hit', at(e.x));
@@ -49,7 +104,7 @@ export function playEventSounds(audio: AudioEngine, events: readonly SimEvent[],
         if (e.cause === 'shovel') audio.play('click', at(e.x)); // other deaths are carried by the picture
         break;
       case 'explosion':
-        audio.play('explode', at(e.x));
+        audio.play(BLAST_SOUND[e.sourceKey] ?? 'explode', at(e.x));
         break;
       case 'baseDamaged':
         // A hit in a lane is heard at that base (the engine plays baseHit at most once per 0.25 s).
@@ -71,20 +126,58 @@ export function playEventSounds(audio: AudioEngine, events: readonly SimEvent[],
       case 'commandRejected':
         if (e.command.faction === playerFaction) audio.play('deny');
         break;
+      case 'statusApplied': {
+        const x = unitX(state, e.unitId);
+        if (e.status === 'stun') audio.play('stun', at(x));
+        else if (e.status === 'blind') audio.play('blind', at(x));
+        else if (e.status === 'poison' || e.status === 'burn') dot(e.status, x);
+        // tied: the lasso throw is its sound
+        break;
+      }
+      case 'attackMissed':
+        audio.play('miss', at(unitX(state, e.unitId)));
+        break;
+      case 'unitHealed':
+        audio.play('heal', at(unitX(state, e.unitId))); // a pulse healing several is heard once (repeat limit)
+        break;
+      case 'abilityUsed':
+        switch (e.ability) {
+          case 'arm': audio.play('mineArm', at(e.x)); break;
+          case 'fuse': audio.play('fuse', at(e.x)); break;
+          case 'leap': audio.play('squash', at(e.x)); break;
+          case 'grow': audio.play('grow', at(e.x)); break;
+          case 'lasso': audio.play('lasso', at(e.x)); break;
+          case 'raise': audio.play('raise', at(e.x)); break;
+          case 'ignite': dot('burn', e.x, IGNITE_VOLUME); break;
+          case 'trigger': // heard as its blast
+          case 'heal': // heard as the units it heals
+            break;
+          default: {
+            const unhandled: never = e.ability;
+            void unhandled;
+          }
+        }
+        break;
       case 'unitDamaged':
       case 'matchEnded': // the app plays win or lose
-      case 'statusApplied': // the phase-2 events get their sounds later
       case 'statusEnded':
-      case 'attackMissed':
-      case 'unitHealed':
-      case 'hazardSpawned':
+      case 'hazardSpawned': // the rot's landing splat is the shot's own sound
       case 'hazardEnded':
-      case 'abilityUsed':
         break;
       default: {
         const unhandled: never = e;
         void unhandled;
       }
+    }
+  }
+  // Poison and burn hurt on every whole second of the match: a soft tick while any unit suffers.
+  if (state !== undefined && tick > 0 && tick % TICKS_PER_SECOND === 0) {
+    const units = state.units;
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i];
+      if (u === undefined || u.hp <= 0 || (u.poison <= 0 && u.burn <= 0)) continue;
+      dot(u.poison > 0 ? 'poison' : 'burn', u.x, DOT_TICK_VOLUME);
+      break;
     }
   }
 }
