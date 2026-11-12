@@ -66,6 +66,7 @@ export interface PlayerState {
   energy: number; // always a whole number
   carry: number; // income not yet paid out, in 1/30000 of an energy
   recharge: Partial<Record<CardKey, number>>; // ticks left per card
+  heroTimer: number; // ticks until the hero power is ready; it stands still while the setup has it off
 }
 
 export interface MatchConfig {
@@ -75,6 +76,7 @@ export interface MatchConfig {
   cards: Record<Faction, CardKey[]>;
   incomeMultiplier: Record<Faction, number>;
   suddenDeath: boolean;
+  heroes: Record<Faction, boolean>; // whether each side has its hero power
 }
 
 export interface SimState {
@@ -90,12 +92,13 @@ export interface SimState {
 export type Command =
   | { type: 'place'; faction: Faction; unit: CardKey; lane: number; col: number }
   | { type: 'merge'; faction: Faction; unit: CardKey; targetId: number }
-  | { type: 'remove'; faction: Faction; targetId: number };
+  | { type: 'remove'; faction: Faction; targetId: number }
+  | { type: 'hero'; faction: Faction; lane: number };
 
 export type CommandRejection =
   | 'match-over' | 'not-in-hand' | 'wrong-side' | 'no-energy'
   | 'recharging' | 'bad-lane' | 'bad-column' | 'occupied' | 'no-target' | 'wrong-type'
-  | 'max-level' | 'not-yours' | 'plants-only';
+  | 'max-level' | 'not-yours' | 'plants-only' | 'hero-charging' | 'hero-off';
 
 export type SimEvent =
   | { type: 'commandRejected'; command: Command; reason: CommandRejection }
@@ -126,5 +129,7 @@ export type SimEvent =
   | { type: 'hazardSpawned'; hazardId: number; kind: 'rot'; lane: number; x: number; radius: number; ticks: number }
   | { type: 'hazardEnded'; hazardId: number }
   | { type: 'abilityUsed'; unitId: number; ability: AbilityName; lane: number; x: number; targetId: number | null }
+  | { type: 'heroUsed'; faction: Faction; lane: number }
+  | { type: 'heroReady'; faction: Faction }
   | { type: 'suddenDeath' }
   | { type: 'matchEnded'; winner: Faction | 'draw' };

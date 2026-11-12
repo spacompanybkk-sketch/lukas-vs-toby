@@ -664,6 +664,8 @@ export class BattleView {
       case 'hazardSpawned':
       case 'hazardEnded':
       case 'abilityUsed':
+      case 'heroUsed':
+      case 'heroReady':
         break;
       default: {
         const unhandled: never = e;

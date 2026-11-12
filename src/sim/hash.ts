@@ -137,6 +137,7 @@ const PLAYER: Fields<PlayerState> = {
       }
     }
   },
+  heroTimer: num,
 };
 
 const CONFIG: Fields<MatchConfig> = {
@@ -149,6 +150,7 @@ const CONFIG: Fields<MatchConfig> = {
   }),
   incomeMultiplier: perFaction(num),
   suddenDeath: bool,
+  heroes: perFaction(bool),
 };
 
 const STATE: Fields<SimState> = {

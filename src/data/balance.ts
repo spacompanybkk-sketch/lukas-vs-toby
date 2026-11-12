@@ -100,6 +100,12 @@ export interface Balance {
   zombieBaseShotRange: number;
   /** At most this many of a Necromancer's raised minions stand at once. */
   minionCap: number;
+  /**
+   * Each side's hero power (Mega Mower, Bone Storm): `damage` to every standing enemy unit in the
+   * lane it is aimed at, armor and shields ignored; ready `firstChargeSeconds` into the match and
+   * `chargeSeconds` after each use.
+   */
+  hero: Record<Faction, { damage: number; chargeSeconds: number; firstChargeSeconds: number }>;
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -256,6 +262,10 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   baseDefense: { damage: 100, interval: 2 },
   zombieBaseShotRange: 3.5,
   minionCap: 3,
+  hero: {
+    plants: { damage: 400, chargeSeconds: 60, firstChargeSeconds: 45 }, // Mega Mower
+    zombies: { damage: 250, chargeSeconds: 60, firstChargeSeconds: 45 }, // Bone Storm
+  },
 });
 
 /** Seconds to whole ticks. */

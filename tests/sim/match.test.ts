@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE } from '../../src/data/balance';
+import { BALANCE, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { PHASE1_CARDS } from '../../src/data/units';
 import { hashState, snapshotState } from '../../src/sim/hash';
@@ -19,6 +19,7 @@ describe('defaultConfig', () => {
       cards: PHASE1_CARDS,
       incomeMultiplier: { plants: 1, zombies: 1 },
       suddenDeath: true,
+      heroes: { plants: true, zombies: true },
     });
   });
 
@@ -45,8 +46,8 @@ describe('new Match', () => {
     expect(m.state).toEqual({
       tick: 0, rng: 42, nextId: 1, units: [], projectiles: [], hazards: [],
       players: {
-        plants: { energy, carry: 0, recharge: {} },
-        zombies: { energy, carry: 0, recharge: {} },
+        plants: { energy, carry: 0, recharge: {}, heroTimer: seconds(45) },
+        zombies: { energy, carry: 0, recharge: {}, heroTimer: seconds(45) },
       },
       baseHp: { plants: hp, zombies: hp },
       baseMaxHp: { plants: hp, zombies: hp },

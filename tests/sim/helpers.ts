@@ -71,12 +71,13 @@ export function withBaseDefense(damage = 60, interval = 1): Balance {
 /**
  * The default setup with the energy and base health these tests were written for, 200 and 3000 a
  * side, so a test of the rules keeps testing them whatever the tuner does to the shipped starting
- * values in `BALANCE`.
+ * values in `BALANCE`; and, as in phase 1, with no hero powers.
  */
 export function classicConfig(seed: number, balance: Balance = classicBalance()): MatchConfig {
   const config = defaultConfig(seed, balance);
   config.startEnergy = { plants: 200, zombies: 200 };
   config.baseHp = { plants: 3000, zombies: 3000 };
+  config.heroes = { plants: false, zombies: false };
   return config;
 }
 

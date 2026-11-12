@@ -30,7 +30,11 @@ export interface HudSignals {
   selected: Signal<UnitKey | null>; shovel: Signal<boolean>;
   result: Signal<BattleResult>;
   denied: Signal<number>; // increments on each refused action, for the shake
+  hero: Signal<HeroVM>; // the player's hero power
 }
+
+/** The player's hero power: usable now, and how far it has charged (0..1). */
+export interface HeroVM { ready: boolean; fraction: number }
 
 type Tile = { lane: number; col: number };
 
@@ -57,6 +61,8 @@ export class BattleController {
   private readonly opponent: Faction;
   /** The one player command accepted for the coming tick, if any. */
   private queued: Command | null = null;
+  /** Ticks of the player's current hero charge: the first one until the hero is first used. */
+  private heroPeriod: number;
 
   constructor(opts: BattleOptions, balance: Balance = BALANCE) {
     this.playerFaction = opts.playerFaction;
@@ -75,7 +81,9 @@ export class BattleController {
       seconds: signal(0), suddenDeath: signal(false), paused: signal(false),
       selected: signal<UnitKey | null>(null), shovel: signal(false),
       result: signal<BattleResult>(null), denied: signal(0),
+      hero: signal<HeroVM>({ ready: false, fraction: 0 }),
     };
+    this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
     // A first tap on the lawn should do something: start with the first card the player can pay for.
     const first = this.hud.cards.peek().find((c) => c.affordable);
@@ -91,6 +99,11 @@ export class BattleController {
     const plants = this.playerFaction === 'plants' ? mine : theirs;
     const zombies = this.playerFaction === 'plants' ? theirs : mine;
     const events = this.match.step([...plants, ...zombies]);
+    for (const e of events) {
+      if (e.type === 'heroUsed' && e.faction === this.playerFaction) {
+        this.heroPeriod = seconds(this.match.balance.hero[this.playerFaction].chargeSeconds);
+      }
+    }
     this.refresh();
     const winner = this.match.state.winner;
     if (winner !== null && this.hud.result.peek() === null) {
@@ -140,6 +153,21 @@ export class BattleController {
     if (cmd === 'no-selection') return this.deny('not-in-hand');
     if (cmd === 'no-tile') return this.deny('bad-lane');
     if (cmd === 'no-target') return this.deny('no-target');
+    const reason = this.match.check(cmd);
+    if (reason !== null) return this.deny(reason);
+    this.queued = cmd;
+    return null;
+  }
+
+  /**
+   * Fires the player's hero power down `lane`, answering as `click` does: null means queued for
+   * the next tick, 'match-over' once decided, 'ignored' while paused or with a command already
+   * queued, and the match's own refusal (counted as a denial) otherwise.
+   */
+  heroLane(lane: number): CommandRejection | 'ignored' | null {
+    if (this.over()) return 'match-over';
+    if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
@@ -247,5 +275,14 @@ export class BattleController {
       };
     });
     if (!sameCards(this.hud.cards.peek(), cards)) this.hud.cards.value = cards;
+
+    const on = s.config.heroes[this.playerFaction];
+    const left = me.heroTimer;
+    const hero: HeroVM = {
+      ready: on && left === 0,
+      fraction: on ? Math.min(1, Math.max(0, 1 - left / this.heroPeriod)) : 0,
+    };
+    const oldHero = this.hud.hero.peek();
+    if (oldHero.ready !== hero.ready || oldHero.fraction !== hero.fraction) this.hud.hero.value = hero;
   }
 }

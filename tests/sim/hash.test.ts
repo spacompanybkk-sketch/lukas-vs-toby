@@ -4,15 +4,16 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1206 bytes). Re-pinned in phase 2,
- * Task 3, when units gained the Necromancer's heal timer (`auraTimer`); in Task 2 it was
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1224 bytes). Re-pinned in phase 2,
+ * Task 4, when players gained their hero timers (`heroTimer`) and the setup its `heroes`; in Task 3
+ * it was 3963315096 over 1206 bytes, when units gained the Necromancer's heal timer (`auraTimer`); in Task 2 it was
  * 972736984 over 1190 bytes, from when projectiles gained the burn a Torchwood gives them
  * (`burnDps`, `burnTicks`); in Task 1 628692134 over 1174 bytes, from when units gained statuses,
  * stacks and an owner, projectiles their flight fields, and the state its hazards. Before that it
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 3963315096;
+const GOLDEN_HASH = 3625389926;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -43,8 +44,8 @@ function makeState(): SimState {
       { id: 2, kind: 'rot', faction: 'zombies', lane: 1, x: 2.5, radius: 0.75, ticksLeft: 90, dps: 15 },
     ],
     players: {
-      plants: { energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 } },
-      zombies: { energy: 125, carry: 0, recharge: { brainEater: 15 } },
+      plants: { energy: 175, carry: 1234, recharge: { peashooter: 60, sunflower: 0 }, heroTimer: 0 },
+      zombies: { energy: 125, carry: 0, recharge: { brainEater: 15 }, heroTimer: 700 },
     },
     baseHp: { plants: 500, zombies: 480 },
     baseMaxHp: { plants: 500, zombies: 500 },
@@ -61,6 +62,7 @@ function makeState(): SimState {
       },
       incomeMultiplier: { plants: 1, zombies: 1.25 },
       suddenDeath: true,
+      heroes: { plants: true, zombies: false },
     },
   };
 }
@@ -185,6 +187,11 @@ describe('hashState', () => {
     ['a hazard radius', (s) => { s.hazards[0]!.radius = 1; }],
     ['a hazard ticksLeft', (s) => { s.hazards[0]!.ticksLeft -= 1; }],
     ['a hazard dps', (s) => { s.hazards[0]!.dps += 1; }],
+    // Hero powers.
+    ['a player heroTimer', (s) => { s.players.zombies.heroTimer -= 1; }],
+    ['a heroTimer of 0 becoming 1', (s) => { s.players.plants.heroTimer = 1; }],
+    ['config heroes.plants', (s) => { s.config.heroes.plants = false; }],
+    ['config heroes.zombies', (s) => { s.config.heroes.zombies = true; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -198,8 +205,8 @@ describe('hashState', () => {
     const a = makeState();
     const b = makeState();
     b.players = {
-      zombies: { recharge: { brainEater: 15 }, carry: 0, energy: 125 },
-      plants: { recharge: { sunflower: 0, peashooter: 60 }, carry: 1234, energy: 175 },
+      zombies: { heroTimer: 700, recharge: { brainEater: 15 }, carry: 0, energy: 125 },
+      plants: { heroTimer: 0, recharge: { sunflower: 0, peashooter: 60 }, carry: 1234, energy: 175 },
     };
     b.baseHp = { zombies: 480, plants: 500 };
     b.config.incomeMultiplier = { zombies: 1.25, plants: 1 };

@@ -89,7 +89,7 @@ describe('createBasicBot', () => {
       const { log } = playChecked(4, createBasicBot('plants', skill, 4), createBasicBot('zombies', skill, 4), 6000, true);
       return log.flatMap((t) => t.commands);
     });
-    const kinds = new Set(sent.map((c) => (c.type === 'remove' ? 'remove' : `${c.type}:${c.unit}`)));
+    const kinds = new Set(sent.map((c) => ('unit' in c ? `${c.type}:${c.unit}` : c.type)));
     for (const kind of [
       'place:peashooter', 'place:sunflower', 'place:walnutBomb', 'merge:peashooter', 'merge:sunflower',
       'place:brainEater', 'place:veryFastWalker', 'place:skeletonWarrior',

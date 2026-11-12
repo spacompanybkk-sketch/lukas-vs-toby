@@ -363,3 +363,70 @@ describe('BattleController determinism and bot', () => {
     expect(acted).toBe(true);
   });
 });
+
+describe('BattleController hero power', () => {
+  /** The player's hero ready now, with the hud caught up. */
+  const charged = (side: Faction = 'plants'): BattleController => {
+    const c = make(side);
+    c.match.state.players[side].heroTimer = 1;
+    c.step();
+    return c;
+  };
+
+  it('heroLane queues the hero command like click, and it fires on the next step', () => {
+    const c = charged();
+    const z = c.match.state.units.find((u) => u.faction === 'zombies');
+    expect(c.hud.hero.value).toEqual({ ready: true, fraction: 1 });
+    expect(c.heroLane(2)).toBeNull();
+    expect(c.heroLane(3)).toBe('ignored'); // one command per tick
+    const events = c.step();
+    expect(events).toContainEqual({ type: 'heroUsed', faction: 'plants', lane: 2 });
+    expect(z === undefined || z.lane !== 2 || z.hp < 400).toBe(true);
+    expect(c.hud.hero.value.ready).toBe(false);
+  });
+
+  it('a refusal is counted as a denial: charging, bad lane', () => {
+    const c = make();
+    const denied = c.hud.denied.value;
+    expect(c.heroLane(2)).toBe('hero-charging');
+    c.match.state.players.plants.heroTimer = 0;
+    expect(c.heroLane(7)).toBe('bad-lane');
+    expect(c.hud.denied.value).toBe(denied + 2);
+  });
+
+  it('obeys pause and the end of the match like click', () => {
+    const c = charged('zombies');
+    c.setPaused(true);
+    const denied = c.hud.denied.value;
+    expect(c.heroLane(1)).toBe('ignored');
+    c.setPaused(false);
+    c.match.state.baseHp.plants = 0;
+    c.step();
+    expect(c.heroLane(1)).toBe('match-over');
+    expect(c.hud.denied.value).toBe(denied);
+  });
+
+  it('hud.hero charges from 0 to 1 over the first 45 s, then over 60 s after a use', () => {
+    const c = make();
+    expect(c.hud.hero.value).toEqual({ ready: false, fraction: 0 });
+    for (let i = 0; i < seconds(22.5); i++) c.step();
+    expect(c.hud.hero.value.fraction).toBeCloseTo(0.5, 5);
+    for (let i = 0; i < seconds(22.5); i++) c.step();
+    expect(c.hud.hero.value).toEqual({ ready: true, fraction: 1 });
+    c.heroLane(0);
+    c.step();
+    expect(c.hud.hero.value.fraction).toBeCloseTo(1 / seconds(60), 9);
+    for (let i = 0; i < seconds(30) - 1; i++) c.step();
+    expect(c.hud.hero.value.fraction).toBeCloseTo(0.5, 9);
+  });
+
+  it('hud.hero is only written when it changes', () => {
+    const c = make();
+    c.match.state.players.plants.heroTimer = 0;
+    c.step();
+    const ready = c.hud.hero.value;
+    c.step();
+    c.step();
+    expect(c.hud.hero.value).toBe(ready);
+  });
+});

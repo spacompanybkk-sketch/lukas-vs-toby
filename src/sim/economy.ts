@@ -14,12 +14,14 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
  * One tick of the economy, in this order:
  * (a) every timer counts down, never below 0 (the only place any of these do; statuses count down
  *     in `tickStatuses`): each unit's attack, ability and aura timers, unless the unit cannot act (see
- *     `canAct`), each card's recharge, and the plant base's defence timer in each lane;
+ *     `canAct`), each card's recharge, the plant base's defence timer in each lane, and each side's
+ *     hero timer while the setup has that hero on (`heroReady` on the step it reaches 0);
  * (b) trickle income is added to each side's carry and paid out in whole energy;
  * (c) every ready Sunflower that can act pays.
  */
 export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
   countDownTimers(s);
+  chargeHeroes(s, events);
   payTrickle(s, b);
   paySunflowers(s, b, events);
 }
@@ -41,6 +43,15 @@ function countDownTimers(s: SimState): void {
   const baseDefense = s.baseDefenseTimers;
   for (let lane = 0; lane < baseDefense.length; lane++) {
     baseDefense[lane] = Math.max(0, (baseDefense[lane] ?? 0) - 1);
+  }
+}
+
+function chargeHeroes(s: SimState, events: SimEvent[]): void {
+  for (const faction of FACTIONS) {
+    const player = s.players[faction];
+    if (!s.config.heroes[faction] || player.heroTimer <= 0) continue;
+    player.heroTimer -= 1;
+    if (player.heroTimer === 0) events.push({ type: 'heroReady', faction });
   }
 }
 
