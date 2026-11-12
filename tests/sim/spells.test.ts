@@ -69,7 +69,7 @@ describe('the spell table', () => {
       fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
       brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
       frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
-      graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3 },
+      graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
     });
   });
 
@@ -200,6 +200,9 @@ describe('the plants\' spells', () => {
     const before = m.state.players.plants.energy;
     const events = m.step([cast('sunShower', 99, -4)]);
     expect(m.state.players.plants.energy).toBe(before + 150);
+    expect(eventsOf(events, 'energyGained')).toEqual([
+      { type: 'energyGained', faction: 'plants', amount: 150, source: 'spell', unitId: null, lane: 2, x: 0 },
+    ]);
     expect(eventsOf(events, 'spellCast')).toEqual([
       { type: 'spellCast', faction: 'plants', spell: 'sunShower', lane: 99, col: -4, size: 0 },
     ]);
@@ -303,8 +306,11 @@ describe('the zombies\' spells', () => {
   it('Brain Feast: +200 Brains at once, lane and column ignored', () => {
     const m = ready('brainFeast');
     const before = m.state.players.zombies.energy;
-    m.step([cast('brainFeast', -1, 42)]);
+    const events = m.step([cast('brainFeast', -1, 42)]);
     expect(m.state.players.zombies.energy).toBe(before + 200);
+    expect(eventsOf(events, 'energyGained')).toEqual([
+      { type: 'energyGained', faction: 'zombies', amount: 200, source: 'spell', unitId: null, lane: 2, x: 9.5 },
+    ]);
   });
 
   it('Frenzy: haste for 180 ticks on each zombie in the 3×3: it walks 1.5× as far', () => {
@@ -379,6 +385,17 @@ describe('the zombies\' spells', () => {
       { type: 'unitSpawned', unitId: u.id, key: 'boneMinion', faction: 'zombies', lane: 3, x: 5.5 }
     )));
     expect(eventsOf(events, 'spellCast')[0]).toMatchObject({ spell: 'graveRise', size: 1 });
+  });
+});
+
+describe('Grave Rise is kept away from the plant base', () => {
+  it('minCol 4: column 3 is bad-column, column 4 is fine', () => {
+    const b = classicBalance();
+    b.units.boneMinion = cloneBalance(BALANCE).units.boneMinion;
+    const m = ready('graveRise', b);
+    expect(m.check(cast('graveRise', 1, 3))).toBe('bad-column');
+    expect(m.check(cast('graveRise', 1, 4))).toBeNull();
+    expect(m.check(cast('graveRise', 1, 9))).toBeNull();
   });
 });
 

@@ -14,7 +14,7 @@ import { isStanding } from './lookup';
 import { randomInt } from './rng';
 import { spawnMinion, spawnUnit } from './spawn';
 import { applyStatus } from './status';
-import { COLS, LANES, PLANT_COLS } from './types';
+import { COLS, LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
   Command, CommandRejection, Faction, PlayerState, SimEvent, SimState, SpellKey, SpellSize, StatusKind, Unit,
 } from './types';
@@ -26,6 +26,9 @@ export const SPELLS: Record<Faction, SpellKey[]> = {
 };
 
 export type SpellCommand = Extract<Command, { type: 'spell' }>;
+
+/** Where an energy spell's `energyGained` is reported: the middle lane, at the side's own base edge. */
+const SPELL_ENERGY_LANE = 2;
 
 /** A tile of the lawn. */
 export interface SpellTile { lane: number; col: number }
@@ -73,7 +76,8 @@ export function spellArea(faction: Faction, size: SpellSize, lane: number, col: 
 /**
  * Why a spell command would be refused, or null: `spells-off` (the setup deals this side none),
  * `spell-not-dealt`, then for an aimed spell (size above 0) `bad-lane`, `bad-column` (Rock Wall:
- * plant columns only) and, for Rock Wall, `occupied`; then `spell-charging`. An un-aimed spell's
+ * plant columns only; any spell with `minCol`: not below it) and, for Rock Wall, `occupied`; then
+ * `spell-charging`. An un-aimed spell's
  * lane and column are not looked at.
  */
 export function checkSpell(s: SimState, b: Balance, cmd: SpellCommand): CommandRejection | null {
@@ -83,7 +87,7 @@ export function checkSpell(s: SimState, b: Balance, cmd: SpellCommand): CommandR
   if (b.spells[cmd.spell].size > 0) {
     if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
     const lastCol = cmd.spell === 'rockWall' ? PLANT_COLS - 1 : COLS - 1;
-    if (!isWholeBetween(cmd.col, 0, lastCol)) return 'bad-column';
+    if (!isWholeBetween(cmd.col, b.spells[cmd.spell].minCol ?? 0, lastCol)) return 'bad-column';
     if (cmd.spell === 'rockWall' && plantOn(s, cmd.lane, cmd.col)) return 'occupied';
   }
   if (slot.timer > 0) return 'spell-charging';
@@ -114,9 +118,15 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
       putOn(s, friends(), 'haste', stats, cmd.spell, events);
       break;
     case 'sunShower':
-    case 'brainFeast':
-      s.players[cmd.faction].energy += need(stats.amount, cmd.spell);
+    case 'brainFeast': {
+      const amount = need(stats.amount, cmd.spell);
+      s.players[cmd.faction].energy += amount;
+      events.push({
+        type: 'energyGained', faction: cmd.faction, amount, source: 'spell', unitId: null,
+        lane: SPELL_ENERGY_LANE, x: cmd.faction === 'plants' ? 0 : ZOMBIE_SPAWN_X,
+      });
       break;
+    }
     case 'healingRain':
       for (const u of friends()) {
         const gain = Math.min(need(stats.amount, cmd.spell), u.maxHp - u.hp);

@@ -77,10 +77,13 @@ export interface UnitStats {
  * has depends on the spell: `damage` (Thunderbolt, Meteor), `seconds` of a status or of a rock's
  * life (Vines, Fog, Frenzy, Rock Wall), `amount` of energy or healing (Sun Shower, Brain Feast,
  * Healing Rain), the rock's `hp`, Frenzy's speed `factor`, Grave Rise's `count` of minions.
+ * `minCol`: an aimed spell may not be cast on a column below it (Grave Rise, kept away from the
+ * plant base).
  */
 export interface SpellStats {
   cooldown: number; firstReady: number; size: SpellSize;
   damage?: number; seconds?: number; amount?: number; hp?: number; factor?: number; count?: number;
+  minCol?: number;
 }
 
 /** Every tunable number of the game. The simulation reads these and nothing else. */
@@ -300,7 +303,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
     brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
     frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
-    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3 },
+    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
   },
 });
 

@@ -143,7 +143,8 @@ export type SimEvent =
   | { type: 'baseDamaged'; faction: Faction; amount: number; hp: number; lane: number | null }
   | { type: 'baseStruck'; lane: number; targetId: number } // the plant base hit a zombie that was biting it
   // unitId = the paying Sunflower, null for bounties
-  | { type: 'energyGained'; faction: Faction; amount: number; source: 'sunflower' | 'bounty'; unitId: number | null; lane: number; x: number }
+  // spell: Sun Shower or Brain Feast, reported at the side's own base edge (lane 2, x 0 or 9.5)
+  | { type: 'energyGained'; faction: Faction; amount: number; source: 'sunflower' | 'bounty' | 'spell'; unitId: number | null; lane: number; x: number }
   | { type: 'statusApplied'; unitId: number; status: StatusKind; ticks: number; sourceId: number | null }
   | { type: 'statusEnded'; unitId: number; status: StatusKind }
   | { type: 'attackMissed'; unitId: number } // a blind unit's bite or shot
