@@ -10,10 +10,17 @@ export function statsFor(b: Balance, key: UnitKey): UnitStats {
   return stats;
 }
 
-/** What damage and other special values are multiplied by at `level`. */
-export function levelScale(b: Balance, level: number): number {
-  const scale = b.levelScale[level];
-  if (scale === undefined) throw new RangeError(`No levelScale entry for level ${level}`);
+/** Which of the balance table's level curves a number follows (see `Balance.levelCurves`). */
+export type LevelCurve = 'hp' | 'damage' | 'special';
+
+/**
+ * What a unit of `faction` has its health, damage or special values multiplied by at `level`
+ * (`special` is the same for both sides).
+ */
+export function levelScale(b: Balance, faction: Faction, level: number, curve: LevelCurve): number {
+  const table = curve === 'special' ? b.levelCurves.special : b.levelCurves[curve][faction];
+  const scale = table[level];
+  if (scale === undefined) throw new RangeError(`No ${curve} level curve entry for level ${level}`);
   return scale;
 }
 

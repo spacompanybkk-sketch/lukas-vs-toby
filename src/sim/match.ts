@@ -242,8 +242,8 @@ export class Match {
 
   /**
    * Carries out a merge that `check` has passed: pays and starts the card's recharge, then the
-   * target goes up one level. Its max health becomes `hp × levelScale[level]` from the balance
-   * table, rounded, and its health keeps its share of the max, rounded, at least 1 and never above
+   * target goes up one level. Its max health becomes `hp` times the balance table's `hp` level
+   * curve, rounded, and its health keeps its share of the max, rounded, at least 1 and never above
    * the max: both stay whole even when a tuned table has fractional level multipliers. `spent`
    * grows by the price (bounties pay a share of it). Position, timers and everything else stay.
    */
@@ -254,7 +254,7 @@ export class Match {
     const oldHp = target.hp;
     const oldMaxHp = target.maxHp;
     target.level += 1;
-    const maxHp = Math.round(statsFor(this.balance, target.key).hp * levelScale(this.balance, target.level));
+    const maxHp = Math.round(statsFor(this.balance, target.key).hp * levelScale(this.balance, target.faction, target.level, 'hp'));
     target.maxHp = maxHp;
     target.hp = Math.min(maxHp, Math.max(1, Math.round(maxHp * oldHp / oldMaxHp)));
     target.spent += UNIT_INFO[cmd.unit].price;

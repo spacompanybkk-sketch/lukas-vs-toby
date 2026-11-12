@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
+import { cloneBalance, seconds } from '../../src/data/balance';
 import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command, CommandRejection, SimEvent, UnitKey } from '../../src/sim/types';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
-import { classicConfig, eventsOf, place } from './helpers';
+import { classicBalance, classicConfig, eventsOf, place } from './helpers';
+
+/** The numbers these rules tests were written for (see `classicBalance`). */
+const BALANCE = classicBalance();
 
 /** 200 energy a side. */
 function fresh(): Match {
-  return new Match(classicConfig(7));
+  return new Match(classicConfig(7, BALANCE), BALANCE);
 }
 
 describe('placing a plant', () => {

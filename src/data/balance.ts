@@ -22,7 +22,21 @@ export interface Balance {
   bountyShare: Record<Faction, number>; // share of the victim's `spent` paid to this side
   baseShotFactor: number; // plant shots reaching the zombie base
   hitRadius: number; // projectile vs unit, tiles
-  levelScale: readonly number[]; // index = level
+  /**
+   * What a merged unit's numbers are multiplied by, index = level (index 0 unused, level 1 is 1):
+   * `hp` for its health and `damage` for its bites and shots, each per side, and `special` for
+   * what is not a fight (Sun output, blast damage). A merged unit gains health and damage at once
+   * and keeps its whole bite or volley until it falls, so equal multipliers would make a level-N
+   * unit worth well over N separate ones; the curves are set so that it is worth about N (spec
+   * 6.3: 1.00-1.15 × N, measured by `src/ai/duels.ts`). They differ per side because the two
+   * sides fight differently: a stack of zombies loses bites as each one falls, a row of plants
+   * makes each zombie walk on to the next.
+   */
+  levelCurves: {
+    hp: Record<Faction, readonly number[]>;
+    damage: Record<Faction, readonly number[]>;
+    special: readonly number[];
+  };
   suddenDeath: { startSeconds: number; baseRate: number; growthPerSecond: number };
   startEnergy: number; baseHp: number;
   /**
@@ -66,7 +80,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   units: {
     peashooter: {
       recharge: 5, hp: 300, armor: 0, speed: 0,
-      shot: { kind: 'pea', damage: 20, interval: 1.5, range: 10, speed: 6 },
+      shot: { kind: 'pea', damage: 25, interval: 1.5, range: 10, speed: 6 },
     },
     sunflower: {
       recharge: 5, hp: 200, armor: 0, speed: 0,
@@ -82,20 +96,24 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       shot: { kind: 'brain', damage: 15, interval: 2.0, range: 3.5, speed: 4 },
     },
     veryFastWalker: {
-      recharge: 3, hp: 180, armor: 0, speed: 0.9,
+      recharge: 3, hp: 180, armor: 0, speed: 1.3,
       melee: { damage: 15, interval: 0.7, reach: 0.6 },
     },
     skeletonWarrior: {
-      recharge: 10, hp: 700, armor: 0, speed: 0.3,
+      recharge: 10, hp: 500, armor: 0, speed: 0.3,
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
     },
   },
-  trickle: { plants: 1.8, zombies: 6 },
+  trickle: { plants: 1.8, zombies: 9.3 },
   bountyShare: { plants: 0.2, zombies: 0.5 },
-  baseShotFactor: 0.5,
+  baseShotFactor: 0.35,
   hitRadius: 0.35,
-  levelScale: [0, 1, 2, 3, 4, 5],
+  levelCurves: {
+    hp: { plants: [0, 1, 2, 3, 4, 5], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
+    damage: { plants: [0, 1, 2, 3, 4, 5], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
+    special: [0, 1, 2, 3, 4, 5],
+  },
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 190,
   baseHp: 7000,

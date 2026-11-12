@@ -38,6 +38,23 @@ function deathStep(log: Array<[number, SimEvent[]]>, u: Unit): number | null {
 }
 
 describe('the plant base strikes back', () => {
+  it('strikes a merged zombie harder, by its health curve, so it falls to as many strikes as a fresh one', () => {
+    const b = withBaseDefense(60, 1);
+    b.levelCurves.hp.zombies = [0, 1, 1.8, 2.5, 3.2, 4];
+    const m = fresh(b);
+    const fresh1 = spawnUnit(m.state, b, 'veryFastWalker', 1, BASE_STOP_X);
+    const merged = spawnUnit(m.state, b, 'veryFastWalker', 2, BASE_STOP_X);
+    merged.level = 3;
+    merged.maxHp = Math.round(180 * 2.5);
+    merged.hp = merged.maxHp;
+    const log = play(m, 200);
+    const hits = (u: Unit): number[] => log.flatMap(([, events]) =>
+      eventsOf(events, 'unitDamaged').filter((e) => e.unitId === u.id).map((e) => e.amount));
+    expect(hits(fresh1)).toEqual([60, 60, 60]);
+    expect(hits(merged)).toEqual([150, 150, 150]); // 60 × 2.5
+    expect(deathStep(log, merged)).toBe(deathStep(log, fresh1));
+  });
+
   it('starts every match with one timer per lane, all at 0', () => {
     const m = fresh();
     expect(m.state.baseDefenseTimers).toEqual(Array(LANES).fill(0));

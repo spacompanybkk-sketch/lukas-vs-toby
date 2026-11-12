@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
+import { cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { damageBase, damageUnit, resolveDeaths, tickProjectiles } from '../../src/sim/combat';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Projectile, SimEvent, Unit } from '../../src/sim/types';
-import { eventsOf, withBaseDefense } from './helpers';
+import { classicBalance, eventsOf, withBaseDefense } from './helpers';
+
+/** The numbers these rules tests were written for (see `classicBalance`). */
+const BALANCE = classicBalance();
 
 /**
  * Units are set with `spawnUnit`. Income is switched off so energy only moves through bounties,
@@ -231,6 +234,28 @@ describe('shots and projectiles', () => {
 
     const hit = m.step();
     expect(eventsOf(hit, 'unitDamaged')).toEqual([{ type: 'unitDamaged', unitId: z.id, amount: 20, hp: 160 }]);
+  });
+
+  it('damage follows each side\'s own damage curve: a level-2 Brain Eater bites for 40 × 1.5 when only the zombies\' curve says 1.5', () => {
+    const b = cloneBalance(BALANCE);
+    b.levelCurves.damage.zombies = [0, 1, 1.5, 2, 2.5, 3];
+    const m = fresh(b);
+    const plant = spawnUnit(m.state, b, 'walnutBomb', 1, 2.5);
+    const z = spawnUnit(m.state, b, 'brainEater', 1, 3);
+    z.level = 2;
+    const shooter = spawnUnit(m.state, b, 'peashooter', 3, 0.5);
+    shooter.level = 2; // the plants' curve is still ×2
+    const target = spawnUnit(m.state, b, 'brainEater', 3, 6);
+    const bites: number[] = [];
+    const peas: number[] = [];
+    for (let i = 0; i < 120 && (bites.length === 0 || peas.length === 0); i++) {
+      for (const e of eventsOf(m.step(), 'unitDamaged')) {
+        if (e.unitId === plant.id) bites.push(e.amount);
+        if (e.unitId === target.id) peas.push(e.amount);
+      }
+    }
+    expect(bites[0]).toBe(60);
+    expect(peas[0]).toBe(40);
   });
 
   it('a level-3 Peashooter fires 60-damage peas', () => {

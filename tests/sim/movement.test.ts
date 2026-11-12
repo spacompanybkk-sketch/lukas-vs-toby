@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE } from '../../src/data/balance';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
-import { eventsOf } from './helpers';
+import { classicBalance, eventsOf } from './helpers';
+
+/** The numbers these rules tests were written for (see `classicBalance`). */
+const BALANCE = classicBalance();
 
 /** Units are set with `spawnUnit`; the energy is only there so nothing waits for income. */
 function fresh(): Match {
-  const config = defaultConfig(1);
+  const config = defaultConfig(1, BALANCE);
   config.startEnergy = { plants: 9999, zombies: 9999 };
-  return new Match(config);
+  return new Match(config, BALANCE);
 }
 
 describe('zombie movement', () => {

@@ -4,11 +4,65 @@ import { defaultConfig } from '../../src/sim/match';
 import type { Command, Faction, MatchConfig, SimEvent, UnitKey } from '../../src/sim/types';
 
 /**
- * A copy of the shipped balance with the plant base's defence switched on: `damage` per strike,
- * at most one strike per lane every `interval` seconds. The shipped table has it off (damage 0).
+ * The numbers the rules tests were written for (the phase 1 table before the final balance wave),
+ * whatever the tuner does to `BALANCE` afterwards: the six units as first set, linear level
+ * curves (×level for health, damage and specials, both sides), incomes 1.8 and 6, base shots at
+ * half damage. A rules test that works out exact figures uses this, so retuning never touches it.
+ * Every call returns a fresh, unfrozen copy.
+ */
+export function classicBalance(): Balance {
+  const b = cloneBalance(BALANCE);
+  b.units = {
+    peashooter: {
+      recharge: 5, hp: 300, armor: 0, speed: 0,
+      shot: { kind: 'pea', damage: 20, interval: 1.5, range: 10, speed: 6 },
+    },
+    sunflower: {
+      recharge: 5, hp: 200, armor: 0, speed: 0,
+      sun: { amount: 25, interval: 10 },
+    },
+    walnutBomb: {
+      recharge: 15, hp: 1200, armor: 0, speed: 0,
+      deathBlast: { damage: 150, radius: 1.5 },
+    },
+    brainEater: {
+      recharge: 5, hp: 400, armor: 0, speed: 0.35,
+      melee: { damage: 40, interval: 1.0, reach: 0.6 },
+      shot: { kind: 'brain', damage: 15, interval: 2.0, range: 3.5, speed: 4 },
+    },
+    veryFastWalker: {
+      recharge: 3, hp: 180, armor: 0, speed: 0.9,
+      melee: { damage: 15, interval: 0.7, reach: 0.6 },
+    },
+    skeletonWarrior: {
+      recharge: 10, hp: 700, armor: 0, speed: 0.3,
+      melee: { damage: 45, interval: 1.2, reach: 0.6 },
+      shield: { interval: 4 },
+    },
+  };
+  const linear = [0, 1, 2, 3, 4, 5];
+  b.levelCurves = {
+    hp: { plants: [...linear], zombies: [...linear] },
+    damage: { plants: [...linear], zombies: [...linear] },
+    special: [...linear],
+  };
+  b.trickle = { plants: 1.8, zombies: 6 };
+  b.bountyShare = { plants: 0.2, zombies: 0.5 };
+  b.baseShotFactor = 0.5;
+  b.hitRadius = 0.35;
+  b.startEnergy = 190;
+  b.baseHp = 7000;
+  b.baseDefense = { damage: 100, interval: 2 };
+  b.suddenDeath = { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 };
+  return b;
+}
+
+/**
+ * The classic balance (see `classicBalance`) with the plant base's defence set: `damage` per
+ * strike, at most one strike per lane every `interval` seconds; damage 0 switches it off.
  */
 export function withBaseDefense(damage = 60, interval = 1): Balance {
-  const balance = cloneBalance(BALANCE);
+  const balance = classicBalance();
   balance.baseDefense = { damage, interval };
   return balance;
 }
@@ -18,8 +72,8 @@ export function withBaseDefense(damage = 60, interval = 1): Balance {
  * side, so a test of the rules keeps testing them whatever the tuner does to the shipped starting
  * values in `BALANCE`.
  */
-export function classicConfig(seed: number): MatchConfig {
-  const config = defaultConfig(seed);
+export function classicConfig(seed: number, balance: Balance = classicBalance()): MatchConfig {
+  const config = defaultConfig(seed, balance);
   config.startEnergy = { plants: 200, zombies: 200 };
   config.baseHp = { plants: 3000, zombies: 3000 };
   return config;

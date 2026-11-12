@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
+import { cloneBalance, seconds } from '../../src/data/balance';
 import { tickEndgame } from '../../src/sim/endgame';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { Command, CommandRejection, Projectile, SimEvent } from '../../src/sim/types';
 import { BASE_STOP_X } from '../../src/sim/types';
-import { eventsOf, merge, place, remove } from './helpers';
+import { classicBalance, eventsOf, merge, place, remove } from './helpers';
+
+/** The numbers these rules tests were written for (see `classicBalance`). */
+const BALANCE = classicBalance();
 
 /**
  * Income off, plenty of energy, sudden death as given, and bases of 3000 in both the config and
@@ -128,7 +131,7 @@ describe('the winner', () => {
 
 describe('sudden death', () => {
   it('with two idle players suddenDeath is emitted at tick 10,800 and the match ends at or before tick 14,400', () => {
-    const m = new Match(defaultConfig(3));
+    const m = new Match(defaultConfig(3, BALANCE), BALANCE);
     const sudden: number[] = [];
     const ended: number[] = [];
     let firstDrainTick = -1;
@@ -234,8 +237,8 @@ describe('sudden death', () => {
   });
 
   it('with suddenDeath: false an idle match is still running at tick 14,400', () => {
-    const config = { ...defaultConfig(3), suddenDeath: false };
-    const m = new Match(config);
+    const config = { ...defaultConfig(3, BALANCE), suddenDeath: false };
+    const m = new Match(config, BALANCE);
     let sudden = 0;
     while (m.state.tick < 14_400) sudden += eventsOf(m.step(), 'suddenDeath').length;
     expect(m.state.tick).toBe(14_400);

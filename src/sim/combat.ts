@@ -26,7 +26,7 @@ type DeathBlast = NonNullable<UnitStats['deathBlast']>;
  * `tickEconomy` counts them down.
  *
  * - Melee: a blocked zombie with its bite ready hits the plant blocking it, or the plant base it
- *   stands at, for `melee.damage × levelScale[level]`.
+ *   stands at, for `melee.damage` times the damage level curve.
  * - Shots: a unit with its shot ready fires when it has something to shoot. A plant always has
  *   (it fires down an empty lane at the zombie base). A zombie needs a living plant ahead within
  *   range, or the plant base within range (`x <= range`), and never shoots while it is blocked:
@@ -44,7 +44,7 @@ export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
 }
 
 function bite(s: SimState, b: Balance, z: Unit, melee: MeleeStats, events: SimEvent[]): void {
-  const amount = melee.damage * levelScale(b, z.level);
+  const amount = melee.damage * levelScale(b, z.faction, z.level, 'damage');
   const plant = nearestEnemyAhead(s, z.faction, z.lane, z.x, melee.reach);
   if (plant) {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: plant.id, targetBase: null });
@@ -68,7 +68,7 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
   }
   const p: Projectile = {
     id: s.nextId, kind: shot.kind, faction: u.faction, lane: u.lane, x: u.x,
-    speed: shot.speed / TICKS_PER_SECOND, damage: shot.damage * levelScale(b, u.level),
+    speed: shot.speed / TICKS_PER_SECOND, damage: shot.damage * levelScale(b, u.faction, u.level, 'damage'),
     ownerId: u.id, spawnTick: s.tick,
   };
   s.nextId += 1;
@@ -86,7 +86,9 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
  *
  * For lanes 0 to 4 in order: if the lane's timer is 0, the base strikes the zombie in that lane
  * with the lowest id that is standing, `blocked` and at the base (x <= BASE_STOP_X): `baseStruck`,
- * then `baseDefense.damage` through `damageUnit` (armor applies as for any hit), and the lane's
+ * then `baseDefense.damage` times the zombie's `hp` level curve through `damageUnit` (armor applies
+ * as for any hit; a merged zombie takes as many strikes as a fresh one, so merging never makes a
+ * leak last longer, only bite harder while it lasts), and the lane's
  * timer is set to `seconds(baseDefense.interval)`. A lane with nobody to strike keeps its timer at
  * 0. So a zombie held up by a plant is never struck, nor is one still walking, not even on the
  * tick it reaches BASE_STOP_X (it walked that tick, so it is not `blocked` yet). A zombie brought
@@ -102,7 +104,7 @@ export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): vo
     const target = biterAtBase(s, lane);
     if (target === null) continue;
     events.push({ type: 'baseStruck', lane, targetId: target.id });
-    damageUnit(s, target, damage, events);
+    damageUnit(s, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
     s.baseDefenseTimers[lane] = seconds(interval);
   }
 }
@@ -217,12 +219,12 @@ export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void
 
 /**
  * A death blast: every standing enemy within `radius` (straight-line distance, lanes one tile
- * apart) takes `damage × levelScale[level]`. Game rule: a unit already down is skipped, as it is
+ * apart) takes `damage` times the special level curve. Game rule: a unit already down is skipped, as it is
  * for every other attack (see `nearestEnemyAhead`).
  */
 function explode(s: SimState, b: Balance, source: Unit, blast: DeathBlast, events: SimEvent[]): void {
   events.push({ type: 'explosion', lane: source.lane, x: source.x, radius: blast.radius, sourceKey: source.key });
-  const amount = blast.damage * levelScale(b, source.level);
+  const amount = blast.damage * levelScale(b, source.faction, source.level, 'special');
   for (const u of s.units) {
     if (u.faction === source.faction || !isStanding(u)) continue;
     const dx = u.x - source.x;

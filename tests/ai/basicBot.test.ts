@@ -98,8 +98,7 @@ describe('createBasicBot', () => {
     expect(kinds).not.toContain('remove'); // the shovel is never part of a bot's play
   });
 
-  it('sends at most one command per think, and acts only every 60, 30 or 15 ticks for easy, medium, hard', () => {
-    const every: Record<Skill, number> = { easy: 60, medium: 30, hard: 15 };
+  it('sends at most one command per think, and acts only on its own think interval', () => {
     for (const skill of SKILL_NAMES) {
       for (const seed of [5, 6]) {
         const { log } = playChecked(seed, createBasicBot('plants', skill, seed), createBasicBot('zombies', skill, seed), 3000, true);
@@ -107,7 +106,8 @@ describe('createBasicBot', () => {
           const ticks = log.filter((t) => t.commands.some((c) => c.faction === faction)).map((t) => t.tick);
           expect(ticks.length, `${skill} ${faction}`).toBeGreaterThan(1);
           // Every action falls on the same tick of the bot's interval.
-          for (const tick of ticks) expect((tick - (ticks[0] ?? 0)) % every[skill], `${skill} ${faction} acted on tick ${tick}`).toBe(0);
+          const every = SKILLS[faction][skill].thinkEvery;
+          for (const tick of ticks) expect((tick - (ticks[0] ?? 0)) % every, `${skill} ${faction} acted on tick ${tick}`).toBe(0);
         }
         for (const { tick, commands } of log) {
           for (const faction of FACTIONS) {
@@ -226,13 +226,13 @@ describe('bot against bot', () => {
 });
 
 describe("the Hard zombies' merge rule", () => {
-  const plan = SKILLS.hard;
+  const plan = SKILLS.zombies.hard;
   /** The line in energy at the default income: so many seconds of the zombies' trickle. */
-  const line = (plan.mergeSpareSeconds ?? Number.NaN) * BALANCE.trickle.zombies;
+  const line = plan.mergeSpareSeconds * BALANCE.trickle.zombies;
 
   /**
-   * A push going down lane 2: a Brain Eater held up by a Walnut Bomb (fresh, but blocked), a
-   * half-dead Skeleton Warrior and a nearly fresh Brain Eater still walking.
+   * Zombies going down lane 2, the lane it last sent to: a Brain Eater held up by a Walnut Bomb
+   * (fresh, but blocked), a half-dead Skeleton Warrior and a nearly fresh Brain Eater still walking.
    */
   function pushScene(): { match: Match; held: number; damaged: number; fresh: number } {
     const match = new Match(defaultConfig(1));
@@ -249,52 +249,55 @@ describe("the Hard zombies' merge rule", () => {
 
   function move(match: Match, energy: number): Command | null {
     match.state.players.zombies.energy = energy;
-    const memory = { ...newZombieMemory(), pushLane: 2, nextPush: plan.pushBrainEaters.max };
-    return zombieMove(match, { rng: 1 }, plan, memory);
+    return zombieMove(match, { rng: 1 }, plan, { ...newZombieMemory(), lastLane: 2 });
   }
 
-  it('has a line it can reach in play: under the cost of the dearest push', () => {
+  it('is on for Hard only, with a line it can reach in play', () => {
+    expect(SKILLS.zombies.easy.mergeSpareSeconds).toBe(0);
+    expect(SKILLS.zombies.medium.mergeSpareSeconds).toBe(0);
     expect(line).toBeGreaterThan(0);
-    expect(line).toBeLessThan(125 + plan.pushBrainEaters.max * 100);
+    expect(line).toBeLessThan(500);
   });
 
-  it('above its line, merges onto the walking zombie of the push with the most health left, never a blocked one', () => {
+  it('above its line, merges onto the walking zombie of its last lane with the most health left, never a blocked one', () => {
     const { match, fresh } = pushScene();
     expect(move(match, line + 1)).toEqual({ type: 'merge', faction: 'zombies', unit: 'brainEater', targetId: fresh });
   });
 
-  it('at its line exactly, does not merge', () => {
+  it('at its line exactly, sends a zombie instead of merging', () => {
     const { match } = pushScene();
-    expect(move(match, line)).toBeNull();
+    expect(move(match, line)?.type).toBe('place');
   });
 
-  it('with only blocked zombies in the push, does not merge', () => {
+  it('with only blocked zombies in its last lane, does not merge', () => {
     const { match, damaged, fresh } = pushScene();
     match.state.units = match.state.units.filter((u) => u.id !== damaged && u.id !== fresh);
-    expect(move(match, line + 1)).toBeNull();
+    expect(move(match, line + 1)?.type).not.toBe('merge');
   });
 
-  it('a Hard zombie bot merges onto a walking zombie of its own push on one of its phase ticks', () => {
+  it('a Hard zombie bot merges onto a walking zombie of the lane it last sent to, on one of its phase ticks', () => {
     const match = new Match(defaultConfig(6));
     match.state.players.zombies.energy = 3000;
     const bot = createBasicBot('zombies', 'hard', 6);
     const sent: Array<{ tick: number; cmd: Command; walking: boolean; lane: number | null }> = [];
+    let lastLane: number | null = null;
+    const merges: Array<{ tick: number; walking: boolean; lane: number | null; lastLane: number | null }> = [];
     while (match.state.tick < seconds(30)) {
       const commands = bot.think(match);
       for (const cmd of commands) {
         const target = cmd.type === 'merge' ? match.state.units.find((u) => u.id === cmd.targetId) : undefined;
         sent.push({ tick: match.state.tick, cmd, walking: target?.blocked === false, lane: target?.lane ?? null });
+        if (cmd.type === 'merge') merges.push({ tick: match.state.tick, walking: target?.blocked === false, lane: target?.lane ?? null, lastLane });
+        if (cmd.type === 'place') lastLane = cmd.lane;
       }
       match.step(commands);
     }
     const first = sent[0];
-    if (first?.cmd.type !== 'place') throw new Error('the bot did not start with a push');
-    expect(first.cmd.unit).toBe('skeletonWarrior');
-    const merges = sent.filter((s) => s.cmd.type === 'merge');
+    if (first?.cmd.type !== 'place') throw new Error('the bot did not start by sending a zombie');
     expect(merges.length).toBeGreaterThan(0);
     for (const m of merges) {
       expect(m.walking).toBe(true);
-      expect(m.lane).toBe(first.cmd.lane);
+      expect(m.lane).toBe(m.lastLane);
       expect((m.tick - first.tick) % plan.thinkEvery).toBe(0);
     }
   });

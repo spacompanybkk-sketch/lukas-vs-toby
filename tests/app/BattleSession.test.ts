@@ -180,7 +180,12 @@ describe('BattleSession', () => {
     const { session } = make(stage);
     session.fastForward(900);
     expect(session.controller.match.state.tick).toBe(900);
-    expect(session.view.unitCount).toBe(session.controller.match.state.units.length);
+    // Every unit on the field has a live view; units that fell meanwhile may still be playing
+    // their death (no frames were drawn), so the view can hold more than the field.
+    const alive = session.controller.match.state.units;
+    expect(alive.length).toBeGreaterThan(0);
+    for (const u of alive) expect(session.view.unit(u.id)?.dying, `unit ${u.id}`).toBe(false);
+    expect(session.view.unitCount).toBeGreaterThanOrEqual(alive.length);
   });
 
   it('a hit-stop from the view stops game time for a moment', () => {

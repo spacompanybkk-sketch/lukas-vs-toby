@@ -27,44 +27,48 @@ export interface SkillTable {
   readonly sunflowers: number;
   /** Plants: the level it merges its Sunflowers up to once it has them all (1: no merging). */
   readonly sunflowerLevel: number;
-  /** Plants: how much more firepower than reckoned it wants in a threatened lane. */
+  /** Plants: how much more stopping power than the zombies' health it wants in a lane. */
   readonly defenceMargin: number;
+  /** Plants: energy kept back for emergencies before it buys economy or spare Peashooters. */
+  readonly reserve: number;
   /**
-   * Zombies: merge a walking zombie of the push whenever spare energy is worth more than this many
-   * seconds of trickle income (25 s is 150 energy at a trickle of 6); null: never merge.
+   * Zombies: merge a walking zombie whenever its energy is worth more than this many seconds of
+   * trickle income (25 s is 150 energy at a trickle of 6); 0: never merge.
    */
-  readonly mergeSpareSeconds: number | null;
-  /** Zombies: each push brings between `min` and `max` Brain Eaters behind its Skeleton Warrior. */
-  readonly pushBrainEaters: { readonly min: number; readonly max: number };
+  readonly mergeSpareSeconds: number;
+  /** Zombies: Peashooter levels in the target lane from which it sends a Skeleton Warrior. */
+  readonly tankAt: number;
 }
 
-const PUSH = { min: 1, max: 3 };
+/** Everything the skills change, and nothing else: per side, per skill. */
+export type SkillTables = Readonly<Record<Faction, Readonly<Record<Skill, SkillTable>>>>;
 
-/** Everything the skills change, and nothing else. */
-export const SKILLS: Readonly<Record<Skill, SkillTable>> = {
-  easy: {
-    thinkEvery: 60, randomShare: 0.4,
-    sunflowers: 2, sunflowerLevel: 1, defenceMargin: 1,
-    mergeSpareSeconds: null, pushBrainEaters: PUSH,
+/** The fields a side does not use, filled in so every table has the same shape. */
+const UNUSED = { sunflowers: 0, sunflowerLevel: 1, defenceMargin: 1, reserve: 0, mergeSpareSeconds: 0, tankAt: 0 };
+
+export const SKILLS: SkillTables = {
+  plants: {
+    easy: { ...UNUSED, thinkEvery: 210, randomShare: 0.2, sunflowers: 1, sunflowerLevel: 1, defenceMargin: 1 },
+    medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 4, sunflowerLevel: 3, defenceMargin: 1 },
+    hard: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 5, sunflowerLevel: 4, defenceMargin: 2 },
   },
-  medium: {
-    thinkEvery: 30, randomShare: 0,
-    sunflowers: 4, sunflowerLevel: 3, defenceMargin: 1,
-    mergeSpareSeconds: null, pushBrainEaters: PUSH,
-  },
-  hard: {
-    thinkEvery: 15, randomShare: 0,
-    sunflowers: 5, sunflowerLevel: 4, defenceMargin: 1.25,
-    mergeSpareSeconds: 25, pushBrainEaters: PUSH,
+  zombies: {
+    easy: { ...UNUSED, thinkEvery: 60, randomShare: 0.6, mergeSpareSeconds: 0, tankAt: 2 },
+    medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, mergeSpareSeconds: 0, tankAt: 2 },
+    hard: { ...UNUSED, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2 },
   },
 };
 
 /** Keeps a plants bot and a zombies bot made with the same seed from drawing the same numbers. */
 const SEED_SALT: Record<Faction, number> = { plants: 0x5eed_0001, zombies: 0x5eed_0002 };
 
-/** A basic bot for one side of one match (see the note at the top on reuse). */
-export function createBasicBot(faction: Faction, skill: Skill, seed: number): Bot {
-  const table = SKILLS[skill];
+/**
+ * A basic bot for one side of one match (see the note at the top on reuse). `table` replaces the
+ * skill's shipped table; the tuning tool uses it to try other numbers.
+ */
+export function createBasicBot(
+  faction: Faction, skill: Skill, seed: number, table: SkillTable = SKILLS[faction][skill],
+): Bot {
   const rng: BotRng = { rng: (seed ^ SEED_SALT[faction]) >>> 0 };
   const memory = newZombieMemory();
   // Which tick of each interval it acts on: a seeded phase, so two bots rarely move in lockstep.

@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, cloneBalance, seconds } from '../../src/data/balance';
+import { cloneBalance, seconds } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { UNIT_INFO } from '../../src/data/units';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import type { Command, CommandRejection, Unit, UnitKey } from '../../src/sim/types';
-import { eventsOf, merge, place, remove } from './helpers';
+import { classicBalance, eventsOf, merge, place, remove } from './helpers';
+
+/** The numbers these rules tests were written for (see `classicBalance`). */
+const BALANCE = classicBalance();
 
 /**
  * Units are set with `spawnUnit`. Income is switched off so energy moves only by what the
  * commands spend, and the start energy is the given amount for both sides.
  */
 function fresh(energy = 1000): Match {
-  const config = defaultConfig(7);
+  const config = defaultConfig(7, BALANCE);
   config.startEnergy = { plants: energy, zombies: energy };
   config.incomeMultiplier = { plants: 0, zombies: 0 };
-  return new Match(config);
+  return new Match(config, BALANCE);
 }
 
 function unitById(m: Match, id: number): Unit {
@@ -69,7 +72,7 @@ describe('merging', () => {
   describe('with fractional level multipliers [0, 1, 1.9, 2.7, 3.4, 4]', () => {
     function tuned(): Balance {
       const b = cloneBalance(BALANCE);
-      b.levelScale = [0, 1, 1.9, 2.7, 3.4, 4];
+      b.levelCurves.hp = { plants: [0, 1, 1.9, 2.7, 3.4, 4], zombies: [0, 1, 1.9, 2.7, 3.4, 4] };
       b.units.peashooter!.hp = 175; // 175 × 1.9 = 332.5, 175 × 2.7 = 472.50000000000006
       return b;
     }

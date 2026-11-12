@@ -99,11 +99,16 @@ describe('BALANCE units', () => {
 });
 
 describe('BALANCE globals', () => {
-  it('has one level scale entry per level, starting with 1 at level 1 and never falling', () => {
-    expect(BALANCE.levelScale).toHaveLength(MAX_LEVEL + 1);
-    expect(BALANCE.levelScale[1]).toBe(1);
+  const curves = [
+    ['hp, plants', BALANCE.levelCurves.hp.plants], ['hp, zombies', BALANCE.levelCurves.hp.zombies],
+    ['damage, plants', BALANCE.levelCurves.damage.plants], ['damage, zombies', BALANCE.levelCurves.damage.zombies],
+    ['special', BALANCE.levelCurves.special],
+  ] as const;
+  it.each(curves)('has one %s level curve entry per level, starting with 1 at level 1 and rising', (_name, scale) => {
+    expect(scale).toHaveLength(MAX_LEVEL + 1);
+    expect(scale[1]).toBe(1);
     for (let level = 2; level <= MAX_LEVEL; level++) {
-      expect(BALANCE.levelScale[level], `level ${level}`).toBeGreaterThanOrEqual(BALANCE.levelScale[level - 1] ?? Infinity);
+      expect(scale[level], `level ${level}`).toBeGreaterThan(scale[level - 1] ?? Infinity);
     }
   });
 
@@ -151,7 +156,8 @@ describe('BALANCE is frozen', () => {
     const all = walk(BALANCE);
     // The walk really reaches the nested parts.
     expect(all).toContain(BALANCE.units);
-    expect(all).toContain(BALANCE.levelScale);
+    expect(all).toContain(BALANCE.levelCurves);
+    expect(all).toContain(BALANCE.levelCurves.hp.plants);
     expect(all).toContain(BALANCE.suddenDeath);
     expect(all).toContain(BALANCE.baseDefense);
     for (const [, stats] of entries()) expect(all).toContain(stats);
@@ -159,11 +165,11 @@ describe('BALANCE is frozen', () => {
   });
 
   it('refuses a write, so no code can retune the shared table by accident', () => {
-    const table = BALANCE as unknown as { startEnergy: number; units: { peashooter: { hp: number } }; levelScale: number[] };
+    const table = BALANCE as unknown as { startEnergy: number; units: { peashooter: { hp: number } }; levelCurves: { hp: { plants: number[] } } };
     expect(() => { table.startEnergy = 1; }).toThrow(TypeError);
     expect(() => { table.units.peashooter.hp = 1; }).toThrow(TypeError);
-    expect(() => { table.levelScale[1] = 9; }).toThrow(TypeError);
-    expect(() => { table.levelScale.push(6); }).toThrow(TypeError);
+    expect(() => { table.levelCurves.hp.plants[1] = 9; }).toThrow(TypeError);
+    expect(() => { table.levelCurves.hp.plants.push(6); }).toThrow(TypeError);
     expect(BALANCE.startEnergy).not.toBe(1);
   });
 });
