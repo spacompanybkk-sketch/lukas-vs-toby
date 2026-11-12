@@ -1,5 +1,5 @@
 import { Color, Euler, Group, Mesh, Quaternion, type MeshStandardMaterial, type Object3D, type Vector3 } from 'three';
-import { VOXEL, buildParts, muzzleOf } from './build';
+import { VOXEL, buildParts, lookLevel, muzzleOf } from './build';
 import { ownCopy } from './materials';
 import type { Clip, ClipName, ModelDef, PartPose, Pose } from './types';
 
@@ -117,7 +117,9 @@ export class ModelInstance {
   private blinkLeft = 0;
   private disposed = false;
 
-  constructor(def: ModelDef, level: number) {
+  constructor(def: ModelDef, asked: number) {
+    // A singleLevel model (the Bone Minion) is level 1 whatever it is asked to be.
+    const level = lookLevel(def, asked);
     this.def = def;
     this.level = level;
     this.model = buildParts(def, level);
@@ -355,9 +357,10 @@ export class ModelInstance {
    * same parent, with the same transform, clip, clip time and flash. This instance is
    * disposed, and anything else that was hung on its `root` goes with it: hang health bars
    * and the like on a wrapper of your own. Asking for the level it already has returns the
-   * instance itself.
+   * instance itself, and so does every level for a `singleLevel` model, which has one look.
    */
-  setLevel(level: number): ModelInstance {
+  setLevel(asked: number): ModelInstance {
+    const level = lookLevel(this.def, asked);
     if (level === this.level) return this;
     const next = new ModelInstance(this.def, level);
     next.root.position.copy(this.root.position);
