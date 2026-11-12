@@ -1,7 +1,7 @@
 import type { Locator } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { Page } from './fixtures';
-import { frames, startBattle, tilePoint } from './helpers';
+import { boxHitsPolygon, frames, lawnCorners, startBattle, tilePoint } from './helpers';
 import type { Side } from './helpers';
 
 // Hero powers and spells in the real game (wiring B): the hero fired by tap after the first
@@ -62,6 +62,16 @@ for (const side of ['plants', 'zombies'] as Side[]) {
     await press(page, hero);
     await expect(hero).toHaveAttribute('aria-pressed', 'true');
     await press(page, await tilePoint(page, 3, 5));
+    // The banner, caught while it shows, sits wholly above the lawn's far edge: never over lanes 0-4.
+    const banner = await page.waitForFunction(() => {
+      const el = document.querySelector('[data-banner="hero"]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { bottom: r.bottom };
+    }, undefined, { polling: 'raf' });
+    const shown = (await banner.jsonValue()) as { bottom: number };
+    const lawn = await lawnCorners(page);
+    expect(shown.bottom).toBeLessThanOrEqual(Math.min(lawn[0]!.y, lawn[1]!.y) + 0.5);
     await expect.poll(async () => (await recorded(page)).some((e) => e.type === 'heroUsed' && e.faction === side)).toBe(true);
     // The boy's banner was put up (it shows for 0.6 s: the signal is checked, not a race with the clock).
     expect(await page.evaluate(() => (window.__lvt as any).session.heroBanner.value?.side)).toBe(side);
@@ -168,4 +178,21 @@ for (const side of ['plants', 'zombies'] as Side[]) {
       }
     }
   });
+}
+
+for (const [width, height] of [[1024, 704], [1180, 746]] as const) {
+  for (const side of ['plants', 'zombies'] as Side[]) {
+    test(`as ${side} at ${width}x${height}: the hero and spell buttons leave lanes 0-4 clear`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await startBattle(page, side);
+      await frames(page, 5);
+      const lawn = await lawnCorners(page);
+      const boxes = await page.evaluate(() => [...document.querySelectorAll('[data-hud="powers"], [data-hero], [data-spell]')].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { name: el.getAttribute('aria-label') ?? el.getAttribute('data-hud') ?? '?', x: r.x, y: r.y, w: r.width, h: r.height };
+      }));
+      expect(boxes.length).toBe(4); // the block, the hero, two spells
+      for (const b of boxes) expect(boxHitsPolygon(b, lawn), `${b.name} covers the lanes`).toBe(false);
+    });
+  }
 }

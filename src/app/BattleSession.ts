@@ -199,6 +199,15 @@ export class BattleSession implements Director, InputTarget {
     return { x: rect.left + at.x, y: rect.top + at.y };
   }
 
+  /** Client corners of lanes 0–4 (back-left, back-right, front-right, front-left), for layout checks. */
+  lawnCorners(): { x: number; y: number }[] {
+    const rect = this.canvasRect();
+    return [[0, 0], [LAWN_COLS, 0], [LAWN_COLS, LAWN_LANES], [0, LAWN_LANES]].map(([x, z]) => {
+      const at = worldToClient(point.set(x as number, 0, z as number), this.stage.camera, rect);
+      return { x: rect.left + at.x, y: rect.top + at.y };
+    });
+  }
+
   // ---- InputTarget ---------------------------------------------------------------------------
 
   isLive(): boolean {
@@ -236,6 +245,11 @@ export class BattleSession implements Director, InputTarget {
 
   hotkey(key: string): void {
     this.controller.hotkey(key);
+  }
+
+  aiming(): boolean {
+    const hud = this.controller.hud;
+    return hud.heroSelected.peek() || hud.spellSelected.peek() !== null;
   }
 
   /** The sound comes from `hud.denied` (see the constructor), which every refusal counts. */

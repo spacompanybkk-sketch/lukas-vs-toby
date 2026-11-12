@@ -234,3 +234,35 @@ export function mergeMarkers(page: Page): Promise<number> {
 export function deniedCount(page: Page): Promise<number> {
   return page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
 }
+
+export interface Point { x: number; y: number }
+export interface Box { x: number; y: number; w: number; h: number }
+
+/** Whether a box and a convex polygon share any area (separating axis test). */
+export function boxHitsPolygon(b: Box, poly: Point[]): boolean {
+  const rect: Point[] = [{ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y }, { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }];
+  const axes: Point[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }];
+  poly.forEach((p, i) => {
+    const q = poly[(i + 1) % poly.length] as Point;
+    axes.push({ x: -(q.y - p.y), y: q.x - p.x });
+  });
+  for (const ax of axes) {
+    const proj = (pts: Point[]): [number, number] => {
+      const v = pts.map((p) => p.x * ax.x + p.y * ax.y);
+      return [Math.min(...v), Math.max(...v)];
+    };
+    const [a0, a1] = proj(rect);
+    const [b0, b1] = proj(poly);
+    if (a1 <= b0 || b1 <= a0) return false;
+  }
+  return true;
+}
+
+/** Client corners of the live battle's lanes 0–4 (back-left, back-right, front-right, front-left). */
+export function lawnCorners(page: Page): Promise<Point[]> {
+  return page.evaluate(() => {
+    const corners = (window.__lvt as any).lawnCorners();
+    if (!corners) throw new Error('no battle');
+    return corners as { x: number; y: number }[];
+  });
+}

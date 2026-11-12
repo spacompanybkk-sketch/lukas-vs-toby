@@ -21,6 +21,8 @@ function fakeTarget(live = true) {
     clearSelection: vi.fn(() => calls.push('clear')),
     hotkey: vi.fn((k: string) => calls.push(`key ${k}`)),
     denied: vi.fn(() => calls.push('denied')),
+    aiming: vi.fn(() => target.isAiming),
+    isAiming: true,
   };
   return { target, calls };
 }
@@ -115,6 +117,22 @@ describe('BattleInput', () => {
       ptr('pointermove', { x: 220, y: 130, kind: 'touch' }, button);
       ptr('pointerup', { x: 220, y: 130, kind: 'touch' }, button);
       expect(calls).toEqual(['preview 1,2', 'click 1,2', 'preview none']);
+    });
+  }
+
+  for (const attr of ['hero', 'spell'] as const) {
+    it(`a drag from a ${attr} button that is not aiming (refused, or cast at once) neither previews nor places`, () => {
+      const { target, calls } = fakeTarget();
+      target.isAiming = false;
+      input = new BattleInput(target, { canvas, isOverLawn });
+      const button = document.createElement('button');
+      button.dataset[attr] = 'x';
+      tray.appendChild(button);
+      ptr('pointerdown', { x: 100, y: 700, kind: 'touch' }, button);
+      ptr('pointermove', { x: 220, y: 130, kind: 'touch' }, button);
+      ptr('pointerup', { x: 220, y: 130, kind: 'touch' }, button);
+      expect(target.click).not.toHaveBeenCalled();
+      expect(calls.some((c) => c.startsWith('preview 1'))).toBe(false);
     });
   }
 

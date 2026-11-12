@@ -18,6 +18,12 @@ export interface InputTarget {
   hotkey(key: string): void;
   /** A tap was refused (the tray shakes by itself; this is for the sound). */
   denied(reason: CommandRejection): void;
+  /**
+   * True while the hero power or an aimed spell is picked and waits for the lawn. A drag that
+   * started on a power button only aims (and lands) while this holds: a press that was refused
+   * (still charging) or that cast at once (an un-aimed spell) must not place the card.
+   */
+  aiming(): boolean;
 }
 
 export interface InputOptions {
@@ -34,8 +40,9 @@ export interface InputOptions {
 const HOTKEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Escape', ' ', 'h', 'H', 'q', 'Q', 'w', 'W']);
 /** HUD buttons a drag can start from: a card, the hero power, a spell. */
 const DRAGGABLE = '[data-card],[data-hero],[data-spell]';
+const POWER = '[data-hero],[data-spell]';
 
-type Source = 'lawn' | 'card';
+type Source = 'lawn' | 'card' | 'power';
 interface Active { id: number; source: Source; mouse: boolean }
 
 /**
@@ -115,7 +122,7 @@ export class BattleInput {
     if (!e.isPrimary || (mouse && e.button !== 0)) return;
     const card = !onCanvas && node instanceof Element ? node.closest(DRAGGABLE) : null;
     if (!onCanvas && card === null) return;
-    this.active = { id: e.pointerId, source: onCanvas ? 'lawn' : 'card', mouse };
+    this.active = { id: e.pointerId, source: onCanvas ? 'lawn' : card?.matches(POWER) ? 'power' : 'card', mouse };
     if (onCanvas) {
       if (!mouse) e.preventDefault(); // no emulated mouse events, no double-tap zoom
       this.previewAt(e.clientX, e.clientY);
@@ -125,7 +132,10 @@ export class BattleInput {
   private readonly onMove = (e: PointerEvent): void => {
     if (!this.target.isLive()) return;
     if (this.active !== null) {
-      if (e.pointerId === this.active.id) this.previewAt(e.clientX, e.clientY);
+      if (e.pointerId !== this.active.id) return;
+      // A drag from a power button that is not aiming (refused, or already cast) shows nothing.
+      if (this.active.source === 'power' && !this.target.aiming()) this.clearPreview();
+      else this.previewAt(e.clientX, e.clientY);
       return;
     }
     if (e.pointerType === 'mouse') this.previewAt(e.clientX, e.clientY);
@@ -136,7 +146,8 @@ export class BattleInput {
     if (active === null || e.pointerId !== active.id) return;
     this.active = null;
     if (!this.target.isLive()) return;
-    if (this.overLawn(e.clientX, e.clientY)) this.act(e.clientX, e.clientY);
+    const lands = active.source !== 'power' || this.target.aiming();
+    if (lands && this.overLawn(e.clientX, e.clientY)) this.act(e.clientX, e.clientY);
     if (active.mouse) this.previewAt(e.clientX, e.clientY);
     else this.clearPreview(); // the finger has gone: nothing is hovering any more
   };

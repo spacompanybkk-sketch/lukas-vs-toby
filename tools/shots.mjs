@@ -440,6 +440,8 @@ const SCENARIOS = [
   // picked and its area under the mouse.
   hudBattle('hud-battle-plants-1024', 'plants', [2, 5]),
   hudBattle('hud-battle-zombies-1024', 'zombies', [2, 6]),
+  // The zombies' aimed area over their own purple graveyard columns.
+  hudBattle('hud-battle-zombies-1024-grave', 'zombies', [1, 9]),
 ];
 
 /** A real battle as `side`, 46 s in: tap the hero button, aim at `lane`, tap; stills of the power playing. */

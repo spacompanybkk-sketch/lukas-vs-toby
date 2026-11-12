@@ -497,6 +497,25 @@ describe('BattleSession hero powers and spells (wiring B)', () => {
     expect(play).toHaveBeenCalledWith('deny');
   });
 
+  it('a drag from a still-charging hero button onto the lawn places no card', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    session.controller.select('peashooter');
+    const button = document.createElement('button');
+    button.dataset.hero = 'plants';
+    document.body.appendChild(button);
+    const at = session.tileToClient(2, 3);
+    const init = { bubbles: true, pointerId: 1, pointerType: 'touch', button: 0, isPrimary: true };
+    button.dispatchEvent(new PointerEvent('pointerdown', { ...init, clientX: 10, clientY: 10 }));
+    session.controller.toggleHero(); // what the button does on that down: refused, still charging
+    button.dispatchEvent(new PointerEvent('pointermove', { ...init, clientX: at.x, clientY: at.y }));
+    button.dispatchEvent(new PointerEvent('pointerup', { ...init, clientX: at.x, clientY: at.y }));
+    run(stage, 0.1);
+    expect(session.controller.match.state.units.some((u) => u.faction === 'plants')).toBe(false);
+    button.remove();
+  });
+
   it('the other side\'s hero shows its banner too', () => {
     const stage = fakeStage();
     const { session } = make(stage);
