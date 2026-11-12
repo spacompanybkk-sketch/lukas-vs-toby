@@ -518,9 +518,10 @@ Calls made by the builder (Michal can reverse any):
   copy in the browser so the game still plays without a connection and syncs when it
   returns. The newer save wins, per player.
 - Every player can play both Adventures, as plants and as zombies; progress is kept per
-  side. Lukas opens on plants and Toby on zombies, as today.
-- The leaderboard has three tables, each showing picture, name and number: Adventure
-  stars, best Free Play wave, and Versus wins. The player's own row is highlighted. It
+  side. (Confirmed by Michal 2026-11-12: "any campaign for both sides with progress".) Lukas opens on plants and Toby on zombies, as today.
+- The leaderboard has four tables, each showing picture, name and number: Adventure
+  stars, best Free Play wave, Versus wins, and wins against the computer (the fourth
+  added 2026-11-12 so the board has something to show before Adventure exists). The player's own row is highlighted. It
   is reached from the title screen and shown after a match when a place changes.
 - Three wrong passwords lock that player for 30 seconds. The password is stored as a
   salted hash, never in the clear.
@@ -539,7 +540,7 @@ Limits to be honest about:
   This is a rules deploy on `lukas-toby-plants-vs-zombies` and overrides the "no rules
   deploy" line in section 4. It happens only on Michal's go-ahead.
 
-Delivery: phase 4 (Adventure and progress), since it owns saves. Versus wins are added to
+Delivery: phase 4a (players and progress; plan `docs/superpowers/plans/2026-11-12-phase4a-players-progress.md`), ahead of phase 4b (Adventure). Versus wins are added to
 the leaderboard in phase 5. Proof: tests for create, log in, wrong password and lock-out,
 the 31st player refused, progress saved on one browser and loaded in another, offline play
 then sync, and the rules themselves tested against forged writes.
