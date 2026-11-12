@@ -522,6 +522,7 @@ describe('Brain Rot', () => {
     expect(eventsOf(landing, 'projectileHit')).toMatchObject([{ targetId: target.id, x: 3.5 }]);
     const [hit, ...poison] = eventsOf(landing, 'unitDamaged');
     expect(hit).toEqual({ type: 'unitDamaged', unitId: target.id, amount: 30, hp: 970 });
+    expect(poison.length).toBeGreaterThan(0);
     expect(poison.every((e) => e.amount === 15)).toBe(true); // a whole second: the new poison deals at once
     const hazard = m.state.hazards[0];
     if (!hazard) throw new Error('no puddle');
@@ -660,6 +661,7 @@ describe('fuzz: the whole roster', () => {
           else if (e.type === 'commandRejected') throw new Error(`seed ${seed}: a legal command was refused (${e.reason})`);
           else if (e.type === 'unitDied' && e.key === 'boneMinion') count('minion died');
           else count(e.type);
+          if (e.type === 'unitSpawned') count(`spawned ${e.key}`);
         }
         const s = m.state;
         for (const faction of ['plants', 'zombies'] as const) {
@@ -676,6 +678,10 @@ describe('fuzz: the whole roster', () => {
     // Coverage: every new ability, minions raised and fallen, puddles, statuses and misses all came up.
     for (const key of ['raise', 'heal', 'lasso', 'grow', 'minion died', 'hazardSpawned', 'hazardEnded', 'attackMissed', 'unitHealed', 'unitMerged']) {
       expect(seen.get(key) ?? 0, key).toBeGreaterThan(0);
+    }
+    // Every one of the 20 cards, and the Bone Minion, was on the lawn.
+    for (const key of [...ALL_CARDS.plants, ...ALL_CARDS.zombies, 'boneMinion']) {
+      expect(seen.get(`spawned ${key}`) ?? 0, key).toBeGreaterThan(0);
     }
   });
 });
