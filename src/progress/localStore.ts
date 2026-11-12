@@ -35,6 +35,15 @@ export function saveLocal(s: Save, storage: Storage | undefined = defaultStorage
   }
 }
 
+/** Forgets the device copy of `slot`'s save (the player was deleted). */
+export function removeLocal(slot: Slot, storage: Storage | undefined = defaultStorage()): void {
+  try {
+    storage?.removeItem(saveKey(slot));
+  } catch {
+    // Nothing to do.
+  }
+}
+
 export function lastSlot(storage: Storage | undefined = defaultStorage()): Slot | null {
   try {
     const v = storage?.getItem(LAST_SLOT);

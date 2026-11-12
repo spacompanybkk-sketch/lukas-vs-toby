@@ -89,7 +89,7 @@ function defaultStorage(): Storage | undefined {
 }
 
 /** The hash of the pin last used on this device per slot, so a known player can log in offline. */
-const hashKey = (slot: Slot): string => `lvt2_hash_${slot}`;
+export const hashKey = (slot: Slot): string => `lvt2_hash_${slot}`;
 /**
  * Per slot, the cloud version this device last synced with (`base`) and a write it sent without
  * hearing back (`sent`), kept across reloads so the device always recognises its own writes.

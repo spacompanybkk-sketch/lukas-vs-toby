@@ -200,6 +200,12 @@ export class RestCloud implements Cloud {
     return a.kind === 'ok' ? 'ok' : a.kind === 'offline' ? 'offline' : 'refused';
   }
 
+  async checkGrownUpCode(hash: string): Promise<'ok' | CloudError> {
+    if (!HASH.test(hash)) return 'refused';
+    const a = await this.request('PATCH', '', { [`admin/proof/${hash}`]: { touch: SERVER_NOW } });
+    return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';
+  }
+
   /** A new grown-up code, proven with the current one. */
   async changeGrownUpCode(oldHash: string, newHash: string): Promise<'ok' | CloudError> {
     if (!HASH.test(oldHash) || !HASH.test(newHash)) return 'refused';
