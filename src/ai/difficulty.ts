@@ -33,13 +33,13 @@ export type DifficultyTable = Readonly<Record<Skill, Readonly<Record<Faction, Di
 
 export const DIFFICULTY: DifficultyTable = {
   easy: {
-    // Lukas on Easy: the Easy zombies, nearly always playing at random, earning less, and three
+    // Lukas on Easy: the Easy zombies, nearly always playing at random, earning less, and two and a half
     // times the Sun trickle for him. A random tapper as plants, with ten cards and no plan, needs
     // all of it (a child tapping once every 6 s still wins about half).
-    plants: { skill: 'easy', income: { human: 3, computer: 0.7 }, randomShare: 0.9 },
-    // Toby on Easy: plants that build well but play a random card more often than not, and 10%
+    plants: { skill: 'easy', income: { human: 2.5, computer: 0.7 }, randomShare: 0.9 },
+    // Toby on Easy: plants that build well but play a random card more often than not, and 30%
     // more income for him (a child tapping once every 6 s still wins about half).
-    zombies: { skill: 'hard', income: { human: 1.1, computer: 1 }, randomShare: 0.7 },
+    zombies: { skill: 'hard', income: { human: 1.3, computer: 1 }, randomShare: 0.7 },
   },
   medium: {
     // Medium zombies that mostly play at random, so a child finds openings, and twice the Sun
