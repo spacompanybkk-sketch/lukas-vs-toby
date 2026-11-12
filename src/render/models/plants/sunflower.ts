@@ -4,7 +4,7 @@ import type { Box, ColorRef, ModelDef } from '../../voxel/types';
 // Sunflower. Faces +X. A rosette of leaves on a soil mound, a tall stem, and a big round
 // face ringed by twelve petals, smiling wide. The flower is tipped well back and turned to
 // the player, so the whole face shows from the lawn camera, which looks down from behind.
-// Its trim is the points on its petals and the bud's tip, both from level 3.
+// It has no trim: its level materials are explicit boxes.
 //
 // The flower is authored upright, facing +X: the face is a stepped disc in the Y-Z plane
 // (front at x 3.5, centre y 11.5), the petals a layer behind it, a green calyx behind them.
@@ -12,11 +12,12 @@ import type { Box, ColorRef, ModelDef } from '../../voxel/types';
 // Every level adds something the lawn camera can see, out past the flower or on top of it:
 //
 //   2  a second ring of twelve longer, darker petals between the first; a second pair of leaves
-//   3  iron points on the front petals; a side shoot with a bud, its tip iron
+//   3  iron points on the front petals; a ladybird on the top petal
 //   4  the back ring and the points turn to glowing crystal; crystal shards rise behind the
 //      top petals
-//   5  gold rays with warm tips behind the top petals, gold points (the back
-//      ring stays orange); the seeds glow warm
+//   5  a small gold crown on the top of its face, orange petal points (the petals stay yellow
+//      and orange, the gold is the crown);
+//      the seeds glow warm
 
 /** Face centre: the flower turns and its petals flare about here. */
 const CY = 11.5;
@@ -83,12 +84,18 @@ const SEEDS: Span[] = [[-0.5, 0.5, 3, 3.5], ...bothSides([[3, 3.5, -0.5, 0.5]])]
  */
 const RAY_SHAFTS: Span[] = [[-0.5, 0.5, 4.5, 6.5], ...bothSides([[2, 3, 4, 6], [3.5, 4.5, 2.5, 4]])];
 const RAY_TIPS: Span[] = [[-0.5, 0.5, 6.5, 7.5], ...bothSides([[2, 3, 6, 6.5], [4, 4.5, 4, 4.5]])];
+/**
+ * Level 5's crown, worn on the top rim of the face in front of the petals: a band and three
+ * points standing up over the top petals.
+ */
+const CROWN: Span[] = [[-2, 2, 3, 3.5], [-0.5, 0.5, 3.5, 5], ...bothSides([[1.5, 2, 3.5, 4.5]])];
+const CROWN_JEWELS: Span[] = [[-0.5, 0.5, 3, 3.5]];
 /** A pale row of teeth along the top of the smile. */
 const TEETH = '#FFF4DC';
 
 export const sunflower: ModelDef = {
   key: 'sunflower',
-  trim: ['petalLight'],
+  trim: [],
   eyes: ['eyes'],
   // The face: where a sun pops out when it pays.
   muzzle: { part: 'head', at: [4, CY, 0] },
@@ -133,12 +140,6 @@ export const sunflower: ModelDef = {
       pivot: [0, 1, 0],
       boxes: [
         { at: [-1.5, 0.75, -1.5], size: [3, 6.75, 3], color: 'stem' },
-        // Level 3 up: a side shoot on the camera's side with a little bud of its own, a new
-        // shape beside the flower; its tip is the trim, so it turns metal with the levels.
-        { at: [-0.5, 4, 1.5], size: [1, 1, 2.5], color: 'stem', minLevel: 3 },
-        { at: [-0.5, 5, 3], size: [1, 3, 1], color: 'stem', minLevel: 3 },
-        { at: [-1, 8, 2.5], size: [2, 2, 2], color: 'petal', minLevel: 3 },
-        { at: [-0.5, 10, 3], size: [1, 1, 1], color: 'petalLight', minLevel: 3 },
       ],
     },
     {
@@ -169,8 +170,14 @@ export const sunflower: ModelDef = {
         // Level 4: crystal shards behind the top petals; level 5: gold rays with warm tips.
         ...layer(-0.5, 0.5, RAY_SHAFTS, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
         ...layer(-0.5, 0.5, RAY_TIPS, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
-        ...layer(-0.5, 0.5, RAY_SHAFTS, 'levelGold', { minLevel: 5 }),
-        ...layer(-0.5, 0.5, RAY_TIPS, 'fireLight', { minLevel: 5, emissive: 2 }),
+        // Level 5: a small gold crown on the top rim of the face, three points and a warm jewel.
+        ...layer(3.5, 4.5, CROWN, 'levelGold', { minLevel: 5 }),
+        ...layer(4, 4.5, CROWN_JEWELS, 'fireLight', { minLevel: 5, emissive: 2 }),
+        // Level 3 up: a ladybird sitting on a petal on the camera's side, red with a black head
+        // and spots, a new shape beside the face where the lawn camera sees it.
+        ...layer(2.5, 3.5, [[2.5, 4, 1.5, 3]], 'cherry', { minLevel: 3 }),
+        ...layer(3, 3.5, [[3, 3.5, 2.5, 3], [2.5, 3, 1.5, 2]], 'eye', { minLevel: 3 }),
+        ...layer(2.5, 3.5, [[3.5, 4, 2.5, 3]], 'eye', { minLevel: 3 }),
       ],
     },
     {
@@ -180,7 +187,10 @@ export const sunflower: ModelDef = {
       pivot: [2, CY, 0],
       boxes: [
         ...layer(1.5, 2.5, FRONT, 'petal'),
-        ...layer(1.5, 2.5, POINTS, 'petalLight', { minLevel: 3 }),
+        // The points: iron at 3, crystal at 4, and at 5 orange (the gold is the crown).
+        ...layer(1.5, 2.5, POINTS, 'levelIron', { minLevel: 3, maxLevel: 3 }),
+        ...layer(1.5, 2.5, POINTS, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
+        ...layer(1.5, 2.5, POINTS, 'petalDark', { minLevel: 5 }),
         ...layer(0.5, 1.5, BACK, 'petalDark', { minLevel: 2, maxLevel: 3 }),
         ...layer(0.5, 1.5, BACK, 'levelCrystal', { minLevel: 4, maxLevel: 4 }),
         // Level 5 keeps its orange back ring: the gold is the rays, the points and the tips.

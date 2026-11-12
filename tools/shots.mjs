@@ -151,7 +151,9 @@ const SCENARIOS = [
   // The seven later plants at the lawn angle and from the front, and all ten plants at levels
   // 1 and 5 on the left half of the real lawn, the game's camera.
   { name: 'gallery-plants2', url: `/?scene=gallery&models=${PLANTS2.join(',')}&t=0.4` },
-  { name: 'gallery-plants2-front', url: `/?scene=gallery&models=${PLANTS2.join(',')}&t=0.4&pitch=20&yaw=38` },
+  // From the front one to a row, in two pictures (side by side, the far column's names sat on faces).
+  { name: 'gallery-plants2-front', url: `/?scene=gallery&models=${PLANTS2.slice(0, 4).join(',')}&perRow=1&t=0.4&pitch=20&yaw=38` },
+  { name: 'gallery-plants2-front2', url: `/?scene=gallery&models=${PLANTS2.slice(4).join(',')}&perRow=1&t=0.4&pitch=20&yaw=38` },
   { name: 'gallery-lawn-plants', url: `/?scene=gallery&stage=lawn&models=${[...PLANTS, ...PLANTS2].join(',')}&levels=1,5&labels=0&t=0.4` },
   ...PLANTS2.flatMap((key) => [
     { name: `gallery-${key}`, url: `/?scene=gallery&model=${key}&t=0.4` },
