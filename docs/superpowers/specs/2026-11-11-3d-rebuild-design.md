@@ -120,7 +120,8 @@ the fair band any other way, and then move only in steps of 25.
 - Plants spend Sun, zombies spend Brains. Both get a steady trickle; the zombies' is
   the larger one, because they have no Sunflower (phase 1 ships 1.8 a second for plants
   and 6 for zombies; phase 3 revisits the split between trickle and bounty).
-- Sunflowers add Sun on a timer.
+- Sunflowers add Sun on a timer. A Sunflower under attack makes none: its timer stops
+  while it has been hurt in the last 2 seconds (Michal, 2026-11-12).
 - Destroying an enemy unit pays a bounty that is a share of everything spent on it,
   merges included. The zombie share is the larger one; it is their main income.
 - Each card has a recharge time after use.
