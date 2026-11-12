@@ -303,9 +303,12 @@ for (const [width, height] of [[1280, 720], [1024, 768], [2560, 1080]] as const)
     await frames(page, 10);
     const boxes = await page.evaluate(() => [...document.querySelectorAll('[data-hud]')].map((el) => {
       const r = el.getBoundingClientRect();
-      return { name: el.getAttribute('data-hud') as string, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      // A block inside another (the spells inside the powers) is checked with its parent's box.
+      const within = el.parentElement?.closest('[data-hud]')?.getAttribute('data-hud') ?? null;
+      return { name: el.getAttribute('data-hud') as string, within, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
     }));
-    expect(boxes.map((b) => b.name).sort()).toEqual(['base-plants', 'base-zombies', 'energy', 'pause', 'topbar', 'tray']);
+    // Phase 2: the hero and spell buttons (the powers) sit beside the tray in every battle.
+    expect(boxes.map((b) => b.name).sort()).toEqual(['base-plants', 'base-zombies', 'energy', 'pause', 'powers', 'spells', 'topbar', 'tray']);
     for (const b of boxes) {
       expect(b.left, `${b.name} left`).toBeGreaterThanOrEqual(-0.5);
       expect(b.top, `${b.name} top`).toBeGreaterThanOrEqual(-0.5);
@@ -318,6 +321,7 @@ for (const [width, height] of [[1280, 720], [1024, 768], [2560, 1080]] as const)
       for (let j = i + 1; j < boxes.length; j++) {
         const a = boxes[i]!;
         const b = boxes[j]!;
+        if (a.within === b.name || b.within === a.name) continue;
         const apart = a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5;
         expect(apart, `${a.name} and ${b.name} overlap`).toBe(true);
       }
