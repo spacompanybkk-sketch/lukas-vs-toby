@@ -12,6 +12,7 @@ const BLINK_GAP_MIN = 2;
 const BLINK_GAP_SPREAD = 3;
 /** Scene brightness a full white flash adds: enough to read as white through the tone mapper. */
 const FLASH_PEAK = 1;
+const WHITE = new Color(1, 1, 1);
 
 function atRest(): PartPose {
   return { rx: 0, ry: 0, rz: 0, px: 0, py: 0, pz: 0, s: 1, sx: 1, sy: 1, sz: 1 };
@@ -89,6 +90,7 @@ export class ModelInstance {
   private readonly sharedMaterials: MeshStandardMaterial[] = [];
   private flashCopies: FlashCopy[] | null = null;
   private flash = 0;
+  private flashTint: Color = WHITE;
   /** The object the muzzle rides on, and the muzzle in that object's own space (tiles). */
   private readonly muzzleOn: Object3D;
   private readonly muzzleX: number;
@@ -274,11 +276,15 @@ export class ModelInstance {
     this.apply();
   }
 
-  /** Tints the whole model towards white: 0 is none, 1 is full. The caller fades it out. */
-  setFlash(amount: number): void {
+  /**
+   * Tints the whole model towards white (or towards `tint`: a poisoned unit's green pulse): 0 is
+   * none, 1 is full. The caller fades it out. `tint` is kept, not copied: pass a constant.
+   */
+  setFlash(amount: number, tint: Color = WHITE): void {
     const flash = amount > 0 ? Math.min(amount, 1) : 0;
-    if (flash === this.flash || this.disposed) return;
+    if ((flash === this.flash && (flash === 0 || tint === this.flashTint)) || this.disposed) return;
     this.flash = flash;
+    this.flashTint = tint;
     const { meshes, sharedMaterials } = this;
 
     if (flash === 0) {
@@ -301,9 +307,9 @@ export class ModelInstance {
     for (let c = 0; c < copies.length; c++) {
       const { glow, own } = copies[c] as FlashCopy;
       own.emissive.setRGB(
-        glow.r + (Math.max(glow.r, FLASH_PEAK) - glow.r) * flash,
-        glow.g + (Math.max(glow.g, FLASH_PEAK) - glow.g) * flash,
-        glow.b + (Math.max(glow.b, FLASH_PEAK) - glow.b) * flash,
+        glow.r + (Math.max(glow.r, FLASH_PEAK * tint.r) - glow.r) * flash,
+        glow.g + (Math.max(glow.g, FLASH_PEAK * tint.g) - glow.g) * flash,
+        glow.b + (Math.max(glow.b, FLASH_PEAK * tint.b) - glow.b) * flash,
       );
     }
     for (let i = 0; i < meshes.length; i++) {
@@ -378,7 +384,7 @@ export class ModelInstance {
       (next.joints[i] as Joint).object.visible = (this.joints[i] as Joint).object.visible;
     }
     next.apply();
-    next.setFlash(this.flash);
+    next.setFlash(this.flash, this.flashTint);
 
     this.onDone = null;
     this.root.parent?.add(next.root);

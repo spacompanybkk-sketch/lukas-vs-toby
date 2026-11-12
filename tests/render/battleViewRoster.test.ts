@@ -598,3 +598,45 @@ describe('BattleView review fixes (wiring A)', () => {
     expect(ctx.view.barsShown).toBe(1);
   });
 });
+
+describe('BattleView parked look items (wiring B)', () => {
+  it('the Necromancer\'s heal ring is smaller than its aura and shows on every second heal only', () => {
+    const ctx = setUp();
+    const necro = ctx.spawn('necromancer', 3, 8);
+    ctx.run(0.6);
+    const ring = vi.spyOn(ctx.fx, 'ring');
+    const heal = (): void => ctx.apply({ type: 'abilityUsed', unitId: necro.id, ability: 'heal', lane: 3, x: 8, targetId: null });
+    heal();
+    heal();
+    heal();
+    expect(ring).toHaveBeenCalledTimes(2);
+    expect(ring.mock.calls[0]?.[2]).toBeLessThan(1);
+  });
+
+  it('a poisoned unit pulses green through its flash, and stops when the poison ends', () => {
+    const ctx = setUp();
+    const z = ctx.spawn('brainEater', 2, 6.5);
+    ctx.run(0.3);
+    z.poison = 60;
+    ctx.apply({ type: 'statusApplied', unitId: z.id, status: 'poison', ticks: 60, sourceId: null });
+    const view = ctx.view.unit(z.id) as NonNullable<ReturnType<typeof ctx.view.unit>>;
+    const greenest = (): number => {
+      let g = 0;
+      view.model.root.traverse((o) => {
+        const m = (o as { material?: { emissive?: { r: number; g: number; b: number } } }).material;
+        if (m?.emissive && m.emissive.g > m.emissive.r && m.emissive.g > m.emissive.b) g = Math.max(g, m.emissive.g);
+      });
+      return g;
+    };
+    let seen = 0;
+    for (let i = 0; i < 70; i++) {
+      ctx.run(DT);
+      seen = Math.max(seen, greenest());
+    }
+    expect(seen).toBeGreaterThan(0.25);
+    z.poison = 0;
+    ctx.apply({ type: 'statusEnded', unitId: z.id, status: 'poison' });
+    ctx.run(DT * 2);
+    expect(greenest()).toBe(0);
+  });
+});

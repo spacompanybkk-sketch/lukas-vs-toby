@@ -1,4 +1,4 @@
-import { Box3, Group, Mesh, Vector3, type Object3D } from 'three';
+import { Box3, Color, Group, Mesh, Vector3, type Object3D } from 'three';
 import type { Faction, UnitKey } from '../../sim/types';
 import { getModelDef } from '../models/registry';
 import { ModelInstance } from '../voxel/rig';
@@ -34,6 +34,15 @@ const LEAP_HOP = 0.35;
 const VOXEL = 1 / 16;
 /** Hot Topic grows this much per stack (plan Task 5). */
 export const GROW_PER_STACK = 0.06;
+
+/**
+ * A poisoned unit pulses toxic green through the hit-flash: once a second, a short glow in two
+ * hard steps (the art bible's poison colour).
+ */
+const POISON_TINT = new Color('#9BE01E');
+const POISON_EVERY = 1;
+const POISON_PULSE = [0.55, 0.3];
+const POISON_STEP = 0.1;
 
 const easeInOutCubic = (u: number): number => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2);
 const easeOutCubic = (u: number): number => 1 - (1 - u) ** 3;
@@ -143,6 +152,10 @@ export class UnitView {
   heroShow = 0;
   /** View time (seconds) it was last tied, or −1: see `BattleView`. */
   tiedAt = -1;
+  /** Heals it has given (a Necromancer): its ring shows on every second one. */
+  heals = 0;
+  /** Poisoned now (set by `BattleView` from the state): it pulses green. */
+  poisoned = false;
   /** A Potato Mine showing its armed light. */
   armed = false;
   /** While leaping: seconds in, and how far along the lane its target stands from it. */
@@ -396,7 +409,11 @@ export class UnitView {
       if (flash === 0) this.flashFor = -1;
     }
     if (this.pulsing) flash = Math.max(flash, 0.22 + 0.18 * Math.sin(this.time * 9));
-    this.model.setFlash(flash);
+    // A hit's white wins over the poison's green; otherwise a poisoned unit pulses green.
+    if (flash === 0 && this.poisoned) {
+      const step = Math.floor(((this.time + this.id * 0.37) % POISON_EVERY) / POISON_STEP);
+      this.model.setFlash(POISON_PULSE[step] ?? 0, POISON_TINT);
+    } else this.model.setFlash(flash);
 
     this.model.update(dt);
     return false;

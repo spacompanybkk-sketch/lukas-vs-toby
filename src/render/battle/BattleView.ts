@@ -100,6 +100,7 @@ const STONE = [hex(PALETTE.stone), hex(PALETTE.stoneDark), hex(PALETTE.graveRock
 const FIRE = hex(PALETTE.fire);
 /** The heal ring: a deeper green than the plusses, so a ring the width of the aura does not wash the lawn white. */
 const HEAL = hex('#2FAF5E');
+const HEAL_RING_RADIUS = 0.9;
 /** The Necromancer's raise: a ring of graveyard violet, brighter than the graveyard itself. */
 const RAISE = hex('#9B6BFF');
 const SOIL = hex('#8A5A2B');
@@ -107,6 +108,7 @@ const SOIL = hex('#8A5A2B');
 /** The statuses a unit can carry, each with its bit in `UnitView.statusBits`. */
 const STATUSES: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn', 'haste'];
 const TIED_BIT = 1 << STATUSES.indexOf('tied');
+const POISON_BIT = 1 << STATUSES.indexOf('poison');
 /** Stars and flames on a zombie are drawn this much bigger: on a busy lawn they are the ones that get lost. */
 const ZOMBIE_MARK_SIZE = 1.45;
 /** For this long after a unit is tied, hits on it do not flash it white: the rope wrapping it is the show. */
@@ -446,6 +448,7 @@ export class BattleView {
     }
     view.statusBits = bits;
     view.marksHeight = view.height;
+    view.poisoned = (bits & POISON_BIT) !== 0;
   }
 
   /** Call once per animation frame. `dtSeconds` is game time (0 while paused). */
@@ -1176,7 +1179,10 @@ export class BattleView {
         break;
       case 'heal':
         view.play('ability');
-        this.fx.ring(v1, HEAL, 1.5, true);
+        // Every second heal only, and inside the aura rather than its full width: a ring every
+        // two seconds across 3 tiles kept a busy lawn flashing.
+        view.heals++;
+        if (view.heals % 2 === 1) this.fx.ring(v1, HEAL, HEAL_RING_RADIUS, true);
         break;
       case 'raise':
         // The minion's own spawn brings its gravestone and dirt.
