@@ -123,10 +123,10 @@ function voxelPlate(): BufferGeometry {
  * in a band just inside the circle, so the ring is stepped like everything else. The tops
  * are bright and the sides dimmer.
  */
-function steppedRing(): BufferGeometry {
+function steppedRing(cells = 9): BufferGeometry {
   const batch = new BoxBatch();
-  const cell = 1 / 9;
-  const n = 10;
+  const cell = 1 / cells;
+  const n = cells + 1;
   const top = new Color(1, 1, 1);
   const side = new Color(0.6, 0.6, 0.6);
   for (let i = -n; i < n; i++) {
@@ -253,6 +253,8 @@ export class Effects {
   private readonly shell = voxelBall(true);
   private readonly plate = voxelPlate();
   private readonly ringShape = steppedRing();
+  /** The same ring in a quarter-tile grid: big blocks that stay blocky at lawn zoom. */
+  private readonly coarseRingShape = steppedRing(4);
   private readonly cross = crossShape();
   private readonly plus = plusShape();
   private readonly flashes: Flash[] = [];
@@ -431,10 +433,15 @@ export class Effects {
     }
   }
 
-  /** A shockwave: a stepped ring of light that runs out along the ground to `radius` and fades. */
-  ring(at: Vector3, color: number, radius: number): void {
+  /**
+   * A shockwave: a stepped ring of light that runs out along the ground to `radius` and fades.
+   * `coarse` builds it of a few big blocks instead of many small ones, for the hero powers and
+   * the spells, whose rings have to look blocky from the lawn camera.
+   */
+  ring(at: Vector3, color: number, radius: number, coarse = false): void {
     const slot = this.rings[this.nextRing] as Ring;
     this.nextRing = (this.nextRing + 1) % RINGS;
+    slot.mesh.geometry = coarse ? this.coarseRingShape : this.ringShape;
     slot.active = true;
     slot.age = 0;
     slot.duration = 0.42;
@@ -621,6 +628,7 @@ export class Effects {
     this.shell.dispose();
     this.plate.dispose();
     this.ringShape.dispose();
+    this.coarseRingShape.dispose();
     this.cross.dispose();
     this.plus.dispose();
     for (const slot of this.pops) slot.material.dispose();

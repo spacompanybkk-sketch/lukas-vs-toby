@@ -22,11 +22,11 @@ export const PROJECTILE_SIZE: Record<ProjectileKind, number> = {
   pea: 0.22,
   brain: 0.26,
   kernel: 0.2,
-  butter: 0.3,
+  butter: 0.38,
   mango: 0.32,
-  sand: 0.32,
-  arrow: 0.44,
-  bullet: 0.24,
+  sand: 0.3,
+  arrow: 0.52,
+  bullet: 0.22,
   trident: 0.5,
   rot: 0.3,
 };
@@ -155,20 +155,24 @@ function brainTokenGeometry(): BufferGeometry {
 
 /** Colours of the new shots, each inside its side's family (art bible section 3). */
 export const SHOT_COLORS = {
-  kernel: '#FFD83A',
-  kernelDark: '#E9A80C',
-  kernelTip: '#FFF4C2',
-  butter: '#FFE070',
-  butterTop: '#FFF1A8',
-  butterDark: '#E0B83A',
+  // Bright corn yellow, the most saturated yellow on the lawn.
+  kernel: '#FFE21A',
+  kernelDark: '#E8B000',
+  kernelTip: '#FFF7A0',
+  // Pale cream: a much lighter, whiter yellow than the kernel, and a much bigger, flat shape.
+  butter: '#FFF4C8',
+  butterTop: '#FFFCEB',
+  butterDark: '#E8D48E',
   mango: '#FF9A1F',
   mangoBlush: '#F2542D',
   mangoBelly: '#FFC23D',
   sand: '#D9A55A',
   sandDark: '#A8733A',
   sandLight: '#EFC98A',
-  bulletTail: '#D7DCE3',
+  bulletIron: '#3F4552',
+  bulletIronLight: '#6A7282',
   brass: '#D9A441',
+  muzzle: '#FF8A1F',
   trident: '#A879FF',
   rot: '#3B4A22',
   rotDark: '#222B14',
@@ -179,27 +183,24 @@ export const SHOT_COLORS = {
 } as const;
 
 function kernelGeometry(): BufferGeometry {
-  const n = 4;
-  const body = paint(SHOT_COLORS.kernel);
-  const dark = paint(SHOT_COLORS.kernelDark);
-  const tip = paint(SHOT_COLORS.kernelTip);
-  // A chunky cube with its corners knocked off and a pale tip on top: a kernel of corn.
-  return blob(PROJECTILE_SIZE.kernel / n, n, n, n, (x, y, z) => Math.abs(x) + Math.abs(y) + Math.abs(z) < 2.2, (i, j, k) => {
-    if (j === n - 1 && i >= 1 && i <= 2 && k >= 1 && k <= 2) return tip;
-    if (j === 0) return dark;
-    return hash2(i * 5 + j, k * 3, 17) < 0.2 ? dark : body;
-  });
+  const batch = new BoxBatch();
+  const e = PROJECTILE_SIZE.kernel;
+  // A bright corn-yellow cube, darker underneath, with a pale tip on top: one kernel of corn.
+  batch.box(-e / 2, -e / 2, -e / 2, e, e * 0.8, e, SHOT_COLORS.kernelDark, SHOT_COLORS.kernel);
+  batch.box(-e / 2 + 0.025, e * 0.3, -e / 2 + 0.025, e - 0.05, e * 0.2, e - 0.05, SHOT_COLORS.kernel, SHOT_COLORS.kernelTip);
+  return batch.build();
 }
 
 function butterGeometry(): BufferGeometry {
   const batch = new BoxBatch();
   const w = PROJECTILE_SIZE.butter;
-  const d = 0.22;
-  const h = 0.12;
-  // A pat of butter: a slab with a paler top and a little curl of butter on it.
+  const d = 0.28;
+  const h = 0.13;
+  // A big pat of pale cream butter that tumbles end over end: a flat slab with a whiter top
+  // and a little curl of butter on it.
   batch.box(-w / 2, -h / 2, -d / 2, w, h, d, SHOT_COLORS.butterDark, SHOT_COLORS.butter);
-  batch.box(-w / 2 + 0.02, h / 2 - 0.001, -d / 2 + 0.02, w - 0.04, 0.025, d - 0.04, SHOT_COLORS.butter, SHOT_COLORS.butterTop);
-  batch.box(-0.05, h / 2 + 0.024, -0.03, 0.1, 0.04, 0.06, SHOT_COLORS.butter, SHOT_COLORS.butterTop);
+  batch.box(-w / 2 + 0.03, h / 2 - 0.001, -d / 2 + 0.03, w - 0.06, 0.025, d - 0.06, SHOT_COLORS.butter, SHOT_COLORS.butterTop);
+  batch.box(-0.06, h / 2 + 0.024, -0.04, 0.12, 0.045, 0.08, SHOT_COLORS.butter, SHOT_COLORS.butterTop);
   return batch.build();
 }
 
@@ -231,43 +232,42 @@ function mangoGeometry(): BufferGeometry {
 }
 
 function sandGeometry(): BufferGeometry {
-  const n = 5;
-  const sand = paint(SHOT_COLORS.sand);
-  const dark = paint(SHOT_COLORS.sandDark);
-  const light = paint(SHOT_COLORS.sandLight);
-  // A loose puff of sand: a ragged clump with gaps in it, never a clean ball.
-  return blob(
-    PROJECTILE_SIZE.sand / n,
-    n,
-    n - 1,
-    n,
-    (x, y, z) => x * x + y * y + z * z <= 1.3 && hash2(Math.round(x * 4), Math.round(y * 4) * 7 + Math.round(z * 4), 9) > 0.18,
-    (i, j, k) => (j >= 3 ? light : hash2(i, j * 3 + k, 5) < 0.35 ? dark : sand),
-  );
+  const batch = new BoxBatch();
+  const g = 0.09;
+  // A loose spray of four tan grains with gaps between them: no solid body at all.
+  const grains: [number, number, number, string][] = [
+    [-0.105, -0.02, -0.06, SHOT_COLORS.sand],
+    [0.02, 0.05, 0.07, SHOT_COLORS.sandLight],
+    [0.105, -0.05, -0.02, SHOT_COLORS.sandDark],
+    [-0.02, -0.105, 0.105, SHOT_COLORS.sand],
+  ];
+  for (const [x, y, z, c] of grains) batch.box(x - g / 2, y - g / 2, z - g / 2, g, g, g, c, SHOT_COLORS.sandLight);
+  return batch.build();
 }
 
 function arrowGeometry(): BufferGeometry {
   const batch = new BoxBatch();
   const L = PROJECTILE_SIZE.arrow;
-  const t = 0.06;
+  const t = 0.055;
   const x0 = -L / 2;
-  // A thick bone shaft, a stepped iron head at the front (−X) and purple fletching at the back,
-  // chunky enough to follow from the lawn camera.
-  batch.box(x0 + 0.1, -t / 2, -t / 2, L - 0.14, t, t, PALETTE.boneShadow, PALETTE.bone);
-  batch.box(x0 + 0.05, -0.055, -0.055, 0.06, 0.11, 0.11, PALETTE.levelIronDark, PALETTE.levelIron);
-  batch.box(x0, -0.03, -0.03, 0.06, 0.06, 0.06, PALETTE.levelIronDark, PALETTE.levelIron);
-  for (const dz of [-1, 1]) batch.box(L / 2 - 0.12, -0.02, dz > 0 ? t / 2 : -t / 2 - 0.07, 0.12, 0.04, 0.07, PALETTE.clothDark, PALETTE.clothPurple);
-  batch.box(L / 2 - 0.12, t / 2, -0.02, 0.12, 0.07, 0.04, PALETTE.clothDark, PALETTE.clothPurple);
+  // A long bone-white shaft, a dark stepped tip at the front (−X), purple fletching at the back.
+  batch.box(x0 + 0.1, -t / 2, -t / 2, L - 0.14, t, t, PALETTE.boneShadow, '#FAF6EA');
+  batch.box(x0 + 0.05, -0.055, -0.055, 0.06, 0.11, 0.11, '#1F1D24', '#3A3742');
+  batch.box(x0, -0.03, -0.03, 0.06, 0.06, 0.06, '#1F1D24', '#3A3742');
+  for (const dz of [-1, 1]) batch.box(L / 2 - 0.13, -0.02, dz > 0 ? t / 2 : -t / 2 - 0.08, 0.13, 0.04, 0.08, PALETTE.clothDark, PALETTE.clothPurple);
+  batch.box(L / 2 - 0.13, t / 2, -0.02, 0.13, 0.08, 0.04, PALETTE.clothDark, PALETTE.clothPurple);
   return batch.build();
 }
 
 function bulletGeometry(): BufferGeometry {
   const batch = new BoxBatch();
   const L = PROJECTILE_SIZE.bullet;
-  // A short iron slug with a brass back, and a pale streak behind it: a pistol shot.
-  batch.box(-L / 2, -0.05, -0.05, 0.1, 0.1, 0.1, PALETTE.levelIronDark, PALETTE.levelIron);
-  batch.box(-L / 2 + 0.1, -0.055, -0.055, 0.04, 0.11, 0.11, SHOT_COLORS.brass);
-  batch.box(-L / 2 + 0.14, -0.035, -0.035, L - 0.14, 0.07, 0.07, SHOT_COLORS.bulletTail, '#FFFFFF');
+  // A short, chunky dark-iron slug, its nose stepped, a brass band and an orange spark of
+  // the shot behind it (the trail carries the spark on).
+  batch.box(-L / 2, -0.04, -0.04, 0.04, 0.08, 0.08, SHOT_COLORS.bulletIron, SHOT_COLORS.bulletIronLight);
+  batch.box(-L / 2 + 0.04, -0.06, -0.06, 0.1, 0.12, 0.12, SHOT_COLORS.bulletIron, SHOT_COLORS.bulletIronLight);
+  batch.box(-L / 2 + 0.14, -0.062, -0.062, 0.03, 0.124, 0.124, SHOT_COLORS.brass);
+  batch.box(-L / 2 + 0.17, -0.035, -0.035, L - 0.17, 0.07, 0.07, SHOT_COLORS.muzzle, PALETTE.fireLight);
   return batch.build();
 }
 
@@ -341,7 +341,7 @@ export const PROJECTILE_TRAIL: Record<ProjectileKind, number> = {
   mango: hexNumber(SHOT_COLORS.mango),
   sand: hexNumber(SHOT_COLORS.sand),
   arrow: hexNumber(PALETTE.bone),
-  bullet: hexNumber(SHOT_COLORS.bulletTail),
+  bullet: hexNumber(SHOT_COLORS.muzzle),
   trident: hexNumber(SHOT_COLORS.trident),
   rot: hexNumber(PALETTE.poison),
 };
@@ -356,7 +356,7 @@ export const PROJECTILE_TUMBLE: Record<ProjectileKind, number> = {
   pea: 0,
   brain: 0.8,
   kernel: 1.2,
-  butter: 0.6,
+  butter: 0.9,
   mango: 0.9,
   sand: 0.5,
   arrow: 0,
@@ -586,8 +586,10 @@ function rockGeometry(stage: RockStage): () => BufferGeometry {
       const y = (j + 0.5) / ny;
       const z = u(k, nz);
       if (x * x + z * z + (y * 1.1) ** 2 * 0.9 > 1.35 + 0.25 * hash2(i, k, 4)) return false;
-      if (stage >= 1 && i === nx - 1 && j >= ny - 2) return false;
-      if (stage >= 2 && ((i === 0 && j >= 2) || (k === nz - 1 && i >= 4 && j >= 2) || (j === ny - 1 && i <= 2))) return false;
+      // Stage 1: a big chunk bitten out of the top corner nearest the camera and the zombies.
+      if (stage >= 1 && i >= nx - 3 && j >= ny - 2 && k >= nz - 3) return false;
+      // Stage 2: broken in two, a cleft right through the middle, and the far top half gone.
+      if (stage >= 2 && ((i === 3 && j >= 1) || (i <= 2 && j >= 3) || (k <= 1 && j >= 2))) return false;
       return true;
     };
     // Cracks zig-zag down from the top on the faces the camera sees (+Z, and +X at stage 2),

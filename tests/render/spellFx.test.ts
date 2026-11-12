@@ -1,11 +1,12 @@
-import { Mesh, Object3D, PerspectiveCamera, type Material } from 'three';
-import { describe, expect, it } from 'vitest';
+import { Group, Mesh, Object3D, PerspectiveCamera, type BufferGeometry, type Material } from 'three';
+import { describe, expect, it, vi } from 'vitest';
 import { SPELL_SECONDS, SPELL_SIDE, SpellFx, spellArea } from '../../src/render/battle/SpellFx';
 import type { Feel } from '../../src/render/battle/types';
 import { Effects } from '../../src/render/fx/Effects';
 import { Particles } from '../../src/render/fx/Particles';
 import type { SpellKey } from '../../src/render/types';
 import { seededRandom } from '../../src/render/world/boxes';
+import { allocationsIn } from './allocations';
 
 const SPELLS: [SpellKey, 0 | 2 | 3][] = [
   ['thunderbolt', 2],
@@ -190,12 +191,62 @@ describe('SpellFx', () => {
   it('copes with the same spell cast over and over: pools hand out what they have', () => {
     const { spells, effects } = setup();
     const before = spells.group.children.length;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     for (let i = 0; i < 12; i++) for (const [spell, size] of SPELLS) spells.cast(spell, i % 5, i % 10, size);
+    // Twelve of each at once is more than the pools hold: they say so instead of skipping quietly.
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
     run(spells, effects, 0.5);
     expect(spells.group.children.length).toBe(before);
     spells.clear();
     expect(spells.active).toBe(0);
     expect(spells.rocks).toBe(0);
     expect(visibleDeep(spells.group)).toHaveLength(0);
+  });
+
+  it('has room for every spell at its largest area, twice over, without running dry', () => {
+    const { spells, effects } = setup();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Every aimed spell at a 3 × 3 (the 2 × 2 ones too, as a tuner might make them), twice.
+    for (let i = 0; i < 2; i++) for (const [spell, size] of SPELLS) spells.cast(spell, 2, 4 + i, size === 0 ? 0 : 3);
+    run(spells, effects, 1);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('allocates nothing observable in update while the standing spells run', () => {
+    const { spells, effects } = setup();
+    for (const [spell, size] of SPELLS) spells.cast(spell, 2, 4, size);
+    // Past every spell's start, so only the frame-by-frame work is left.
+    run(spells, effects, 0.8);
+    expect(allocationsIn(() => {
+      for (let i = 0; i < 60; i++) spells.update(1 / 60);
+    })).toEqual({});
+  });
+
+  it('stops running shows, frees what it owns and leaves the scene on dispose', () => {
+    const { spells, effects } = setup();
+    const scene = new Group();
+    scene.add(spells.group);
+    spells.cast('fog', 2, 4, 2);
+    spells.cast('thunderbolt', 0, 2, 2);
+    spells.cast('rockWall', 3, 3, 0);
+    spells.showArea(spellArea('fog', 2, 4, 2));
+    run(spells, effects, 0.3);
+    const owned = new Set<BufferGeometry | Material>();
+    spells.group.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      if (o.name === 'scorch' || o.name === 'vine-mat' || o.name === 'spell-area') {
+        owned.add(o.geometry);
+        owned.add(o.material as Material);
+      }
+    });
+    expect(owned.size).toBeGreaterThanOrEqual(4);
+    const freed = [...owned].map((r) => vi.spyOn(r, 'dispose'));
+    spells.dispose();
+    for (const spy of freed) expect(spy).toHaveBeenCalled();
+    expect(spells.active).toBe(0);
+    expect(spells.rocks).toBe(0);
+    expect(scene.children).not.toContain(spells.group);
   });
 });

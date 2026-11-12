@@ -1,11 +1,10 @@
 import { Color, Group, Mesh, MeshStandardMaterial, type BufferGeometry } from 'three';
 import { glowMaterial } from '../fx/glow';
 import { MATTE_PLASTIC } from '../look';
-import { PALETTE } from '../palette';
 import { BoxBatch, hash2 } from '../world/boxes';
 
-// Brain Rot's poison puddles (plan Task 5): a stepped green-black decal on the lawn with
-// bright bubbles rising slowly out of it, fading out over its last half second. Drawn from
+// Brain Rot's poison puddles (plan Task 5): a flat stepped toxic green-yellow decal with a pale rim, on the lawn, with
+// glowing bubbles rising slowly out of it, fading out over its last half second. Drawn from
 // `hazardSpawned` and `hazardEnded`. Puddles are built up front and reused; each has its own
 // copy of the decal material, so one can fade while the others stay solid.
 
@@ -18,11 +17,14 @@ const BUBBLES = 4;
 /** How high the decal sits: just above the lawn and below the tile highlight. */
 const LIFT = 0.006;
 
+// Toxic green-yellow, brighter and yellower than grass, with a pale rim: never to be taken
+// for the Vines' dark leafy mat or a scorch mark, both of which are dark.
 const C = {
-  rim: '#1E2A10',
-  body: '#33471A',
-  ooze: '#5E8F1E',
-  shine: PALETTE.poison,
+  rim: '#E6FF8C',
+  body: '#B4EA28',
+  ooze: '#D2FA3C',
+  shine: '#F4FFB0',
+  bubble: '#C8F22E',
 } as const;
 
 interface Puddle {
@@ -57,12 +59,12 @@ function puddleGeometry(): BufferGeometry {
       const d = Math.hypot(x, z) + (hash2(i, k, 77) - 0.5) * 0.18;
       if (d > 1) continue;
       if (d > 0.82) {
-        b.box(i * cell, 0, k * cell, cell, 0.012, cell, rim);
+        b.box(i * cell, 0, k * cell, cell, 0.01, cell, rim);
         continue;
       }
       const blot = hash2(i, k, 5);
-      const top = blot < 0.16 ? shine : blot < 0.42 ? ooze : body;
-      b.box(i * cell, 0, k * cell, cell, blot < 0.16 ? 0.026 : 0.02, cell, body, top);
+      const top = blot < 0.12 ? shine : blot < 0.4 ? ooze : body;
+      b.box(i * cell, 0, k * cell, cell, blot < 0.12 ? 0.016 : 0.012, cell, body, top);
     }
   }
   return b.build();
@@ -70,8 +72,8 @@ function puddleGeometry(): BufferGeometry {
 
 function bubbleGeometry(): BufferGeometry {
   const b = new BoxBatch();
-  const e = 0.07;
-  b.box(-e / 2, -e / 2, -e / 2, e, e, e, C.shine, '#D4FF8A');
+  const e = 0.09;
+  b.box(-e / 2, -e / 2, -e / 2, e, e, e, C.bubble, C.shine);
   return b.build();
 }
 
@@ -92,7 +94,15 @@ export class Hazards {
       const root = new Group();
       root.name = 'hazard';
       root.visible = false;
-      const material = new MeshStandardMaterial({ ...MATTE_PLASTIC, roughness: 0.4, transparent: true });
+      // A faint glow of its own, so a puddle in a unit's shadow still reads bright (under the
+      // bloom threshold: only the bubbles bloom).
+      const material = new MeshStandardMaterial({
+        ...MATTE_PLASTIC,
+        roughness: 0.4,
+        transparent: true,
+        emissive: new Color('#9CCB1C'),
+        emissiveIntensity: 0.18,
+      });
       const decal = new Mesh(this.puddle, material);
       decal.name = 'hazard-decal';
       decal.receiveShadow = true;
@@ -133,11 +143,8 @@ export class Hazards {
   add(id: number, lane: number, x: number, radius: number, seconds: number): void {
     let p = this.find(id);
     if (!p) {
-      p = this.puddles.find((q) => !q.active) ?? null;
-      if (!p) {
-        p = this.puddles.reduce((a, q) => (q.born < a.born ? q : a));
-        this.count--;
-      }
+      p = this.freeOrOldest();
+      if (p.active) this.count--;
       this.count++;
     }
     p.id = id;
@@ -162,7 +169,8 @@ export class Hazards {
   /** Moves the bubbles and the fades on by `dtSeconds` of game time. */
   update(dtSeconds: number): void {
     const dt = Math.max(0, dtSeconds);
-    for (const p of this.puddles) {
+    for (let i = 0; i < this.puddles.length; i++) {
+      const p = this.puddles[i] as Puddle;
       if (!p.active) continue;
       p.age += dt;
       if (p.age >= p.life) {
@@ -174,11 +182,14 @@ export class Hazards {
   }
 
   clear(): void {
-    for (const p of this.puddles) if (p.active) this.drop(p);
+    for (let i = 0; i < this.puddles.length; i++) if ((this.puddles[i] as Puddle).active) this.drop(this.puddles[i] as Puddle);
   }
 
-  /** Frees the shapes and materials. Take `group` out of the scene first. */
+  /** Takes every puddle away, takes `group` out of the scene, and frees the shapes and materials. */
   dispose(): void {
+    this.clear();
+    this.group.removeFromParent();
+    this.group.clear();
     this.puddle.dispose();
     this.bubble.dispose();
     this.glow.dispose();
@@ -186,8 +197,22 @@ export class Hazards {
   }
 
   private find(id: number): Puddle | null {
-    for (const p of this.puddles) if (p.active && p.id === id) return p;
+    for (let i = 0; i < this.puddles.length; i++) {
+      const p = this.puddles[i] as Puddle;
+      if (p.active && p.id === id) return p;
+    }
     return null;
+  }
+
+  /** A puddle not in use, or else the oldest one. */
+  private freeOrOldest(): Puddle {
+    let oldest = this.puddles[0] as Puddle;
+    for (let i = 0; i < this.puddles.length; i++) {
+      const p = this.puddles[i] as Puddle;
+      if (!p.active) return p;
+      if (p.born < oldest.born) oldest = p;
+    }
+    return oldest;
   }
 
   private drop(p: Puddle): void {
@@ -203,7 +228,8 @@ export class Hazards {
     // Solid until it fades, so it sorts and shades like the lawn.
     p.material.depthWrite = fade >= 1;
     const sx = p.root.scale.x || 1;
-    p.bubbles.forEach((bubble, j) => {
+    for (let j = 0; j < p.bubbles.length; j++) {
+      const bubble = p.bubbles[j] as Mesh;
       // Each bubble swells as it rises slowly from somewhere in the puddle, then pops.
       const u = (p.age * 0.55 + j / BUBBLES + p.id * 0.13) % 1;
       const a = j * 2.1 + p.id;
@@ -213,6 +239,6 @@ export class Hazards {
       bubble.scale.set((0.5 + 0.9 * u) / sx, (0.5 + 0.9 * u) * (u > 0.92 ? 0.3 : 1), (0.5 + 0.9 * u) / sx);
       bubble.scale.multiplyScalar(fade);
       bubble.visible = fade > 0.02;
-    });
+    }
   }
 }

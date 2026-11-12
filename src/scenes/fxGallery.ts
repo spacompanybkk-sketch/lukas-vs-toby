@@ -171,6 +171,11 @@ function statusesPage(kit: Kit): Page {
       if (wrapped) {
         kit.hazards.add(1, 2, 2.5, 0.75, 3.6);
         kit.hazards.add(2, 3, 4.5, 0.75, 3.6);
+        // The three things that lie on the lawn, side by side, so they can be told apart:
+        // the poison puddle (lane 3), the Vines' leafy mat (lanes 0–1) and a scorch (lanes 0–1, right).
+        kit.spells.clear();
+        kit.spells.cast('vines', 0, 3, 2);
+        kit.spells.cast('thunderbolt', 0, 7, 2);
       }
       // The blind Peashooter's shots miss; the Necromancer heals the Hot Topic.
       const beat = Math.floor(time / 0.8);

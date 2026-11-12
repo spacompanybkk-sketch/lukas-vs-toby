@@ -1,6 +1,7 @@
-import { Box3, BoxGeometry, Mesh, MeshBasicMaterial, Object3D, Vector3, type Material } from 'three';
-import { describe, expect, it } from 'vitest';
+import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial, Object3D, Vector3, type BufferGeometry, type Material } from 'three';
+import { describe, expect, it, vi } from 'vitest';
 import { StatusMarks } from '../../src/render/battle/StatusMarks';
+import { allocationsIn } from './allocations';
 import type { StatusKind } from '../../src/render/types';
 
 const ALL: StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn', 'haste'];
@@ -154,5 +155,34 @@ describe('StatusMarks', () => {
     marks.clear();
     expect(marks.active).toBe(0);
     expect(visibleMarks(marks)).toHaveLength(0);
+  });
+
+  it('allocates nothing observable in update, with every status showing', () => {
+    const marks = new StatusMarks();
+    for (let id = 0; id < 12; id++) for (const status of ALL) marks.set(id, unit(id % 10, 2.5), status, true);
+    marks.update(1 / 60);
+    expect(allocationsIn(() => {
+      for (let i = 0; i < 120; i++) marks.update(1 / 60);
+    })).toEqual({});
+  });
+
+  it('frees its shapes and materials and leaves the scene on dispose', () => {
+    const scene = new Group();
+    const marks = new StatusMarks(4);
+    scene.add(marks.group);
+    marks.set(1, unit(), 'stun', true);
+    const geometries = new Set<BufferGeometry>();
+    const materials = new Set<Material>();
+    marks.group.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      geometries.add(o.geometry);
+      materials.add(o.material as Material);
+    });
+    const freed = [...geometries, ...materials].map((r) => vi.spyOn(r, 'dispose'));
+    marks.dispose();
+    for (const spy of freed) expect(spy).toHaveBeenCalled();
+    expect(scene.children).not.toContain(marks.group);
+    expect(marks.group.children).toHaveLength(0);
+    expect(marks.active).toBe(0);
   });
 });

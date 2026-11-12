@@ -8,12 +8,12 @@ import { BoxBatch } from '../world/boxes';
 // What a status looks like on a unit (plan Task 5), drawn from `statusApplied` and
 // `statusEnded` alone:
 //
-//   stun    three yellow voxel stars circling the head
-//   blind   a little sandstorm of tan clumps whirling round the eyes, grains trickling out
+//   stun    three big yellow voxel stars with a dark outline circling the head
+//   blind   outlined blocks of sand whirling round the eyes, grains trickling out
 //   tied    two brown stepped rope rings round the body and a knot
-//   poison  green bubbles rising off the body, and a green ring pulsing at its feet
+//   poison  toxic green-yellow bubbles rising off the body, a ring of them pulsing at its feet
 //   burn    orange flame voxels flickering up the body
-//   haste   red speed streaks streaming out behind (towards +X: only zombies are hasted)
+//   haste   short red streaks trailing from its back (towards +X: only zombies are hasted)
 //
 // Every mark is built once, up front, `capacity` of each kind, and handed out and taken
 // back; nothing is made or dropped while a battle runs. All of them stay below the top of
@@ -26,21 +26,29 @@ export const MARK_GLOW = 1.8;
 const STATUSES: readonly StatusKind[] = ['stun', 'blind', 'tied', 'poison', 'burn', 'haste'];
 
 const C = {
-  sand: '#E3C58A',
-  sandDark: '#B98E52',
-  sandLight: '#F5E2B8',
+  // Tan, not cream: under the sun a pale sand reads as white boxes.
+  sand: '#C98F45',
+  sandDark: '#A06A2C',
+  sandLight: '#DFAE62',
   rope: '#A8743E',
   ropeDark: '#6B4423',
   ropeLight: '#C99560',
 } as const;
 
+/** Toxic green-yellow: brighter and yellower than any grass or leaf, so poison never reads as a plant. */
+export const POISON = { bright: '#C8F22E', lime: '#A6E01E', pale: '#EEFF8A' } as const;
+
 const STARS = 3;
-const STAR_RADIUS = 0.38;
+/** Edge of one cell of a stun star, in tiles: the star is five cells across with its outline. */
+const STAR_CELL = 0.085;
+const STAR_RADIUS = 0.42;
+/** Edge of a blind sand block, in tiles. */
+const SAND_BLOCK = 0.24;
 const BUBBLES = 4;
 const FLAMES = 6;
-const STREAKS = 3;
+const STREAKS = 5;
 const GRAINS = 3;
-const CLUMPS = 7;
+const CLUMPS = 4;
 
 interface Mark {
   status: StatusKind;
@@ -65,26 +73,45 @@ function cube(edge: number, color: string, top?: string): BufferGeometry {
   return b.build();
 }
 
+/** The dark outline round the stars and the sand, so they show on yellow and gold units too. */
+const OUTLINE = PALETTE.outline;
+
 /**
- * A five-cell voxel star in the XY plane (a plus with a bright core), with a dark-orange
- * border behind it: the glow washes yellow towards white, and the border keeps the shape.
+ * A five-cell voxel star in the XY plane (a plus with a bright core) set into a dark plate
+ * one cell wider all round: the glow washes yellow towards white, and the outline keeps the
+ * shape on any unit, a yellow Kernel-pult or a gold level 5 included.
  */
 function star(): BufferGeometry {
   const b = new BoxBatch();
-  const c = 0.05;
+  const c = STAR_CELL;
   const lit = (i: number, j: number): boolean => (i === 0 && Math.abs(j) <= 1) || (j === 0 && Math.abs(i) <= 1);
   for (let i = -2; i <= 2; i++) {
     for (let j = -2; j <= 2; j++) {
       if (lit(i, j)) {
-        b.box(i * c - c / 2, j * c - c / 2, -c / 2, c, c, c, i === 0 && j === 0 ? '#FFF6B8' : PALETTE.stunStars);
+        // Standing proud of the plate on both faces.
+        b.box(i * c - c / 2, j * c - c / 2, -c, c, c, 2 * c, i === 0 && j === 0 ? '#FFF6B8' : PALETTE.stunStars);
         continue;
       }
       let edge = false;
-      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) if (Math.abs(di) + Math.abs(dj) === 1 && lit(i + di, j + dj)) edge = true;
-      if (edge) b.box(i * c - c / 2, j * c - c / 2, -c, c, c, c, '#B9600A');
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) if ((di !== 0 || dj !== 0) && lit(i + di, j + dj)) edge = true;
+      if (edge) b.box(i * c - c / 2, j * c - c / 2, -c / 2, c, c, c, OUTLINE);
     }
   }
   return b.build();
+}
+
+/**
+ * A box of edge `s` centred on (x, y, z) drawn with a dark outline: a dark core, and the
+ * coloured faces set into it a little proud, leaving a rim of `e` round every face.
+ */
+function outlinedBox(b: BoxBatch, x: number, y: number, z: number, s: number, e: number, side: string, top: string): void {
+  const h = s / 2;
+  b.box(x - h, y - h, z - h, s, s, s, OUTLINE);
+  const i = s - 2 * e;
+  const o = s + 0.004;
+  b.box(x - i / 2, y - i / 2, z - o / 2, i, i, o, side, top);
+  b.box(x - o / 2, y - i / 2, z - i / 2, o, i, i, side, top);
+  b.box(x - i / 2, y - o / 2, z - i / 2, i, o, i, side, top);
 }
 
 /**
@@ -115,11 +142,10 @@ function steppedRing(r: number, cell: number, h: number, a: string, b2: string, 
   return b.build();
 }
 
-/** A clump of sand: a stepped lump, darker underneath, paler on top. */
+/** A block of sand with a dark outline. */
 function sandClump(): BufferGeometry {
   const b = new BoxBatch();
-  b.box(-0.085, -0.06, -0.085, 0.17, 0.09, 0.17, C.sandDark, C.sand);
-  b.box(-0.055, 0.03, -0.055, 0.11, 0.05, 0.11, C.sand, C.sandLight);
+  outlinedBox(b, 0, 0, 0, SAND_BLOCK, 0.03, C.sand, C.sandLight);
   return b.build();
 }
 
@@ -132,12 +158,16 @@ function knot(): BufferGeometry {
   return b.build();
 }
 
-/** A speed streak: a long thin bar along X with a bright head at its front (−X) end. */
+/**
+ * A short speed streak trailing back (+X) from its origin: three steps, thick at the body
+ * and thinner towards the tail. Painted deep: a glowing colour comes out paler on screen,
+ * and this has to stay red.
+ */
 function streak(): BufferGeometry {
   const b = new BoxBatch();
-  // Painted deep: a glowing colour comes out paler on screen, and this has to stay red.
-  b.box(0, -0.035, -0.035, 0.5, 0.07, 0.07, '#B81E12');
-  b.box(-0.07, -0.045, -0.045, 0.09, 0.09, 0.09, '#E0301C');
+  b.box(0, -0.05, -0.05, 0.09, 0.1, 0.1, '#E0301C');
+  b.box(0.09, -0.037, -0.037, 0.09, 0.075, 0.075, '#C8241A');
+  b.box(0.18, -0.025, -0.025, 0.1, 0.05, 0.05, '#A81A10');
   return b.build();
 }
 
@@ -159,8 +189,8 @@ export class StatusMarks {
       grain: this.keep(cube(0.05, C.sand, C.sandLight)),
       rope: this.keep(steppedRing(0.38, 0.06, 0.06, C.rope, C.ropeDark, C.ropeLight)),
       knot: this.keep(knot()),
-      bubble: this.keep(cube(0.075, PALETTE.poison, '#D4FF8A')),
-      poisonRing: this.keep(steppedRing(0.4, 0.07, 0.03, PALETTE.poison, '#5FA81E')),
+      bubble: this.keep(cube(0.095, POISON.bright, POISON.pale)),
+      poisonRing: this.keep(steppedRing(0.4, 0.08, 0.04, POISON.bright, POISON.lime, POISON.pale)),
       flame: this.keep(flame(1)),
       flameLight: this.keep(flame(0.75)),
       streak: this.keep(streak()),
@@ -266,8 +296,11 @@ export class StatusMarks {
     for (let i = this.live.length - 1; i >= 0; i--) this.release(this.live[i] as Mark);
   }
 
-  /** Frees the shapes and materials. Take `group` out of the scene first. */
+  /** Takes every mark away, takes `group` out of the scene, and frees the shapes and materials. */
   dispose(): void {
+    this.clear();
+    this.group.removeFromParent();
+    this.group.clear();
     for (const geometry of this.geometries) geometry.dispose();
     this.plastic.dispose();
     this.glow.dispose();
@@ -300,30 +333,37 @@ export class StatusMarks {
     (this.pools.get(mark.status) as Mark[]).push(mark);
   }
 
-  /** Puts a mark on its unit and poses its pieces for its time. */
+  /**
+   * Puts a mark on its unit and poses its pieces for its time. Called for every live mark
+   * every frame, so it only writes into the pieces it has: indexed loops, no closures or
+   * new arrays.
+   */
   private place(mark: Mark): void {
-    const { root, pieces, height: h, time: t } = mark;
-    mark.anchor?.getWorldPosition(here);
-    root.position.copy(here);
+    const pieces = mark.pieces;
+    const h = mark.height;
+    const t = mark.time;
+    if (mark.anchor) mark.anchor.getWorldPosition(here);
+    mark.root.position.copy(here);
     switch (mark.status) {
       case 'stun': {
-        // Round the top of the head, the stars bobbing out of step.
+        // Round the top of the head, each star facing out so the ring shows its faces.
         const spin = t * 3.4;
-        pieces.forEach((p, i) => {
+        for (let i = 0; i < STARS; i++) {
+          const p = pieces[i] as Mesh;
           const a = spin + (i / STARS) * Math.PI * 2;
-          p.position.set(Math.cos(a) * STAR_RADIUS, h - 0.045 + Math.sin(t * 6 + i * 2) * 0.01, Math.sin(a) * STAR_RADIUS);
-          // Each star faces out from the head, so the ring shows its faces, and twinkles.
+          p.position.set(Math.cos(a) * STAR_RADIUS, h - 0.14 + Math.sin(t * 6 + i * 2) * 0.01, Math.sin(a) * STAR_RADIUS);
           p.rotation.set(0, Math.PI / 2 - a, 0);
-          p.scale.setScalar(0.85 + 0.15 * Math.round((0.5 + 0.5 * Math.sin(t * 9 + i * 2)) * 2) / 2);
-        });
+          // A twinkle in two steps.
+          p.scale.setScalar(0.88 + 0.12 * Math.round(0.5 + 0.5 * Math.sin(t * 9 + i * 2)));
+        }
         break;
       }
       case 'blind': {
-        // A little sandstorm round the head at eye height: clumps of sand whirling round it,
-        // bunched on the side the camera sees, and grains trickling down out of it.
-        const eyes = Math.min(h * 0.72, h - 0.16);
-        const reach = 0.36 * Math.min(1.25, Math.max(0.9, h));
-        const whirl = t * 2.2;
+        // A sandstorm round the head at eye height: outlined blocks of sand whirling round
+        // it, and grains trickling down out of it.
+        const eyes = Math.min(h * 0.72, h - 0.24);
+        const reach = 0.4 * Math.min(1.25, Math.max(0.9, h));
+        const whirl = t * 1.8;
         for (let i = 0; i < CLUMPS; i++) {
           const p = pieces[i] as Mesh;
           const a = whirl + (i / CLUMPS) * Math.PI * 2;
@@ -335,13 +375,15 @@ export class StatusMarks {
           const p = pieces[CLUMPS + i] as Mesh;
           const u = (t * 1.4 + i / GRAINS) % 1;
           const a = i * 2.1 + 0.6;
-          p.position.set(Math.cos(a) * reach, eyes - 0.06 - u * 0.32, Math.sin(a) * reach);
+          p.position.set(Math.cos(a) * reach, eyes - 0.14 - u * 0.3, Math.sin(a) * reach);
           p.scale.setScalar(1 - 0.5 * u);
         }
         break;
       }
       case 'tied': {
-        const [low, high, tie] = pieces as [Mesh, Mesh, Mesh];
+        const low = pieces[0] as Mesh;
+        const high = pieces[1] as Mesh;
+        const tie = pieces[2] as Mesh;
         // The rope pulls tight now and then, as if the unit were straining against it.
         const squeeze = 1 - 0.05 * Math.max(0, Math.sin(t * 4));
         low.position.set(0, h * 0.3, 0);
@@ -352,39 +394,44 @@ export class StatusMarks {
         break;
       }
       case 'poison': {
-        const [ring, ...bubbles] = pieces as [Mesh, ...Mesh[]];
-        const pulse = 1 + 0.12 * Math.sin(t * 5);
+        const ring = pieces[0] as Mesh;
+        // The ring pulses in steps, never smoothly.
+        const pulse = 1 + 0.08 * Math.round(Math.sin(t * 5) * 2);
         ring.position.set(0, 0.03, 0);
         ring.scale.set(pulse, 1, pulse);
-        bubbles.forEach((p, i) => {
+        for (let i = 0; i < BUBBLES; i++) {
+          const p = pieces[1 + i] as Mesh;
           // Each bubble rises from the body, swells and pops at the top, then starts again.
           const u = (t * 0.75 + i / BUBBLES) % 1;
           const a = i * 2.4 + t * 0.6;
-          p.position.set(Math.cos(a) * 0.24, h * (0.2 + 0.72 * u), Math.sin(a) * 0.24);
-          p.scale.setScalar(0.6 + 0.8 * u * (u < 0.9 ? 1 : (1 - u) * 10));
-        });
+          p.position.set(Math.cos(a) * 0.26, h * (0.15 + 0.75 * u), Math.sin(a) * 0.26);
+          p.scale.setScalar(0.7 + 0.7 * u * (u < 0.9 ? 1 : (1 - u) * 10));
+        }
         break;
       }
       case 'burn': {
-        pieces.forEach((p, i) => {
+        const grow = Math.max(1, h);
+        const r = 0.27 * grow;
+        for (let i = 0; i < FLAMES; i++) {
+          const p = pieces[i] as Mesh;
           // Each flame leaps up, flickering in stepped jumps, and dies back down.
           const u = (t * 1.8 + i * 0.37) % 1;
           const a = i * 2.4 + 0.4;
           const flicker = Math.round((0.75 + 0.35 * Math.sin(t * 17 + i * 2)) * 4) / 4;
-          const r = 0.27 * Math.max(1, h);
           p.position.set(Math.cos(a) * r, h * (0.08 + 0.1 * i), Math.sin(a) * r);
-          p.scale.x = p.scale.z = Math.max(1, h);
-          p.scale.y = Math.max(1, h) * Math.max(0.2, flicker * (1 - 0.6 * u));
-        });
+          p.scale.set(grow, grow * Math.max(0.2, flicker * (1 - 0.6 * u)), grow);
+        }
         break;
       }
       case 'haste': {
-        pieces.forEach((p, i) => {
-          // Streaks stream out behind the unit and thin as they go.
-          const u = (t * 2.6 + i * 0.41) % 1;
-          p.position.set(0.32 + u * 0.3, h * (0.2 + 0.25 * i), (i - 1) * 0.2);
-          p.scale.set(1 - 0.6 * u, 1, 1);
-        });
+        // Short streaks trailing from the back of the body, feet to shoulders, each
+        // stretching and snapping back in whole steps as the zombie races.
+        for (let i = 0; i < STREAKS; i++) {
+          const p = pieces[i] as Mesh;
+          const step = Math.floor((t * 8 + i * 1.7) % 4);
+          p.position.set(0.2, h * (0.07 + 0.14 * i), ((i % 3) - 1) * 0.12);
+          p.scale.set(0.7 + 0.25 * step, 1, 1);
+        }
         break;
       }
     }

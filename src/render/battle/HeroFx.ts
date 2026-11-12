@@ -121,12 +121,15 @@ export class HeroFx {
         bolts: [],
       };
       if (faction === 'plants') {
-        const mower = this.mowers.find((m) => !m.visible) ?? null;
+        const mower = idle(this.mowers);
         show.mower = mower;
         if (mower) {
           mower.visible = true;
           mower.position.set(MOWER_FROM, 0, show.z);
-          show.wheels = mower.children.filter((c): c is Mesh => c.name === 'mower-wheel');
+          for (let i = 0; i < mower.children.length; i++) {
+            const c = mower.children[i] as Object3D;
+            if (c.name === 'mower-wheel') show.wheels.push(c as Mesh);
+          }
         }
       } else {
         // From the zombies' end towards the plants', a bone every BONE_SPACING tiles.
@@ -160,9 +163,13 @@ export class HeroFx {
     for (let i = this.shows.length - 1; i >= 0; i--) this.finish(this.shows[i] as Show);
   }
 
-  /** The props' shapes belong to `props.ts`; nothing here needs freeing beyond leaving the scene. */
+  /**
+   * Ends every show (their promises resolve) and takes `group` out of the scene. The props'
+   * shapes and materials belong to `props.ts`, so nothing else here needs freeing.
+   */
   dispose(): void {
     this.clear();
+    this.group.removeFromParent();
     this.group.clear();
   }
 
@@ -202,7 +209,7 @@ export class HeroFx {
       mower.position.set(x, bounce, show.z);
       mower.rotation.z = Math.sin(show.time * 31) * 0.03;
       const speed = (MOWER_TO - MOWER_FROM) / MOWER_SECONDS;
-      for (const wheel of show.wheels) wheel.rotation.z -= (speed / 0.15) * dt;
+      for (let i = 0; i < show.wheels.length; i++) (show.wheels[i] as Mesh).rotation.z -= (speed / 0.15) * dt;
       // Clippings out of the chute on the camera side and from under the deck, while on the lawn.
       if (front > 0 && x < LAWN_COLS + 0.5) {
         show.clippings += dt * 60;
@@ -217,11 +224,12 @@ export class HeroFx {
   }
 
   private stepStorm(show: Show): void {
-    for (const bone of show.bones) {
+    for (let i = 0; i < show.bones.length; i++) {
+      const bone = show.bones[i] as Show['bones'][number];
       const t = (show.time - bone.at) / BONE_FALL_SECONDS;
       if (t < 0 || bone.landed) continue;
       if (!bone.object) {
-        bone.object = this.bonePool.find((b) => !b.visible) ?? null;
+        bone.object = idle(this.bonePool);
         if (bone.object) bone.object.visible = true;
       }
       if (t >= 1) {
@@ -241,25 +249,29 @@ export class HeroFx {
         o.rotation.set(t * 5 * bone.spin, 0.4 * bone.spin, t * 7 + bone.spin);
       }
     }
-    for (const bolt of show.bolts) {
+    for (let i = 0; i < show.bolts.length; i++) {
+      const bolt = show.bolts[i] as Show['bolts'][number];
       const t = (show.time - bolt.at) / BOLT_SECONDS;
       if (t < 0) continue;
       if (!bolt.struck) {
         bolt.struck = true;
-        bolt.object = this.boltPool.find((b) => !b.visible) ?? null;
+        bolt.object = idle(this.boltPool);
         if (bolt.object) {
           bolt.object.visible = true;
+          // A long frame can end a strike mid-flicker; a bolt always starts whole.
+          bolt.object.scale.set(1, 1, 1);
           bolt.object.position.set(bolt.x, 0, show.z);
           bolt.object.rotation.y = bolt.x * 1.7;
         }
         at.set(bolt.x, 0.1, show.z);
         this.effects.spark(at);
-        this.effects.ring(at, hex(PALETTE.crystalGlow), 0.6);
+        this.effects.ring(at, hex(PALETTE.crystalGlow), 0.75, true);
         this.onFeel({ shake: 0.25 });
       }
       if (bolt.object) {
         if (t >= 1) {
           bolt.object.visible = false;
+          bolt.object.scale.set(1, 1, 1);
           bolt.object = null;
         } else {
           // A flicker: the bolt blinks off for a frame in the middle of its strike.
@@ -271,20 +283,30 @@ export class HeroFx {
   }
 
   private finish(show: Show): void {
-    const i = this.shows.indexOf(show);
-    if (i < 0) return;
-    this.shows.splice(i, 1);
+    const index = this.shows.indexOf(show);
+    if (index < 0) return;
+    this.shows.splice(index, 1);
     if (show.mower) {
       show.mower.visible = false;
       show.mower.position.set(0, 0, 0);
       show.mower.rotation.set(0, 0, 0);
     }
-    for (const bone of show.bones) if (bone.object) bone.object.visible = false;
-    for (const bolt of show.bolts) {
+    for (let i = 0; i < show.bones.length; i++) {
+      const bone = show.bones[i] as Show['bones'][number];
+      if (bone.object) bone.object.visible = false;
+    }
+    for (let i = 0; i < show.bolts.length; i++) {
+      const bolt = show.bolts[i] as Show['bolts'][number];
       if (!bolt.object) continue;
       bolt.object.visible = false;
       bolt.object.scale.set(1, 1, 1);
     }
     show.resolve();
   }
+}
+
+/** The first hidden object in `pool`, or null when every one is in use. */
+function idle(pool: Object3D[]): Object3D | null {
+  for (let i = 0; i < pool.length; i++) if (!(pool[i] as Object3D).visible) return pool[i] as Object3D;
+  return null;
 }

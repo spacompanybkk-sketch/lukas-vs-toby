@@ -84,7 +84,9 @@ describe('projectiles', () => {
     for (const kind of KINDS) {
       const longest = Math.max(...extent(makeProjectile(kind)));
       expect(longest, kind).toBeGreaterThanOrEqual(0.2);
-      expect(longest, kind).toBeCloseTo(PROJECTILE_SIZE[kind], 1);
+      // At its stated size at the least (float slack only), and not much over it.
+      expect(longest, kind).toBeGreaterThanOrEqual(PROJECTILE_SIZE[kind] - 1e-6);
+      expect(longest, kind).toBeLessThanOrEqual(PROJECTILE_SIZE[kind] + 0.06);
     }
   });
 

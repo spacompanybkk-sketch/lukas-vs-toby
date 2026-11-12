@@ -118,10 +118,23 @@ interface Job {
   stop(): void;
 }
 
+/** The largest area a spell covers: a 3 × 3. Pools are sized from it. */
+const MAX_AREA = 9;
+const VINES_PER_TILE = 6;
+const FOG_PER_TILE = 7;
+/** Each pool holds enough for this many casts of its spell at once, at the largest area. */
+const CASTS = 2;
+
 /** Objects of one kind, built up front and lent out. */
 class Pool {
   private readonly free: Object3D[] = [];
-  constructor(group: Group, count: number, make: () => Object3D) {
+  private warned = false;
+  constructor(
+    group: Group,
+    count: number,
+    make: () => Object3D,
+    private readonly name: string,
+  ) {
     for (let i = 0; i < count; i++) {
       const o = make();
       o.visible = false;
@@ -131,8 +144,15 @@ class Pool {
       this.free.push(o);
     }
   }
+  /** An object, or null with a warning (once) when every one is out: never a silent gap. */
   take(): Object3D | null {
-    return this.free.pop() ?? null;
+    const o = this.free.pop();
+    if (o) return o;
+    if (!this.warned) {
+      this.warned = true;
+      console.warn(`SpellFx: the ${this.name} pool ran out; a spell is showing less than it should.`);
+    }
+    return null;
   }
   give(o: Object3D | null): void {
     if (!o) return;
@@ -188,6 +208,10 @@ function vineMatGeometry(): BufferGeometry {
   return b.build();
 }
 
+/** Tokens in a Sun Shower or a Brain Feast, and gravestones in a Grave Rise. */
+const SHOWER_DROPS = 8;
+const GRAVES = 3;
+
 const at = new Vector3();
 const velocity = new Vector3();
 
@@ -201,6 +225,7 @@ export class SpellFx {
   private readonly scorchShape = scorchGeometry();
   private readonly scorchMaterial = new MeshStandardMaterial(MATTE_PLASTIC);
   private readonly vineMatShape = vineMatGeometry();
+  private readonly vineMatMaterial = new MeshStandardMaterial(MATTE_PLASTIC);
   private readonly marks: TileMark[] = [];
   private readonly rockStages: BufferGeometry[];
   private readonly rocksByTile = new Map<number, { mesh: Mesh; stage: RockStage; job: Job | null }>();
@@ -223,34 +248,36 @@ export class SpellFx {
     this.group.name = 'spell-fx';
     const g = this.group;
     this.rockStages = ([0, 1, 2] as const).map((s) => (makeRock(s) as Mesh).geometry);
-    this.bolts = new Pool(g, 8, () => makeBolt('plants'));
-    this.scorches = new Pool(g, 16, () => {
+    this.bolts = new Pool(g, MAX_AREA * CASTS, () => makeBolt('plants'), 'bolt');
+    // Scorches: the Thunderbolt's and the meteor's at once.
+    this.scorches = new Pool(g, MAX_AREA * CASTS * 2, () => {
       const m = new Mesh(this.scorchShape, this.scorchMaterial);
       m.name = 'scorch';
       m.receiveShadow = true;
       return m;
-    });
-    this.vines = new Pool(g, 64, makeVine);
-    this.vineMats = new Pool(g, 12, () => {
-      const m = new Mesh(this.vineMatShape, this.scorchMaterial);
+    }, 'scorch');
+    this.vines = new Pool(g, MAX_AREA * VINES_PER_TILE * CASTS, makeVine, 'vine');
+    this.vineMats = new Pool(g, MAX_AREA * CASTS, () => {
+      const m = new Mesh(this.vineMatShape, this.vineMatMaterial);
       m.name = 'vine-mat';
       m.receiveShadow = true;
       return m;
-    });
-    this.suns = new Pool(g, 12, () => makeToken('sun'));
-    this.brains = new Pool(g, 12, () => makeToken('brain'));
-    this.rockPool = new Pool(g, 10, () => {
+    }, 'vine mat');
+    this.suns = new Pool(g, SHOWER_DROPS * CASTS, () => makeToken('sun'), 'sun');
+    this.brains = new Pool(g, SHOWER_DROPS * CASTS, () => makeToken('brain'), 'brain');
+    // One rock per plant tile.
+    this.rockPool = new Pool(g, 40, () => {
       const m = makeRock(0) as Mesh;
       m.name = 'spell-rock';
       return m;
-    });
-    this.meteors = new Pool(g, 3, () => {
+    }, 'rock');
+    this.meteors = new Pool(g, CASTS, () => {
       const m = makeMeteor();
       m.scale.setScalar(1.3);
       return m;
-    });
-    this.fog = new Pool(g, 60, makeFogBlock);
-    this.graves = new Pool(g, 9, makeGravestone);
+    }, 'meteor');
+    this.fog = new Pool(g, MAX_AREA * FOG_PER_TILE * CASTS, makeFogBlock, 'fog');
+    this.graves = new Pool(g, GRAVES * CASTS, makeGravestone, 'gravestone');
     for (let i = 0; i < 9; i++) {
       const mark = new TileMark('spell-area', 1, 1);
       this.marks.push(mark);
@@ -280,11 +307,12 @@ export class SpellFx {
    * stripes for `bad`; `null` clears the highlight.
    */
   showArea(tiles: readonly Tile[] | null, side: Faction = 'plants', state: 'ok' | 'bad' = 'ok'): void {
-    this.marks.forEach((mark, i) => {
+    for (let i = 0; i < this.marks.length; i++) {
+      const mark = this.marks[i] as TileMark;
       const tile = tiles?.[i];
       if (tile) mark.show(tile.col + 0.5, tile.lane + 0.5, state, side);
       else mark.hide();
-    });
+    }
   }
 
   /** The rock on (`lane`, `col`) has `fraction` of its health left: it cracks as it drops. */
@@ -324,7 +352,7 @@ export class SpellFx {
     // The aimed area breathes, as the placement highlight does.
     this.pulse += dt;
     const p = 0.5 + 0.5 * Math.sin(this.pulse * 5.5);
-    for (const mark of this.marks) mark.pulse(p);
+    for (let i = 0; i < this.marks.length; i++) (this.marks[i] as TileMark).pulse(p);
   }
 
   /** Ends every show, takes every rock away and clears the highlight (a scene being reset). */
@@ -339,14 +367,20 @@ export class SpellFx {
     this.showArea(null);
   }
 
-  /** Frees what this class made; the props' shapes belong to `props.ts`. Take `group` out first. */
+  /**
+   * Stops every show, takes `group` out of the scene, and frees what this class made: the
+   * scorch and vine-mat shapes and materials and the area highlights. The props' shapes
+   * and materials belong to `props.ts`.
+   */
   dispose(): void {
     this.clear();
+    this.group.removeFromParent();
+    this.group.clear();
     this.scorchShape.dispose();
     this.vineMatShape.dispose();
     this.scorchMaterial.dispose();
+    this.vineMatMaterial.dispose();
     for (const mark of this.marks) mark.dispose();
-    this.group.clear();
   }
 
   private pulse = 0;
@@ -403,18 +437,24 @@ export class SpellFx {
 
   /** Several jobs as one, finished when all are. */
   private all(parts: Job[]): Job {
-    const done = parts.map(() => false);
+    const done: boolean[] = [];
+    for (let i = 0; i < parts.length; i++) done.push(false);
     return {
       step: (dt) => {
-        parts.forEach((p, i) => {
-          if (!done[i] && p.step(dt)) {
+        let finished = true;
+        for (let i = 0; i < parts.length; i++) {
+          if (done[i]) continue;
+          const p = parts[i] as Job;
+          if (p.step(dt)) {
             done[i] = true;
             p.stop();
-          }
-        });
-        return done.every(Boolean);
+          } else finished = false;
+        }
+        return finished;
       },
-      stop: () => parts.forEach((p, i) => !done[i] && p.stop()),
+      stop: () => {
+        for (let i = 0; i < parts.length; i++) if (!done[i]) (parts[i] as Job).stop();
+      },
     };
   }
 
@@ -446,7 +486,7 @@ export class SpellFx {
           }
           at.set(x, 0.1, z);
           this.effects.spark(at);
-          this.effects.ring(at, hex(PALETTE.stunStars), 0.55);
+          this.effects.ring(at, hex(PALETTE.stunStars), 0.7, true);
           this.effects.burst(at, C.bolt, 10, 3);
           this.onFeel({ shake: i === 0 ? 0.45 : 0.2 });
           const scorch = this.scorch(tile, SPELL_SECONDS.thunderbolt - i * 0.07);
@@ -484,7 +524,7 @@ export class SpellFx {
       }
       // A ring of vines round the middle of the tile, each hooked over towards it, so
       // whatever stands there is caught in the middle of them.
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < VINES_PER_TILE; i++) {
         const o = this.vines.take();
         if (!o) continue;
         const a = (i / 6) * Math.PI * 2 + hash2(t, tile.col, 1) * 1.2;
@@ -504,18 +544,19 @@ export class SpellFx {
       step: (dt) => {
         time += dt;
         const wither = Math.min(1, Math.max(0, (seconds - time) / 0.3));
-        for (const { o, delay, sway, lean } of placed) {
-          const s = Math.max(0.001, Math.min(easeOutBack((time - delay) / 0.35), wither));
+        for (let i = 0; i < placed.length; i++) {
+          const v = placed[i] as (typeof placed)[number];
+          const s = Math.max(0.001, Math.min(easeOutBack((time - v.delay) / 0.35), wither));
           // They spring up, then sway a little as they squeeze.
-          o.scale.set(1.4 * s, 1.7 * s, 1.4 * s);
-          o.rotation.z = lean + Math.sin(time * 2.4 + sway) * 0.08;
+          v.o.scale.set(1.4 * s, 1.7 * s, 1.4 * s);
+          v.o.rotation.z = v.lean + Math.sin(time * 2.4 + v.sway) * 0.08;
         }
-        for (const mat of mats) mat.scale.setScalar(Math.max(0.001, Math.min(1, time / 0.25, wither)));
+        for (let i = 0; i < mats.length; i++) (mats[i] as Object3D).scale.setScalar(Math.max(0.001, Math.min(1, time / 0.25, wither)));
         return time >= seconds;
       },
       stop: () => {
-        placed.forEach(({ o }) => this.vines.give(o));
-        mats.forEach((m) => this.vineMats.give(m));
+        for (let i = 0; i < placed.length; i++) this.vines.give((placed[i] as (typeof placed)[number]).o);
+        for (let i = 0; i < mats.length; i++) this.vineMats.give(mats[i] as Object3D);
       },
     };
   }
@@ -523,7 +564,7 @@ export class SpellFx {
   /** Tokens falling across columns `x0` to `x1` of every lane: the two income spells. */
   private shower(pool: Pool, x0: number, x1: number, color: string, text: string): Job {
     const drops: { o: Object3D | null; x: number; z: number; delay: number }[] = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < SHOWER_DROPS; i++) {
       const x = x0 + ((i * 0.618) % 1) * (x1 - x0);
       const z = 0.5 + ((i * 3) % 5);
       drops.push({ o: null, x, z, delay: i * 0.1 });
@@ -534,7 +575,8 @@ export class SpellFx {
     return {
       step: (dt) => {
         time += dt;
-        for (const d of drops) {
+        for (let i = 0; i < drops.length; i++) {
+          const d = drops[i] as (typeof drops)[number];
           const t = (time - d.delay) / FALL;
           if (t < 0) continue;
           if (!d.o && t < 1.5) {
@@ -558,7 +600,9 @@ export class SpellFx {
         }
         return time >= SPELL_SECONDS.sunShower;
       },
-      stop: () => drops.forEach((d) => pool.give(d.o)),
+      stop: () => {
+        for (let i = 0; i < drops.length; i++) pool.give((drops[i] as (typeof drops)[number]).o);
+      },
     };
   }
 
@@ -583,7 +627,10 @@ export class SpellFx {
         }
         if (!healed && time >= 0.35) {
           healed = true;
-          for (const tile of tiles) this.effects.healPlus(at.set(tile.col + 0.5, 0.5, tile.lane + 0.5));
+          for (let i = 0; i < tiles.length; i++) {
+            const tile = tiles[i] as Tile;
+            this.effects.healPlus(at.set(tile.col + 0.5, 0.5, tile.lane + 0.5));
+          }
         }
         return time >= SPELL_SECONDS.healingRain;
       },
@@ -655,7 +702,9 @@ export class SpellFx {
             this.meteors.give(meteor);
             this.effects.explosion(at.set(cx, 0, cz), 1.3);
             this.onFeel({ shake: 0.9, hitStop: 0.06 });
-            landed = this.all(tiles.map((tile) => this.scorch(tile, SPELL_SECONDS.meteor - FALL)));
+            const scorches: Job[] = [];
+            for (let i = 0; i < tiles.length; i++) scorches.push(this.scorch(tiles[i] as Tile, SPELL_SECONDS.meteor - FALL));
+            landed = this.all(scorches);
           }
           return false;
         }
@@ -672,7 +721,7 @@ export class SpellFx {
     const seconds = SPELL_SECONDS.fog;
     const blocks: { o: Object3D; x: number; y: number; z: number; delay: number; drift: number }[] = [];
     tiles.forEach((tile, t) => {
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < FOG_PER_TILE; i++) {
         const o = this.fog.take();
         if (!o) continue;
         // Blocks heaped in two layers over the tile, the lower ones bigger, offset per tile.
@@ -688,7 +737,8 @@ export class SpellFx {
     return {
       step: (dt) => {
         time += dt;
-        for (const b of blocks) {
+        for (let i = 0; i < blocks.length; i++) {
+          const b = blocks[i] as (typeof blocks)[number];
           const grow = easeOutBack((time - b.delay) / 0.4);
           const fade = Math.min(1, Math.max(0, (seconds - time - b.delay * 0.5) / 0.4));
           const s = Math.max(0.001, Math.min(grow, fade)) * (b.y < 0.6 ? 1.15 : 0.9);
@@ -699,14 +749,16 @@ export class SpellFx {
         }
         return time >= seconds;
       },
-      stop: () => blocks.forEach(({ o }) => this.fog.give(o)),
+      stop: () => {
+        for (let i = 0; i < blocks.length; i++) this.fog.give((blocks[i] as (typeof blocks)[number]).o);
+      },
     };
   }
 
   private frenzy(tiles: Tile[]): Job {
     const cx = tiles.reduce((s, t) => s + t.col + 0.5, 0) / Math.max(1, tiles.length);
     const cz = tiles.reduce((s, t) => s + t.lane + 0.5, 0) / Math.max(1, tiles.length);
-    this.effects.ring(at.set(cx, 0, cz), hex(PALETTE.speedRed), 1.6);
+    this.effects.ring(at.set(cx, 0, cz), hex(PALETTE.speedRed), 1.6, true);
     let time = 0;
     let owed = 0;
     let n = 0;
@@ -716,7 +768,7 @@ export class SpellFx {
         time += dt;
         if (!second && time >= 0.25) {
           second = true;
-          this.effects.ring(at.set(cx, 0, cz), hex(PALETTE.speedRed), 1.2);
+          this.effects.ring(at.set(cx, 0, cz), hex(PALETTE.speedRed), 1.2, true);
         }
         // Red speed sparks dash across the area towards the plants.
         if (time < 0.7 && tiles.length) {
@@ -757,7 +809,8 @@ export class SpellFx {
     return {
       step: (dt) => {
         time += dt;
-        for (const s of stones) {
+        for (let i = 0; i < stones.length; i++) {
+          const s = stones[i] as (typeof stones)[number];
           const t = time - s.delay;
           if (!s.o) continue;
           // Up out of the soil, a wobble, then each bursts into stone as its minion claws up.
@@ -774,7 +827,9 @@ export class SpellFx {
         }
         return time >= SPELL_SECONDS.graveRise;
       },
-      stop: () => stones.forEach((s) => this.graves.give(s.o)),
+      stop: () => {
+        for (let i = 0; i < stones.length; i++) this.graves.give((stones[i] as (typeof stones)[number]).o);
+      },
     };
   }
 }
