@@ -449,7 +449,7 @@ describe('BattleController spells', () => {
     const c = make();
     const keys = c.match.state.players.plants.spells.map((x) => x.key);
     expect(c.hud.spells.value).toEqual(keys.map((key) => ({ key, ready: false, fraction: 0 })));
-    const half = seconds(BALANCE.spells[keys[0] as SpellKey].firstReady) / 2; // every spell has the same first wait
+    const half = seconds(BALANCE.spells[keys[0] as SpellKey].firstReady) / 2; // every plant spell has the same first wait (45 s)
     for (let i = 0; i < half; i++) c.step();
     expect(c.hud.spells.value[0]?.fraction).toBeCloseTo(0.5, 9);
     const before = c.hud.spells.value;
