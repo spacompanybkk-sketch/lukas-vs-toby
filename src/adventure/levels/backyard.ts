@@ -83,7 +83,8 @@ const PLANTS: LevelDef[] = [
     spells: true, unlocks: 'kernelPult',
   },
   {
-    // Tests: everything against the Medium computer.
+    // Tests: everything against the Medium computer's choices - on a quarter of the zombies' usual
+    // income (×0.25), so it plays well but sends little.
     ...base('p1-7', 7), side: 'plants', kind: 'battle',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
     baseHp: { zombies: 3000 },
@@ -153,7 +154,8 @@ const ZOMBIES: LevelDef[] = [
     spells: true, unlocks: 'skeletonArcher',
   },
   {
-    // Tests: everything against the Medium computer.
+    // Tests: everything against the Medium computer's choices - on ×0.4 of the plants' income and a
+    // 2800 base, so it plays well but builds slowly.
     ...base('z1-7', 7), side: 'zombies', kind: 'battle',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'],
     baseHp: { plants: 2800 },
