@@ -118,6 +118,9 @@ export type BossPattern =
  * A boss's numbers: a unit's (`hp`, `speed`, a bite, …; `recharge` is a placeholder nothing reads)
  * and its patterns, plus:
  * - `maxStunSeconds`: a stun on it lasts at most this long (it cannot be tied or blinded at all);
+ * - `stunFalloff`, `stunWindowSeconds`: stun resistance. Each stun in the last `stunWindowSeconds`
+ *   takes `stunFalloff` of `maxStunSeconds` off the next one (0.5: the second 0.5 s, the third
+ *   none), so several Kernel-pults cannot keep it stunned (and its patterns frozen);
  * - `hitCap`: a hero power or a blast (Thunderbolt, Meteor, a mine, a Cherry, a Walnut) takes at
  *   most this share of its max health per hit;
  * - `col`: a boss that stands still stands on this column's middle (the Elder Oak); a walker
@@ -127,7 +130,7 @@ export type BossPattern =
  */
 export type BossStats = UnitStats & {
   patterns: readonly BossPattern[];
-  maxStunSeconds: number; hitCap: number;
+  maxStunSeconds: number; stunFalloff: number; stunWindowSeconds: number; hitCap: number;
   col?: number; guardFactor?: number;
 };
 
@@ -385,9 +388,9 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   },
   bosses: {
     brainTitan: {
-      recharge: 0, hp: 6000, armor: 0, speed: 0.12,
-      melee: { damage: 120, interval: 1.5, reach: 0.6 },
-      maxStunSeconds: 1, hitCap: 0.1,
+      recharge: 0, hp: 3100, armor: 0, speed: 0.1,
+      melee: { damage: 60, interval: 1.5, reach: 0.6 },
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [
         { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
         { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
@@ -395,8 +398,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       ],
     },
     elderOak: {
-      recharge: 0, hp: 8000, armor: 0, speed: 0,
-      maxStunSeconds: 1, hitCap: 0.1, col: 0, guardFactor: 0.5,
+      recharge: 0, hp: 4000, armor: 0, speed: 0,
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
         { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },

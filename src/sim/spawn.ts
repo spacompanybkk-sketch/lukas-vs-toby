@@ -50,7 +50,7 @@ export function spawnUnit(
     stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0,
     stacks: 0, ownerId: null,
     expires: 0, haste: 0, hasteCarry: 0, hurt: 0,
-    pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0,
+    pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
   };
   s.nextId += 1;
   s.units.push(unit);

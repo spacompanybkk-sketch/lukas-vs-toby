@@ -12,7 +12,8 @@
  *   every 2 s), powers paced as Medium; Marketplace upgrades as the campaign's rewards allow
  *   (`averageUpgrade`: `floor(coins earned so far / 1500)` on his three favourite units).
  * - **expert** (on Normal, no upgrades): the Hard computer's choices. Against the Brain Titan it
- *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane.
+ *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane (the
+ *   average player puts Peashooters there: he shoots at the giant).
  *
  * Every stand-in handles the conveyor (no energy, cards from the belt): it takes the belt card that
  * fits best (the beginner a random one) to a sensible tile or lane. Each is a pure function of the
@@ -295,23 +296,31 @@ function titanLane(match: Match): number {
   return match.state.units.some((u) => u.key === 'brainTitan' && isStanding(u)) ? boss.lane : -1;
 }
 
-/** Lobbing pults in the Titan's lane, as many as `want`: its shield bounces straight shots. */
-function titanAnswer(match: Match, want: number): Command | null {
+/**
+ * Shooters of `card` in the Titan's lane, up to `want` of them (null when there are enough, the
+ * card is not held, or no tile takes one).
+ */
+function titanAnswer(match: Match, card: CardKey, want: number): Command | null {
   const lane = titanLane(match);
-  if (lane < 0 || !match.state.config.cards.plants.includes('kernelPult')) return null;
+  if (lane < 0 || !match.state.config.cards.plants.includes(card)) return null;
   const view = readLawn(match.state)[lane];
   if (view === undefined) return null;
-  const pults = view.plants.filter((p) => p.key === 'kernelPult').length;
-  if (pults >= want) return null;
-  for (const col of sensibleCols(view, 'kernelPult')) {
-    const cmd = placeCommand('plants', 'kernelPult', lane, col);
+  if (view.plants.filter((p) => p.key === card).length >= want) return null;
+  for (const col of sensibleCols(view, card)) {
+    const cmd = placeCommand('plants', card, lane, col);
     if (match.check(cmd) === null) return cmd;
   }
   return null;
 }
 
-/** Kernel-pults the expert keeps in the Titan's lane. */
-export const EXPERT_TITAN_PULTS = 2;
+/**
+ * What each sensible player puts in the Titan's lane: the expert knows its shield bounces straight
+ * shots and plants lobbing Kernel-pults; the average player just shoots at the giant.
+ */
+export const TITAN_ANSWER: Readonly<Record<'average' | 'expert', { card: CardKey; want: number }>> = {
+  expert: { card: 'kernelPult', want: 2 },
+  average: { card: 'peashooter', want: 3 },
+};
 
 /** The average player and the expert: the computer's choices at their pace, plus the belt and the Titan. */
 function createSensible(kind: 'average' | 'expert', side: Faction, seed: number): Bot {
@@ -334,8 +343,8 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number)
         }
         return out;
       }
-      if (kind === 'expert' && side === 'plants' && s.tick % table.thinkEvery === 0) {
-        const answer = titanAnswer(match, EXPERT_TITAN_PULTS);
+      if (side === 'plants' && s.tick % table.thinkEvery === 0) {
+        const answer = titanAnswer(match, TITAN_ANSWER[kind].card, TITAN_ANSWER[kind].want);
         if (answer !== null) {
           const powers = card.think(match).filter((c) => c.type === 'hero' || c.type === 'spell');
           return [...powers, answer];

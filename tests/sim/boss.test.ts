@@ -13,6 +13,7 @@ import { eventsOf, merge, place, remove } from './helpers';
  * Bosses (phase 3, Task 3): the Brain Titan and the Elder Oak. The boss numbers are pinned here (the
  * starting table of the brief), so the level tuning can move `BALANCE.bosses` without touching
  * these rules tests; every other unit's numbers come from the shipped table and are read from it.
+ * Stun resistance is off here (`stunFalloff` 0); its own tests below switch it on.
  */
 function bossBalance(): Balance {
   const b = cloneBalance(BALANCE);
@@ -20,7 +21,7 @@ function bossBalance(): Balance {
     brainTitan: {
       recharge: 0, hp: 6000, armor: 0, speed: 0.12,
       melee: { damage: 120, interval: 1.5, reach: 0.6 },
-      maxStunSeconds: 1, hitCap: 0.1,
+      maxStunSeconds: 1, stunFalloff: 0, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [
         { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
         { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
@@ -29,7 +30,7 @@ function bossBalance(): Balance {
     },
     elderOak: {
       recharge: 0, hp: 8000, armor: 0, speed: 0,
-      maxStunSeconds: 1, hitCap: 0.1, col: 0, guardFactor: 0.5,
+      maxStunSeconds: 1, stunFalloff: 0, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
         { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
@@ -284,6 +285,64 @@ describe('stuns and other statuses on a boss', () => {
     }
     expect(kp.id).toBeGreaterThan(0);
     expect(stuns).toEqual([seconds(1)]);
+  });
+
+  describe('stun resistance (stunFalloff 0.5 in a 10 s window)', () => {
+    const R = ((): Balance => {
+      const b = bossBalance();
+      for (const key of ['brainTitan', 'elderOak'] as const) b.bosses[key] = { ...b.bosses[key], stunFalloff: 0.5, stunWindowSeconds: 10 };
+      return b;
+    })();
+    const stunOf = (m: Match, boss: Unit): number => {
+      const events: SimEvent[] = [];
+      boss.stun = 0;
+      inflictStatus(m.state, R, boss, 'stun', seconds(2), 0, null, events);
+      return boss.stun;
+    };
+
+    it('the first stun 1 s, the second within 10 s 0.5 s, the third none (and nothing reported)', () => {
+      const m = new Match(bossConfig(TITAN), R);
+      m.step();
+      const boss = m.state.units[0]!;
+      expect(stunOf(m, boss)).toBe(seconds(1));
+      expect(stunOf(m, boss)).toBe(seconds(0.5));
+      const events: SimEvent[] = [];
+      boss.stun = 0;
+      inflictStatus(m.state, R, boss, 'stun', seconds(2), 0, null, events);
+      expect(boss.stun).toBe(0);
+      expect(events).toEqual([]);
+      expect(boss.stunFatigue).toBe(seconds(20));
+    });
+
+    it('wears off one tick a step: 10 s after a stun the next is whole again', () => {
+      const m = new Match(bossConfig(TITAN), R);
+      m.step();
+      const boss = m.state.units[0]!;
+      expect(stunOf(m, boss)).toBe(seconds(1));
+      boss.stun = 0;
+      steps(m, seconds(10) - 1);
+      expect(boss.stunFatigue).toBe(1);
+      expect(stunOf(m, boss)).toBe(seconds(0.5));
+      boss.stun = 0;
+      boss.stunFatigue = 0;
+      expect(stunOf(m, boss)).toBe(seconds(1));
+    });
+
+    it('is the shipped rule for both bosses, and other units are stunned as before', () => {
+      for (const key of ['brainTitan', 'elderOak'] as const) {
+        expect(BALANCE.bosses[key].stunFalloff).toBe(0.5);
+        expect(BALANCE.bosses[key].stunWindowSeconds).toBe(10);
+      }
+      const m = new Match(bossConfig(TITAN), R);
+      m.step();
+      const z = spawn(m, 'brainEater', 0, 8);
+      for (let i = 0; i < 3; i++) {
+        z.stun = 0;
+        inflictStatus(m.state, R, z, 'stun', seconds(2), 0, null, []);
+        expect(z.stun).toBe(seconds(2));
+      }
+      expect(z.stunFatigue).toBe(0);
+    });
   });
 
   it.each(['tied', 'blind'] as const)('cannot be %s: nothing happens, nothing is reported', (kind) => {

@@ -124,6 +124,7 @@ export function tickBoss(s: SimState, b: Balance, events: SimEvent[]): void {
 function tickShield(b: Balance, u: Unit, events: SimEvent[]): void {
   if (!isBoss(u.key)) return;
   if (u.shieldLeft > 0) u.shieldLeft -= 1;
+  if (u.stunFatigue > 0) u.stunFatigue -= 1; // stun resistance wears off (see BossStats)
   const shield = shieldOf(b, u.key);
   if (shield === undefined) return;
   let passed = false;

@@ -93,6 +93,7 @@ export function levelConfig(
   return {
     ...base,
     startEnergy,
+    baseHp: { ...base.baseHp, ...def.baseHp },
     cards: {
       [player]: def.cards.filter((k) => held.includes(k)),
       [enemy]: def.opponent === null ? [] : [...def.opponent.cards],

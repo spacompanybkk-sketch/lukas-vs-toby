@@ -4,8 +4,10 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 2238 bytes). Re-pinned in phase 3
- * Task 7a (Free Play) when the setup gained `endless` and the state `wave`, `waveTimer`, `clock` and
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 2254 bytes). Re-pinned in phase 3
+ * Task 8 (levels) when units gained `stunFatigue` (a boss's stun resistance; 8 bytes per unit, after
+ * `phase`), from the code itself - not cross-checked by a second implementation; before that it was
+ * 1176279507 over 2238 bytes, re-pinned in phase 3 Task 7a (Free Play) when the setup gained `endless` and the state `wave`, `waveTimer`, `clock` and
  * `incoming` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
  * JSON of `makeState()`; the same script gives the earlier 2646483390 over 2057 bytes with the new
  * fields left out); before that it was 2646483390 over 2057 bytes, re-pinned in phase 3
@@ -29,7 +31,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 1176279507;
+const GOLDEN_HASH = 3852161195;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -42,13 +44,13 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
-        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0,
+        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
-        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2,
+        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12,
       },
     ],
     projectiles: [
@@ -290,6 +292,7 @@ describe('hashState', () => {
     ['a unit pattern of 0 becoming 1', (s) => { unit(s, 0).pattern = 1; }],
     ['a unit patternTimer', (s) => { unit(s, 1).patternTimer -= 1; }],
     ['a unit shieldLeft', (s) => { unit(s, 1).shieldLeft -= 1; }],
+    ['a unit stunFatigue', (s) => { unit(s, 1).stunFatigue -= 1; }],
     ['a unit phase', (s) => { unit(s, 1).phase = 1; }],
     ['config boss null', (s) => { s.config.boss = null; }],
     ['config boss key', (s) => { s.config.boss!.key = 'brainTitan'; }],

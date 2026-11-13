@@ -53,7 +53,16 @@ export function inflictStatus(
 ): void {
   if (isBoss(u.key)) {
     if (kind === 'tied' || kind === 'blind') return;
-    if (kind === 'stun') ticks = Math.min(ticks, seconds(b.bosses[u.key].maxStunSeconds));
+    if (kind === 'stun') {
+      // Stun resistance: each stun within the window takes `stunFalloff` of the longest stun off.
+      const stats = b.bosses[u.key];
+      const window = seconds(stats.stunWindowSeconds);
+      const recent = window > 0 ? Math.ceil(u.stunFatigue / window) : 0;
+      const share = Math.max(0, 1 - stats.stunFalloff * recent);
+      ticks = Math.min(ticks, Math.floor(seconds(stats.maxStunSeconds) * share));
+      if (ticks <= 0) return;
+      u.stunFatigue += window;
+    }
   }
   applyStatus(s, u, kind, ticks, dps, sourceId, events, quietRefresh);
 }

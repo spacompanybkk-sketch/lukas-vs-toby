@@ -130,7 +130,7 @@ const UNIT: Fields<Unit> = {
   stun: num, blind: num, tied: num, poison: num, poisonDps: num, burn: num, burnDps: num,
   stacks: num, ownerId: nullableNum,
   expires: num, haste: num, hasteCarry: num, hurt: num,
-  pattern: num, patternTimer: num, shieldLeft: num, phase: num,
+  pattern: num, patternTimer: num, shieldLeft: num, phase: num, stunFatigue: num,
 };
 
 const PROJECTILE: Fields<Projectile> = {

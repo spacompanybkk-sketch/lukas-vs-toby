@@ -76,6 +76,7 @@ export interface Unit {
   patternTimer: number; // ticks until that pattern goes off; a slam winds up over its last `windupSeconds`
   shieldLeft: number; // ticks left of its shield phase, 0 = no shield
   phase: number; // how many of its shield health marks it has passed (0 = none yet)
+  stunFatigue: number; // ticks: each stun adds `stunWindowSeconds`, 1 wears off a tick; shortens the next stuns
 }
 
 export interface Projectile {

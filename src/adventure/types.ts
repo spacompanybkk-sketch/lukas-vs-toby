@@ -33,6 +33,11 @@ export interface LevelDef {
   /** Conveyor only. */
   belt: { everySeconds: number; cards: CardKey[] } | null;
   boss: { key: BossKey; lane: number } | null;
+  /**
+   * The bases' health where the level wants other than the balance's (a short tutorial battle, a
+   * small garden). Left out (or a side left out) = the balance default.
+   */
+  baseHp?: Partial<Record<Faction, number>>;
   /** The player's start energy; null = the balance default. */
   startEnergy: number | null;
   spells: boolean; unlocks: CardKey | null; teaches: TutorialStep[] | null;
