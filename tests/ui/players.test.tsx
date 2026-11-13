@@ -140,6 +140,23 @@ describe('Players', () => {
     expect(q('[data-pin-boxes].is-wrong')).toBeNull();
   });
 
+  it('while the list loads, the players this device knows show at once (no blank grid, no offline cue)', async () => {
+    await session.create('Mia', 'sunflower', '111');
+    session.logout();
+    const real = createFakeCloud(db);
+    let answer: (v: unknown) => void = () => {};
+    const slow = new Proxy(real, {
+      get: (t, k) => (k === 'listPlayers' ? () => new Promise((r) => { answer = r; }) : (t as unknown as Record<PropertyKey, unknown>)[k]),
+    });
+    session.configure({ cloud: slow, storage, now: () => clock.t, window: null, document: null });
+    mount();
+    tap('[data-action="play"]');
+    expect(q('[data-player="p03"]')).not.toBeNull();
+    expect(q('[data-offline]')).toBeNull();
+    await act(async () => { answer([{ slot: 'p03', name: 'Mia', picture: 'sunflower' }, { slot: 'p04', name: 'Ben', picture: 'hotTopic' }]); });
+    await see('[data-player="p04"]');
+  });
+
   it('uses the unit portraits once they are drawn', async () => {
     mount({ portraits: { peashooter: 'data:image/png;base64,AAAA' } });
     tap('[data-action="play"]');

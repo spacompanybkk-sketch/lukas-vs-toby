@@ -45,7 +45,8 @@ function useViewport(): { w: number; h: number } {
 
 /** The roster: what this device knows at once, then the cloud's answer (again when back online). */
 function useRoster(): Roster | null {
-  const [roster, setRoster] = useState<Roster | null>(null);
+  // What this device knows at once; the cloud's list replaces it when it comes (up to 5 s).
+  const [roster, setRoster] = useState<Roster | null>(() => session.deviceRoster());
   useEffect(() => {
     let alive = true;
     const load = (): void => {
@@ -118,7 +119,7 @@ function PlayerGrid({ roster, portraits }: { roster: Roster | null; portraits: R
       <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={() => go({ name: 'title' })}>
         <span class="ico ico--back" aria-hidden="true" />
       </button>
-      {roster !== null && !roster.online && (
+      {roster !== null && !roster.online && roster.pending !== true && (
         <span class="players__offline px pal-stone" data-offline aria-label="No connection">
           <PixelIcon art={CLOUD_OFF} class="players__offline-icon" />
         </span>

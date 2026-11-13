@@ -51,6 +51,8 @@ export interface Roster {
   players: RosterEntry[];
   /** No free place for a new player. */
   full: boolean;
+  /** What the device knows while the cloud's answer is still on its way (`deviceRoster`). */
+  pending?: boolean;
 }
 
 export type LoginResult = Save | 'locked' | CloudError;
@@ -130,19 +132,29 @@ export class PlayerSession {
 
   /** The pictures for the Players grid. */
   async roster(): Promise<Roster> {
-    const { cloud, storage } = this.d;
-    const list = await cloud.listPlayers();
-    const online = Array.isArray(list);
-    const players: RosterEntry[] = online
-      ? list.map((p) => ({ ...p, exists: true }))
-      : SLOTS.flatMap((slot) => {
-        const s = loadLocal(slot, storage);
-        return s ? [{ slot, name: s.name, picture: s.picture, exists: true }] : [];
-      });
+    const list = await this.d.cloud.listPlayers();
+    if (!Array.isArray(list)) return this.arrange(this.devicePlayers(), false);
+    return this.arrange(list.map((p) => ({ ...p, exists: true })), true);
+  }
+
+  /** At once, without the cloud: the players this device has a copy of, and the two boys. */
+  deviceRoster(): Roster {
+    return { ...this.arrange(this.devicePlayers(), false), pending: true };
+  }
+
+  private devicePlayers(): RosterEntry[] {
+    return SLOTS.flatMap((slot) => {
+      const s = loadLocal(slot, this.d.storage);
+      return s ? [{ slot, name: s.name, picture: s.picture, exists: true }] : [];
+    });
+  }
+
+  /** The boys added when missing; the last player first, then by place. */
+  private arrange(players: RosterEntry[], online: boolean): Roster {
     for (const slot of ['p01', 'p02'] as const) {
       if (!players.some((p) => p.slot === slot)) players.push({ slot, name: BOYS[slot].name, picture: BOYS[slot].picture, exists: false });
     }
-    const last = lastSlot(storage);
+    const last = lastSlot(this.d.storage);
     players.sort((a, b) => (a.slot === last ? -1 : b.slot === last ? 1 : a.slot.localeCompare(b.slot)));
     return { online, players, full: online && freeSlot(players.map((p) => p.slot)) === null };
   }

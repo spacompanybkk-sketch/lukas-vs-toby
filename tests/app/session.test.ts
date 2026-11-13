@@ -70,6 +70,14 @@ describe('roster', () => {
     expect(r.players.map((p) => p.slot)).toEqual(['p03', 'p01', 'p02']);
   });
 
+  it('deviceRoster: at once, what this device knows (pending until the cloud answers)', async () => {
+    asSave(await s.create('Mia', 'sunflower', '111'));
+    s.logout();
+    const r = s.deviceRoster();
+    expect(r.pending).toBe(true);
+    expect(r.players.map((p) => p.slot)).toEqual(['p03', 'p01', 'p02']);
+  });
+
   it('is full when all 28 free places are taken', async () => {
     for (const slot of SLOTS.slice(2)) db.poke(`v2/players/${slot}`, { name: `N${slot}`, picture: 'sunflower' });
     const r = await s.roster();
