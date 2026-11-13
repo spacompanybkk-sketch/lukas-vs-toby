@@ -156,7 +156,8 @@ describe('a boss on the lawn', () => {
   it.each(['brainTitan', 'elderOak'] as const)('%s: a view that joins late shows it at its size, its shield and no entrance', (key) => {
     const s = stage(key);
     const m = bossDemoMatch(key, 1);
-    for (let i = 0; i < 30 * (key === 'brainTitan' ? 21 : 34.3); i++) m.step();
+    const shielded = (): boolean => m.state.units.some((u) => u.key === key && u.shieldLeft > 30);
+    while (!shielded() && m.state.winner === null) m.step();
     const boss = m.state.units.find((u) => u.key === key)!;
     expect(boss.shieldLeft).toBeGreaterThan(0);
     s.view.applyEvents([], m.state);

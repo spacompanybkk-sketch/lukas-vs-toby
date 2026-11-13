@@ -74,7 +74,7 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const seed = Math.trunc(number(params, 'seed', 1));
   const match = bossDemoMatch(key, seed);
   const player = key === 'brainTitan' ? 'plants' : 'zombies';
-  const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, player);
+  const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, player, { balance: match.balance });
 
   const clock = signal(0);
   const boss = signal<BossVM | null>(null);
@@ -100,7 +100,7 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
     lastEvents = match.step();
     view.applyEvents(lastEvents, match.state);
     clock.value = Math.floor(match.state.tick / TICKS_PER_SECOND);
-    const vm = bossOf(match.state);
+    const vm = bossOf(match.state, match.balance);
     const old = boss.peek();
     if (vm === null ? old !== null : old === null || old.hp !== vm.hp || old.shield !== vm.shield) boss.value = vm;
     if (match.state.winner !== null && !celebrated) {

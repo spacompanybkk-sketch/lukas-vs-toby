@@ -1,6 +1,6 @@
 import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
-import { BALANCE } from '../../data/balance';
-import type { BossPattern } from '../../data/balance';
+import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
+import { slamCol } from '../../sim/boss';
 import { BOSS_HALF_WIDTH, LANES, TICKS_PER_SECOND } from '../../sim/types';
 import type { BossKey, SimEvent, SimState, Unit, UnitKey } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
@@ -60,9 +60,9 @@ const BARK = [hex(PALETTE.walnut), hex(PALETTE.walnutDark), hex(PALETTE.walnutLi
 
 interface Roller { object: Object3D; age: number; active: boolean; from: Vector3; dx: number; dz: number }
 
-/** What a boss's pattern of `kind` is in the shipped table (the view's only use of it: the wind-up of a late-joined slam). */
-function slamOf(key: BossKey, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
-  const p = BALANCE.bosses[key].patterns[pattern];
+/** The boss's pattern number `pattern` if it is a slam (the view's only use of the rules: the wind-up of a late-joined slam). */
+function slamOf(b: DeepReadonly<Balance>, key: BossKey, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
+  const p = b.bosses[key].patterns[pattern];
   return p !== undefined && p.kind === 'slam' ? (p as Extract<BossPattern, { kind: 'slam' }>) : null;
 }
 
@@ -106,7 +106,10 @@ export class BossFx {
   private readonly rollers: Roller[] = [];
   private time = 0;
 
-  constructor(fx: Effects, onFeel: (f: Feel) => void) {
+  private readonly balance: DeepReadonly<Balance>;
+
+  constructor(fx: Effects, onFeel: (f: Feel) => void, balance: DeepReadonly<Balance>) {
+    this.balance = balance;
     this.fx = fx;
     this.onFeel = onFeel;
     this.group.name = 'boss-fx';
@@ -183,11 +186,11 @@ export class BossFx {
     const shield = u.shieldLeft > 0;
     if (view.key === 'brainTitan') {
       if (shield !== this.domeOn) this.setDome(view, shield);
-      const slam = slamOf('brainTitan', u.pattern);
+      const slam = slamOf(this.balance, 'brainTitan', u.pattern);
       const windup = slam === null ? 0 : slam.windupSeconds * TICKS_PER_SECOND;
       if (slam !== null && u.patternTimer > 0 && u.patternTimer <= windup && this.windupLeft <= 0) {
         // Joined during a wind-up: the tiles, for what is left of it.
-        this.showTiles(u.lane, slamColumn(u, slam.reach), u.patternTimer / TICKS_PER_SECOND);
+        this.showTiles(u.lane, slamCol(u, slam), u.patternTimer / TICKS_PER_SECOND);
       }
     } else if (view.key === 'elderOak') {
       if (shield !== this.barkOn) this.setBark(view, shield);
@@ -488,11 +491,6 @@ export class BossFx {
     const aside = Math.max(-1, Math.min(1, best / 2));
     view.shiftPart('pupils', 0, 0, aside * PUPIL_REACH);
   }
-}
-
-/** The tile column a slam hits for a boss at `u` (the simulation's `slamCol`, for a view that joined late). */
-function slamColumn(u: Unit, reach: number): number {
-  return Math.min(7, Math.max(0, Math.floor(u.x - reach)));
 }
 
 /** A tile's red frame: four bars round its edge, a little above the grass. */

@@ -2,6 +2,8 @@ import {
   BackSide, Box3, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
   Vector2, Vector3, type Camera, type Object3D, type Scene,
 } from 'three';
+import { BALANCE } from '../../data/balance';
+import type { Balance, DeepReadonly } from '../../data/balance';
 import { factionOf } from '../../data/units';
 import type { Faction, Flight, ProjectileKind, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
 import { BASE_STOP_X, COLS, MAX_LEVEL, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from '../../sim/types';
@@ -205,6 +207,8 @@ const client = { width: 1, height: 1 };
 export interface BattleViewOptions {
   /** Model keys that can appear, built ahead so nothing hitches later (default: every model). */
   units?: readonly string[];
+  /** The match's numbers, for what the view must know of the rules (a boss's slam wind-up). Default: the shipped table. */
+  balance?: DeepReadonly<Balance>;
 }
 
 export class BattleView {
@@ -305,7 +309,7 @@ export class BattleView {
     scene.add(this.bases.plants.group, this.bases.zombies.group, this.bars.mesh, this.marks.group, this.puddles.group);
     this.spells = new SpellFx(fx, fx.particles, { onFeel: (f) => this.onFeel(f) });
     this.heroFx = new HeroFx(fx, { onFeel: (f) => this.onFeel(f) });
-    this.bossFx = new BossFx(fx, (f) => this.onFeel(f));
+    this.bossFx = new BossFx(fx, (f) => this.onFeel(f), options.balance ?? BALANCE);
     scene.add(this.spells.group, this.heroFx.group, this.ropeBatch.mesh, this.bossFx.group);
     this.rockHeight = new Box3().setFromObject(makeRock(0)).max.y;
     this.hooks = {
@@ -1057,6 +1061,8 @@ export class BattleView {
       case 'beltCard':
       case 'beltUsed':
       case 'goalReached':
+      case 'waveStarted': // Free Play: the HUD shows the wave number
+      case 'gardenBroken':
       case 'bossPhase': // the shield's pattern event and the HUD's notches show it
         break;
       default: {

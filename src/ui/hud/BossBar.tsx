@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { BOSS_BAR_BLOCKS } from '../../app/BattleController';
 import type { BossVM } from '../../app/BattleController';
-import { BALANCE } from '../../data/balance';
 import type { BossKey } from '../../sim/types';
 import './bossBar.css';
 
@@ -10,16 +10,10 @@ import './bossBar.css';
 // It comes in with the boss: for its first 1.5 s it is a big face card in the middle of the screen
 // (the entrance), which a tap sends to its place at once.
 
-/** The bar fills in this many visible blocks. */
-export const BOSS_BAR_STEPS = 40;
+/** The bar fills in this many visible blocks (the controller rounds `hud.boss` to them). */
+export const BOSS_BAR_STEPS = BOSS_BAR_BLOCKS;
 /** How long the entrance card shows before it moves up into the bar. */
 export const BOSS_INTRO_MS = 1500;
-
-/** The health marks (shares of max) where the boss's shield goes up, highest first: the bar's notches. */
-export function bossNotches(key: BossKey): readonly number[] {
-  for (const p of BALANCE.bosses[key].patterns) if (p.kind === 'shield') return p.atHealth;
-  return [];
-}
 
 /** The bar's fill, cut to whole blocks, rounding up (a boss with health left never shows empty). */
 export function bossStep(hp: number, max: number): number {
@@ -69,7 +63,7 @@ export function BossBar({ boss, onSkip, intro: withIntro = true }: BossBarProps)
         >
           <span class="hud-boss__fill" style={{ width: `${frac * 100}%` }} />
           <span class="hud-boss__blocks" aria-hidden="true" />
-          {bossNotches(boss.key).map((mark) => (
+          {boss.notches.map((mark) => (
             <span key={mark} class={`hud-boss__notch${frac <= mark ? ' is-passed' : ''}`} style={{ left: `${mark * 100}%` }} aria-hidden="true" />
           ))}
           {boss.shield && <span class="hud-boss__shield" aria-hidden="true"><ShieldIcon /></span>}
