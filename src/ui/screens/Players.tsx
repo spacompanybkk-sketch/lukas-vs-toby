@@ -9,7 +9,7 @@ import { frameColor } from '../frameColor';
 import { uiSound } from '../uiSound';
 import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
-import { PlayerPicture } from './PlayerPicture';
+import { GuestPlay, PlayerPicture } from './PlayerPicture';
 import { CLOUD_OFF, HOURGLASS, LOCK, PLUS } from './pictures';
 import './players.css';
 
@@ -105,7 +105,9 @@ function PlayerGrid({ roster, portraits }: { roster: Roster | null; portraits: R
   const n = players.length + (room ? 1 : 0);
   // The area between the top buttons and the lock: what the tiles may fill.
   const top = Math.max(56, Math.min(88, view.h * 0.09)) + 28;
-  const { cols, size } = gridLayout(Math.max(1, n), view.w - 40, view.h - top - 80);
+  // Offline the "play anyway" button sits under the grid.
+  const offline = roster !== null && !roster.online && roster.pending !== true;
+  const { cols, size } = gridLayout(Math.max(1, n), view.w - 40, view.h - top - (offline ? 190 : 80));
   const lastFirst = roster?.players[0];
   const pulse = lastFirst !== undefined && lastFirst.exists && session.lastUsed() === lastFirst.slot;
 
@@ -115,15 +117,16 @@ function PlayerGrid({ roster, portraits }: { roster: Roster | null; portraits: R
   };
 
   return (
-    <div data-screen="players" class="layer layer--menu players">
+    <div data-screen="players" class={`layer layer--menu players${offline ? ' players--offline' : ''}`}>
       <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={() => go({ name: 'title' })}>
         <span class="ico ico--back" aria-hidden="true" />
       </button>
-      {roster !== null && !roster.online && roster.pending !== true && (
+      {offline && (
         <span class="players__offline px pal-stone" data-offline aria-label="No connection">
           <PixelIcon art={CLOUD_OFF} class="players__offline-icon" />
         </span>
       )}
+      {offline && <GuestPlay />}
       <div class="players__grid" style={{ gridTemplateColumns: `repeat(${cols}, ${size}px)`, '--tile': `${size}px` }}>
         {players.map((p, i) => {
           const locked = session.lockedUntil(p.slot) > 0;

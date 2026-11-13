@@ -10,7 +10,7 @@ import { uiSound } from '../uiSound';
 import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
 import { PadHead } from './Players';
-import { PlayerPicture } from './PlayerPicture';
+import { GuestPlay, PlayerPicture } from './PlayerPicture';
 import { BACKSPACE, CHECK, CLOUD_OFF, CROSS, PLUS } from './pictures';
 import './players.css';
 
@@ -103,6 +103,7 @@ export function CreatePlayer({ portraits = {}, boy }: CreatePlayerProps) {
           <button type="button" data-action="retry" class="btn btn--big pal-leaf" aria-label="Try again" onClick={() => { uiSound('click'); void (retryMakes ? make() : check()); }}>
             <span class="ico ico--restart" aria-hidden="true" />
           </button>
+          <GuestPlay />
         </Problem>
       );
     case 'full':

@@ -2,6 +2,10 @@ import { factionOf } from '../../data/units';
 import type { CardKey } from '../../sim/types';
 import { PixelIcon } from '../hud/PixelIcon';
 import { SILHOUETTES } from '../hud/CardTray';
+import { session } from '../../app/session';
+import { go } from '../../app/store';
+import { uiSound } from '../uiSound';
+import { CLOUD_OFF } from './pictures';
 
 /**
  * A player's picture: the unit's card portrait (the same image the cards use), on its side's
@@ -27,3 +31,25 @@ export function PlayerPicture({ picture, portraits, class: cls = '', frame }: { 
     </span>
   );
 }
+
+/**
+ * Play without a player, when the cloud cannot be reached (a fresh device, an iPad whose storage
+ * was wiped): a stone Play with a crossed-out cloud on its corner. A guest battle pays no coins,
+ * goes on no leaderboard, and its result returns to the title.
+ */
+export function GuestPlay({ class: cls = '' }: { class?: string }) {
+  return (
+    <button
+      type="button" data-action="guest" aria-label="Play without a player" class={`btn btn--big pal-stone guest-play ${cls}`.trim()}
+      onClick={() => {
+        uiSound('click');
+        session.logout();
+        go({ name: 'sidepick' });
+      }}
+    >
+      <span class="ico ico--play guest-play__icon" aria-hidden="true" />
+      <span class="guest-play__badge px pal-slate"><PixelIcon art={CLOUD_OFF} /></span>
+    </button>
+  );
+}
+

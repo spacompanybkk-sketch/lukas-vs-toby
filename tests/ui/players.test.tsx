@@ -81,6 +81,28 @@ async function makeLukas(): Promise<void> {
   await see('[data-screen="home"]');
 }
 
+/** A battle that ends when the test says. */
+function guestFactory(): { factory: SessionFactory; hud: () => HudSignals } {
+  let last: HudSignals | null = null;
+  const factory: SessionFactory = (opts: BattleOptions): BattleSessionLike => {
+    const hud: HudSignals = {
+      energy: signal(150), cards: signal([]),
+      base: signal({ plants: { hp: 900, max: 1000 }, zombies: { hp: 0, max: 1000 } }),
+      seconds: signal(75), suddenDeath: signal(false), paused: signal(false),
+      selected: signal<UnitKey | null>(null), shovel: signal(false),
+      result: signal<null | { winner: Faction | 'draw'; playerWon: boolean }>(null), denied: signal(0),
+      hero: signal({ ready: false, fraction: 0 }), heroSelected: signal(false),
+      spells: signal<HudSignals['spells']['value']>([]), spellSelected: signal<HudSignals['spellSelected']['value']>(null),
+    } as HudSignals;
+    last = hud;
+    return {
+      controller: { hud, playerFaction: opts.playerFaction, select: () => {}, toggleShovel: () => {}, setPaused: (p) => { hud.paused.value = p; } },
+      begin: () => {}, dispose: () => {}, skipIntro: true,
+    };
+  };
+  return { factory, hud: () => last as unknown as HudSignals };
+}
+
 describe('Players', () => {
   it('shows Lukas and Toby from the first start, a "+" tile, a small lock, and no letters for missing pictures', async () => {
     mount();
@@ -266,6 +288,40 @@ describe('Players', () => {
     db.offline = false;
     tap('[data-action="retry"]');
     await see('[data-step="picture"]');
+  });
+
+  it('offline on a fresh device: play anyway as a guest from the grid or the no-connection screen; no player, no coins; the result goes to the title', async () => {
+    db.offline = true;
+    const { factory, hud } = guestFactory();
+    mount({ createSession: factory });
+    tap('[data-action="play"]');
+    await see('[data-offline]');
+    tap('[data-action="guest"]');
+    await see('[data-screen="sidepick"]');
+    expect(session.player.value).toBeNull();
+    tap('[data-side="plants"]');
+    tap('[data-action="start"]');
+    await see('[data-screen="battle"]');
+    act(() => { hud().result.value = { winner: 'plants', playerWon: true }; });
+    expect(q('[data-coins-earned]')).toBeNull();
+    tap('[data-action="menu"]');
+    expect(screen.value.name).toBe('title');
+    // The same from the "no connection" picture of a new player.
+    tap('[data-action="play"]');
+    tap((await see('[data-action="new-player"]')) && '[data-action="new-player"]');
+    await see('[data-step="offline"]');
+    tap('[data-action="guest"]');
+    await see('[data-screen="sidepick"]');
+    tap('[data-action="back"]');
+    expect(screen.value.name).toBe('title');
+  });
+
+  it('online, the grid has no guest button', async () => {
+    mount();
+    tap('[data-action="play"]');
+    await see('[data-player="p01"]');
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(q('[data-action="guest"]')).toBeNull();
   });
 
   it('offline log-in with the right number plays from the device copy', async () => {
