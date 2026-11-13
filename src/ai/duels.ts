@@ -4,7 +4,8 @@
  *
  * A duel is one lane, nothing else on the lawn, no income that matters, bases that cannot fall and
  * no sudden death. Plants stand on the back columns of lane 2 (a group of k on columns 0..k-1); the
- * zombies all rise together at the graveyard edge and walk in. It ends when one side has nobody
+ * zombies rise together at the graveyard edge and walk in (enemies of a measured plant group rise
+ * `ENEMY_SPACING` apart). It ends when one side has nobody
  * standing, or after `DUEL_TICKS`.
  *
  * Merge value of type X at level N against enemy type Y: how many level-1 Ys a group can just
@@ -22,6 +23,13 @@ import { isStanding, levelScale } from '../sim/lookup';
 import { Match, defaultConfig, spawnUnit } from '../sim/match';
 import { PLANT_COLS, ZOMBIE_SPAWN_X } from '../sim/types';
 import type { Faction, Unit, UnitKey } from '../sim/types';
+
+/**
+ * When plants are measured, the level-1 zombies they face arrive this far apart (tiles), one
+ * behind the other, as zombies sent one by one do. Rising all on one spot, a single splash would
+ * catch every one of them and a Mango-pult would hold off any number.
+ */
+export const ENEMY_SPACING = 0.5;
 
 /** 3:00: far longer than any of these duels takes. */
 export const DUEL_TICKS = 5400;
@@ -52,7 +60,9 @@ function raise(b: Balance, u: Unit, level: number): void {
  * stands on `plantFront` (default 0) so that a merged plant can be put where the front of the
  * group it is compared with would be.
  */
-export function laneDuel(plants: Group, zombies: Group, balance: Balance = BALANCE, plantFront = 0): DuelResult {
+export function laneDuel(
+  plants: Group, zombies: Group, balance: Balance = BALANCE, plantFront = 0, zombieSpacing = 0,
+): DuelResult {
   if (plants.count > PLANT_COLS) throw new RangeError(`at most ${PLANT_COLS} plants fit in a lane`);
   const config = defaultConfig(1, balance);
   config.startEnergy = { plants: 0, zombies: 0 };
@@ -64,7 +74,9 @@ export function laneDuel(plants: Group, zombies: Group, balance: Balance = BALAN
     const col = plants.count === 1 ? plantFront : i;
     raise(balance, spawnUnit(s, balance, plants.key, LANE, col + 0.5), plants.level);
   }
-  for (let i = 0; i < zombies.count; i++) raise(balance, spawnUnit(s, balance, zombies.key, LANE, ZOMBIE_SPAWN_X), zombies.level);
+  for (let i = 0; i < zombies.count; i++) {
+    raise(balance, spawnUnit(s, balance, zombies.key, LANE, ZOMBIE_SPAWN_X + i * zombieSpacing), zombies.level);
+  }
   const total = sideHp(s.units);
   while (s.tick < DUEL_TICKS) {
     match.step();
@@ -94,7 +106,7 @@ export function breakEven(group: Group, enemy: UnitKey, balance: Balance = BALAN
   const maxCount = groupIsPlants ? 40 : PLANT_COLS;
   const score = (m: number): number => {
     const other: Group = { key: enemy, level: 1, count: m };
-    const r = groupIsPlants ? laneDuel(group, other, balance, plantFront) : laneDuel(other, group, balance);
+    const r = groupIsPlants ? laneDuel(group, other, balance, plantFront, ENEMY_SPACING) : laneDuel(other, group, balance);
     const mine: Faction = groupIsPlants ? 'plants' : 'zombies';
     const theirs: Faction = groupIsPlants ? 'zombies' : 'plants';
     return r.left[mine] - r.left[theirs];
@@ -125,3 +137,22 @@ export const MERGE_PAIRS: ReadonlyArray<readonly [UnitKey, UnitKey]> = [
   ['peashooter', 'brainEater'], ['peashooter', 'veryFastWalker'], ['peashooter', 'skeletonWarrior'],
   ['brainEater', 'peashooter'], ['veryFastWalker', 'peashooter'], ['skeletonWarrior', 'peashooter'],
 ];
+
+/**
+ * The units that fight on their own (spec 10): their merge value is measured. Each plant against
+ * Brain Eaters, each zombie against Peashooters. Walls, mines, the Cherry, the Torchwood, the
+ * Sunflower and the Necromancer are judged otherwise.
+ */
+export const FIGHTERS: readonly UnitKey[] = [
+  'peashooter', 'kernelPult', 'mangoPult', 'pumpkinSquash',
+  'brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic',
+  'cowboyZombie', 'tridentZombie', 'brainRot',
+];
+
+/** A fighter's merge value at N = 2..5 against its standard enemy, and their mean. */
+export function unitMergeValue(unit: UnitKey, balance: Balance = BALANCE): { enemy: UnitKey; values: number[]; mean: number } {
+  const enemy: UnitKey = factionOf(unit) === 'plants' ? 'brainEater' : 'peashooter';
+  const values: number[] = [];
+  for (let level = 2; level <= 5; level++) values.push(mergeValue(unit, enemy, level, balance).value);
+  return { enemy, values, mean: values.reduce((a, b) => a + b, 0) / values.length };
+}

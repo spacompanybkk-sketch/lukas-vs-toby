@@ -28,7 +28,7 @@ const STILL: UnitStats = { recharge: 3, hp: 1000, armor: 0, speed: 0 };
 function table(): Balance {
   const b = classicBalance();
   const shipped = cloneBalance(BALANCE);
-  for (const key of NEW_UNITS) b.units[key] = shipped.units[key];
+  for (const key of NEW_UNITS) b.units[key] = b.units[key] ?? shipped.units[key]; // retuned rows: as first set (classicBalance)
   b.units.avocadoBunker = { ...WALL };
   b.units.veryFastWalker = { ...STILL };
   return b;
@@ -40,6 +40,8 @@ function fresh(b: Balance = table(), seed = 1): Match {
   config.baseHp = { plants: 1_000_000, zombies: 1_000_000 };
   config.incomeMultiplier = { plants: 0, zombies: 0 };
   config.suddenDeath = false;
+  config.heroes = { plants: false, zombies: false }; // these rules tests use neither heroes nor spells
+  config.spells = { plants: 0, zombies: 0 };
   config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
   return new Match(config, b);
 }
@@ -77,7 +79,7 @@ describe('the shipped starting numbers', () => {
     const melee = (damage: number, interval: number) => ({ damage, interval, reach: 0.6 });
     expect(u.desertZombie).toEqual({
       recharge: 6, hp: 380, armor: 0, speed: 0.35, melee: melee(30, 1),
-      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 3 } },
+      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 2 } }, // Task 8: 3 -> 2 (merge-spam)
     });
     expect(u.skeletonArcher).toEqual({
       recharge: 6, hp: 220, armor: 0, speed: 0.4, melee: melee(15, 1),
@@ -85,7 +87,7 @@ describe('the shipped starting numbers', () => {
     });
     expect(u.hotTopic).toEqual({
       recharge: 6, hp: 300, armor: 0, speed: 0.5, melee: melee(25, 0.5),
-      grow: { hpShare: 0.2, damageShare: 0.2, maxStacks: 5 },
+      grow: { hpShare: 0.03, damageShare: 0.2, maxStacks: 5 }, // Task 8: hpShare 0.2 -> 0.03 (merge value)
     });
     expect(u.cowboyZombie).toEqual({
       recharge: 10, hp: 450, armor: 0, speed: 0.35, melee: melee(30, 1),
@@ -97,8 +99,9 @@ describe('the shipped starting numbers', () => {
       healAura: { amount: 40, interval: 2, radius: 1.5 }, raise: { key: 'boneMinion', interval: 10 },
     });
     expect(u.tridentZombie).toEqual({
-      recharge: 12, hp: 500, armor: 0, speed: 0.2, melee: melee(40, 1.2),
-      shot: { kind: 'trident', damage: 70, interval: 3.5, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
+      // Task 8: hp 500 -> 400, damage 70 -> 40, interval 3.5 -> 4 (spam)
+      recharge: 12, hp: 400, armor: 0, speed: 0.2, melee: melee(40, 1.2),
+      shot: { kind: 'trident', damage: 40, interval: 4, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
     });
     expect(u.brainRot).toEqual({
       recharge: 15, hp: 450, armor: 0, speed: 0.25, melee: melee(20, 1.2), holds: true,

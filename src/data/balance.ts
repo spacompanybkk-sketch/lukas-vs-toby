@@ -80,13 +80,13 @@ export interface UnitStats {
  * `firstReady` seconds into the match, covering an area of `size` (see `SpellSize`). What else it
  * has depends on the spell: `damage` (Thunderbolt, Meteor), `seconds` of a status or of a rock's
  * life (Vines, Fog, Frenzy, Rock Wall), `amount` of energy or healing (Sun Shower, Brain Feast,
- * Healing Rain), the rock's `hp`, Frenzy's speed `factor`, Grave Rise's `count` of minions.
+ * Healing Rain), Frenzy's speed `factor`, Grave Rise's `count` of minions.
  * `minCol`: an aimed spell may not be cast on a column below it (Grave Rise, kept away from the
  * plant base).
  */
 export interface SpellStats {
   cooldown: number; firstReady: number; size: SpellSize;
-  damage?: number; seconds?: number; amount?: number; hp?: number; factor?: number; count?: number;
+  damage?: number; seconds?: number; amount?: number; factor?: number; count?: number;
   minCol?: number;
 }
 
@@ -191,7 +191,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       melee: { damage: 15, interval: 0.7, reach: 0.6 },
     },
     skeletonWarrior: {
-      recharge: 10, hp: 500, armor: 0, speed: 0.3,
+      recharge: 10, hp: 800, armor: 0, speed: 0.3,
       melee: { damage: 45, interval: 1.2, reach: 0.6 },
       shield: { interval: 4 },
     },
@@ -203,7 +203,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     kernelPult: {
       recharge: 5, hp: 300, armor: 0, speed: 0,
       shot: {
-        kind: 'kernel', damage: 12, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
+        kind: 'kernel', damage: 13, interval: 1.0, range: 10, speed: 7, flight: 'lobbed',
         status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
       },
     },
@@ -223,14 +223,14 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       fuse: { seconds: 1, damage: 600, radius: 1.6 },
     },
     pumpkinSquash: {
-      recharge: 20, hp: 900, armor: 0, speed: 0,
-      leap: { range: 2, damage: 350, radius: 0.5, recoverSeconds: 6 },
+      recharge: 15, hp: 900, armor: 0, speed: 0,
+      leap: { range: 3, damage: 350, radius: 0.5, recoverSeconds: 6 },
     },
     // Phase 2 zombies: starting numbers, tuned in phase 3.
     desertZombie: {
       recharge: 6, hp: 380, armor: 0, speed: 0.35,
       melee: { damage: 30, interval: 1.0, reach: 0.6 },
-      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 3 } },
+      shot: { kind: 'sand', damage: 10, interval: 2.5, range: 4, speed: 5, status: { kind: 'blind', seconds: 2 } },
     },
     skeletonArcher: {
       recharge: 6, hp: 220, armor: 0, speed: 0.4,
@@ -241,7 +241,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     hotTopic: {
       recharge: 6, hp: 300, armor: 0, speed: 0.5,
       melee: { damage: 25, interval: 0.5, reach: 0.6 },
-      grow: { hpShare: 0.2, damageShare: 0.2, maxStacks: 5 },
+      grow: { hpShare: 0.03, damageShare: 0.2, maxStacks: 5 },
     },
     cowboyZombie: {
       recharge: 10, hp: 450, armor: 0, speed: 0.35,
@@ -257,9 +257,9 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       raise: { key: 'boneMinion', interval: 10 },
     },
     tridentZombie: {
-      recharge: 12, hp: 500, armor: 0, speed: 0.2,
+      recharge: 12, hp: 400, armor: 0, speed: 0.2,
       melee: { damage: 40, interval: 1.2, reach: 0.6 },
-      shot: { kind: 'trident', damage: 70, interval: 3.5, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
+      shot: { kind: 'trident', damage: 40, interval: 4, range: 10, speed: 6, flight: 'piercing', pierce: 3 },
     },
     brainRot: {
       recharge: 15, hp: 450, armor: 0, speed: 0.25,
@@ -275,21 +275,21 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       recharge: 1, hp: 150, armor: 0, speed: 0.6,
       melee: { damage: 20, interval: 0.8, reach: 0.6 },
     },
-    // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
-    rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
+    // Rock Wall's rock: never a card. Its health is set here and nowhere else; it only stands.
+    rock: { recharge: 1, hp: 1500, armor: 0, speed: 0 },
   },
-  trickle: { plants: 1.8, zombies: 9.3 },
-  bountyShare: { plants: 0.2, zombies: 0.5 },
-  baseShotFactor: 0.35,
+  trickle: { plants: 2.5, zombies: 14.5 },
+  bountyShare: { plants: 0.5, zombies: 0.5 },
+  baseShotFactor: 0.3,
   hitRadius: 0.35,
   levelCurves: {
     hp: { plants: [0, 1, 2, 3, 4, 5], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
-    damage: { plants: [0, 1, 2, 3, 4, 5], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
+    damage: { plants: [0, 1, 2.1, 3.2, 4.3, 5.4], zombies: [0, 1, 1.87, 2.69, 3.48, 4.26] },
     special: [0, 1, 2, 3, 4, 5],
   },
   suddenDeath: { startSeconds: 360, baseRate: 0.005, growthPerSecond: 0.0001 },
   startEnergy: 190,
-  baseHp: 7000,
+  baseHp: 6000,
   baseDefense: { damage: 100, interval: 2, paysBounty: false },
   zombieBaseShotRange: 3.5,
   minionCap: 3,
@@ -298,16 +298,18 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     zombies: { damage: 250, chargeSeconds: 60, firstChargeSeconds: 45 }, // Bone Storm
   },
   spells: {
-    thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
-    vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
-    sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
-    healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
-    rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
-    meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
-    fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
-    brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
-    frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
-    graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
+    // Task 8b: felt and equal. Each one, alone against a side with none, gives its side about +12
+    // points of Medium v Medium (band 8-16, 600 seeds); rarer and big rather than frequent and tiny.
+    thunderbolt: { cooldown: 90, firstReady: 45, size: 2, damage: 300 },
+    vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 8 },
+    sunShower: { cooldown: 120, firstReady: 45, size: 0, amount: 50 },
+    healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 125 },
+    rockWall: { cooldown: 90, firstReady: 45, size: 1, seconds: 12 }, // the rock's health: units.rock
+    meteor: { cooldown: 90, firstReady: 45, size: 2, damage: 200 },
+    fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 6 },
+    brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
+    frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
+    graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
   },
 });
 

@@ -9,6 +9,7 @@
     "preview": "vite preview --port 5274 --strictPort",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:balance": "LVT_BALANCE=1 vitest run tests/ai/long --maxWorkers=3",
     "shots": "node tools/shots.mjs",
     "e2e": "playwright test",
     "perf": "node tools/perf.mjs",
