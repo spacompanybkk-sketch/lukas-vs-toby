@@ -26,6 +26,8 @@
 //   --scenes=mix-150[,p1-60,p1-150]         only these scenes (default: all three)
 //   --no-portraits                          skip the portrait warm-up timing
 //   --reuse-build                           serve dist/ as it is (default: build first)
+//   --adaptive                              let the render scale adapt as in the game (default:
+//                                           held at 1, the resolution the budget is set for)
 // It reports; it never fails the build. It warns loudly if the GPU is software or the window is
 // hidden or unfocused, because then the numbers mean nothing.
 import { spawn, spawnSync } from 'node:child_process';
@@ -118,10 +120,19 @@ const WRAP_RAF = () => {
 };
 
 /** Records frame intervals in the page; resolves with the stats. */
-function measure(page, warmUpMs, intervals, finishFrames) {
-  return page.evaluate(async ([warm, count, finishCount]) => {
+function measure(page, warmUpMs, intervals, finishFrames, pinScale) {
+  return page.evaluate(async ([warm, count, finishCount, pin]) => {
     const lvt = window.__lvt;
     await lvt.ready;
+    if (pin) {
+      // The budget is for full resolution: hold the adaptive render scale at 1 (otherwise a slow
+      // start drops it to 0.6 and the frame looks cheaper than it is at full size).
+      const scaler = lvt.renderer.scaler;
+      scaler.sample = () => false;
+      scaler.tenths = 10;
+      scaler.value = 1;
+      lvt.renderer.applySize();
+    }
     await new Promise((resolve) => setTimeout(resolve, warm));
     const gl = lvt.renderer.webgl;
     const visible = document.visibilityState === 'visible' && document.hasFocus();
@@ -196,7 +207,7 @@ function measure(page, warmUpMs, intervals, finishFrames) {
       contents,
       windowVisible: visible,
     };
-  }, [warmUpMs, intervals, finishFrames]);
+  }, [warmUpMs, intervals, finishFrames, pinScale]);
 }
 
 /** Opens the title and times the twenty card portraits (lvt.portraitMs: total; portraitPaintMs: drawing alone). */
@@ -248,7 +259,7 @@ async function main() {
           await cdp.send('Emulation.setCPUThrottlingRate', { rate: mode.throttle });
         }
         await page.goto(`${ORIGIN}/?debug&${scene.query}`);
-        const stats = await measure(page, WARM_UP_MS, INTERVALS, FINISH_FRAMES);
+        const stats = await measure(page, WARM_UP_MS, INTERVALS, FINISH_FRAMES, !args.includes('--adaptive'));
         const renderer = await page.evaluate(() => {
           const gl = document.createElement('canvas').getContext('webgl2');
           const ext = gl?.getExtension('WEBGL_debug_renderer_info');
