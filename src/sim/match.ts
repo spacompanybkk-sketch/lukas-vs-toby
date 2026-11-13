@@ -8,7 +8,7 @@ import { checkBelt, playBelt, tickBelt } from './belt';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
-import { endlessClockOut, endlessStart, energyOff, tickEndless, tickEndlessGarden } from './endless';
+import { endlessClockOut, endlessStart, energyOff, startBases, tickEndless, tickEndlessGarden } from './endless';
 import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
@@ -108,7 +108,7 @@ export class Match {
         plants: { energy: energy('plants'), carry: 0, recharge: {}, heroTimer: heroTimer('plants'), spells: [] },
         zombies: { energy: energy('zombies'), carry: 0, recharge: {}, heroTimer: heroTimer('zombies'), spells: [] },
       },
-      baseHp: { ...own.baseHp }, baseMaxHp: { ...own.baseHp },
+      baseHp: startBases(own, balance), baseMaxHp: startBases(own, balance), // Free Play's garden 1: its own
       baseDefenseTimers: new Array<number>(LANES).fill(0),
       suddenDeath: false, winner: null,
       config: own,

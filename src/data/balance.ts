@@ -192,12 +192,12 @@ export interface Balance {
    * `bossEvery`-th also brings one level-5 unit of its priciest card (the big one). Survive: a wave
    * starts every `gapSeconds` and its units walk on over its first `spreadSeconds`. Breakthrough: the
    * clock starts at `clockSeconds` and gains `clockBonusSeconds` per garden broken; garden g's plant
-   * base has `1 + gardenHpStep × (g − 1)` times its health; plants stand in columns
+   * base has `gardenBaseHp × (1 + gardenHpStep × (g − 1))` health (not the setup's base); plants stand in columns
    * `gardenMinCol`..`gardenMaxCol`.
    */
   endless: {
     budgetBase: number; budgetStep: number; gapSeconds: number; levelEvery: number; bossEvery: number;
-    clockSeconds: number; clockBonusSeconds: number; gardenHpStep: number;
+    clockSeconds: number; clockBonusSeconds: number; gardenBaseHp: number; gardenHpStep: number;
     spreadSeconds: number; gardenMinCol: number; gardenMaxCol: number;
   };
 }
@@ -408,8 +408,11 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
   },
   endless: {
-    budgetBase: 100, budgetStep: 60, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
-    clockSeconds: 90, clockBonusSeconds: 30, gardenHpStep: 0.15,
+    // Task 8, measured (tools/levels.ts --free): survive, waves reached by the beginner / average /
+    // expert 7.5 / 13 / 28; breakthrough, gardens broken 3 / 3 / 3 (garden 1 at 1500, not 6000:
+    // the review found garden 1 unbreakable).
+    budgetBase: 200, budgetStep: 75, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
+    clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
     spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
 });

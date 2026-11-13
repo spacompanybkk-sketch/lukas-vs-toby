@@ -9,8 +9,16 @@ import { LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from '../../src/sim/type
 import type { CardKey, Command, Faction, MatchConfig, SimEvent, SimState } from '../../src/sim/types';
 import { eventsOf } from './helpers';
 
-/** The shipped numbers (Free Play's are in `Balance.endless`), as a plain copy. */
-const B: Balance = cloneBalance(BALANCE);
+/**
+ * The rules tests pin Task 7a's starting Free Play numbers (garden 1's base at 6000, as a battle's),
+ * so the tuning of `BALANCE.endless` (Task 8) does not move their figures; the shipped numbers are
+ * pinned on their own below.
+ */
+const B: Balance = (() => {
+  const b = cloneBalance(BALANCE);
+  b.endless = { ...b.endless, budgetBase: 100, budgetStep: 60, gardenBaseHp: 6000 };
+  return b;
+})();
 const ZOMBIES: CardKey[] = ['brainEater', 'veryFastWalker', 'skeletonWarrior'];
 const PLANTS: CardKey[] = ['peashooter', 'sunflower', 'walnutBomb'];
 
@@ -51,10 +59,10 @@ describe('the numbers of a wave', () => {
     expect([1, 5, 6, 10, 11, 16, 21, 50].map((w) => endlessLevel(B, w))).toEqual([1, 1, 2, 2, 3, 4, 5, 5]);
   });
 
-  it('keeps every number in Balance.endless', () => {
+  it('keeps every number in Balance.endless (Task 8: measured with the level stand-ins)', () => {
     expect(BALANCE.endless).toEqual({
-      budgetBase: 100, budgetStep: 60, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
-      clockSeconds: 90, clockBonusSeconds: 30, gardenHpStep: 0.15,
+      budgetBase: 200, budgetStep: 75, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
+      clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
       spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
     });
   });
@@ -163,12 +171,21 @@ describe('checking an endless setup', () => {
     ['a script', survive(1, { script: [{ tick: 5, unit: 'brainEater', faction: 'zombies', lane: 0, level: 1 }] }), 'script'],
     ['a prepared unit', breakthrough(1, { prepared: [{ unit: 'peashooter', faction: 'plants', lane: 0, x: 0.5, level: 1 }] }), 'prepared'],
     ['no energy', survive(1, { noEnergy: true }), 'noEnergy'],
+    ['upgrades for the waves\' side (survive)', survive(1, { upgrades: { plants: {}, zombies: { brainEater: 3 } } }), 'upgrades'],
+    ['upgrades for the waves\' side (breakthrough)', breakthrough(1, { upgrades: { plants: { peashooter: 2 }, zombies: {} } }), 'upgrades'],
   ];
   it.each(cases)('refuses %s', (_name, config, message) => {
     expect(() => new Match(config, B)).toThrow(message);
   });
 
-  it('accepts a survive with no clock and a breakthrough with no goalTicks', () => {
+  it('refuses a garden 1 with no health (gardenBaseHp 0)', () => {
+    const b = cloneBalance(B);
+    b.endless.gardenBaseHp = 0;
+    expect(() => new Match(breakthrough(1, {}, b), b)).toThrow('Balance.endless');
+  });
+
+  it('accepts a survive with no clock and a breakthrough with no goalTicks; the player\'s own upgrades are fine', () => {
+    expect(() => new Match(survive(1, { upgrades: { plants: { peashooter: 4 }, zombies: {} } }), B)).not.toThrow();
     expect(() => new Match(survive(1), B)).not.toThrow();
     expect(() => new Match(survive(1, { goalTicks: 9000 }), B)).not.toThrow();
     expect(() => new Match(breakthrough(1), B)).not.toThrow();
@@ -323,14 +340,24 @@ describe('Free Play as the zombies (endless breakthrough)', () => {
     expect(order.at(-1)).toBe('waveStarted');
   });
 
-  it('garden 3\'s base has 1.3 times the health', () => {
-    const m = new Match(breakthrough(3, { baseHp: { plants: 3000, zombies: 3000 } }), B);
+  it('garden 3\'s base has 1.3 times the health of garden 1 (gardenBaseHp, whatever the setup\'s base)', () => {
+    const b3 = cloneBalance(B);
+    b3.endless.gardenBaseHp = 3000;
+    const m = new Match(breakthrough(3, { baseHp: { plants: 5000, zombies: 3000 } }, b3), b3);
+    expect([m.state.baseHp.plants, m.state.baseMaxHp.plants]).toEqual([3000, 3000]);
     for (let g = 0; g < 2; g++) {
       run(m, 5);
       m.state.baseHp.plants = -40;
       m.step();
     }
     expect([m.state.wave, m.state.baseHp.plants, m.state.baseMaxHp.plants]).toEqual([2, 3900, 3900]);
+  });
+
+  it('garden 1 starts at the shipped gardenBaseHp (1500), below a battle\'s base; a survive keeps the setup\'s', () => {
+    const m = new Match(breakthrough(5, {}, BALANCE as Balance), BALANCE as Balance);
+    expect([m.state.baseHp.plants, m.state.baseMaxHp.plants]).toEqual([1500, 1500]);
+    const s = new Match(survive(5, {}, BALANCE as Balance), BALANCE as Balance);
+    expect(s.state.baseHp.plants).toBe(BALANCE.baseHp);
   });
 
   it('the clock at zero ends the match: the plants win and the gardens broken are the score', () => {

@@ -152,17 +152,18 @@ export function checkEndless(c: MatchConfig, b: Balance): void {
     throw new RangeError('an endless survive needs invulnerableBase "zombies"');
   }
   if (c.cards[side].length > 0) throw new RangeError(`endless: the waves' side (${side}) plays no hand, but has cards`);
+  if (Object.keys(c.upgrades[side]).length > 0) throw new RangeError(`endless: the waves' side (${side}) has no Marketplace upgrades`);
   if (c.spells[side] !== 0) throw new RangeError(`endless: the waves' side (${side}) has no spells`);
   if (c.heroes[side]) throw new RangeError(`endless: the waves' side (${side}) has no hero`);
   if (c.script.length > 0) throw new RangeError('endless: no script (the waves are endless)');
   if (c.prepared.length > 0) throw new RangeError('endless: nothing prepared (the gardens are endless)');
   if (c.noEnergy) throw new RangeError('endless: noEnergy is not allowed (the player earns as usual)');
   const n = b.endless;
-  const whole = [n.budgetBase, n.budgetStep, n.levelEvery, n.bossEvery, n.gardenMinCol, n.gardenMaxCol];
+  const whole = [n.budgetBase, n.budgetStep, n.levelEvery, n.bossEvery, n.gardenMinCol, n.gardenMaxCol, n.gardenBaseHp];
   if (!whole.every((v) => Number.isInteger(v) && v >= 0) || n.levelEvery < 1 || n.bossEvery < 1
     || !(seconds(n.gapSeconds) > 0) || !(seconds(n.clockSeconds) > 0) || !(n.spreadSeconds >= 0)
     || !(n.clockBonusSeconds >= 0) || !(n.gardenHpStep >= 0)
-    || n.gardenMinCol > n.gardenMaxCol || n.gardenMaxCol >= PLANT_COLS) {
+    || n.gardenBaseHp < 1 || n.gardenMinCol > n.gardenMaxCol || n.gardenMaxCol >= PLANT_COLS) {
     throw new RangeError('Balance.endless has a number out of range');
   }
 }
@@ -228,11 +229,25 @@ function layGarden(s: SimState, b: Balance, garden: number, events: SimEvent[]):
 }
 
 /**
+ * Garden `garden`'s plant base health in breakthrough Free Play: `gardenBaseHp × (1 + gardenHpStep ×
+ * (garden − 1))`, rounded. It starts well below a battle's base: garden 1 is a first step.
+ */
+export function gardenHp(b: Balance, garden: number): number {
+  return Math.round(b.endless.gardenBaseHp * (1 + b.endless.gardenHpStep * (garden - 1)));
+}
+
+/** The bases a match starts with: the setup's, except an endless breakthrough's garden 1 (`gardenHp`). */
+export function startBases(c: MatchConfig, b: Balance): Record<Faction, number> {
+  if (c.endless === null || c.endless === undefined || c.mode !== 'breakthrough') return { ...c.baseHp };
+  return { ...c.baseHp, plants: gardenHp(b, 1) };
+}
+
+/**
  * Endgame, breakthrough Free Play only, before the winner is decided. If the plant base has fallen
  * (at or below 0, or not a number) the garden is broken: `wave` + 1 and `gardenBroken`; every plant
  * left leaves the lawn (`unitDied`, cause `'spent'`, in id order, no bounty); the clock gains
  * `clockBonusSeconds`; the plant base and its max become garden g's health (g = `wave` + 1:
- * `baseHp × (1 + gardenHpStep × (g − 1))`, rounded); garden g is laid. So a fallen plant base never
+ * `gardenHp`); garden g is laid. So a fallen plant base never
  * ends this match. Then the clock counts down one (call `endlessClockOut` after the winner check).
  */
 export function tickEndlessGarden(s: SimState, b: Balance, events: SimEvent[]): void {
@@ -252,7 +267,7 @@ export function tickEndlessGarden(s: SimState, b: Balance, events: SimEvent[]): 
     s.units = kept;
     s.clock += seconds(b.endless.clockBonusSeconds);
     const garden = s.wave + 1;
-    const hp = Math.round(s.config.baseHp.plants * (1 + b.endless.gardenHpStep * (garden - 1)));
+    const hp = gardenHp(b, garden);
     s.baseHp.plants = hp;
     s.baseMaxHp.plants = hp;
     layGarden(s, b, garden, events);
