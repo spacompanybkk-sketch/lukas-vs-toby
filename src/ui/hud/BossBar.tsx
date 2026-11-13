@@ -7,8 +7,8 @@ import './bossBar.css';
 // The boss's health, wide at the top centre under the clock (phase 3 Task 3): a small pixel face
 // of the boss, a bar in blocks with a notch at each health mark where its shield goes up, and the
 // shield showing over the bar while it is up. No words: the face says who, the bar says how much.
-// It comes in with the boss: for its first 1.5 s it is a big face card in the middle of the screen
-// (the entrance), which a tap sends to its place at once.
+// It comes in with the boss: for its first 1.5 s a bigger face card shakes beside the bar (the
+// entrance, at the top, never over the lanes), which a tap sends to its place at once.
 
 /** The bar fills in this many visible blocks (the controller rounds `hud.boss` to them). */
 export const BOSS_BAR_STEPS = BOSS_BAR_BLOCKS;
@@ -68,12 +68,12 @@ export function BossBar({ boss, onSkip, intro: withIntro = true }: BossBarProps)
           ))}
           {boss.shield && <span class="hud-boss__shield" aria-hidden="true"><ShieldIcon /></span>}
         </span>
+        {intro && (
+          <button type="button" data-hud="boss-intro" class={`hud-boss-intro hud-boss-intro--${boss.key}`} aria-label="Boss" onPointerDown={skip}>
+            <span class="hud-boss-intro__card px pal-bone"><BossFace boss={boss.key} /></span>
+          </button>
+        )}
       </div>
-      {intro && (
-        <button type="button" data-hud="boss-intro" class={`hud-boss-intro hud-boss-intro--${boss.key}`} aria-label="Boss" onPointerDown={skip}>
-          <span class="hud-boss-intro__card px pal-bone"><BossFace boss={boss.key} /></span>
-        </button>
-      )}
     </>
   );
 }

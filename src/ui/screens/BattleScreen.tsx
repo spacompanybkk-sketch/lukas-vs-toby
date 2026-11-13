@@ -194,8 +194,8 @@ export function BattleScreen(props: BattleScreenProps) {
       </ResultClears>
       {ctl.level != null && <LiveLevel hud={hud} info={ctl.level} />}
       {/* BOSS BAR SLOT (Task 3): the bosses task's bar, nothing else. A passed bar wins; otherwise the
-          live one, whose own box stays on the screen (display: contents) so its intro card still
-          covers the lawn; in a level it sits under the level's goal bars. */}
+          live one, whose own box places itself on the screen (display: contents); its entrance card
+          sits beside it, in the top band; in a level it sits under the level's goal bars. */}
       {bossBar !== undefined
         ? <div class="battle__boss" data-hud-slot="boss">{bossBar}</div>
         : (

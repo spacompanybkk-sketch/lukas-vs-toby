@@ -70,6 +70,13 @@ describe('BossBar', () => {
     expect(onSkip).toHaveBeenCalledTimes(1);
   });
 
+  it('the face card is a small card beside the bar (inside its box), never a screen-wide layer over the lawn', () => {
+    act(() => render(<BossBar boss={titan()} />, root));
+    const card = q('.hud-boss > [data-hud="boss-intro"]');
+    expect(card).not.toBeNull();
+    expect(card!.classList.contains('hud-boss-intro')).toBe(true);
+  });
+
   it('the face card goes by itself after 1.5 s, and only comes once', () => {
     act(() => render(<BossBar boss={titan()} />, root));
     expect(q('[data-hud="boss-intro"]')).not.toBeNull();

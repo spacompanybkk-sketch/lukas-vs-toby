@@ -91,23 +91,30 @@
 /* Beaten: the face is knocked grey and the bar sits empty. */
 .hud-boss.is-down .hud-boss__face { filter: grayscale(0.8); }
 
-/* The entrance: the boss's face card large in the middle of the screen, shaking, over a dark
-   band; a tap anywhere on it ends it (and the lawn's entrance show). */
+/* The entrance: the boss's face card, bigger than the bar's face, shaking just left of the bar
+   with its foot on the bar's foot, so it stays in the top band and never covers the lanes; it
+   pops in and then slides into the bar's face. A tap on it ends it (and the lawn's entrance show). */
 .hud-boss-intro {
   position: absolute;
-  inset: 0;
+  right: calc(100% + 10px);
+  bottom: 0;
+  width: calc(var(--hud-h) * 1.5);
+  height: calc(var(--hud-h) * 1.5);
+  min-width: 56px;
+  min-height: 56px;
   display: grid;
   place-items: center;
   border: 0;
   padding: 0;
-  background: linear-gradient(transparent 0 32%, rgba(42, 27, 14, 0.45) 32% 68%, transparent 68%);
+  background: none;
   pointer-events: auto;
   cursor: pointer;
+  transform-origin: 100% 100%;
   animation: hud-boss-in 1500ms steps(15, end) forwards;
 }
 .hud-boss-intro__card {
-  width: clamp(120px, 26vh, 260px);
-  height: clamp(120px, 26vh, 260px);
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
   animation: hud-boss-shake 240ms steps(2, jump-none) infinite;
@@ -118,6 +125,6 @@
   15% { opacity: 1; transform: scale(1.12); }
   25% { transform: scale(1); }
   85% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: translateY(-34vh) scale(0.3); }
+  100% { opacity: 0; transform: translateX(calc(var(--hud-h) * 1.2)) scale(0.6); }
 }
-@keyframes hud-boss-shake { 0% { transform: translate(-4px, 0) rotate(-2deg); } 100% { transform: translate(4px, -3px) rotate(2deg); } }
+@keyframes hud-boss-shake { 0% { transform: translate(-3px, 0) rotate(-2deg); } 100% { transform: translate(3px, -2px) rotate(2deg); } }
