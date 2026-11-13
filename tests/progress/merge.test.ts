@@ -13,7 +13,7 @@ const older: Save = {
   plants: { stars: { w1: 3, w2: 1 }, unlocked: ['peashooter', 'sunflower'] },
   zombies: { stars: { w1: 1 }, unlocked: ['brainEater'] },
   bestWave: 20, versusWins: 1, computerWins: 9, importedOld: true, updatedAt: T0 + 100,
-  lastBattle: 'old-battle', teached: ['p1-1:0', 'p1-2:0'],
+  lastBattle: 'old-battle', teached: ['p1-1:0', 'p1-2:0'], bestGarden: 9,
 };
 const newer: Save = {
   ...base,
@@ -22,7 +22,7 @@ const newer: Save = {
   plants: { stars: { w1: 2, w3: 2 }, unlocked: ['peashooter', 'walnutBomb'] },
   zombies: { stars: {}, unlocked: [] },
   bestWave: 7, versusWins: 4, computerWins: 2, importedOld: false, updatedAt: T0 + 200,
-  lastBattle: 'new-battle', teached: ['z1-1:0', 'p1-1:0'],
+  lastBattle: 'new-battle', teached: ['z1-1:0', 'p1-1:0'], bestGarden: 3,
 };
 
 describe('mergeSaves: nothing either side earned is lost', () => {
@@ -36,6 +36,7 @@ describe('mergeSaves: nothing either side earned is lost', () => {
     ['unlocked = the union (newer\'s order first)', JSON.stringify(m.plants.unlocked) === JSON.stringify(['peashooter', 'walnutBomb', 'sunflower'])],
     ['zombie unlocked = the union', JSON.stringify(m.zombies.unlocked) === JSON.stringify(['brainEater'])],
     ['bestWave = the larger', m.bestWave === 20],
+    ['bestGarden = the larger', m.bestGarden === 9],
     ['versusWins = the larger', m.versusWins === 4],
     ['computerWins = the larger', m.computerWins === 9],
     ['name from the newer', m.name === 'LukasK'],
@@ -43,7 +44,7 @@ describe('mergeSaves: nothing either side earned is lost', () => {
     ['difficulty from the newer', JSON.stringify(m.difficulty) === JSON.stringify({ plants: 'hard', zombies: 'medium' })],
     ['importedOld = either', m.importedOld === true],
     ['lastBattle from the newer', m.lastBattle === 'new-battle'],
-    ['teached = the union (newer\'s order first)', JSON.stringify(m.teached) === JSON.stringify(['z1-1:0', 'p1-1:0', 'p1-2:0'])],
+    ['teached = the union (the older copy\'s own steps, then the newer\'s)', JSON.stringify(m.teached) === JSON.stringify(['p1-2:0', 'z1-1:0', 'p1-1:0'])],
     ['stamped now, newer than both', m.updatedAt === T0 + 500],
   ])('%s', (_what, ok) => {
     expect(ok).toBe(true);
@@ -71,12 +72,13 @@ describe('mergeSaves: nothing either side earned is lost', () => {
     expect(mergeSaves(older, { ...newer, lastBattle: null }, T0 + 500).lastBattle).toBeNull();
   });
 
-  it('keeps at most 128 tutorial steps, the newer copy\'s first, in a stable order', () => {
+  it('keeps the newest 128 tutorial steps (the newer copy\'s, then the older\'s own latest), in a stable order', () => {
     const steps = (from: number, n: number): string[] => Array.from({ length: n }, (_, i) => `s${from + i}`);
     const m2 = mergeSaves({ ...older, teached: steps(100, 128) }, { ...newer, teached: steps(0, 128) }, T0 + 500);
     expect(m2.teached).toEqual(steps(0, 128));
     const m3 = mergeSaves({ ...older, teached: steps(50, 100) }, { ...newer, teached: steps(0, 100) }, T0 + 500);
-    expect(m3.teached).toEqual(steps(0, 128));
+    // The older copy's own steps (100..149) come first; the oldest of them go: 122..149, then 0..99.
+    expect(m3.teached).toEqual([...steps(122, 28), ...steps(0, 100)]);
     expect(mergeSaves({ ...newer, teached: steps(0, 100) }, { ...older, teached: steps(50, 100) }, T0 + 500)).toEqual(m3);
     expect(parseSave(m3)).toEqual(m3);
   });

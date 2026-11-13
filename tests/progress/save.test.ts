@@ -29,7 +29,7 @@ describe('newSave', () => {
       bestWave: 0, versusWins: 0, computerWins: 0,
       difficulty: { plants: 'medium', zombies: 'medium' },
       importedOld: false, updatedAt: T0,
-      lastBattle: null, teached: [],
+      lastBattle: null, teached: [], bestGarden: 0,
     });
   });
 
@@ -66,6 +66,7 @@ describe('parseSave', () => {
     importedOld: true,
     lastBattle: 'b-17',
     teached: ['p1-1:0', 'p1-1:1'],
+    bestGarden: 4,
   };
   const g = good as unknown as Record<string, unknown>;
 
@@ -133,6 +134,10 @@ describe('parseSave', () => {
     ['teached with an empty step', { ...g, teached: [''] }],
     ['teached with a step of 65 characters', { ...g, teached: ['t'.repeat(65)] }],
     ['teached twice', { ...g, teached: ['a', 'a'] }],
+    ['bestGarden negative', { ...g, bestGarden: -1 }],
+    ['bestGarden a fraction', { ...g, bestGarden: 1.5 }],
+    ['bestGarden a string', { ...g, bestGarden: '3' }],
+    ['bestGarden null', { ...g, bestGarden: null }],
     ['teached with 129 steps', { ...g, teached: Array.from({ length: 129 }, (_, i) => `s${i}`) }],
     ['negative updatedAt', { ...g, updatedAt: -5 }],
     ['fractional updatedAt', { ...g, updatedAt: 1.25 }],
@@ -144,7 +149,8 @@ describe('parseSave', () => {
     const old: Record<string, unknown> = { ...g };
     delete old.lastBattle;
     delete old.teached;
-    expect(parseSave(old)).toEqual({ ...good, lastBattle: null, teached: [] });
+    delete old.bestGarden;
+    expect(parseSave(old)).toEqual({ ...good, lastBattle: null, teached: [], bestGarden: 0 });
   });
 
   it.each<[string, string]>([['lastBattle', 'teached'], ['teached', 'lastBattle']])(

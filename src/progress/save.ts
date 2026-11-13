@@ -22,7 +22,9 @@ export interface Save {
   /** Marketplace level per unit, 0..10; a missing unit is level 0. */
   upgrades: Partial<Record<CardKey, number>>;
   plants: SideProgress; zombies: SideProgress;
-  bestWave: number; versusWins: number; computerWins: number;
+  /** The best Free Play wave reached in survive (the plants); the leaderboard's wave table. */
+  bestWave: number;
+  versusWins: number; computerWins: number;
   difficulty: Record<Faction, Skill>;
   /** Whether an old-game save has been carried into this one (it is, at most once). */
   importedOld: boolean;
@@ -35,6 +37,8 @@ export interface Save {
   lastBattle: string | null;
   /** The tutorial steps this player has been shown (Task 6). Saves written before it read as []. */
   teached: string[];
+  /** The most gardens broken in one Free Play breakthrough run (the zombies). Saves written before it read as 0. */
+  bestGarden: number;
 }
 
 const SKILLS: readonly Skill[] = ['easy', 'medium', 'hard'];
@@ -50,7 +54,7 @@ const SAVE_KEYS = [
   'bestWave', 'versusWins', 'computerWins', 'difficulty', 'importedOld', 'updatedAt',
 ] as const;
 /** Keys added later: a save written before them still loads, with their defaults. */
-const LATER_KEYS = ['lastBattle', 'teached'] as const;
+const LATER_KEYS = ['lastBattle', 'teached', 'bestGarden'] as const;
 /** At most this many tutorial steps are kept in `teached`. */
 export const MAX_TEACHED = 128;
 /** A battle id or a tutorial step id: 1–64 characters. */
@@ -64,7 +68,7 @@ export function newSave(slot: Slot, name: string, picture: CardKey, now: number)
     bestWave: 0, versusWins: 0, computerWins: 0,
     difficulty: { plants: 'medium', zombies: 'medium' },
     importedOld: false, updatedAt: now,
-    lastBattle: null, teached: [],
+    lastBattle: null, teached: [], bestGarden: 0,
   };
 }
 
@@ -133,6 +137,8 @@ export function parseSave(raw: unknown): Save | null {
   const teached = Object.hasOwn(o, 'teached') ? o.teached : [];
   if (!Array.isArray(teached) || teached.length > MAX_TEACHED) return null;
   if (!teached.every(isTag) || new Set(teached).size !== teached.length) return null;
+  const bestGarden = Object.hasOwn(o, 'bestGarden') ? o.bestGarden : 0;
+  if (!isCount(bestGarden)) return null;
 
   return {
     v: 1, slot: o.slot, name: o.name, picture: o.picture,
@@ -140,7 +146,7 @@ export function parseSave(raw: unknown): Save | null {
     bestWave: o.bestWave, versusWins: o.versusWins, computerWins: o.computerWins,
     difficulty: { plants: d.plants as Skill, zombies: d.zombies as Skill },
     importedOld: o.importedOld, updatedAt: o.updatedAt,
-    lastBattle, teached: [...teached] as string[],
+    lastBattle, teached: [...teached] as string[], bestGarden,
   };
 }
 
