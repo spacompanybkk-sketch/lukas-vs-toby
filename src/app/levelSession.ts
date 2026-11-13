@@ -3,6 +3,8 @@ import type { ReadonlySignal } from '@preact/signals';
 import { isOpen, levelConfig } from '../adventure/campaign';
 import { LEVELS, levelById } from '../adventure/levels';
 import { applyLevelResult, starsFor } from '../adventure/rewards';
+import { applyFreePlayResult, freePlayConfig, wavesCleared } from '../adventure/freePlay';
+import type { FreePlayRecord } from '../adventure/freePlay';
 import type { Stars } from '../adventure/rewards';
 import type { LevelDef, TutorialStep } from '../adventure/types';
 import { seconds } from '../data/balance';
@@ -132,7 +134,7 @@ function writeKey(storage: Storage | undefined, key: string, value: string | nul
   }
 }
 
-function parseRecord(raw: string): LevelRecord | null {
+function parseRecord(raw: string): LevelRecord | FreePlayRecord | null {
   let o: unknown;
   try {
     o = JSON.parse(raw);
@@ -143,6 +145,12 @@ function parseRecord(raw: string): LevelRecord | null {
   const r = o as Record<string, unknown>;
   const okId = typeof r.battleId === 'string' && r.battleId.length >= 1 && r.battleId.length <= 64;
   const okSide = r.side === 'plants' || r.side === 'zombies';
+  if (r.kind === 'free') {
+    const whole = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 100_000;
+    if (!okId || !okSide || !whole(r.wave) || !whole(r.cleared) || r.cleared > r.wave) return null;
+    return { kind: 'free', battleId: r.battleId as string, side: r.side as Faction, wave: r.wave, cleared: r.cleared };
+  }
+  if (r.kind !== undefined) return null;
   const okStars = r.stars === 0 || r.stars === 1 || r.stars === 2 || r.stars === 3;
   if (!okId || typeof r.levelId !== 'string' || !okSide || !okStars || typeof r.won !== 'boolean') return null;
   if (r.won !== ((r.stars as number) > 0)) return null;
@@ -150,7 +158,7 @@ function parseRecord(raw: string): LevelRecord | null {
 }
 
 /** The pending record of `slot` on this device, or null. */
-export function readPending(host: Pick<LevelHost, 'deviceStorage'>, slot: Slot): LevelRecord | null {
+export function readPending(host: Pick<LevelHost, 'deviceStorage'>, slot: Slot): LevelRecord | FreePlayRecord | null {
   const raw = readKey(host.deviceStorage(), pendingKey(slot));
   return raw === null ? null : parseRecord(raw);
 }
@@ -163,7 +171,11 @@ function after(def: LevelDef, levels: readonly LevelDef[]): LevelDef | null {
 }
 
 /** Applies `rec` to the logged-in player's save (once per battle id) and says what it did. */
-function apply(host: LevelHost, rec: LevelRecord, levels: readonly LevelDef[]): LevelOutcome | null {
+function apply(host: LevelHost, rec: LevelRecord | FreePlayRecord, levels: readonly LevelDef[]): LevelOutcome | null {
+  if ('kind' in rec) {
+    applyFree(host, rec);
+    return null;
+  }
   const def = levelById(rec.levelId, levels);
   if (def === null || def.side !== rec.side || host.player.peek() === null) return null;
   let paid = { coins: 0, newStars: 0, unlocked: null as CardKey | null };
@@ -217,6 +229,69 @@ export function watchPending(host: LevelHost, levels: readonly LevelDef[] = LEVE
     last = slot;
     if (slot !== null) queueMicrotask(() => { if (host.player.peek()?.slot === slot) applyPending(host, levels); });
   });
+}
+
+// ---- Free Play (Task 7) ------------------------------------------------------------------------
+//
+// A run's result travels like a level's: the record (`FreePlayRecord`, kind 'free') is written to
+// the same device key first, then applied (`applyFreePlayResult`: 5 coins a wave cleared, bestWave
+// raised, once per battle id), then removed; a record left on the device is applied at the next
+// log-in by `watchPending`. Quitting a run stores nothing.
+
+/** A Free Play run as it is played: the match, the battle's id and whose run it is. */
+export interface FreePlayPlay { side: Faction; config: MatchConfig; battleId: string; slot: Slot }
+
+/** What the Free Play result shows once its record is applied. */
+export interface FreePlayOutcome {
+  side: Faction; wave: number; cleared: number;
+  /** Coins this run paid (0 when it had already been paid). */
+  coins: number;
+  /** The wave beat the player's best before this run. */
+  best: boolean;
+}
+
+/** Sets up a Free Play run on `side` for the owner of `save`. */
+export function prepareFreePlay(
+  save: Save, side: Faction, seed: number, slot: Slot = save.slot, random: () => number = Math.random, levels: readonly LevelDef[] = LEVELS,
+): FreePlayPlay {
+  return { side, config: freePlayConfig(save, side, seed >>> 0, levels), battleId: newBattleId(random), slot };
+}
+
+/** The battle options of a prepared run (the controller plays `free.config`, with no computer). */
+export function freePlayOptions(free: FreePlayPlay): BattleOptions {
+  return { playerFaction: free.side, skill: 'easy', seed: free.config.seed, cards: [...free.config.cards[free.side]], free };
+}
+
+/** The record of a finished run (null while it runs, and for a battle that is no run). */
+export function freePlayRecord(ctl: { readonly free: FreePlayPlay | null; readonly match: Match }): FreePlayRecord | null {
+  const free = ctl.free;
+  const s = ctl.match.state;
+  if (free === null || s.winner === null) return null;
+  return { kind: 'free', battleId: free.battleId, side: free.side, wave: s.wave, cleared: wavesCleared(s.config.mode, s.wave) };
+}
+
+function applyFree(host: LevelHost, rec: FreePlayRecord): FreePlayOutcome | null {
+  if (host.player.peek() === null) return null;
+  let paid = { coins: 0, best: false };
+  host.update((save) => {
+    const r = applyFreePlayResult(save, rec, host.now());
+    paid = { coins: r.coins, best: r.best };
+    return r.save;
+  });
+  return { side: rec.side, wave: rec.wave, cleared: rec.cleared, ...paid };
+}
+
+/**
+ * A run of `slot` is over: the record goes onto the device, then into the save, then off the
+ * device. Null (the record kept for `slot`'s next log-in) when `slot` is not the player logged in.
+ */
+export function settleFreePlay(host: LevelHost, rec: FreePlayRecord, slot: Slot): FreePlayOutcome | null {
+  const storage = host.deviceStorage();
+  writeKey(storage, pendingKey(slot), JSON.stringify(rec));
+  if (host.player.peek()?.slot !== slot) return null;
+  const out = applyFree(host, rec);
+  writeKey(storage, pendingKey(slot), null);
+  return out;
 }
 
 /**

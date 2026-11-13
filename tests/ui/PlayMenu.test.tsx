@@ -89,19 +89,23 @@ describe('Play menu', () => {
     expect(screen.value).toEqual({ name: 'map', side: 'zombies' });
   });
 
-  it('Free Play: the side, then a wave behind a padlock (coming soon); back goes to the side', async () => {
+  it('Free Play: the side, then straight into the run (no card); back from the side goes to the menu', async () => {
     await player();
     mount();
     act(() => go({ name: 'play' }));
     tap('[data-play="free"]');
     expect(screen.value).toEqual({ name: 'side', mode: 'free' });
-    tap('[data-side="plants"]');
-    expect(screen.value).toEqual({ name: 'freeplay', side: 'plants' });
-    expect(need('[data-soon]')).toBeDefined();
-    tap('[data-action="back"]');
-    expect(screen.value).toEqual({ name: 'side', mode: 'free' });
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('play');
+    tap('[data-play="free"]');
+    tap('[data-side="zombies"]');
+    const s = screen.value;
+    expect(s.name).toBe('battle');
+    if (s.name !== 'battle') return;
+    expect(s.options.free).toMatchObject({ side: 'zombies', slot: session.player.peek()!.slot });
+    expect(s.options.free?.config.mode).toBe('breakthrough');
+    expect(s.options.play).toBeUndefined();
+    expect(need('[data-hud="free-top"]').dataset.mode).toBe('breakthrough');
   });
 
   it('a guest has Quick Battle only: Adventure and Free Play carry a player padlock and buzz', () => {

@@ -144,7 +144,7 @@ describe('a result travels: start → end → pending on the device → applied 
 
   it('the record is on the device before the save changes (a crash in between loses nothing)', () => {
     const rec = levelRecord(playToEnd(p11()))!;
-    let seen: LevelRecord | null = null;
+    let seen: ReturnType<typeof readPending> = null;
     const spy = {
       player: host.player, now: () => host.now(), deviceStorage: () => host.deviceStorage(),
       update: (fn: (s: Save) => Save) => { seen = readPending(host, me().slot); host.update(fn); },

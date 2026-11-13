@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { session } from '../../app/session';
-import { go } from '../../app/store';
+import { go, startFreePlay } from '../../app/store';
 import { factionOf } from '../../data/units';
 import type { Faction } from '../../sim/types';
 import type { BoyPortraits } from '../hud/BaseBars';
@@ -116,7 +116,8 @@ export function PlaySide({ mode, boys = {}, portraits = {} }: { mode: 'adventure
   const mine: Faction | null = me === null ? null : factionOf(me.picture);
   const pick = (side: Faction): void => {
     uiSound('click');
-    go(mode === 'adventure' ? { name: 'map', side } : { name: 'freeplay', side });
+    if (mode === 'adventure') go({ name: 'map', side });
+    else if (me !== null) startFreePlay(side, me);
   };
   return (
     <div data-screen="side" data-mode={mode} class="layer layer--menu play">
@@ -139,25 +140,6 @@ export function PlaySide({ mode, boys = {}, portraits = {} }: { mode: 'adventure
             <span class={`ico ico--${s.side === 'plants' ? 'sun' : 'brain'} play__side-mark`} aria-hidden="true" />
           </button>
         ))}
-      </div>
-    </div>
-  );
-}
-
-/** Free Play is not built yet (Task 7): a boxy wave behind a padlock, and the way back. */
-export function FreePlaySoon({ side }: { side: Faction }) {
-  // TODO(Task 7): Free Play. This screen is replaced by the endless waves on `side`.
-  return (
-    <div data-screen="freeplay" data-side={side} class="layer layer--menu play">
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: 'side', mode: 'free' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
-      <div class="freesoon px pal-slate" data-soon aria-label="Coming soon">
-        <PixelIcon art={WAVE} class="freesoon__wave" />
-        <span class="freesoon__lock px pal-cream"><PixelIcon art={LOCK} /></span>
       </div>
     </div>
   );

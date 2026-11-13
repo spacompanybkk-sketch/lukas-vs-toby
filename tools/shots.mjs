@@ -378,7 +378,7 @@ const SCENARIOS = [
     ['boss-oak-shield', 'elderOak', [34.4, 34.6, 36]],
     ['boss-oak-defeat', 'elderOak', [43.8, 44.5, 45.3]],
   ].map(([name, boss, times]) => {
-    const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}`;
+    const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
     return {
       name,
       url: url(times[0]),
@@ -1307,6 +1307,17 @@ async function inLevel(page, side, stars, unlocked, id, teach = []) {
   await page.waitForSelector('[data-banner]', { state: 'detached' });
 }
 
+/** Lukas on Home, then Play → Free Play → `side`: straight into the run; waits for the fight. */
+async function inFreePlay(page, side) {
+  await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+  await page.evaluate(() => window.__lvt.players.update((v) => ({ ...v, bestWave: 2 })));
+  await page.click('[data-home="play"]');
+  await page.click('[data-play="free"]');
+  await page.click(`[data-side="${side}"]`);
+  await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
+  await page.waitForSelector('[data-banner="ready"], [data-banner="fight"]', { state: 'detached' });
+}
+
 /** Waits for the tutorial's glove to stand at its target, holding, at the bottom of its tap. */
 async function gloveStill(page) {
   await page.waitForSelector('[data-tutorial] [data-glove][data-glove-x][data-holding="true"]', { state: 'attached', timeout: 15_000 });
@@ -1436,6 +1447,75 @@ function adventureShots() {
         lvt.fastForward(30 * 46);
       });
       await gloveStill(page);
+    }],
+    // Task 7b: Free Play. Survive 75 s in (wave 4): the flag counter and the next wave's ring, a garden planted.
+    ['freeplay-survive', async (page) => {
+      await inFreePlay(page, 'plants');
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        const c = lvt.session.controller;
+        const s = c.match.state;
+        // A shot, not a match: the base holds and the garden grows.
+        const ff = (sec) => { for (let i = 0; i < sec; i++) { s.baseHp.plants = s.baseMaxHp.plants; lvt.fastForward(30); } };
+        const plant = (card, lane, col) => {
+          s.players.plants.energy = Math.max(s.players.plants.energy, 300);
+          c.select(card); c.click({ lane, col }, null); lvt.fastForward(2);
+        };
+        plant('sunflower', 1, 0); plant('sunflower', 3, 0);
+        ff(6);
+        for (const lane of [0, 1, 2, 3, 4]) { ff(6); plant('peashooter', lane, 2); }
+        ff(4);
+        plant('walnutBomb', 2, 5); plant('walnutBomb', 0, 5);
+        for (let i = 0; i < 5; i++) { ff(6); plant('peashooter', i, 3); }
+        // Halfway to the next wave: the ring half lit.
+        while (s.waveTimer !== 300) { s.baseHp.plants = s.baseMaxHp.plants; lvt.fastForward(1); }
+        c.select(null);
+      });
+      await page.waitForTimeout(1800); // the wave banner has gone
+      await nextFrames(page, 6);
+    }],
+    // Breakthrough: one garden broken (+30 on the clock), garden 2 standing, zombies on their way.
+    ['freeplay-breakthrough', async (page) => {
+      await inFreePlay(page, 'zombies');
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        const c = lvt.session.controller;
+        lvt.fastForward(30 * 3);
+        for (const lane of [0, 2, 4]) { c.select('brainEater'); c.click({ lane, col: 9 }, null); lvt.fastForward(30 * 3); }
+        c.select('veryFastWalker'); c.click({ lane: 1, col: 9 }, null); lvt.fastForward(30 * 2);
+        // The garden falls: +30 on the clock, garden 2 laid.
+        lvt.damageBase('plants', 999999);
+        lvt.fastForward(3);
+      });
+      await nextFrames(page, 4);
+      await page.waitForTimeout(250); // the +30 at its biggest
+    }],
+    // The tenth wave's banner: the flag, 10, and the big one's silhouette.
+    ['freeplay-wave-banner', async (page) => {
+      await inFreePlay(page, 'plants');
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        lvt.fastForward(30 * 11);
+        const s = lvt.session.controller.match.state;
+        s.wave = 9;
+        s.waveTimer = 1;
+        lvt.fastForward(1);
+      });
+      await page.waitForTimeout(500); // the band has slid in
+      await nextFrames(page, 2);
+    }],
+    // The end of a run that beat the best: wave 3, the crown, 10 coins.
+    ['freeplay-result-best', async (page) => {
+      await inFreePlay(page, 'plants');
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        lvt.fastForward(30 * 51);
+        lvt.damageBase('plants', 999999);
+        lvt.fastForward(1);
+      });
+      await page.waitForSelector('[data-free-result]', { timeout: 30_000 });
+      await page.waitForTimeout(2600);
+      await nextFrames(page, 3);
     }],
     // A loss: grey stars, the consolation coins, replay and map.
     ['level-result-lost', async (page) => {

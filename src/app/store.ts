@@ -6,7 +6,7 @@ import type { LevelDef } from '../adventure/types';
 import type { Save, Slot } from '../progress/save';
 import type { Faction } from '../sim/types';
 import type { BattleOptions } from './BattleController';
-import { applyPending, levelOptions, levelProblem, prepareLevel } from './levelSession';
+import { applyPending, freePlayOptions, levelOptions, levelProblem, prepareFreePlay, prepareLevel } from './levelSession';
 import type { LevelHost } from './levelSession';
 import { session } from './session';
 import { stepsToTeach } from './tutorial';
@@ -30,8 +30,6 @@ export type Screen =
   | { name: 'side'; mode: 'adventure' | 'free' }
   /** The Adventure map of `side`; with `card`, that level's card is open over it. */
   | { name: 'map'; side: Faction; card?: string }
-  /** Free Play on `side`: a "coming soon" picture until Task 7. */
-  | { name: 'freeplay'; side: Faction }
   | { name: 'battle'; options: BattleOptions }
   | { name: 'unsupported'; reason: 'webgl2' | 'context-lost' };
 
@@ -69,4 +67,14 @@ export function startLevel(
   const play = { ...prepareLevel(def, me, seed, me.slot), teach: stepsToTeach(def.teaches, me, opts.replayTutorial === true) };
   go({ name: 'battle', options: levelOptions(play) });
   return true;
+}
+
+/**
+ * Starts a Free Play run on `side` for the owner of `save`, straight into the battle (no card):
+ * endless waves (plants) or gardens (zombies) from the cards the player has met, with a fresh
+ * battle id. A result still waiting on the device is applied first.
+ */
+export function startFreePlay(side: Faction, save: Save, seed: number = Date.now(), host: LevelHost = session): void {
+  const me = host.player.peek()?.slot === save.slot ? (applyPending(host), host.player.peek() ?? save) : save;
+  go({ name: 'battle', options: freePlayOptions(prepareFreePlay(me, side, seed, me.slot)) });
 }

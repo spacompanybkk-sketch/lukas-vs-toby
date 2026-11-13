@@ -52,9 +52,6 @@
 .duo__boy img { width: 100%; height: 100%; object-fit: contain; object-position: bottom; image-rendering: pixelated; filter: drop-shadow(4px 4px 0 rgba(42, 27, 14, 0.55)); }
 
 /* Free Play, not built yet: a wave behind a padlock. */
-.freesoon { position: relative; display: grid; place-items: center; width: clamp(220px, 44vh, 380px); height: clamp(220px, 44vh, 380px); padding: 32px; }
-.freesoon__wave { filter: grayscale(0.4); }
-.freesoon__lock { position: absolute; right: -18px; bottom: -18px; width: clamp(80px, 14vh, 130px); height: clamp(80px, 14vh, 130px); padding: 12px; }
 
 /* ---- Map ---- */
 .map { background: transparent; pointer-events: none; }

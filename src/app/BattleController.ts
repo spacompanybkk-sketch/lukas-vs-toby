@@ -13,8 +13,9 @@ import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
 import type { BossKey, CardKey, Command, CommandRejection, Faction, SimEvent, SimState, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
-import { bigWaveRuns, levelProblem, levelRecord } from './levelSession';
-import type { LevelPlay, LevelRecord } from './levelSession';
+import { bigWaveRuns, freePlayRecord, levelProblem, levelRecord } from './levelSession';
+import type { FreePlayPlay, LevelPlay, LevelRecord } from './levelSession';
+import type { FreePlayRecord } from '../adventure/freePlay';
 import { Tutorial } from './tutorial';
 import type { TutorialAction } from './tutorial';
 
@@ -38,6 +39,11 @@ export interface BattleOptions {
    * `upgrades` are then not used: the config already holds them.
    */
   play?: LevelPlay;
+  /**
+   * A Free Play run (`prepareFreePlay`): the match is its config (endless waves or gardens), and no
+   * computer plays (the waves are the other side). `skill`, `cards` and `upgrades` are not used.
+   */
+  free?: FreePlayPlay;
 }
 
 /** The player's upgrades for their own side: the cards of `side` in `upgrades`, none in Versus. */
@@ -98,6 +104,29 @@ export function bossOf(s: Readonly<SimState>, balance: Balance): BossVM | null {
   const hp = u.hp > 0 ? Math.min(u.maxHp, Math.ceil(u.hp / block) * block) : 0;
   return { key, hp, max: u.maxHp, shield: u.shieldLeft > 0, notches };
 }
+
+/**
+ * A Free Play run's HUD, each signal written only when what it shows changes (so a 40-minute run
+ * costs the HUD nothing between changes).
+ */
+export interface EndlessSignals {
+  mode: 'survive' | 'breakthrough';
+  /** The cards the waves (or gardens) are made of. */
+  cards: readonly CardKey[];
+  /** The score: waves started (survive) or gardens broken (breakthrough). */
+  wave: Signal<number>;
+  /** Survive: twelfths of the gap left before the next wave (12 = a whole gap, 0 = now). */
+  nextWave: Signal<number>;
+  /** Breakthrough: whole seconds left on the clock. */
+  clock: Signal<number>;
+  /** The last wave (survive) or garden (breakthrough) to start: its number, the big one's, numbered. */
+  banner: Signal<{ wave: number; big: boolean; n: number } | null>;
+  /** Gardens broken this run, for the clock's "+30" pop (breakthrough). */
+  bonus: Signal<number>;
+}
+
+/** The survive countdown ring is drawn in this many steps. */
+export const RING_STEPS = 12;
 
 /** A level's own HUD signals (all quiet in a Quick Battle). */
 export interface LevelSignals {
@@ -190,6 +219,10 @@ export class BattleController {
   /** A level's extra HUD (clock, waves, belt), or null. */
   readonly level: LevelHudInfo | null;
   readonly levelHud: LevelSignals;
+  /** The Free Play run being played, or null. */
+  readonly free: FreePlayPlay | null;
+  /** A Free Play run's HUD, or null. */
+  readonly endless: EndlessSignals | null;
   /** The level's tutorial (`play.teach`), or null: none, or every step already done. */
   readonly tutorial: Tutorial | null;
   private readonly bot: Bot;
@@ -217,6 +250,7 @@ export class BattleController {
     // Both sides are dealt all ten of their cards (ruling R52). The computer's strategy may know
     // only some of them; its random moves (`randomLegal`) play any card in its hand.
     this.play = opts.play ?? null;
+    this.free = opts.free ?? null;
     const botSeed = (Math.imul(opts.seed, 2654435761) + 1) >>> 0;
     if (this.play !== null) {
       // An Adventure level: its own match, and its own computer (none for a scripted level).
@@ -242,6 +276,12 @@ export class BattleController {
         belt: config.belt !== null && config.belt.side === this.playerFaction,
         noEnergy: config.noEnergy,
       };
+    } else if (this.free !== null) {
+      // Free Play: the endless source is the other side; nobody else plays.
+      if (this.free.side !== opts.playerFaction) throw new Error(`a Free Play run on the ${this.free.side} side`);
+      this.match = new Match(this.free.config, balance);
+      this.bot = { faction: this.opponent, think: () => [] };
+      this.level = null;
     } else {
       const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
       config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
@@ -266,6 +306,11 @@ export class BattleController {
     this.levelHud = {
       belt: signal<BeltCardVM[]>([]), beltSlot: signal<number | null>(null),
       incoming: signal<IncomingVM | null>(null),
+    };
+    const mode = this.match.state.config.mode;
+    this.endless = this.free === null || (mode !== 'survive' && mode !== 'breakthrough') ? null : {
+      mode, cards: [...(this.match.state.config.endless?.cards ?? [])], wave: signal(0), nextWave: signal(RING_STEPS), clock: signal(0),
+      banner: signal<{ wave: number; big: boolean; n: number } | null>(null), bonus: signal(0),
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
@@ -316,6 +361,11 @@ export class BattleController {
       if (e.type === 'beltCard') this.beltIds.push(this.nextBeltId++);
       if (e.type === 'beltUsed') this.beltLeft(e.slot);
       if (e.type === 'waveSpawned') this.cueWave(e.index, e.lane);
+      if (e.type === 'waveStarted' && this.endless !== null) {
+        const old = this.endless.banner.peek();
+        this.endless.banner.value = { wave: e.wave, big: e.wave % this.match.balance.endless.bossEvery === 0, n: (old?.n ?? 0) + 1 };
+      }
+      if (e.type === 'gardenBroken' && this.endless !== null) this.endless.bonus.value += 1;
     }
     this.refresh();
     tutorial?.events(events);
@@ -329,6 +379,11 @@ export class BattleController {
   /** A decided level's record (`levelRecord`); null while it runs, and in a Quick Battle. */
   levelResult(): LevelRecord | null {
     return levelRecord(this);
+  }
+
+  /** A finished Free Play run's record (`freePlayRecord`); null while it runs, and in any other battle. */
+  freeResult(): FreePlayRecord | null {
+    return freePlayRecord(this);
   }
 
   select(unit: UnitKey | null): void {
@@ -832,6 +887,17 @@ export class BattleController {
     const sameBoss = boss === null ? oldBoss === null
       : oldBoss !== null && oldBoss.key === boss.key && oldBoss.hp === boss.hp && oldBoss.max === boss.max && oldBoss.shield === boss.shield;
     if (!sameBoss) this.hud.boss.value = boss;
+
+    const endless = this.endless;
+    if (endless !== null) {
+      set(endless.wave, s.wave);
+      if (endless.mode === 'survive') {
+        const gap = s.wave === 0 ? (s.config.endless?.firstWaveTicks ?? 0) : seconds(this.match.balance.endless.gapSeconds);
+        set(endless.nextWave, gap > 0 ? Math.ceil((Math.max(0, s.waveTimer) / gap) * RING_STEPS) : 0);
+      } else {
+        set(endless.clock, Math.ceil(Math.max(0, s.clock) / TICKS_PER_SECOND));
+      }
+    }
 
     if (this.level?.belt === true) {
       const old = this.levelHud.belt.peek();

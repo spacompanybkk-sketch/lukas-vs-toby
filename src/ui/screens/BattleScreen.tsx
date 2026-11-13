@@ -31,6 +31,13 @@ import { TopBar } from '../hud/TopBar';
 import { PointingHand } from '../hud/PointingHand';
 import type { GloveHost } from '../hud/PointingHand';
 import type { GloveVM } from '../../app/tutorial';
+import type { EndlessSignals } from '../../app/BattleController';
+import type { FreePlayOutcome } from '../../app/levelSession';
+import { BALANCE } from '../../data/balance';
+import { FreePlayResult, FreePlayTop, WaveBanner, bigOne } from './FreePlay';
+
+/** The seconds a broken garden adds to Free Play's clock (the "+30"). */
+const FREE_BONUS_SECONDS = BALANCE.endless.clockBonusSeconds;
 import '../hud/hud.css';
 
 /** What the battle screen needs from a session; the real `BattleSession` satisfies it, tests pass a fake. */
@@ -51,6 +58,8 @@ export interface BattleSessionLike {
     levelHud?: LevelSignals;
     /** A belt card tapped (its slot), or null: put down. */
     selectBelt?(slot: number | null): void;
+    /** A Free Play run's HUD signals (none or null: no run). */
+    endless?: EndlessSignals | null;
     /** The level's tutorial: where its glove points (none or null: no tutorial). */
     tutorial?: { glove: ReadonlySignal<GloveVM | null> } | null;
   };
@@ -111,6 +120,8 @@ export interface BattleScreenProps {
    * nothing boss-specific; it only places whatever it is given under the level's goal bars.
    */
   bossBar?: ComponentChildren;
+  /** A Free Play run's applied result: the wave reached, best, coins. */
+  freePlay?: FreePlayOutcome | null;
 }
 
 /**
@@ -141,7 +152,7 @@ const SHAKE_MS = 300;
  */
 export function BattleScreen(props: BattleScreenProps) {
   const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null, rankUp = null } = props;
-  const { level = null, onNextLevel, onMap, turntable, bossBar } = props;
+  const { level = null, onNextLevel, onMap, turntable, bossBar, freePlay = null } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
@@ -162,12 +173,12 @@ export function BattleScreen(props: BattleScreenProps) {
 
   return (
     <div data-screen="battle" class={`battle side-${side}`}>
-      <ResultClears hud={hud} resultReady={session.resultReady} clear={level !== null}>
+      <ResultClears hud={hud} resultReady={session.resultReady} clear={level !== null || ctl.endless != null}>
       <div class="battle__top">
         <div class="battle__left">
           {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} />}
         </div>
-        <LiveClock hud={hud} />
+        {ctl.endless != null ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} /> : <LiveClock hud={hud} />}
         <div class="battle__right">
           <LivePause ctl={ctl} />
         </div>
@@ -193,12 +204,15 @@ export function BattleScreen(props: BattleScreenProps) {
         <IncomingCues incoming={ctl.levelHud.incoming} at={(lane, side) => session.tileToClient?.(lane, side === 'zombies' ? 9 : 0) ?? null} />
       )}
       {ctl.tutorial != null && <LiveGlove hud={hud} glove={ctl.tutorial.glove} host={session} />}
+      {ctl.endless != null && (
+        <WaveBanner banner={ctl.endless.banner} side={ctl.endless.mode === 'survive' ? 'zombies' : 'plants'} big={bigOne(ctl.endless.cards)} portraits={portraits} />
+      )}
       {session.heroBanner !== undefined && <HeroBanner banner={session.heroBanner} boys={boys} />}
       <IntroBanner session={session} />
       <Overlays
         ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
         onRestart={onRestart} onQuit={onQuit} coins={coins} rankUp={rankUp}
-        level={level} onNextLevel={onNextLevel} onMap={onMap} turntable={turntable} cards={portraits}
+        level={level} onNextLevel={onNextLevel} onMap={onMap} turntable={turntable} cards={portraits} freePlay={freePlay}
       />
     </div>
   );
@@ -507,10 +521,11 @@ interface OverlaysProps {
   onMap: (() => void) | undefined;
   turntable: Turntable | undefined;
   cards: Record<string, string>;
+  freePlay: FreePlayOutcome | null;
 }
 
 /** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
-function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp, level, onNextLevel, onMap, turntable, cards }: OverlaysProps) {
+function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp, level, onNextLevel, onMap, turntable, cards, freePlay }: OverlaysProps) {
   const hud = ctl.hud;
   const paused = hud.paused.value;
   const result = hud.result.value;
@@ -519,6 +534,9 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
 
   if (result !== null) {
     if (!ready) return null; // the base is still falling
+    if (ctl.endless != null) {
+      return <FreePlayResult outcome={freePlay} side={ctl.playerFaction} rankUp={rankUp} onAgain={onRestart} onHome={onQuit} />;
+    }
     return (
       <ResultOverlay
         result={result} playerFaction={ctl.playerFaction} seconds={hud.seconds.value} portraits={boys}

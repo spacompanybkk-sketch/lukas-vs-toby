@@ -7,11 +7,12 @@ import type { BattleOptions } from '../app/BattleController';
 import { loadSettings, saveSettings } from '../app/settings';
 import type { Settings } from '../app/settings';
 import { session as players } from '../app/session';
-import { go, screen, startLevel } from '../app/store';
-import { settleLevel } from '../app/levelSession';
+import { go, screen, startFreePlay, startLevel } from '../app/store';
+import { settleFreePlay, settleLevel } from '../app/levelSession';
 import { rememberTaught } from '../app/tutorial';
 import type { Tutorial } from '../app/tutorial';
-import type { LevelOutcome, LevelRecord } from '../app/levelSession';
+import type { FreePlayOutcome, LevelOutcome, LevelRecord } from '../app/levelSession';
+import type { FreePlayRecord } from '../adventure/freePlay';
 import type { Turntable } from './hud/ResultOverlay';
 import type { SfxName } from '../audio/sfx';
 import { board, rankChange } from '../app/board';
@@ -34,7 +35,7 @@ import { Almanac } from './screens/Almanac';
 import type { AlmanacHost } from './screens/Almanac';
 import { Players } from './screens/Players';
 import { SidePick } from './screens/SidePick';
-import { FreePlaySoon, PlayMenu, PlaySide } from './screens/PlayMenu';
+import { PlayMenu, PlaySide } from './screens/PlayMenu';
 import { MapScreen } from './screens/Map';
 import type { MapHost } from './screens/Map';
 import { Title } from './screens/Title';
@@ -223,9 +224,6 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
     case 'map':
       body = <MapScreen side={s.side} card={s.card} portraits={portraits} boys={boys} host={map} />;
       break;
-    case 'freeplay':
-      body = <FreePlaySoon side={s.side} />;
-      break;
     case 'battle':
       body = (
         <BattleHost
@@ -295,6 +293,7 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   const { coins, rankUp } = useBattleCoins(live, options);
   const { outcome, rankUp: levelRankUp } = useLevelResult(live, options);
   useTeached(live, options);
+  const { outcome: freeOutcome, rankUp: freeRankUp } = useFreePlayResult(live, options);
 
   if (live === null) return null;
   const play = options.play;
@@ -309,6 +308,16 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   };
   // A logged-in player goes back to their Home, a battle opened without one, to the title.
   const quit = (): void => go({ name: players.player.peek() !== null ? 'home' : 'title' });
+  const free = options.free;
+  if (free !== undefined) {
+    // Free Play: again is a fresh run on the same side; the way out is Home.
+    const runAgain = (): void => {
+      const me = players.player.peek();
+      if (me === null) quit();
+      else startFreePlay(free.side, me, (Date.now() + live.id) >>> 0);
+    };
+    return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={runAgain} onQuit={quit} freePlay={freeOutcome} rankUp={freeRankUp} />;
+  }
   if (play === undefined) {
     return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={again} onQuit={quit} coins={coins} rankUp={rankUp} />;
   }
@@ -370,6 +379,47 @@ function useLevelResult(
 }
 
 /**
+ * A Free Play run's result, the moment it is over: its record is kept on the device, applied to the
+ * save (`settleFreePlay`: 5 coins a wave cleared, bestWave, once per battle id) and taken off the
+ * device. Returns what the result shows, and the player's best move up a leaderboard table.
+ */
+function useFreePlayResult(
+  live: { id: number; session: BattleSessionLike } | null, options: BattleOptions,
+): { outcome: FreePlayOutcome | null; rankUp: RankUp | null } {
+  const [outcome, setOutcome] = useState<FreePlayOutcome | null>(null);
+  const [rankUp, setRankUp] = useState<RankUp | null>(null);
+  useEffect(() => {
+    setOutcome(null);
+    setRankUp(null);
+    const free = options.free;
+    if (live === null || free === undefined) return undefined;
+    const ctl = live.session.controller as BattleSessionLike['controller'] & { freeResult?(): FreePlayRecord | null };
+    let done = false;
+    let alive = true;
+    const stop = ctl.hud.result.subscribe((result) => {
+      const before = players.player.peek();
+      if (result === null || done || before === null) return;
+      const record = ctl.freeResult?.() ?? null;
+      if (record === null) return;
+      done = true;
+      const out = settleFreePlay(players, record, free.slot);
+      setOutcome(out);
+      const after = players.player.peek();
+      if (out === null || after === null) return;
+      void board.fetch().then(
+        (v) => { if (alive) setRankUp(rankChange(v.rows, before, after)); },
+        (e: unknown) => console.error('board failed', e),
+      );
+    });
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [live, options]);
+  return { outcome, rankUp };
+}
+
+/**
  * The tutorial steps done in this battle go into the save (`teached`) as they are done, so a step
  * is shown once per player; nothing is kept for anyone but the level's own player.
  */
@@ -409,7 +459,7 @@ function useBattleCoins(
     const stop = ctl.hud.result.subscribe((result) => {
       const before = players.player.peek();
       // An Adventure level pays only through `applyLevelResult` (useLevelResult), never here.
-      if (result === null || done || before === null || options.level !== undefined || options.play !== undefined) return;
+      if (result === null || done || before === null || options.level !== undefined || options.play !== undefined || options.free !== undefined) return;
       done = true;
       const base = ctl.hud.base.peek()[ctl.playerFaction];
       const r = { won: result.playerWon, skill: options.skill, baseHpShare: base.max > 0 ? base.hp / base.max : 0 };
