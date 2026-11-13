@@ -303,12 +303,12 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     thunderbolt: { cooldown: 90, firstReady: 45, size: 2, damage: 300 },
     vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 8 },
     sunShower: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
-    healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 200 },
+    healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 125 },
     rockWall: { cooldown: 90, firstReady: 45, size: 1, seconds: 12 }, // the rock's health: units.rock
     meteor: { cooldown: 90, firstReady: 45, size: 2, damage: 200 },
     fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 6 },
     brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
-    frenzy: { cooldown: 90, firstReady: 45, size: 3, seconds: 10, factor: 2 },
+    frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
     graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
   },
 });
