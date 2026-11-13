@@ -42,9 +42,9 @@ export const DIFFICULTY: DifficultyTable = {
     zombies: { skill: 'hard', income: { human: 1, computer: 1 }, randomShare: 0.4 },
   },
   medium: {
-    // Medium zombies that mostly play at random, so a child finds openings, and twice the Sun
+    // Medium zombies that mostly play at random, so a child finds openings, and 1.8 times the Sun
     // trickle for him.
-    plants: { skill: 'medium', income: { human: 2, computer: 0.8 }, randomShare: 0.9 },
+    plants: { skill: 'medium', income: { human: 1.8, computer: 0.8 }, randomShare: 0.9 },
     // An adult sending steady waves wins about half (steadyZombies 40-65%): the computer plants'
     // hero and peas out-play plain waves at equal income, so the zombies earn 20% more.
     zombies: { skill: 'medium', income: { human: 1.2, computer: 1 }, randomShare: 0 },
