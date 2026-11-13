@@ -9,6 +9,7 @@
  *   npx tsx tools/tune.ts --scale 0.5           half the seeds everywhere (quicker, noisier)
  *   npx tsx tools/tune.ts --only regex          only the bands whose name or group matches
  *   npx tsx tools/tune.ts --merge               also the merge values (lane duels)
+ *   npx tsx tools/tune.ts --casts               also each power's uses per dealt match at Medium
  *   --set path=value,path=value                 start from the shipped knobs with these changed
  *   --workers N                                 worker threads (default 3, never more than 3)
  *   --search spec.json                          coordinate search over the knobs in spec.json
@@ -23,7 +24,7 @@
 
 import { readFileSync } from 'node:fs';
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import { SHIPPED, playSeries } from '../src/ai/balanceChecks';
+import { SHIPPED, castsPerMatch, playSeries, summarise } from '../src/ai/balanceChecks';
 import type { Knobs, Played } from '../src/ai/balanceChecks';
 import { allBands, bandMiss, formatRange, formatValue, matchupOf, measureBands } from '../src/ai/bands';
 import type { Band, MatchupSpec, Measured } from '../src/ai/bands';
@@ -184,6 +185,11 @@ async function main(): Promise<void> {
     console.log(`Bands, ${set === undefined ? 'shipped knobs' : `shipped knobs with ${set}`}, seeds from ${first}, scale ${scale}`);
     const t0 = Date.now();
     print(await measure(pool, start, bands, first));
+    if (args.includes('--casts')) {
+      const mm = summarise('', await pool.play(start, { kind: 'bot', plants: 'medium', zombies: 'medium' }, first, 400), start.balance);
+      console.log('\nUses per dealt match, Medium v Medium, 400 seeds (heroes per match):');
+      for (const [k, v] of Object.entries(castsPerMatch(mm)).sort()) console.log(`  ${k.padEnd(16)} ${v.toFixed(2)}`);
+    }
     if (args.includes('--merge')) {
       console.log('\nMerge value (mean over N = 2..5, band 0.95-1.25):');
       for (const unit of FIGHTERS) {
