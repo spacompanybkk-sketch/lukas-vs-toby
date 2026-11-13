@@ -385,7 +385,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       maxStunSeconds: 1, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
-        { kind: 'summon', everySeconds: 20, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
       ],
     },
