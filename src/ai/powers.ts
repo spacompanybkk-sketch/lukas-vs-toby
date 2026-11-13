@@ -7,8 +7,8 @@
  * - Hero (Mega Mower, Bone Storm): the lane where the damage it would deal, plus the price of what
  *   it would kill, is largest. A zombie near the plant base counts double for the Mower.
  * - Thunderbolt / Meteor: the 2×2 with the most damage dealt (each unit counts up to the spell's
- *   damage), once an area holds two enemies or damage worth 1.5× the spell's; after waiting
- *   `BLAST_PATIENCE` seconds, any area with an enemy (a child should see it used).
+ *   damage), once an area holds two enemies; after waiting `BLAST_PATIENCE` seconds, any area with
+ *   an enemy (a child should see it used).
  * - Vines: the 2×2 holding the most zombie health that is walking into plants.
  * - Fog: the 2×2 whose plants would fire the most at zombies in its blind seconds.
  * - Frenzy: the 3×3 whose zombies are biting plants hardest, or about to.
@@ -35,12 +35,6 @@ import type { BotRng } from './lawn';
 export const POWER_LINES = {
   /** Hero: damage dealt plus prices killed, × its damage. */
   hero: 1.5,
-  /**
-   * Thunderbolt / Meteor: damage dealt, × its damage. Either this, or two enemies in the area, fires
-   * it; once it has waited `BLAST_PATIENCE` seconds, one enemy is enough (a child sees it used).
-   */
-  thunderbolt: 1.5,
-  meteor: 1.5,
   /** Vines: zombie health held. */
   vines: 700,
   /** Fog: plant damage prevented. */
@@ -53,7 +47,7 @@ export const POWER_LINES = {
   rock: 500,
 } as const;
 
-/** Seconds a ready Thunderbolt or Meteor waits for a crowd before it settles for any enemy. */
+/** Seconds a ready Thunderbolt or Meteor waits for two enemies in an area before one will do. */
 export const BLAST_PATIENCE = 20;
 
 /**
@@ -245,14 +239,11 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey, wa
       return { cmd: { type: 'spell', faction, spell, lane: 0, col: 0 }, score: 1 };
     case 'thunderbolt':
     case 'meteor': {
-      // Fired on a crowd (two enemies, or damage worth its line), or after waiting, on anyone.
+      // Fired on two enemies in an area, or once it has waited, on one: the area with the most
+      // damage dealt among those (a child sees it used, and it clears what it hits).
       const damage = stats.damage ?? 0;
-      const patient = waited >= BLAST_PATIENCE;
-      const count = bestArea(grid, faction, spell, stats.size, enemy, patient ? 1 : 2, () => 1);
-      const worth = bestArea(grid, faction, spell, stats.size, enemy, POWER_LINES[spell] * damage, (u) => Math.min(u.hp, damage));
-      if (worth !== null) return worth;
-      if (count === null) return null;
-      // Among the areas holding enough enemies, the one with the most damage dealt.
+      const enough = waited >= BLAST_PATIENCE ? 1 : 2;
+      if (bestArea(grid, faction, spell, stats.size, enemy, enough, () => 1) === null) return null;
       return bestArea(grid, faction, spell, stats.size, enemy, 0, (u) => Math.min(u.hp, damage));
     }
     case 'vines': {

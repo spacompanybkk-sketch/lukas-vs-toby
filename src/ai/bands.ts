@@ -187,7 +187,8 @@ export function allBands(scale = 1): Band[] {
       const hands = { plants: [] as SpellKey[], zombies: [] as SpellKey[] };
       hands[faction] = [spell];
       add({
-        name: `spell ${spell} alone: edge`, group: 'spell-one', min: 8, max: 16, weight: 1, unit: 'pts',
+        // Thunderbolt and Meteor are rare and big (final fix round): 8-18.
+        name: `spell ${spell} alone: edge`, group: 'spell-one', min: 8, max: spell === 'thunderbolt' || spell === 'meteor' ? 18 : 16, weight: 1, unit: 'pts',
         plays: [{ spec: { kind: 'spells', ...hands }, seeds: n(600) }, { spec: NO_SPELLS, seeds: n(600) }],
         value: (s) => 100 * (winShare(s[0] as SeriesStats, faction) - winShare(s[1] as SeriesStats, faction)),
       });
