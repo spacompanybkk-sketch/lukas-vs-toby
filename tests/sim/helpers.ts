@@ -78,7 +78,7 @@ export function classicBalance(): Balance {
     vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
     sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
     healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
-    rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
+    rockWall: { cooldown: 45, firstReady: 20, size: 1, seconds: 12 }, // the rock: units.rock, 800
     meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
     fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
     brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },

@@ -80,13 +80,13 @@ export interface UnitStats {
  * `firstReady` seconds into the match, covering an area of `size` (see `SpellSize`). What else it
  * has depends on the spell: `damage` (Thunderbolt, Meteor), `seconds` of a status or of a rock's
  * life (Vines, Fog, Frenzy, Rock Wall), `amount` of energy or healing (Sun Shower, Brain Feast,
- * Healing Rain), the rock's `hp`, Frenzy's speed `factor`, Grave Rise's `count` of minions.
+ * Healing Rain), Frenzy's speed `factor`, Grave Rise's `count` of minions.
  * `minCol`: an aimed spell may not be cast on a column below it (Grave Rise, kept away from the
  * plant base).
  */
 export interface SpellStats {
   cooldown: number; firstReady: number; size: SpellSize;
-  damage?: number; seconds?: number; amount?: number; hp?: number; factor?: number; count?: number;
+  damage?: number; seconds?: number; amount?: number; factor?: number; count?: number;
   minCol?: number;
 }
 
@@ -275,8 +275,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       recharge: 1, hp: 150, armor: 0, speed: 0.6,
       melee: { damage: 20, interval: 0.8, reach: 0.6 },
     },
-    // Rock Wall's rock: never a card. Its health is the spell's `hp`; it does nothing but stand.
-    rock: { recharge: 1, hp: 800, armor: 0, speed: 0 },
+    // Rock Wall's rock: never a card. Its health is set here and nowhere else; it only stands.
+    rock: { recharge: 1, hp: 200, armor: 0, speed: 0 },
   },
   trickle: { plants: 2.5, zombies: 14 },
   bountyShare: { plants: 0.5, zombies: 0.5 },
@@ -304,7 +304,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 1.5 },
     sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 5 },
     healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 100 },
-    rockWall: { cooldown: 60, firstReady: 20, size: 1, hp: 200, seconds: 6 },
+    rockWall: { cooldown: 60, firstReady: 20, size: 1, seconds: 6 }, // the rock's health: units.rock
     meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 15 },
     fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 3 },
     brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },

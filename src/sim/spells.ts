@@ -137,8 +137,7 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
       }
       break;
     case 'rockWall': {
-      const rock = spawnUnit(s, b, 'rock', cmd.lane, cmd.col + 0.5);
-      rock.hp = rock.maxHp = need(stats.hp, cmd.spell);
+      const rock = spawnUnit(s, b, 'rock', cmd.lane, cmd.col + 0.5); // its health: `units.rock.hp`
       rock.expires = seconds(need(stats.seconds, cmd.spell));
       events.push({ type: 'unitSpawned', unitId: rock.id, key: rock.key, faction: rock.faction, lane: rock.lane, x: rock.x });
       break;

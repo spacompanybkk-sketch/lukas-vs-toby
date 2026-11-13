@@ -66,7 +66,7 @@ describe('the spell table', () => {
       vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 1.5 },
       sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 5 },
       healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 100 },
-      rockWall: { cooldown: 60, firstReady: 20, size: 1, hp: 200, seconds: 6 },
+      rockWall: { cooldown: 60, firstReady: 20, size: 1, seconds: 6 },
       meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 15 },
       fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 3 },
       brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },
