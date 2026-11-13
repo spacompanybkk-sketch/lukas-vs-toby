@@ -308,28 +308,37 @@ function rotGeometry(): BufferGeometry {
   );
 }
 
-/** The Elder Oak's acorn: a fat walnut-brown nut under a dark checked cap with a stalk. */
+/**
+ * The Elder Oak's acorn, so it reads as an acorn and not a lump: a light walnut nut narrowing to a
+ * point, under a wider, dark, checked cap that overhangs it, with a stalk on top. Seven cells each way.
+ */
 function acornGeometry(): BufferGeometry {
-  const n = 6;
+  const n = 7;
   const cell = PROJECTILE_SIZE.acorn / n;
   const nut = paint(SHOT_COLORS.acorn);
   const nutDark = paint(SHOT_COLORS.acornDark);
-  const cap = paint(SHOT_COLORS.acornCap);
-  const capLight = paint(SHOT_COLORS.acornCapLight);
-  const u = (i: number): number => ((i + 0.5) / n) * 2 - 1;
+  const u = (i: number, m: number): number => ((i + 0.5) / m) * 2 - 1;
   const batch = new BoxBatch();
-  batch.transformed(new Matrix4().makeTranslation((-n * cell) / 2, (-n * cell) / 2, (-n * cell) / 2), () =>
+  const half = (n * cell) / 2;
+  // The nut: 5 of the 7 cells wide, 5 tall, narrowing to its point at the bottom.
+  batch.transformed(new Matrix4().makeTranslation(-2.5 * cell, -half, -2.5 * cell), () =>
     batch.voxels(
       cell,
       [0, 0, 0],
-      [n - 1, n - 1, n - 1],
-      // Rounder at the cap, narrowing to a point at the bottom.
-      (i, j, k) => u(i) ** 2 + u(k) ** 2 <= (j >= 3 ? 1.3 : 0.35 + j * 0.3),
-      (i, j, k) => (j >= 4 ? ((i + k + j) % 2 === 0 ? cap : capLight) : j === 0 || hash2(i, k, j) < 0.25 ? nutDark : nut),
+      [4, 4, 4],
+      (i, j, k) => u(i, 5) ** 2 + u(k, 5) ** 2 <= (j >= 2 ? 1.2 : 0.3 + j * 0.35),
+      (i, j, k) => (j === 0 || (i + k + j) % 4 === 0 ? nutDark : nut),
     ),
   );
-  const y = (n * cell) / 2;
-  batch.box(-cell * 0.5, y, -cell * 0.5, cell, cell * 0.6, cell, PALETTE.walnutDark);
+  // The cap: all 7 cells wide, overhanging the nut, checked dark and darker; a stalk.
+  const capY = -half + 5 * cell;
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < n; k++) {
+      if ((i === 0 || i === n - 1) && (k === 0 || k === n - 1)) continue; // round its corners
+      batch.box(-half + i * cell, capY, -half + k * cell, cell, 1.5 * cell, cell, (i + k) % 2 === 0 ? SHOT_COLORS.acornCap : SHOT_COLORS.acornCapLight);
+    }
+  }
+  batch.box(-cell / 2, capY + 1.5 * cell, -cell / 2, cell, 0.5 * cell, cell, PALETTE.walnutDark);
   return batch.build();
 }
 
@@ -395,7 +404,7 @@ export const PROJECTILE_TUMBLE: Record<ProjectileKind, number> = {
   bullet: 0,
   trident: 0,
   rot: 0.7,
-  acorn: 0.6,
+  acorn: 0, // cap up, so it reads as an acorn all the way down
 };
 
 /** Emissive intensity of a burning pea and of the glowing props: past the bloom threshold. */

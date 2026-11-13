@@ -35,13 +35,19 @@ const BLINK_FAST = 10;
 const TILE_RED = '#FF3B3B';
 const TILE_FILL_OPACITY = 0.32;
 /** The wind-up arrow's tip floats this high over the target tile (tiles). */
-const ARROW_HEIGHT = 0.9;
+const ARROW_HEIGHT = 0.75;
+/** Where on its tile an arrow floats: towards the plants (x) and over the far edge (z). */
+const ARROW_X = 0.3;
+const ARROW_Z = 0.1;
 /** The Titan's shield dome: pale blue glass, pulsing in two steps. */
 const DOME_COLOR = '#9FE7FF';
 const DOME_OPACITY = 0.14;
-/** The Oak's bark clapping shut: dropped from this high (tiles) over this long. */
-const BARK_DROP = 0.5;
-const BARK_SECONDS = 0.18;
+/** The Oak's bark clapping shut: the halves start this far apart (tiles) and meet in this long. */
+const BARK_APART = 0.7;
+const BARK_SECONDS = 0.22;
+const BARK_SPARK_GAP = 0.15;
+/** Landing marks: one per acorn in the air (three a barrage, room for two barrages). */
+const MARKS = 6;
 /** How far the Oak's pupils may look aside (tiles, in the model's own scale). */
 const PUPIL_REACH = 0.25 * VOXEL;
 /** The acorns that roll away when the Oak is beaten: how many, for how long. */
@@ -59,6 +65,8 @@ const DOME_SPARK = hex(DOME_COLOR);
 const BARK = [hex(PALETTE.walnut), hex(PALETTE.walnutDark), hex(PALETTE.walnutLight)];
 
 interface Roller { object: Object3D; age: number; active: boolean; from: Vector3; dx: number; dz: number }
+/** An acorn's landing mark: which acorn (−1: free), how far it had to fly, how far it has come (0..1). */
+interface AcornMark { mesh: Mesh; id: number; from: number; progress: number }
 
 /** The boss's pattern number `pattern` if it is a slam (the view's only use of the rules: the wind-up of a late-joined slam). */
 function slamOf(b: DeepReadonly<Balance>, key: BossKey, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
@@ -94,8 +102,12 @@ export class BossFx {
   private readonly edgeMaterial = new MeshBasicMaterial({ color: DOME_COLOR, transparent: true, opacity: 0.85, depthWrite: false });
   private readonly edgeGeometry = domeEdges();
   private readonly edges = new Mesh(this.edgeGeometry, this.edgeMaterial);
-  /** Seconds to the next chips of bark flying off the Oak's shield. */
-  private barkChipsIn = 0;
+  /** Seconds until a hit on the shut bark may throw sparks again (a crowd biting it would flood them). */
+  private barkSparkIn = 0;
+  /** A stepped red ring on the tile each acorn will land on, shrinking as it comes down. */
+  private readonly markGeometry = landingMark();
+  private readonly markMaterial = new MeshBasicMaterial({ color: TILE_RED, transparent: true, opacity: 0.9, depthWrite: false });
+  private readonly marks: AcornMark[] = [];
   private domeOn = false;
   private barkOn = false;
   private barkFor = -1;
@@ -136,6 +148,14 @@ export class BossFx {
     this.dome.name = 'boss-shield-dome';
     this.dome.visible = false;
     this.dome.renderOrder = 8;
+    for (let i = 0; i < MARKS; i++) {
+      const mesh = new Mesh(this.markGeometry, this.markMaterial);
+      mesh.name = 'boss-acorn-mark';
+      mesh.renderOrder = 9;
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.marks.push({ mesh, id: -1, from: 0, progress: 0 });
+    }
     for (let i = 0; i < ROLLERS; i++) {
       const object = makeProjectile('acorn');
       object.name = 'boss-rolling-acorn';
@@ -186,11 +206,19 @@ export class BossFx {
     const shield = u.shieldLeft > 0;
     if (view.key === 'brainTitan') {
       if (shield !== this.domeOn) this.setDome(view, shield);
+      // The tiles follow the simulation's wind-up timer, so a stun (which stops it) holds them steady.
       const slam = slamOf(this.balance, 'brainTitan', u.pattern);
       const windup = slam === null ? 0 : slam.windupSeconds * TICKS_PER_SECOND;
-      if (slam !== null && u.patternTimer > 0 && u.patternTimer <= windup && this.windupLeft <= 0) {
-        // Joined during a wind-up: the tiles, for what is left of it.
-        this.showTiles(u.lane, slamCol(u, slam), u.patternTimer / TICKS_PER_SECOND);
+      if (slam !== null && u.patternTimer > 0 && u.patternTimer <= windup) {
+        const left = u.patternTimer / TICKS_PER_SECOND;
+        if (this.windupLeft <= 0) {
+          // Joined during a wind-up: the tiles, and the arm on its way up, timed to land with the blow.
+          this.showTiles(u.lane, slamCol(u, slam), left);
+          view.model.play('ability', { speed: SLAM_WINDUP / left });
+        }
+        this.windupLeft = left;
+      } else if (this.windupLeft > 0) {
+        this.hideTiles();
       }
     } else if (view.key === 'elderOak') {
       if (shield !== this.barkOn) this.setBark(view, shield);
@@ -243,6 +271,54 @@ export class BossFx {
   /** A shot bounced off the dome: a ping of sparks where it hit. */
   ping(at: Vector3): void {
     this.fx.sparkles(at, DOME_SPARK);
+  }
+
+  /** True while the Oak's bark is shut (hits on it then throw sparks: it takes half). */
+  get barkShut(): boolean {
+    return this.barkOn;
+  }
+
+  /** The Oak was hit while its bark is shut: chips of bark and a spark off the plates (at most every 0.15 s). */
+  barkHit(view: UnitView): void {
+    if (!this.barkOn || this.barkSparkIn > 0) return;
+    this.barkSparkIn = BARK_SPARK_GAP;
+    v1.set(view.currX + 0.75, 0.9, view.lane + 0.5 + 0.35);
+    this.fx.spark(v1);
+    this.fx.burst(v1, BARK, 6, 1.2);
+  }
+
+  /**
+   * An acorn in the air (each step, from the state): its landing mark sits on the tile under where it
+   * will come down (`targetX`, which follows its target) and shrinks in steps as it falls.
+   */
+  aimAcorn(id: number, lane: number, x: number, targetX: number | null): void {
+    if (targetX === null) return;
+    let mark: AcornMark | undefined;
+    let free: AcornMark | undefined;
+    for (let i = 0; i < this.marks.length; i++) {
+      const m = this.marks[i] as AcornMark;
+      if (m.id === id) mark = m;
+      else if (free === undefined && m.id === -1) free = m;
+    }
+    if (mark === undefined) {
+      if (free === undefined) return;
+      mark = free;
+      mark.id = id;
+      mark.from = Math.max(0.01, Math.abs(targetX - x));
+      mark.mesh.visible = true;
+    }
+    mark.progress = Math.min(1, Math.max(0, 1 - Math.abs(targetX - x) / mark.from));
+    mark.mesh.position.set(Math.floor(targetX) + 0.5, 0.03, lane + 0.5);
+  }
+
+  /** The acorn landed (or is gone): its mark goes. */
+  landAcorn(id: number): void {
+    for (let i = 0; i < this.marks.length; i++) {
+      const m = this.marks[i] as AcornMark;
+      if (m.id !== id) continue;
+      m.id = -1;
+      m.mesh.visible = false;
+    }
   }
 
   /** The boss fell (its `unitDied`): it now plays its fall; `burst` follows when that is over. */
@@ -304,9 +380,9 @@ export class BossFx {
       if (!this.roared && ENTRANCE_SECONDS - this.entranceLeft >= ROAR_AT) this.roar();
     }
     if (this.windupLeft > 0) {
-      this.windupLeft -= dt;
+      // `windupLeft` comes from the simulation each step (`sync`); here only the blinking.
       const rate = this.windupLeft < 0.5 ? BLINK_FAST : BLINK_PER_SECOND;
-      const on = this.windupLeft > 0 && Math.floor(this.time * rate * 2) % 2 === 0;
+      const on = Math.floor(this.time * rate * 2) % 2 === 0;
       for (let i = 0; i < this.tiles.length; i++) {
         const t = this.tiles[i] as { frame: Mesh; fill: Mesh };
         if (t.frame.userData.used !== true) continue;
@@ -317,34 +393,38 @@ export class BossFx {
       const bob = Math.floor(this.time * rate) % 2 === 0 ? 0 : 2 * VOXEL;
       for (let i = 0; i < this.arrows.length; i++) {
         const arrow = this.arrows[i] as Mesh;
-        arrow.visible = this.windupLeft > 0 && (this.tiles[i] as { frame: Mesh }).frame.userData.used === true;
+        arrow.visible = (this.tiles[i] as { frame: Mesh }).frame.userData.used === true;
         arrow.position.y = ARROW_HEIGHT + bob;
       }
-      if (this.windupLeft <= 0) this.hideTiles();
     }
-    if (boss && this.barkOn && this.barkFor < 0) {
-      this.barkChipsIn -= dt;
-      if (this.barkChipsIn <= 0) {
-        this.barkChipsIn = 0.6;
-        v1.set(boss.currX + 0.7, 0.6, boss.lane + 0.5);
-        this.fx.sparkles(v1, BARK[2] as number);
-      }
+    if (this.barkSparkIn > 0) this.barkSparkIn -= dt;
+    for (let i = 0; i < this.marks.length; i++) {
+      const m = this.marks[i] as AcornMark;
+      if (m.id === -1) continue;
+      // From a full tile down to a small square, in four hard steps; blinking in the last.
+      const step = Math.min(3, Math.floor(m.progress * 4));
+      m.mesh.scale.setScalar(1 - 0.18 * step);
+      m.mesh.visible = step < 3 || Math.floor(this.time * 12) % 2 === 0;
     }
     if (this.domeOn) {
       const step = Math.floor(this.time * 4) % 2 === 0 ? 1 : 1.04;
       this.dome.scale.setScalar(step);
     }
     if (boss && this.barkFor >= 0) {
+      // The two halves slide in from the sides, faster and faster, and clap shut.
       this.barkFor += dt;
       const u = Math.min(1, this.barkFor / BARK_SECONDS);
-      const lift = (BARK_DROP * (1 - u * u)) / BOSS_SCALE.elderOak;
-      boss.shiftPart('barkL', 0, lift);
-      boss.shiftPart('barkR', 0, lift);
+      const apart = (BARK_APART * (1 - u * u)) / BOSS_SCALE.elderOak;
+      boss.shiftPart('barkL', 0, 0, -apart);
+      boss.shiftPart('barkR', 0, 0, apart);
       if (u >= 1) {
         this.barkFor = -1;
-        v1.set(boss.currX + 0.6, 0.4, boss.lane + 0.5);
-        this.fx.burst(v1, BARK, 14, 1.4);
-        this.onFeel({ shake: 0.4 });
+        v1.set(boss.currX + 0.75, 0.8, boss.lane + 0.5 + 0.35);
+        this.fx.burst(v1, BARK, 18, 1.8);
+        this.fx.spark(v1);
+        v1.set(boss.currX + 0.5, 0, boss.lane + 0.5);
+        this.fx.ring(v1, BARK[0] as number, 1.2, true);
+        this.onFeel({ shake: 0.5, hitStop: 0.06 });
       }
     }
     for (let i = 0; i < this.rollers.length; i++) {
@@ -383,6 +463,8 @@ export class BossFx {
     this.arrowMaterial.dispose();
     this.fillMaterial.dispose();
     this.domeMaterial.dispose();
+    this.markGeometry.dispose();
+    this.markMaterial.dispose();
     this.boss = null;
   }
 
@@ -423,7 +505,8 @@ export class BossFx {
     for (let i = 0; i < 3; i++) {
       const arrow = this.arrows[i] as Mesh;
       const l = lane - 1 + i;
-      arrow.position.set(col + 0.5, ARROW_HEIGHT, l + 0.5);
+      // Over the tile's far edge and a little towards the plants: clear of the Titan's body.
+      arrow.position.set(col + ARROW_X, ARROW_HEIGHT, l + ARROW_Z);
       // The middle one (the heavy blow) is the biggest.
       arrow.scale.setScalar(l === lane ? 1.25 : 0.85);
       arrow.visible = l >= 0 && l < LANES;
@@ -463,16 +546,10 @@ export class BossFx {
     this.barkOn = on;
     view.showPart('barkL', on);
     view.showPart('barkR', on);
-    if (on) {
-      this.barkFor = 0;
-      const lift = BARK_DROP / BOSS_SCALE.elderOak;
-      view.shiftPart('barkL', 0, lift);
-      view.shiftPart('barkR', 0, lift);
-    } else {
-      this.barkFor = -1;
-      view.shiftPart('barkL', 0, 0);
-      view.shiftPart('barkR', 0, 0);
-    }
+    this.barkFor = on ? 0 : -1;
+    const apart = on ? BARK_APART / BOSS_SCALE.elderOak : 0;
+    view.shiftPart('barkL', 0, 0, -apart);
+    view.shiftPart('barkR', 0, 0, apart);
   }
 
   /** The Oak's pupils turn towards the nearest standing zombie (across the lanes). */
@@ -503,6 +580,21 @@ function tileFrame(): ReturnType<BoxBatch['build']> {
   b.box(-0.5, y, 0.5 - t, 1, h, t, TILE_RED);
   b.box(-0.5, y, -0.5 + t, t, h, 1 - 2 * t, TILE_RED);
   b.box(0.5 - t, y, -0.5 + t, t, h, 1 - 2 * t, TILE_RED);
+  return b.build();
+}
+
+/** An acorn's landing mark: a stepped square ring a tile wide, flat on the grass. */
+function landingMark(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const r = 0.42;
+  const t = 0.09;
+  const h = 0.03;
+  b.box(-r, 0, -r, 2 * r, h, t, TILE_RED);
+  b.box(-r, 0, r - t, 2 * r, h, t, TILE_RED);
+  b.box(-r, 0, -r + t, t, h, 2 * r - 2 * t, TILE_RED);
+  b.box(r - t, 0, -r + t, t, h, 2 * r - 2 * t, TILE_RED);
+  // A dot in the middle: the spot.
+  b.box(-0.07, 0, -0.07, 0.14, h, 0.14, TILE_RED);
   return b.build();
 }
 

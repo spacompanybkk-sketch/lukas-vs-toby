@@ -95,19 +95,37 @@ const crown: Box[] = [
   ...acorn(5, 5.25),
 ];
 
-/** Bark armour, two halves that drop and clap together over the lower front of the trunk (the eyes peek over). */
-const barkL: Box[] = [
-  span(3, 3.75, 0.75, 4.25, -2.75, 0, 'barkDark'),
-  span(3.75, 4, 1.25, 1.75, -2.25, -0.5, 'barkLight'),
-  span(3.75, 4, 2.5, 3, -2.25, -0.5, 'barkLight'),
-  span(-2.75, 3, 0.75, 4.25, -3, -2.75, 'barkDark'),
-];
-const barkR: Box[] = [
-  span(3, 3.75, 0.75, 4.25, 0, 2.75, 'barkDark'),
-  span(3.75, 4, 1.25, 1.75, 0.5, 2.25, 'barkLight'),
-  span(3.75, 4, 2.5, 3, 0.5, 2.25, 'barkLight'),
-  span(-2.75, 3, 0.75, 4.25, 2.75, 3, 'barkDark'),
-];
+/**
+ * Bark armour, two big light plates with a dark rim that slide in from the sides and clap shut
+ * over the whole front of the trunk, the face included; the eyes peek through a slit between the
+ * lower and the upper plate. Each half also wraps its side of the trunk.
+ */
+function barkHalf(sign: 1 | -1): Box[] {
+  const z = (a: number, b: number): [number, number] => (sign > 0 ? [a, b] : [-b, -a]);
+  const plate = (y0: number, y1: number): Box[] => {
+    const [z0, z1] = z(0, 2.75);
+    const [r0, r1] = z(2.5, 2.75);
+    const [s0, s1] = z(0, 0.25);
+    return [
+      span(3, 3.75, y0, y1, z0, z1, 'barkLight'),
+      // The dark rim round its front, and the seam where the halves meet.
+      span(3.75, 4, y0, y0 + 0.25, z0, z1, 'barkDark'),
+      span(3.75, 4, y1 - 0.25, y1, z0, z1, 'barkDark'),
+      span(3.75, 4, y0 + 0.25, y1 - 0.25, r0, r1, 'barkDark'),
+      span(3.75, 4, y0 + 0.25, y1 - 0.25, s0, s1, 'barkDark'),
+    ];
+  };
+  const [w0, w1] = z(2.75, 3.25);
+  return [
+    ...plate(0.75, 3.75),
+    ...plate(5.25, 6.75),
+    // Round the side of the trunk, light with a dark band.
+    span(-2.5, 3.75, 0.75, 6.75, w0, w1, 'barkLight'),
+    span(-2.5, 3.75, 3.5, 4, w0, w1, 'barkDark'),
+  ];
+}
+const barkL: Box[] = barkHalf(-1);
+const barkR: Box[] = barkHalf(1);
 
 /** The barrage, 0.7 s: the crown leans back, then whips forward and lets the acorns fly. */
 function crownFling(): Clip {

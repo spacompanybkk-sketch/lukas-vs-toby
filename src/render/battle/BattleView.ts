@@ -436,6 +436,7 @@ export class BattleView {
       view.currX = p.x;
       view.targetX = p.targetX;
       if (p.burning && !view.burning) this.ignite(view);
+      if (p.kind === 'acorn') this.bossFx.aimAcorn(p.id, p.lane, p.x, p.targetX); // its landing mark
     }
     // One the state no longer lists left with no hit to show (one still to be seen is kept).
     for (let i = this.flying.length - 1; i >= 0; i--) {
@@ -918,6 +919,7 @@ export class BattleView {
         }
         const view = this.views.get(e.unitId);
         if (view && !this.justTied(view)) view.hurt();
+        if (view?.boss && this.bossFx.barkShut) this.bossFx.barkHit(view); // it takes half: sparks off the plates
         break;
       }
       case 'unitDied': {
@@ -1392,6 +1394,7 @@ export class BattleView {
 
   private release(view: ProjectileView): void {
     this.projectiles.delete(view.id);
+    if (view.kind === 'acorn') this.bossFx.landAcorn(view.id);
     const i = this.flying.indexOf(view);
     if (i >= 0) {
       this.flying[i] = this.flying[this.flying.length - 1] as ProjectileView;

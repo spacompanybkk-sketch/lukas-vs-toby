@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { brainTitan } from '../../src/render/models/bosses/brainTitan';
 import { elderOak } from '../../src/render/models/bosses/elderOak';
 import { getModelDef } from '../../src/render/models/registry';
@@ -120,6 +120,54 @@ describe('a boss on the lawn', () => {
     expect(s.view.bossFx.windingUp).toBe(false);
     expect(shown(s.scene, 'boss-windup-tile')).toBe(0);
     expect(s.feels.slice(before).some((f) => (f as { shake?: number }).shake === 1)).toBe(true);
+  });
+
+  it('a stun in the middle of a wind-up keeps the tiles steady, however long it lasts in frames', () => {
+    const s = stage('brainTitan');
+    s.until((e) => e.type === 'bossPattern' && e.kind === 'slam' && e.windup);
+    const boss = s.match.state.units.find((u) => u.key === 'brainTitan')!;
+    boss.stun = 9999; // the simulation holds its wind-up timer
+    s.play(3); // twice the wind-up
+    expect(s.view.bossFx.windingUp).toBe(true);
+    expect(shown(s.scene, 'boss-windup-tile')).toBe(3);
+  });
+
+  it('a view that joins during a wind-up shows the tiles and plays the raised arm', () => {
+    const s = stage('brainTitan');
+    const m = bossDemoMatch('brainTitan', 1);
+    let joinedAt = false;
+    while (!joinedAt) for (const e of m.step()) if (e.type === 'bossPattern' && e.windup) joinedAt = true;
+    for (let i = 0; i < 10; i++) m.step();
+    s.view.applyEvents([], m.state);
+    s.view.frame(m.state, 0.5, DT, 0);
+    const boss = m.state.units.find((u) => u.key === 'brainTitan')!;
+    expect(s.view.bossFx.windingUp).toBe(true);
+    expect(shown(s.scene, 'boss-windup-tile')).toBe(3);
+    expect(s.view.unit(boss.id)?.model.clip).toBe('ability');
+  });
+
+  it('each acorn in the air has a landing mark on its target\'s tile, gone when it lands', () => {
+    const s = stage('elderOak');
+    s.until((e) => e.type === 'bossPattern' && e.kind === 'barrage');
+    s.play(0.2);
+    const acorns = s.match.state.projectiles.filter((p) => p.kind === 'acorn');
+    expect(acorns.length).toBeGreaterThan(0);
+    expect(shown(s.scene, 'boss-acorn-mark')).toBe(acorns.length);
+    s.play(3);
+    expect(s.match.state.projectiles.filter((p) => p.kind === 'acorn')).toHaveLength(0);
+    expect(shown(s.scene, 'boss-acorn-mark')).toBe(0);
+  });
+
+  it('the Oak\'s bark claps shut (the halves slide together), and hits on it throw bark sparks', () => {
+    const s = stage('elderOak');
+    s.until((e) => e.type === 'bossPhase');
+    expect(s.view.bossFx.barkShut).toBe(true);
+    const before = s.feels.length;
+    s.play(0.4);
+    expect(s.feels.slice(before).some((f) => (f as { hitStop?: number }).hitStop !== undefined)).toBe(true); // the clap
+    const spy = vi.spyOn(s.view.bossFx, 'barkHit');
+    s.play(1);
+    expect(spy).toHaveBeenCalled();
   });
 
   it('the Titan\'s shield dome shows while its shield is up, from the state', () => {

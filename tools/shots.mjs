@@ -371,11 +371,11 @@ const SCENARIOS = [
   ...[
     ['boss-titan-enter', 'brainTitan', [0.5, 1.0]],
     ['boss-titan-windup', 'brainTitan', [10.8, 11.6]],
-    ['boss-titan-shield', 'brainTitan', [21.2]],
-    ['boss-titan-defeat', 'brainTitan', [69.6, 70.3, 70.8]],
+    ['boss-titan-shield', 'brainTitan', [24]],
+    ['boss-titan-defeat', 'brainTitan', [71.4, 72.1, 72.6]],
     ['boss-oak-enter', 'elderOak', [0.5, 1.0]],
     ['boss-oak-barrage', 'elderOak', [10.15, 10.6]],
-    ['boss-oak-shield', 'elderOak', [34.3]],
+    ['boss-oak-shield', 'elderOak', [34.4, 34.6, 36]],
     ['boss-oak-defeat', 'elderOak', [43.8, 44.5, 45.3]],
   ].map(([name, boss, times]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}`;
