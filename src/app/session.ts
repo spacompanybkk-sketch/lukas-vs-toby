@@ -9,6 +9,7 @@ import { lastSlot, loadLocal, removeLocal, saveLocal, setLastSlot } from '../pro
 import { mergeSaves } from '../progress/merge';
 import { OLD_SAVE_KEYS, importOldSave } from '../progress/migrate';
 import { SLOTS, isPicture, newSave, touch, validName } from '../progress/save';
+import { buyUpgrade } from '../progress/upgrades';
 import type { Save, Slot } from '../progress/save';
 import type { CardKey } from '../sim/types';
 
@@ -277,6 +278,22 @@ export class PlayerSession {
   /** Changes the logged-in player's save (device at once, cloud as soon as it can). */
   update(fn: (s: Save) => Save): void {
     this.d.sync.update(fn);
+  }
+
+  /**
+   * One Marketplace level of `unit` for the logged-in player, paid in coins, through `update` (so
+   * it is kept on the device and synced). `no-coins` and `max` change nothing.
+   */
+  buy(unit: CardKey): 'ok' | 'no-coins' | 'max' | 'no-player' {
+    const me = this.player.peek();
+    if (me === null) return 'no-player';
+    const r = buyUpgrade(me, unit, this.now());
+    if (typeof r === 'string') return r;
+    this.update((s) => {
+      const again = buyUpgrade(s, unit, this.now());
+      return typeof again === 'string' ? s : again;
+    });
+    return 'ok';
   }
 
   /** Tries the cloud now; resolves when that attempt ends. */

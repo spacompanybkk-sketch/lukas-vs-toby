@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
 import type { Skill } from '../../ai/bot';
+import type { BattleOptions } from '../../app/BattleController';
 import { go } from '../../app/store';
-import type { Faction } from '../../sim/types';
+import type { CardKey, Faction } from '../../sim/types';
 import type { BoyPortraits } from '../hud/BaseBars';
 import './screens.css';
 
@@ -19,6 +20,8 @@ export interface SidePickProps {
   onSkill?(side: Faction, skill: Skill): void;
   /** The back arrow (default: the title). */
   onBack?(): void;
+  /** The logged-in player's Marketplace levels, passed on to the battle (it keeps the picked side's). */
+  upgrades?: Partial<Record<CardKey, number>>;
 }
 
 const SKILLS: { skill: Skill; label: string; stars: number }[] = [
@@ -42,7 +45,7 @@ export const DEFAULT_SKILL: Record<Faction, Skill> = { plants: 'medium', zombies
  * Two big boy cards, three difficulty buttons, START, and a back arrow. Picking a boy also picks
  * his difficulty (`DEFAULT_SKILL`). START before a boy is picked makes the two cards hop.
  */
-export function SidePick({ portraits = {}, seed = () => Date.now(), difficulty, side: firstSide = null, onSkill, onBack = () => go({ name: 'title' }) }: SidePickProps) {
+export function SidePick({ portraits = {}, seed = () => Date.now(), difficulty, side: firstSide = null, onSkill, onBack = () => go({ name: 'title' }), upgrades }: SidePickProps) {
   const skillFor = (f: Faction): Skill => (difficulty ?? DEFAULT_SKILL)[f];
   const [side, setSide] = useState<Faction | null>(firstSide);
   const [skill, setSkill] = useState<Skill>(firstSide !== null ? skillFor(firstSide) : 'medium');
@@ -60,7 +63,9 @@ export function SidePick({ portraits = {}, seed = () => Date.now(), difficulty, 
       setNudges((n) => n + 1); // the boy cards hop: "pick one of us first"
       return;
     }
-    go({ name: 'battle', options: { playerFaction: side, skill, seed: seed() >>> 0 } });
+    const options: BattleOptions = { playerFaction: side, skill, seed: seed() >>> 0 };
+    if (upgrades !== undefined) options.upgrades = { ...upgrades };
+    go({ name: 'battle', options });
   };
   // Two alternating animation classes, so every tap restarts the hop.
   const nudge = nudges === 0 ? '' : nudges % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b';

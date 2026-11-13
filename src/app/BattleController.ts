@@ -11,11 +11,31 @@ import { spellArea } from '../sim/spells';
 import type { SpellTile } from '../sim/spells';
 import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
-import type { Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
+import type { CardKey, Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 
-/** `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). */
-export interface BattleOptions { playerFaction: Faction; skill: Skill; seed: number }
+/**
+ * `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). `upgrades`: the
+ * logged-in player's Marketplace levels (their save holds both sides; only the cards of
+ * `playerFaction` are used, the computer never has any). `versus`: a match between two people,
+ * where upgrades never apply (spec 7).
+ */
+export interface BattleOptions {
+  playerFaction: Faction; skill: Skill; seed: number;
+  upgrades?: Partial<Record<CardKey, number>>;
+  versus?: boolean;
+}
+
+/** The player's upgrades for their own side: the cards of `side` in `upgrades`, none in Versus. */
+export function sideUpgrades(opts: BattleOptions): Partial<Record<CardKey, number>> {
+  const own: Partial<Record<CardKey, number>> = {};
+  if (opts.versus === true || opts.upgrades === undefined) return own;
+  for (const key of ALL_CARDS[opts.playerFaction]) {
+    const level = opts.upgrades[key];
+    if (level !== undefined) own[key] = level;
+  }
+  return own;
+}
 
 export interface CardVM {
   unit: UnitKey; name: string; price: number; hotkey: string;
@@ -95,6 +115,7 @@ export class BattleController {
     // only some of them; its random moves (`randomLegal`) play any card in its hand.
     const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
     config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
+    config.upgrades = { plants: {}, zombies: {}, [opts.playerFaction]: sideUpgrades(opts) };
     this.match = new Match(config, balance);
     const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
     this.bot = createBasicBot(

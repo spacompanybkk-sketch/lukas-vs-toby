@@ -406,6 +406,25 @@ describe('after a battle', () => {
     expect(need('[data-coins]').getAttribute('data-coins')).toBe('60');
   });
 
+  it('the battle is started with the logged-in player\'s upgrades (the controller keeps their own side)', async () => {
+    const { factory } = fakeFactory();
+    const seen: BattleOptions[] = [];
+    mount({ createSession: (o) => { seen.push(o); return factory(o); } });
+    tap('[data-action="play"]');
+    tap(await see('[data-player="p01"]') && '[data-player="p01"]');
+    await see('[data-pin-step="1"]');
+    await typePin('123');
+    await see('[data-pin-step="2"]');
+    await typePin('123');
+    await see('[data-screen="home"]');
+    act(() => session.update((save) => ({ ...save, upgrades: { peashooter: 4, brainEater: 2 } })));
+    tap('[data-home="play"]');
+    tap('[data-action="start"]');
+    await see('[data-screen="battle"]');
+    expect(seen.at(-1)).toMatchObject({ playerFaction: 'plants', upgrades: { peashooter: 4, brainEater: 2 } });
+    expect(seen.at(-1)?.versus).toBeUndefined();
+  });
+
   it('without a player (a battle opened directly) nothing is paid and no coins show', () => {
     const { factory, hud } = fakeFactory();
     mount({ createSession: factory });

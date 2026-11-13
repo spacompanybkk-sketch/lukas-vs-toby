@@ -330,7 +330,7 @@ function PlayerSidePick({ boys }: { boys: BoyPortraits | undefined }) {
   if (me === null) return <SidePick portraits={boys} />;
   return (
     <SidePick
-      portraits={boys} difficulty={me.difficulty}
+      portraits={boys} difficulty={me.difficulty} upgrades={me.upgrades}
       side={me.slot === 'p01' ? 'plants' : me.slot === 'p02' ? 'zombies' : null}
       onSkill={(side, skill) => players.update((save) => ({ ...save, difficulty: { ...save.difficulty, [side]: skill } }))}
       onBack={() => go({ name: 'home' })}

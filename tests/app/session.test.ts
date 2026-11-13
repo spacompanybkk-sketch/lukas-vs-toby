@@ -283,6 +283,32 @@ describe('update', () => {
     other.dispose();
   });
 
+  it('buying an upgrade goes through update: coins and level on the device at once and in the cloud', async () => {
+    asSave(await s.create('Mia', 'sunflower', '123'));
+    s.update((save) => ({ ...save, coins: 350 }));
+    expect(s.buy('peashooter')).toBe('ok');
+    expect(s.player.value).toMatchObject({ coins: 250, upgrades: { peashooter: 1 } });
+    expect(s.buy('peashooter')).toBe('ok');
+    expect(loadLocal('p03', storage)).toMatchObject({ coins: 50, upgrades: { peashooter: 2 } });
+    await s.flush();
+    const other = deviceSession(new MemoryStorage());
+    expect(asSave(await other.login('p03', '123'))).toMatchObject({ coins: 50, upgrades: { peashooter: 2 } });
+    other.dispose();
+  });
+
+  it('buying with too few coins or at level 10 changes nothing', async () => {
+    asSave(await s.create('Mia', 'sunflower', '123'));
+    s.update((save) => ({ ...save, coins: 99, upgrades: { brainEater: 10 } }));
+    const before = s.player.value;
+    expect(s.buy('peashooter')).toBe('no-coins');
+    expect(s.buy('brainEater')).toBe('max');
+    expect(s.player.value).toBe(before);
+  });
+
+  it('buying with nobody logged in says so', () => {
+    expect(s.buy('peashooter')).toBe('no-player');
+  });
+
   it('logout forgets the player', async () => {
     asSave(await s.create('Mia', 'sunflower', '123'));
     s.logout();

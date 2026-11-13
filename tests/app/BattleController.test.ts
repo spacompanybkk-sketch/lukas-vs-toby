@@ -903,3 +903,40 @@ describe('BattleController powers wiring (wiring B)', () => {
     expect(c.step()).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'thunderbolt', lane: 1, col: 5 }));
   });
 });
+
+describe('BattleController Marketplace upgrades', () => {
+  it('applies the player\'s upgrades to their own side only; the computer has none', () => {
+    const c = new BattleController({
+      playerFaction: 'plants', skill: 'medium', seed: 5, upgrades: { peashooter: 10, kernelPult: 3 },
+    });
+    expect(c.match.state.config.upgrades).toEqual({ plants: { peashooter: 10, kernelPult: 3 }, zombies: {} });
+    const pea = spawnUnit(c.match.state, c.match.balance, 'peashooter', 2, 1.5);
+    expect(pea.maxHp).toBe(Math.round(BALANCE.units.peashooter!.hp * 1.5));
+  });
+
+  it('as zombies, keeps only the zombie cards of what it is given (a save holds both sides)', () => {
+    const c = new BattleController({
+      playerFaction: 'zombies', skill: 'easy', seed: 5, upgrades: { peashooter: 10, brainEater: 4, necromancer: 0 },
+    });
+    expect(c.match.state.config.upgrades).toEqual({ plants: {}, zombies: { brainEater: 4, necromancer: 0 } });
+  });
+
+  it('ignores the upgrades in Versus (spec 7: standard unit strength)', () => {
+    const c = new BattleController({
+      playerFaction: 'plants', skill: 'medium', seed: 5, upgrades: { peashooter: 10 }, versus: true,
+    });
+    expect(c.match.state.config.upgrades).toEqual({ plants: {}, zombies: {} });
+  });
+
+  it('with no upgrades given, plays the plain difficulty match', () => {
+    const c = new BattleController({ playerFaction: 'zombies', skill: 'hard', seed: 5 });
+    expect(c.match.state.config.upgrades).toEqual({ plants: {}, zombies: {} });
+  });
+
+  it('does not keep the caller\'s object', () => {
+    const ups = { peashooter: 2 };
+    const c = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 5, upgrades: ups });
+    ups.peashooter = 9;
+    expect(c.match.state.config.upgrades.plants.peashooter).toBe(2);
+  });
+});
