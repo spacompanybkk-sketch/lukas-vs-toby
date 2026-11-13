@@ -214,7 +214,7 @@ async function portraitWarmUp() {
     for (let run = 0; run < PORTRAIT_RUNS; run++) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor });
       const page = await context.newPage();
-      await page.goto(`${ORIGIN}/?debug`);
+      await page.goto(`${ORIGIN}/?debug&cloud=fake`);
       const t = await page.evaluate(async () => {
         const lvt = window.__lvt;
         await lvt.ready;
@@ -254,7 +254,7 @@ async function main() {
           const cdp = await context.newCDPSession(page);
           await cdp.send('Emulation.setCPUThrottlingRate', { rate: mode.throttle });
         }
-        await page.goto(`${ORIGIN}/?debug&${scene.query}`);
+        await page.goto(`${ORIGIN}/?debug&cloud=fake&${scene.query}`);
         const stats = await measure(page, WARM_UP_MS, INTERVALS, FINISH_FRAMES, !args.includes('--adaptive'));
         const renderer = await page.evaluate(() => {
           const gl = document.createElement('canvas').getContext('webgl2');

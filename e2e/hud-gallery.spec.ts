@@ -23,7 +23,7 @@ interface Box { name: string; x: number; y: number; w: number; h: number }
 interface Point { x: number; y: number }
 
 async function open(page: Page, query: string): Promise<void> {
-  await page.goto(`/?scene=hud-gallery&debug&${query}`);
+  await page.goto(`/?scene=hud-gallery&debug&cloud=fake&${query}`);
   await page.waitForFunction(() => (window.__lvt as { hudReady?: Promise<void> }).hudReady?.then(() => true));
 }
 

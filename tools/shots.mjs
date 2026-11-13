@@ -980,8 +980,9 @@ function portraitUrl(level, model = 'peashooter', yaw = 32) {
 }
 
 /** `url` with `debug` added, which a production build needs before it shows `window.__lvt`. */
+/** Every shot opens with the test hooks and on the fake cloud (never the children's real data). */
 function withDebug(url) {
-  return url.includes('?') ? url.replace('?', '?debug&') : `${url}?debug`;
+  return url.includes('?') ? url.replace('?', '?debug&cloud=fake&') : `${url}?debug&cloud=fake`;
 }
 
 /** Loads a scene and waits until it has drawn and its fonts are in. */

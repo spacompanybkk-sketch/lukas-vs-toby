@@ -16,7 +16,7 @@ export interface Snapshot {
 
 /** Opens the title and waits for the first picture and the card portraits. */
 export async function openTitle(page: Page): Promise<void> {
-  await page.goto('/?debug'); // the hooks on window.__lvt are there only with ?debug in a build
+  await page.goto('/?debug&cloud=fake'); // the hooks on window.__lvt are there only with ?debug in a build
   await page.evaluate(() => window.__lvt.ready);
   await page.evaluate(() => window.__lvt.portraits);
   await expect(page.locator('[data-screen="title"]')).toBeVisible();

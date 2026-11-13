@@ -11,16 +11,16 @@ import type { Side } from './helpers';
 // The fixture fails any test that logged a console error, a page error or a WebGL context warning.
 
 test('a production build has no window.__lvt unless the address asks with ?debug', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?cloud=fake');
   await expect(page.locator('[data-screen="title"]')).toBeVisible();
   await frames(page, 3);
   expect(await page.evaluate(() => typeof (window as { __lvt?: unknown }).__lvt)).toBe('undefined');
 
-  await page.goto('/?scene=stress&units=20');
+  await page.goto('/?scene=stress&cloud=fake&units=20');
   await frames(page, 10);
   expect(await page.evaluate(() => typeof (window as { __lvt?: unknown }).__lvt)).toBe('undefined');
 
-  await page.goto('/?debug');
+  await page.goto('/?debug&cloud=fake');
   await page.evaluate(() => window.__lvt.ready);
   expect(await page.evaluate(() => typeof window.__lvt)).toBe('object');
 });
@@ -49,7 +49,7 @@ for (const side of ['plants', 'zombies'] as Side[]) {
 
 test('the roster demo plays its whole minute with no error and one WebGL context', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/?scene=roster-demo&debug');
+  await page.goto('/?scene=roster-demo&debug&cloud=fake');
   await page.evaluate(() => window.__lvt.ready);
   // Second by second (every step drawn by the demo's own advance), with real frames between.
   for (let second = 0; second < 60; second++) {
