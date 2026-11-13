@@ -50,6 +50,29 @@ export class RenderScale {
   private patience = 1;
   private sinceRaise = Infinity;
 
+  /** Set while the scale is held (see `pin`). */
+  private pinned = false;
+
+  /**
+   * Holds the scale at `value` (rounded to tenths, 0.6 to 1) whatever the frame times say, for
+   * measuring at a known resolution; null lets it adapt again from there.
+   */
+  pin(value: number | null): void {
+    if (value === null) {
+      this.pinned = false;
+      this.settle(SETTLE_FRAMES);
+      return;
+    }
+    this.pinned = true;
+    this.tenths = Math.min(SCALE_MAX_TENTHS, Math.max(SCALE_MIN_TENTHS, Math.round(value * 10)));
+    this.value = this.tenths / 10;
+  }
+
+  /** Whether the scale is held (see `pin`). */
+  get held(): boolean {
+    return this.pinned;
+  }
+
   /** Ignore the next `frames` samples (after a resize or a change of quality) and start the windows afresh. */
   settle(frames: number): void {
     this.ignore = Math.max(this.ignore, frames);
@@ -58,7 +81,7 @@ export class RenderScale {
 
   /** Feed the time between two frames. Returns true when `value` changed. */
   sample(frameMs: number): boolean {
-    if (!(frameMs > 0)) return false;
+    if (!(frameMs > 0) || this.pinned) return false;
     if (frameMs > STALL_MS) {
       this.recorded = 0;
       return false;

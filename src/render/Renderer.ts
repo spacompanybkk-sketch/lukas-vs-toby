@@ -421,6 +421,16 @@ export class Renderer {
    * every buffer. Runs on a resize, a change of quality, a change of render scale and a
    * change of the display's pixel density.
    */
+  /**
+   * Holds the render scale at `value` (1: full resolution) whatever the frame rate, or lets it
+   * adapt again with null. For measuring tools; the game never pins it.
+   */
+  pinRenderScale(value: number | null): void {
+    this.scaler.pin(value);
+    this.applySize();
+    this.stats.scale = this.scaler.value;
+  }
+
   private applySize(): void {
     // A different pixel density can call for the other kind of anti-aliasing, which is a
     // different chain of passes.

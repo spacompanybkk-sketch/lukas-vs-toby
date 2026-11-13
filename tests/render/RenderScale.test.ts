@@ -204,3 +204,20 @@ describe('RenderScale', () => {
     expect(scale.fps).toBeLessThan(31);
   });
 });
+
+describe('RenderScale.pin (final fix round)', () => {
+  it('holds the scale whatever the frames say, and adapts again once let go', () => {
+    const s = new RenderScale();
+    s.pin(1);
+    expect(s.held).toBe(true);
+    for (let i = 0; i < 200; i++) expect(s.sample(40)).toBe(false); // far too slow, yet held
+    expect(s.value).toBe(1);
+    s.pin(0.73);
+    expect(s.value).toBe(0.7);
+    s.pin(null);
+    expect(s.held).toBe(false);
+    let lowered = false;
+    for (let i = 0; i < 200 && !lowered; i++) lowered = s.sample(40);
+    expect(lowered).toBe(true);
+  });
+});

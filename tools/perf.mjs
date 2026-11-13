@@ -127,11 +127,7 @@ function measure(page, warmUpMs, intervals, finishFrames, pinScale) {
     if (pin) {
       // The budget is for full resolution: hold the adaptive render scale at 1 (otherwise a slow
       // start drops it to 0.6 and the frame looks cheaper than it is at full size).
-      const scaler = lvt.renderer.scaler;
-      scaler.sample = () => false;
-      scaler.tenths = 10;
-      scaler.value = 1;
-      lvt.renderer.applySize();
+      lvt.renderer.pinRenderScale(1);
     }
     await new Promise((resolve) => setTimeout(resolve, warm));
     const gl = lvt.renderer.webgl;
@@ -287,13 +283,25 @@ async function main() {
     browser = null;
   }
   await mkdir(path.join(ROOT, 'artifacts'), { recursive: true });
-  // The verdict: the unthrottled frame cost against the budget.
+  // The verdict: the unthrottled frame cost against the budget. It is only a verdict when the
+  // run can be trusted: the machine was not busy, and the frame was drawn at full resolution
+  // (the scale pinned at 1, unless --adaptive); otherwise the line says UNRELIABLE and why.
   const verdict = [];
-  for (const row of modes.find((m) => m.mode === 'novsync')?.results ?? []) {
+  const pinned = !args.includes('--adaptive');
+  const novsync = modes.find((m) => m.mode === 'novsync');
+  if (novsync === undefined) console.log('BUDGET not judged: the budget is measured in the novsync mode, which was not among --modes');
+  for (const row of novsync?.results ?? []) {
     const budget = BUDGET_MS[row.deviceScaleFactor];
     const ok = row.medianMs <= budget;
-    verdict.push({ scene: row.scene, deviceScaleFactor: row.deviceScaleFactor, medianMs: row.medianMs, budget, ok });
-    console.log(`BUDGET ${ok ? 'OK  ' : 'MISS'} ${row.scene.padEnd(7)} dpr ${row.deviceScaleFactor}: ${row.medianMs.toFixed(1)} ms (budget ${budget} ms)`
+    const doubts = [];
+    if (row.warnings.some((w) => w.startsWith('MACHINE BUSY'))) doubts.push('machine busy');
+    if (row.warnings.some((w) => w.startsWith('SOFTWARE RENDERER'))) doubts.push('software renderer');
+    if (pinned && row.renderScale !== 1) doubts.push(`render scale ${row.renderScale.toFixed(2)}, not 1`);
+    const reliable = doubts.length === 0;
+    verdict.push({ scene: row.scene, deviceScaleFactor: row.deviceScaleFactor, medianMs: row.medianMs, budget, ok: reliable ? ok : null, doubts });
+    const word = !reliable ? 'UNRELIABLE' : ok ? 'OK' : 'MISS';
+    console.log(`BUDGET ${word.padEnd(10)} ${row.scene.padEnd(7)} dpr ${row.deviceScaleFactor}: ${row.medianMs.toFixed(1)} ms (budget ${budget} ms)`
+      + (reliable ? '' : `  (${doubts.join('; ')})`)
       + `  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}  scale ${row.renderScale.toFixed(2)}`
       + (row.contents ? `  [${Object.entries(row.contents).map(([k, v]) => `${k} ${v}`).join(', ')}]` : ''));
   }
