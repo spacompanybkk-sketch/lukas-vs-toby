@@ -133,3 +133,25 @@ test('held upright (portrait) the turn-your-device screen shows and the battle p
   await expect(page.locator('[data-screen="pause"]')).toBeVisible();
   expect((await snapshot(page)).paused).toBe(true);
 });
+
+test('a finger drags the hero onto a lane: it fires, nothing buzzes after, and the card comes back for the next tap', async ({ page }) => {
+  await startBattle(page, 'plants');
+  await page.locator('[data-card="sunflower"]').tap();
+  await page.evaluate(() => (window.__lvt as any).fastForward(46 * 30));
+  const hero = page.locator('[data-hero]');
+  await expect(hero).toHaveClass(/is-ready/);
+  const box = (await hero.boundingBox())!;
+  const denied = (): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
+  const used = (): Promise<boolean> => page.evaluate(() => (window.__lvt as any).session.controller.match.state.players.plants.heroTimer > 0);
+  const before = await denied();
+  await dragTouch(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, () => tilePoint(page, 2, 5));
+  await expect.poll(used).toBe(true);
+  await frames(page, 30);
+  expect(await denied(), 'no buzz from the drag that fired the hero').toBe(before);
+  await expect(hero).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-card="sunflower"]')).toHaveAttribute('aria-pressed', 'true');
+  const at = await tilePoint(page, 4, 1);
+  await page.touchscreen.tap(at.x, at.y);
+  await expect.poll(async () => plantAt(await snapshot(page), 4, 1)?.key ?? null).toBe('sunflower');
+  expect(await denied()).toBe(before);
+});
