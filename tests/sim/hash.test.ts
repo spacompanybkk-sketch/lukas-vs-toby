@@ -4,7 +4,11 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 2057 bytes). Re-pinned in phase 3
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 2238 bytes). Re-pinned in phase 3
+ * Task 7a (Free Play) when the setup gained `endless` and the state `wave`, `waveTimer`, `clock` and
+ * `incoming` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()`; the same script gives the earlier 2646483390 over 2057 bytes with the new
+ * fields left out); before that it was 2646483390 over 2057 bytes, re-pinned in phase 3
  * Task 3 (bosses) when units gained `pattern`, `patternTimer`, `shieldLeft` and `phase` and the setup
  * its `boss` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
  * JSON of `makeState()`); before that it was 525061730 over 1940 bytes, re-pinned in phase 3
@@ -25,7 +29,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 2646483390;
+const GOLDEN_HASH = 1176279507;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -93,9 +97,14 @@ function makeState(): SimState {
       noEnergy: true,
       invulnerableBase: 'zombies',
       boss: { key: 'elderOak', faction: 'plants', lane: 2 },
+      endless: { cards: ['brainEater', 'veryFastWalker'], firstWaveTicks: 90 },
     },
     scriptIndex: 1,
     belt: ['peashooter'],
+    wave: 3,
+    waveTimer: 250,
+    clock: 1200,
+    incoming: [{ tick: 130, unit: 'brainEater', lane: 4, x: 9.5, level: 2, index: 1 }],
   };
 }
 
@@ -286,6 +295,22 @@ describe('hashState', () => {
     ['config boss key', (s) => { s.config.boss!.key = 'brainTitan'; }],
     ['config boss faction', (s) => { s.config.boss!.faction = 'zombies'; }],
     ['config boss lane', (s) => { s.config.boss!.lane = 1; }],
+    // Free Play.
+    ['config endless null', (s) => { s.config.endless = null; }],
+    ['config endless cards', (s) => { s.config.endless!.cards = ['veryFastWalker', 'brainEater']; }],
+    ['config the number of endless cards', (s) => { s.config.endless!.cards.pop(); }],
+    ['config endless firstWaveTicks', (s) => { s.config.endless!.firstWaveTicks = 91; }],
+    ['wave', (s) => { s.wave = 4; }],
+    ['waveTimer', (s) => { s.waveTimer -= 1; }],
+    ['clock', (s) => { s.clock -= 1; }],
+    ['no incoming unit', (s) => { s.incoming = []; }],
+    ['the number of incoming units', (s) => { s.incoming.push({ tick: 140, unit: 'veryFastWalker', lane: 0, x: 9.5, level: 1, index: 2 }); }],
+    ['an incoming tick', (s) => { s.incoming[0]!.tick = 131; }],
+    ['an incoming unit', (s) => { s.incoming[0]!.unit = 'veryFastWalker'; }],
+    ['an incoming lane', (s) => { s.incoming[0]!.lane = 3; }],
+    ['an incoming x', (s) => { s.incoming[0]!.x = 9; }],
+    ['an incoming level', (s) => { s.incoming[0]!.level = 3; }],
+    ['an incoming index', (s) => { s.incoming[0]!.index = 0; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {

@@ -8,6 +8,7 @@ import { checkBelt, playBelt, tickBelt } from './belt';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
+import { endlessClockOut, endlessStart, energyOff, tickEndless, tickEndlessGarden } from './endless';
 import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
@@ -45,7 +46,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     spells: { plants: 2, zombies: 2 },
     upgrades: { plants: {}, zombies: {} },
     mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null,
-    boss: null,
+    boss: null, endless: null,
   };
 }
 
@@ -68,6 +69,7 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     noEnergy: c.noEnergy,
     invulnerableBase: c.invulnerableBase,
     boss: c.boss === null || c.boss === undefined ? (c.boss as null) : { ...c.boss },
+    endless: c.endless === null || c.endless === undefined ? (c.endless as null) : { ...c.endless, cards: [...c.endless.cards] },
   };
 }
 
@@ -98,7 +100,7 @@ export class Match {
     checkLevel(own, balance);
     this.balance = balance;
     const heroTimer = (f: Faction): number => seconds(balance.hero[f].firstChargeSeconds);
-    const energy = (f: Faction): number => (own.noEnergy ? 0 : own.startEnergy[f]); // no energy: none to start with either
+    const energy = (f: Faction): number => (energyOff(own, f) ? 0 : own.startEnergy[f]); // no energy: none to start with either
     this.state = {
       tick: 0, rng: own.seed >>> 0, nextId: 1,
       units: [], projectiles: [], hazards: [],
@@ -111,6 +113,7 @@ export class Match {
       suddenDeath: false, winner: null,
       config: own,
       scriptIndex: 0, belt: [], // prepared units and tick-0 waves come on in the first step (`tickScript`)
+      ...endlessStart(own, balance), // Free Play's waves and gardens come in the step (`tickEndless`)
     };
     dealSpells(this.state, balance); // the deal is the first thing the state rng draws
   }
@@ -164,9 +167,10 @@ export class Match {
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
-   * the level's script (prepared units on tick 0, then waves; `tickScript`), the belt's arrival
+   * the level's script (prepared units on tick 0, then waves; `tickScript`), Free Play's waves
+   * (`tickEndless`), the belt's arrival
    * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, the boss (`tickBoss`), projectiles, hazards, statuses, deaths,
-   * endgame, then the tick count.
+   * Free Play's broken garden (`tickEndlessGarden`), endgame, Free Play's clock (`endlessClockOut`), then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
   step(commands: readonly Command[] = []): SimEvent[] {
@@ -176,6 +180,7 @@ export class Match {
     const events: SimEvent[] = [];
 
     tickScript(s, b, events);
+    tickEndless(s, b, events);
     tickBelt(s, events);
     for (const cmd of commands) {
       const reason = this.check(cmd);
@@ -220,7 +225,9 @@ export class Match {
     tickHazards(s, b, events);
     tickStatuses(s, b, events);
     resolveDeaths(s, b, events, felled);
+    tickEndlessGarden(s, b, events); // Free Play breakthrough: a fallen plant base breaks the garden instead of ending the match
     tickEndgame(s, b, events);
+    if (s.winner === null) endlessClockOut(s, events);
     s.tick += 1;
     return events;
   }
@@ -279,7 +286,7 @@ export class Match {
 
   /** `no-energy` (a level with none), `recharging` and `no-energy`: can this side pay for this card now? */
   private checkPayment(faction: Faction, unit: CardKey): CommandRejection | null {
-    if (this.state.config.noEnergy) return 'no-energy';
+    if (energyOff(this.state.config, faction)) return 'no-energy';
     const player = this.state.players[faction];
     if ((player.recharge[unit] ?? 0) > 0) return 'recharging';
     if (player.energy < UNIT_INFO[unit].price) return 'no-energy';

@@ -1,7 +1,7 @@
 import { ALL_CARDS } from '../data/units';
 import { LANES } from './types';
 import type {
-  BeltConfig, BossConfig, CardKey, Faction, Hazard, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
+  BeltConfig, BossConfig, CardKey, EndlessConfig, Faction, Hazard, IncomingUnit, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
 } from './types';
 
 /**
@@ -171,6 +171,8 @@ const SCRIPT_ENTRY: Fields<ScriptEntry> = { tick: num, unit: str, faction: str, 
 const PREPARED_UNIT: Fields<PreparedUnit> = { unit: str, faction: str, lane: num, x: num, level: num };
 const BELT: Fields<BeltConfig> = { side: str, everyTicks: num, cards: strs, slots: num };
 const BOSS: Fields<BossConfig> = { key: str, faction: str, lane: num };
+const ENDLESS: Fields<EndlessConfig> = { cards: strs, firstWaveTicks: num };
+const INCOMING: Fields<IncomingUnit> = { tick: num, unit: str, lane: num, x: num, level: num, index: num };
 
 /**
  * The level fields (`mode` .. `invulnerableBase`) come last, after everything the setup had before
@@ -208,6 +210,14 @@ const CONFIG: Fields<MatchConfig> = {
       record(f, BOSS, boss);
     }
   },
+  endless: (f, endless) => {
+    if (endless === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      record(f, ENDLESS, endless);
+    }
+  },
 };
 
 const STATE: Fields<SimState> = {
@@ -231,6 +241,10 @@ const STATE: Fields<SimState> = {
   config: (f, config) => record(f, CONFIG, config),
   scriptIndex: num, // after the setup, so the level fields all come after the old layout
   belt: strs,
+  wave: num, // Free Play, after everything else
+  waveTimer: num,
+  clock: num,
+  incoming: list(INCOMING),
 };
 
 /** Unsigned 32-bit checksum of everything in the state. */

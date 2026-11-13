@@ -32,8 +32,8 @@ function runOut(m: Match, limit: number): SimEvent[] {
 describe('a default battle', () => {
   it('has every level field at its neutral value', () => {
     const c = defaultConfig(1);
-    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase, c.boss]).toEqual([
-      'battle', [], [], null, null, false, null, null,
+    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase, c.boss, c.endless]).toEqual([
+      'battle', [], [], null, null, false, null, null, null,
     ]);
     const m = new Match(c);
     expect([m.state.scriptIndex, m.state.belt]).toEqual([0, []]);
@@ -46,12 +46,15 @@ describe('a default battle', () => {
    * layout and the setup its `boss`: a scratch replay of these three battles at the commit before
    * (4469587) and with the bosses gave equal events on every step and equal snapshots at tick 1000
    * and at the end once the new fields (all 0, boss null) were taken out, so the battles still play
-   * the same; only the bytes hashed changed.
+   * the same; only the bytes hashed changed. Re-pinned again in Task 7a (Free Play), when the setup
+   * gained `endless` and the state `wave` .. `incoming`: a scratch replay of these three battles at
+   * a92eff8 and with Free Play gave equal events on every step and equal snapshots at tick 1000 and
+   * at the end once the new fields (all 0 / null / empty) were taken out.
    */
   const BEFORE: Array<[number, number, number]> = [ // seed, checksum at tick 1000, checksum at the end (tick 6880)
-    [1, 2800645155, 3737783959],
-    [2, 1321641031, 2738939591],
-    [3, 3685741090, 4182220966],
+    [1, 2439271321, 2358703669],
+    [2, 127525445, 119427525],
+    [3, 761161350, 4099339858],
   ];
   function commandsAt(tick: number): Command[] {
     const out: Command[] = [];

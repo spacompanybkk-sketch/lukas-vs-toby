@@ -134,6 +134,7 @@ export function classicConfig(seed: number, balance: Balance = classicBalance())
   config.noEnergy = false;
   config.invulnerableBase = null;
   config.boss = null;
+  config.endless = null;
   return config;
 }
 

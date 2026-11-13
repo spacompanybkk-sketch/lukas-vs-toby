@@ -183,6 +183,20 @@ export interface Balance {
   upgradeStep: Record<Faction, { hp: number; damage: number }>;
   /** The bosses (see `BossStats`). Starting numbers; the level-tuning task adjusts them. */
   bosses: Record<BossKey, BossStats>;
+  /**
+   * Free Play (see `src/sim/endless.ts`). Wave (or garden) w is bought with `budgetBase +
+   * budgetStep × w` energy, its units at level `1 + floor((w − 1) / levelEvery)` (at most 5); every
+   * `bossEvery`-th also brings one level-5 unit of its priciest card (the big one). Survive: a wave
+   * starts every `gapSeconds` and its units walk on over its first `spreadSeconds`. Breakthrough: the
+   * clock starts at `clockSeconds` and gains `clockBonusSeconds` per garden broken; garden g's plant
+   * base has `1 + gardenHpStep × (g − 1)` times its health; plants stand in columns
+   * `gardenMinCol`..`gardenMaxCol`.
+   */
+  endless: {
+    budgetBase: number; budgetStep: number; gapSeconds: number; levelEvery: number; bossEvery: number;
+    clockSeconds: number; clockBonusSeconds: number; gardenHpStep: number;
+    spreadSeconds: number; gardenMinCol: number; gardenMaxCol: number;
+  };
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -389,6 +403,11 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
       ],
     },
+  },
+  endless: {
+    budgetBase: 100, budgetStep: 60, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
+    clockSeconds: 90, clockBonusSeconds: 30, gardenHpStep: 0.15,
+    spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
 });
 

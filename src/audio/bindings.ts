@@ -228,6 +228,8 @@ export function playEventSounds(
       case 'beltCard':
       case 'beltUsed':
       case 'goalReached':
+      case 'waveStarted': // Free Play: the HUD shows the wave number
+      case 'gardenBroken':
       case 'bossPhase': // its shield's bossPattern is the sound
         break;
       default: {

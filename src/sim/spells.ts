@@ -10,6 +10,7 @@
 import { seconds } from '../data/balance';
 import type { Balance, SpellStats } from '../data/balance';
 import { capHit, damageUnit } from './damage';
+import { energyOff } from './endless';
 import { inLane, isBoss, isStanding } from './lookup';
 import { randomInt } from './rng';
 import { spawnMinion, spawnUnit } from './spawn';
@@ -119,7 +120,7 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
       break;
     case 'sunShower':
     case 'brainFeast': {
-      if (s.config.noEnergy) break; // a level with no energy: cast for nothing
+      if (energyOff(s.config, cmd.faction)) break; // a level with no energy: cast for nothing
       const amount = need(stats.amount, cmd.spell);
       s.players[cmd.faction].energy += amount;
       events.push({

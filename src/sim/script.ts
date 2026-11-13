@@ -8,6 +8,7 @@ import type { Balance } from '../data/balance';
 import { factionOf, isCard } from '../data/units';
 import { checkBeltConfig, plantAt } from './belt';
 import { checkBoss, spawnBoss } from './boss';
+import { checkEndless } from './endless';
 import { spawnAtLevel } from './spawn';
 
 export { spawnAtLevel } from './spawn'; // where the level code looked for it first
@@ -28,7 +29,8 @@ const NON_CARDS: ReadonlySet<UnitKey> = new Set<UnitKey>(['boneMinion', 'rock'])
  * Refuses a level setup that makes no sense (a programming error in level data, never a game
  * situation), with a `RangeError` naming what is wrong:
  * - `mode` one of the five; `goalTicks` a whole number above 0, required in survive, breakthrough
- *   and conveyor, not allowed in battle and boss (they end by sudden death);
+ *   and conveyor, not allowed in battle and boss (they end by sudden death); Free Play (`endless`,
+ *   see `checkEndless`) needs none in survive and refuses one in breakthrough;
  * - `noEnergy` true or false;
  * - `belt` exactly in conveyor, and sound (see `checkBeltConfig`);
  * - `boss` exactly in boss mode, and sound (see `checkBoss`);
@@ -45,7 +47,7 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
     throw new RangeError(`goalTicks ${String(c.goalTicks)} is not a whole number above 0`);
   }
   if (hasClock(c.mode)) {
-    if (c.goalTicks === null) throw new RangeError(`a ${c.mode} level needs goalTicks`);
+    if (c.goalTicks === null && (c.endless === null || c.endless === undefined)) throw new RangeError(`a ${c.mode} level needs goalTicks`);
   } else if (c.goalTicks !== null) {
     throw new RangeError(`a ${c.mode} level has no clock, but goalTicks is ${c.goalTicks}`);
   }
@@ -54,6 +56,7 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
   }
   if (c.belt !== null) checkBeltConfig(c.belt, b);
   checkBoss(c, b);
+  checkEndless(c, b);
   if (typeof c.noEnergy !== 'boolean') throw new RangeError(`noEnergy ${String(c.noEnergy)} is not true or false`);
   if (c.invulnerableBase !== null && c.invulnerableBase !== 'zombies') {
     // The clock's winner is always the plants, so a plant base that cannot be hurt would make a
