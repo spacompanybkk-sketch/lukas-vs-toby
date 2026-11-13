@@ -55,19 +55,26 @@ export interface GloveHost {
 /** The target's middle (`x`, `y`: where a tap goes), its size, and where the fingertip rests (`ty`). */
 interface Box { x: number; y: number; w: number; h: number; ty: number; tx?: number }
 
-/** The target's box on screen (client pixels), or null when it is not there. */
-function targetBox(aim: GloveAim, host: GloveHost, root: ParentNode): Box | null {
-  const rectOf = (sel: string): Box | null => {
-    const el = root.querySelector(sel);
-    if (el === null) return null;
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) return null;
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, ty: r.top + r.height * 0.22 };
-  };
+/** The selector of an aim's HTML target (a card, the hero, a spell button), or null for a lawn aim. */
+function targetSelector(aim: GloveAim): string | null {
   switch (aim.kind) {
-    case 'card': return rectOf(`[data-hud="tray"] [data-card="${aim.card}"], [data-hud="belt"] [data-card="${aim.card}"]`);
-    case 'hero': return rectOf('[data-hero]');
-    case 'spell': return rectOf(`[data-spell="${aim.key}"]`);
+    case 'card': return `[data-hud="tray"] [data-card="${aim.card}"], [data-hud="belt"] [data-card="${aim.card}"]`;
+    case 'hero': return '[data-hero]';
+    case 'spell': return `[data-spell="${aim.key}"]`;
+    default: return null;
+  }
+}
+
+/** An HTML target's box (client pixels), or null when it has no size. */
+function elementBox(el: Element): Box | null {
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, ty: r.top + r.height * 0.22 };
+}
+
+/** A lawn target's box (client pixels) through the battle's camera, or null when it is not there. */
+function lawnBox(aim: GloveAim, host: GloveHost): Box | null {
+  switch (aim.kind) {
     case 'tile': {
       const p = host.tileToClient?.(aim.lane, aim.col) ?? null;
       const q = host.tileToClient?.(aim.lane, aim.col + 1) ?? null;
@@ -84,12 +91,20 @@ function targetBox(aim: GloveAim, host: GloveHost, root: ParentNode): Box | null
       // From the side, at the body: the level-up arrow over the unit's head stays in sight.
       return { x: p.x, y: p.y, w, h: w * 1.1, ty: p.y, tx: p.x - w * 0.38 };
     }
+    default: return null;
   }
 }
 
+/** Frames after an aim appears (or the window changes) during which an HTML target is measured every frame (its pop-in settling). */
+const SETTLE_FRAMES = 20;
+/** After that, an HTML target is measured again this often (frames) in case the layout moved it. */
+const RECHECK_FRAMES = 30;
+
 /**
  * The glove over the battle. Re-renders only when the step or its aim changes; every animation
- * frame it reads the target's place and moves the glove and the outline (writing only on a change).
+ * frame it places the glove and the outline from the target's box (writing only on a change). A
+ * card, hero or spell target's box is read from the page only while it settles, on a resize, and
+ * every half second; a lawn target's comes from the camera each frame.
  * Hidden while `hidden` is true (the pause menu, the result).
  */
 export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<GloveVM | null>; host: GloveHost; hidden: boolean }) {
@@ -100,36 +115,75 @@ export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<Gl
 
   useEffect(() => {
     if (aim === null) return undefined;
-    let last = '';
+    // What was last written, as six rounded numbers (no string or object built each frame).
+    const last = [Number.NaN, 0, 0, 0, 0, 0];
     let raf = 0;
+    const selector = targetSelector(aim);
+    // An HTML target is found once (again only when it leaves the page) and measured while it
+    // settles, on a resize or a visual-viewport change, and otherwise only now and then; a lawn
+    // target follows the camera and the units every frame (a projection, no layout read).
+    let el: Element | null = null;
+    let box: Box | null = null;
+    let measureFor = SETTLE_FRAMES;
+    let frame = 0;
+    const remeasure = (): void => { measureFor = SETTLE_FRAMES; };
+    const viewport = window.visualViewport ?? null;
+    window.addEventListener('resize', remeasure);
+    viewport?.addEventListener('resize', remeasure);
+    viewport?.addEventListener('scroll', remeasure);
     const place = (): void => {
       raf = requestAnimationFrame(place);
       const hand = handRef.current;
       const mark = markRef.current;
       if (hand === null || mark === null) return;
-      const root = hand.closest('[data-screen="battle"]') ?? document;
-      const box = targetBox(aim, host, root);
-      const key = box === null ? 'none' : `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.w)},${Math.round(box.h)},${Math.round(box.ty)},${Math.round(box.tx ?? box.x)}`;
-      if (key === last) return;
-      last = key;
+      frame += 1;
+      if (selector === null) {
+        box = lawnBox(aim, host);
+      } else {
+        if (el === null || !el.isConnected) {
+          const root = hand.closest('[data-screen="battle"]') ?? document;
+          el = root.querySelector(selector);
+          measureFor = SETTLE_FRAMES;
+        }
+        if (el === null) box = null;
+        else if (measureFor > 0 || frame % RECHECK_FRAMES === 0) {
+          measureFor = Math.max(0, measureFor - 1);
+          box = elementBox(el);
+        }
+      }
       if (box === null) {
+        if (last[0] === -1) return;
+        last[0] = -1;
         hand.style.visibility = 'hidden';
         mark.style.visibility = 'hidden';
         hand.removeAttribute('data-glove-x');
         hand.removeAttribute('data-glove-y');
         return;
       }
+      const x = Math.round(box.x);
+      const y = Math.round(box.y);
+      const w = Math.round(box.w);
+      const h = Math.round(box.h);
+      const ty = Math.round(box.ty);
+      const tx = Math.round(box.tx ?? box.x);
+      if (last[0] === x && last[1] === y && last[2] === w && last[3] === h && last[4] === ty && last[5] === tx) return;
+      last[0] = x; last[1] = y; last[2] = w; last[3] = h; last[4] = ty; last[5] = tx;
       hand.style.visibility = '';
       mark.style.visibility = '';
-      hand.style.transform = `translate3d(${Math.round(box.tx ?? box.x)}px, ${Math.round(box.ty)}px, 0)`;
+      hand.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
       mark.style.transform = `translate3d(${Math.round(box.x - box.w / 2)}px, ${Math.round(box.y - box.h / 2)}px, 0)`;
-      mark.style.width = `${Math.round(box.w)}px`;
-      mark.style.height = `${Math.round(box.h)}px`;
-      hand.dataset.gloveX = String(Math.round(box.x));
-      hand.dataset.gloveY = String(Math.round(box.y));
+      mark.style.width = `${w}px`;
+      mark.style.height = `${h}px`;
+      hand.dataset.gloveX = String(x);
+      hand.dataset.gloveY = String(y);
     };
     place();
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', remeasure);
+      viewport?.removeEventListener('resize', remeasure);
+      viewport?.removeEventListener('scroll', remeasure);
+    };
   }, [aim, host]);
 
   if (vm === null) return null;
