@@ -64,8 +64,8 @@ export function explode(s: SimState, b: Balance, source: Unit, blast: Blast, eve
 }
 
 /**
- * What a hero power or a blast (a blast spell, a mine, a Cherry, a Walnut) may take off `u` in one
- * hit: all of `amount`, but a boss at most its `hitCap` share of its max health.
+ * What a hero power, a blast (a blast spell, a mine, a Cherry, a Walnut) or a Pumpkin's leap may take
+ * off `u` in one hit: all of `amount`, but a boss at most its `hitCap` share of its max health.
  */
 export function capHit(b: Balance, u: Unit, amount: number): number {
   return isBoss(u.key) ? Math.min(amount, u.maxHp * b.bosses[u.key].hitCap) : amount;

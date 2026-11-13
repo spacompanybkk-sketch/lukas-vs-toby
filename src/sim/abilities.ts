@@ -10,7 +10,7 @@
 
 import { seconds } from '../data/balance';
 import type { Balance, UnitStats } from '../data/balance';
-import { damageUnit, distance, explode } from './damage';
+import { capHit, damageUnit, distance, explode } from './damage';
 import { isBoss, isStanding, levelScale, nearestEnemyAhead, statsFor, upgradeScale } from './lookup';
 import { abilityUsed as used, spawnMinion } from './spawn';
 import { applyStatus, canAct, inflictStatus } from './status';
@@ -90,7 +90,7 @@ function cherryFuse(s: SimState, b: Balance, u: Unit, fuse: Fuse, events: SimEve
 /**
  * Pumpkin Squash: when ready and a standing zombie is within `range` ahead, it crushes the nearest
  * one (`abilityUsed 'leap'` with it): every standing zombie in the lane within `radius` of the
- * target's x takes `damage` times the damage level curve, in id order, and it needs
+ * target's x takes `damage` times the damage level curve (a boss at most its `hitCap`, as for a blast), in id order, and it needs
  * `recoverSeconds` to be ready again. The Pumpkin itself does not move.
  */
 function pumpkinLeap(s: SimState, b: Balance, u: Unit, leap: Leap, events: SimEvent[]): void {
@@ -102,7 +102,7 @@ function pumpkinLeap(s: SimState, b: Balance, u: Unit, leap: Leap, events: SimEv
   const at = target.x;
   for (const z of s.units) {
     if (z.faction === u.faction || z.lane !== u.lane || !isStanding(z)) continue;
-    if (Math.abs(z.x - at) <= leap.radius) damageUnit(s, b, z, amount, events);
+    if (Math.abs(z.x - at) <= leap.radius) damageUnit(s, b, z, capHit(b, z, amount), events); // a boss: at most its hitCap
   }
   u.abilityTimer = seconds(leap.recoverSeconds);
 }

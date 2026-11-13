@@ -67,9 +67,18 @@ export function spawnBoss(s: SimState, b: Balance, events: SimEvent[]): void {
   const stats = b.bosses[boss.key];
   const x = stats.col === undefined ? ZOMBIE_SPAWN_X : stats.col + 0.5;
   const u = spawnUnit(s, b, boss.key, boss.lane, x, events);
+  if (u.id !== bossIdOf(s.config)) throw new Error(`the boss came on as unit ${u.id}, not ${bossIdOf(s.config)}`);
   u.spent = 0;
   u.pattern = nextTimed(stats, -1);
   u.patternTimer = u.pattern < 0 ? 0 : seconds(stats.patterns[u.pattern]!.everySeconds);
+}
+
+/**
+ * The boss's unit id, from the setup: units are numbered from 1 in the order they come on, and on
+ * the step of tick 0 the prepared units come on first, then the boss (`spawnBoss` checks it).
+ */
+export function bossIdOf(c: MatchConfig): number {
+  return c.prepared.length + 1;
 }
 
 /** The index of the timed pattern after `from` (round the table), or -1 when it has none. */
@@ -196,9 +205,11 @@ function summon(s: SimState, b: Balance, u: Unit, p: Summon, events: SimEvent[])
     }
     return;
   }
+  const { minCol, maxCol } = p;
+  if (minCol === undefined || maxCol === undefined) throw new Error(`a plant summon of ${p.unit} needs minCol and maxCol in the balance table`);
   const free: number[] = []; // lane * PLANT_COLS + col
   for (let lane = 0; lane < LANES; lane++) {
-    for (let col = p.minCol; col <= p.maxCol; col++) {
+    for (let col = minCol; col <= maxCol; col++) {
       const taken = s.units.some((v) => v.faction === 'plants' && isStanding(v) && inLane(v, lane) && Math.floor(v.x) === col);
       if (!taken) free.push(lane * PLANT_COLS + col);
     }
@@ -254,29 +265,21 @@ export function bossSplash(b: Balance, p: Projectile): number | undefined {
 }
 
 /**
- * Endgame, after the bases: whether the level's boss has fallen, and if so who won (its foes). A
+ * Endgame, before the bases (a kindness: the boss's foes win even if their own base falls on the
+ * same step): whether the level's boss has fallen, and if so who won (its foes). A
  * boss brought to 0 after the deaths stage (sudden death through `guardFactor`) leaves the lawn here
  * (`unitDied`, cause `'damage'`). Emits `bossDefeated`; the caller sets the winner and `matchEnded`.
  */
 export function bossFallen(s: SimState, events: SimEvent[]): Faction | null {
   const boss = s.config.boss;
   if (boss === null) return null;
-  const index = s.units.findIndex((u) => u.key === boss.key);
-  let unitId = -1;
+  const unitId = bossIdOf(s.config);
+  const index = s.units.findIndex((u) => u.id === unitId);
   if (index >= 0) {
     const u = s.units[index]!;
     if (isStanding(u)) return null;
     s.units.splice(index, 1);
     events.push({ type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level, cause: 'damage' });
-    unitId = u.id;
-  } else {
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i]!;
-      if (e.type === 'unitDied' && e.key === boss.key) {
-        unitId = e.unitId;
-        break;
-      }
-    }
   }
   events.push({ type: 'bossDefeated', unitId, key: boss.key, faction: boss.faction });
   return boss.faction === 'plants' ? 'zombies' : 'plants';

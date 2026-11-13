@@ -23,7 +23,7 @@ function bossBalance(): Balance {
       maxStunSeconds: 1, hitCap: 0.1,
       patterns: [
         { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
-        { kind: 'summon', everySeconds: 18, unit: 'veryFastWalker', count: 3, level: 1, minCol: 0, maxCol: 0 },
+        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 1, bouncesStraight: true },
       ],
     },
@@ -32,7 +32,7 @@ function bossBalance(): Balance {
       maxStunSeconds: 1, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
-        { kind: 'summon', everySeconds: 20, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
       ],
     },
@@ -194,16 +194,31 @@ describe('the slam', () => {
 });
 
 describe('the patterns take turns', () => {
-  it('slam 12 s after it came on, the summon 18 s after that, then the slam again 12 s later', () => {
+  it('the Titan: slam 12 s after it came on, the summon 6 s after that, the slam again 12 s later: a slam every 18 s', () => {
     const { m, boss } = level(TITAN, {}, B);
     const seen: Array<[number, string]> = [];
-    while (m.state.tick < seconds(12 + 18 + 12) + 5) {
+    while (m.state.tick < seconds(12 + 6 + 12 + 6 + 12) + 5) {
       const tick = m.state.tick;
       for (const e of eventsOf(m.step(), 'bossPattern')) if (!e.windup) seen.push([tick, e.kind]);
       boss.x = Math.max(boss.x, 5); // keep it walking on an empty lawn, away from the base
     }
     expect(seen).toEqual([
-      [seconds(12) - 1, 'slam'], [seconds(30) - 1, 'summon'], [seconds(42) - 1, 'slam'],
+      [359, 'slam'], [539, 'summon'], [899, 'slam'], [1079, 'summon'], [1439, 'slam'],
+    ]);
+  });
+
+  it('the Oak: barrage 10 s after it came on, the summon 6 s after that: a barrage every 16 s', () => {
+    const { m } = level(OAK, {}, B);
+    const seen: Array<[number, string]> = [];
+    for (let lane = 0; lane < LANES; lane++) spawn(m, 'skeletonWarrior', lane, 8);
+    for (const u of m.state.units) if (u.faction === 'zombies') u.stun = 99999; // they stay for the acorns
+    while (m.state.tick < seconds(10 + 6 + 10 + 6 + 10) + 5) {
+      const tick = m.state.tick;
+      for (const e of eventsOf(m.step(), 'bossPattern')) seen.push([tick, e.kind]);
+      for (const u of m.state.units) if (u.faction === 'zombies') u.hp = u.maxHp;
+    }
+    expect(seen).toEqual([
+      [299, 'barrage'], [479, 'summon'], [779, 'barrage'], [959, 'summon'], [1259, 'barrage'],
     ]);
   });
 
@@ -419,6 +434,21 @@ describe('caps and refusals', () => {
     expect(dealt.filter((e) => e.unitId === walker.id).map((e) => e.amount)).toEqual([5000]);
   });
 
+  it('a level-5 Pumpkin Squash\'s leap takes at most 10% (and the others it crushes take it all)', () => {
+    const { m, boss } = level(TITAN);
+    boss.x = 4.5;
+    const walker = spawn(m, 'brainEater', 2, 4.6);
+    const pumpkin = spawn(m, 'pumpkinSquash', 2, 2.5);
+    pumpkin.level = 5;
+    pumpkin.abilityTimer = 0;
+    const leap = B.units.pumpkinSquash!.leap!;
+    const full = leap.damage * B.levelCurves.damage.plants[5]!;
+    expect(full).toBeGreaterThan(600);
+    const dealt = eventsOf(m.step(), 'unitDamaged');
+    expect(dealt.filter((e) => e.unitId === boss.id).map((e) => e.amount)).toEqual([600]);
+    expect(dealt.filter((e) => e.unitId === walker.id).map((e) => e.amount)).toEqual([full]);
+  });
+
   it('cannot be dug up, merged into, or healed by Healing Rain', () => {
     const { m, boss } = level(OAK, { spells: { plants: 1, zombies: 0 } });
     boss.hp = 7000;
@@ -603,17 +633,42 @@ describe('the end', () => {
     expect(m.state.units.some((u) => u.key === 'elderOak')).toBe(false);
   });
 
-  it('a base falling on the same step decides first', () => {
+  it('the boss falling on the step the player\'s own base falls: the player wins (the boss kill decides)', () => {
+    // The Titan's foes are the plants: their base falls as the Titan does.
+    const { m, boss } = level(TITAN);
+    boss.hp = 0;
+    m.state.baseHp.plants = 0;
+    const events = m.step();
+    expect(m.state.winner).toBe('plants');
+    expect(eventsOf(events, 'bossDefeated')).toHaveLength(1);
+    // The Oak's foes are the zombies.
+    const o = level(OAK);
+    o.boss.hp = 0;
+    o.m.state.baseHp.zombies = 0;
+    o.m.step();
+    expect(o.m.state.winner).toBe('zombies');
+  });
+
+  it('either order within the step: the Titan bites the base to 0 and falls to the base\'s strike, or falls first', () => {
+    for (const bossFirst of [true, false]) {
+      const { m, boss } = level(TITAN);
+      boss.x = 0.3; // at the base, biting it
+      boss.meleeTimer = 0;
+      m.state.baseHp.plants = 1; // its bite brings the base to 0
+      if (bossFirst) boss.hp = 0; // already down before its bite (it still finishes the bite it was striking)
+      else boss.hp = 1; // the base's strike in the same step fells it
+      m.step();
+      expect(m.state.baseHp.plants, `boss first ${bossFirst}`).toBeLessThanOrEqual(0);
+      expect(m.state.winner, `boss first ${bossFirst}`).toBe('plants');
+    }
+  });
+
+  it('the boss\'s own side\'s base falling with it changes nothing: its foes win', () => {
     const { m, boss } = level(TITAN);
     boss.hp = 0;
     m.state.baseHp.zombies = 0;
     m.step();
     expect(m.state.winner).toBe('plants');
-    const t = level(TITAN);
-    t.boss.hp = 0;
-    t.m.state.baseHp.plants = 0;
-    t.m.step();
-    expect(t.m.state.winner).toBe('zombies');
   });
 });
 
@@ -672,10 +727,16 @@ function strongPlay(m: Match, player: 'plants' | 'zombies'): Command[] {
   const moves: Command[] = [];
   const titan = s.units.find((u) => u.key === 'brainTitan');
   if (player === 'plants') {
-    moves.push({ type: 'hero', faction: 'plants', lane: titan?.lane ?? 2 });
-    for (let lane = 0; lane < LANES; lane++) moves.push(place('plants', 'walnutBomb', lane, 5));
-    for (let col = 0; col < 5; col++) for (let lane = 0; lane < LANES; lane++) moves.push(place('plants', 'peashooter', lane, col));
-    for (const u of s.units) if (u.key === 'peashooter' && u.level < 5) moves.push(merge('plants', 'peashooter', u.id));
+    // The Titan's lane first: the hero, a wall in front of it, lobbed Mango-pults (its shield does
+    // not stop them) and Peashooters merged up; then a shooter and a wall in every other lane.
+    const lane = titan?.lane ?? 2;
+    moves.push({ type: 'hero', faction: 'plants', lane });
+    moves.push(place('plants', 'walnutBomb', lane, 5));
+    for (const col of [0, 1]) moves.push(place('plants', 'mangoPult', lane, col));
+    for (const col of [2, 3, 4]) moves.push(place('plants', 'peashooter', lane, col));
+    for (const u of s.units) if (u.lane === lane && (u.key === 'peashooter' || u.key === 'mangoPult') && u.level < 5) moves.push(merge('plants', u.key, u.id));
+    for (let l = 0; l < LANES; l++) if (l !== lane) moves.push(place('plants', 'peashooter', l, 1), place('plants', 'walnutBomb', l, 4));
+    for (const u of s.units) if (u.key === 'peashooter' && u.level < 3) moves.push(merge('plants', 'peashooter', u.id));
   } else {
     moves.push({ type: 'hero', faction: 'zombies', lane: 2 });
     for (let lane = 0; lane < LANES; lane++) {
@@ -706,6 +767,7 @@ describe('every boss level ends (50 seeds idle, 50 seeds strong)', () => {
     ['the Elder Oak (z1-8)', OAK, 'zombies'],
   ] as const)('%s', (_name, boss, player) => {
     const outcomes = { idle: new Map<string, number>(), strong: new Map<string, number>() };
+    const felled = { idle: 0, strong: 0 };
     for (const style of ['idle', 'strong'] as const) {
       for (let seed = 1; seed <= 50; seed++) {
         const config: MatchConfig = {
@@ -717,16 +779,22 @@ describe('every boss level ends (50 seeds idle, 50 seeds strong)', () => {
           incomeMultiplier: { plants: player === 'plants' ? 4 : 1, zombies: player === 'zombies' ? 4 : 1 },
         };
         const m = new Match(config);
-        while (m.state.winner === null && m.state.tick <= bound) m.step(style === 'strong' ? strongPlay(m, player) : []);
+        let bossDown = false;
+        while (m.state.winner === null && m.state.tick <= bound) {
+          if (eventsOf(m.step(style === 'strong' ? strongPlay(m, player) : []), 'bossDefeated').length > 0) bossDown = true;
+        }
+        if (bossDown) felled[style] += 1;
         expect(m.state.winner, `${style} seed ${seed}`).not.toBeNull();
         expect(m.state.tick, `${style} seed ${seed}`).toBeLessThanOrEqual(bound);
         const o = outcomes[style];
         o.set(String(m.state.winner), (o.get(String(m.state.winner)) ?? 0) + 1);
       }
     }
-    // The idle player always loses; the strong one beats the boss at least sometimes.
+    // The idle player always loses and never fells the boss; the strong one fells it in most seeds.
     expect(outcomes.idle.get(player) ?? 0).toBe(0);
-    expect(outcomes.strong.get(player) ?? 0).toBeGreaterThan(0);
+    expect(felled.idle).toBe(0);
+    console.info(`[boss] ${boss.key}: strong player felled it in ${felled.strong} of 50 seeds`);
+    expect(felled.strong).toBeGreaterThanOrEqual(40);
   });
 });
 

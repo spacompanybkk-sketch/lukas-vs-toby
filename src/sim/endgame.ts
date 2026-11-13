@@ -29,15 +29,15 @@ import type { Faction, SimEvent, SimState } from './types';
  * of time (breakthrough). `goalReached` then `matchEnded`. A match with a clock therefore lasts at
  * most `goalTicks` steps.
  *
- * Then the boss: in a boss level, once no base has fallen, the boss being down ends the match at
- * once with its foes winning (`bossDefeated`, then `matchEnded`; see `bossFallen`). A base falling
- * on the same step decides first.
+ * The boss first: in a boss level the boss being down ends the match at once with its foes winning
+ * (`bossDefeated`, then `matchEnded`; see `bossFallen`), even if a base falls on the same step (the
+ * player who beat the boss wins, whatever else happened that step); then the bases.
  */
 export function tickEndgame(s: SimState, b: Balance, events: SimEvent[]): void {
   if (s.winner !== null) return;
   tickSuddenDeath(s, b, events);
-  decideWinner(s, events);
-  if (s.winner === null) decideBoss(s, events);
+  decideBoss(s, events);
+  if (s.winner === null) decideWinner(s, events);
   if (s.winner === null) tickGoal(s, events);
 }
 

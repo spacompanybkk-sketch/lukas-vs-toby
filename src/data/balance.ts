@@ -92,15 +92,17 @@ export interface SpellStats {
 
 /**
  * One of a boss's patterns (see `src/sim/boss.ts`). The timed ones (`everySeconds` above 0) take
- * turns in table order: each goes off `everySeconds` after the one before it (the first that long
- * after the boss arrives). A shield is not timed (`everySeconds` 0): it goes up as the boss's health
- * falls to each of `atHealth` (shares of its max, highest first).
+ * turns in table order, never two at once: `everySeconds` is the gap AFTER the previous pattern
+ * went off (the first's: after the boss arrives). So a pattern comes round once per the sum of
+ * all the gaps (the Titan's slam every 12 + 6 = 18 s, the Oak's barrage every 10 + 6 = 16 s). A
+ * shield is not timed (`everySeconds` 0): it goes up as the boss's health falls to each of
+ * `atHealth` (shares of its max, highest first).
  *
  * - slam: winds up for its last `windupSeconds` (standing still, not biting), then hits the plant
  *   on the tile in front of it (`reach` tiles ahead of its x) for `damage` and the plants on that
  *   column in the lanes beside for `sideDamage`.
  * - summon: `count` of `unit` at `level`; a zombie in as many different random lanes at the spawn
- *   edge, a plant on as many random free tiles in columns `minCol`..`maxCol`.
+ *   edge, a plant on as many random free tiles in columns `minCol`..`maxCol` (a plant summon needs them).
  * - barrage: `count` acorns, lobbed at `speed` (tiles/s) into as many random lanes that have a
  *   zombie, each at that lane's foremost one: `damage`, and the same within `splash` of it.
  * - shield: for `seconds`, all damage times `damageFactor`; with `bouncesStraight`, straight shots
@@ -108,7 +110,7 @@ export interface SpellStats {
  */
 export type BossPattern =
   | { kind: 'slam'; everySeconds: number; windupSeconds: number; damage: number; sideDamage: number; reach: number }
-  | { kind: 'summon'; everySeconds: number; unit: UnitKey; count: number; level: number; minCol: number; maxCol: number }
+  | { kind: 'summon'; everySeconds: number; unit: UnitKey; count: number; level: number; minCol?: number; maxCol?: number }
   | { kind: 'barrage'; everySeconds: number; count: number; damage: number; splash: number; speed: number }
   | { kind: 'shield'; everySeconds: 0; atHealth: readonly number[]; seconds: number; damageFactor: number; bouncesStraight: boolean };
 
@@ -374,7 +376,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       maxStunSeconds: 1, hitCap: 0.1,
       patterns: [
         { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
-        { kind: 'summon', everySeconds: 18, unit: 'veryFastWalker', count: 3, level: 1, minCol: 0, maxCol: 0 },
+        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 1, bouncesStraight: true },
       ],
     },
