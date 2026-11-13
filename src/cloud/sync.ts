@@ -183,6 +183,21 @@ export class SaveSync {
   }
 
   /**
+   * Plays from this device's copy when the number matches the hash this device last used for
+   * the player, whatever the cloud said (a rules refusal looks like a wrong number). The cloud is
+   * treated as unavailable and read again before any write. Null when the device cannot vouch.
+   */
+  async playLocal(slot: Slot, pin: string): Promise<Save | null> {
+    const hash = await pinHash(slot, pin);
+    const local = loadLocal(slot, this.storage);
+    if (this.disposed || !local || this.readString(hashKey(slot)) !== hash) return null;
+    this.begin(local, hash);
+    this.needsRead = true;
+    this.fail('offline');
+    return local;
+  }
+
+  /**
    * Creates a player in the cloud and logs them in. Nothing is kept on the device until the
    * cloud confirms; a retry after an answer was lost (the player exists with this very pin,
    * name and picture) counts as confirmed — whether the cloud then says `taken` or, when that

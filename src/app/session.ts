@@ -205,7 +205,17 @@ export class PlayerSession {
       const known = readKey(storage, hashKey(slot));
       if (known !== null && known !== (await pinHash(slot, pin))) r = 'wrong-pin';
     }
-    if (r === 'wrong-pin') return this.countWrong(slot, MAX_WRONG, LOCK_MS) ? 'locked' : 'wrong-pin';
+    if (r === 'wrong-pin') {
+      // The cloud refused, but this device knows the player under exactly this number: a rules
+      // refusal (a rollback, a stale deploy), not a wrong number. Play from the device copy, the
+      // cloud counts as unavailable, and no wrong try is counted.
+      const mine = await sync.playLocal(slot, pin);
+      if (mine !== null) {
+        this.clearWrong(slot);
+        return this.player.peek() ?? mine;
+      }
+      return this.countWrong(slot, MAX_WRONG, LOCK_MS) ? 'locked' : 'wrong-pin';
+    }
     if (typeof r === 'string') return r;
     this.clearWrong(slot);
     this.importOld(slot);

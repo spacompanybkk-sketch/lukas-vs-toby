@@ -203,7 +203,8 @@ function LoginPad({ who, portraits }: { who: RosterEntry; portraits: Record<stri
     }
     if (r === 'locked') return 'locked';
     if (r === 'offline') return 'offline';
-    return 'wrong';
+    // Only a wrong number shakes as wrong; any other refusal is the retry cue.
+    return r === 'wrong-pin' ? 'wrong' : 'failed';
   };
   return (
     <PinPad

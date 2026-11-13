@@ -124,6 +124,22 @@ describe('Players', () => {
     expect(session.player.value).toBeNull();
   });
 
+  it('a refusal that is not a wrong number shows the retry cross, never the wrong-number shake', async () => {
+    await session.create('Mia', 'sunflower', '111');
+    session.logout();
+    const real = createFakeCloud(db);
+    const refusing = new Proxy(real, {
+      get: (t, k) => (k === 'loadRecord' || k === 'loadSave' ? async () => 'refused' : (t as unknown as Record<PropertyKey, unknown>)[k]),
+    });
+    session.configure({ cloud: refusing, storage: new MemoryStorage(), now: () => clock.t, window: null, document: null });
+    mount();
+    act(() => go({ name: 'players', login: 'p03' }));
+    await see('[data-screen="pinpad"]');
+    await typePin('111');
+    await see('[data-pin-failed]');
+    expect(q('[data-pin-boxes].is-wrong')).toBeNull();
+  });
+
   it('uses the unit portraits once they are drawn', async () => {
     mount({ portraits: { peashooter: 'data:image/png;base64,AAAA' } });
     tap('[data-action="play"]');

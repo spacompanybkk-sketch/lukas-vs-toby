@@ -262,6 +262,24 @@ describe('login and the lock-out', () => {
     expect(await s.login('p03', '997')).toBe('locked');
   });
 
+  it('the cloud refuses (stale rules) but this device knows the number: plays from the device copy, no wrong try', async () => {
+    asSave(await s.login('p03', '123'));
+    s.update((save) => ({ ...save, coins: 9 }));
+    await s.flush();
+    s.logout();
+    // Every rules check now fails: what a rules rollback looks like to the client.
+    db.poke('v2/secrets/p03', 'f'.repeat(64));
+    for (let i = 0; i < 4; i++) {
+      expect(asSave(await s.login('p03', '123')).coins).toBe(9);
+      expect(s.syncState.value).toBe('offline');
+      s.logout();
+    }
+    expect(s.lockedUntil('p03')).toBe(0);
+    expect(storage.getItem(wrongKey('p03'))).toBeNull();
+    // A number this device does not know is still wrong.
+    expect(await s.login('p03', '124')).toBe('wrong-pin');
+  });
+
   it('offline on a device that never had this player: cannot tell, says offline, does not count', async () => {
     const ipad = deviceSession(new MemoryStorage());
     db.offline = true;
