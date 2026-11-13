@@ -147,6 +147,21 @@ describe('levelConfig', () => {
     });
   });
 
+  it.each<[LevelDef['kind'], number]>([['survive', 120], ['conveyor', 150]])(
+    'a zombie-side %s is a race: no unhittable base, the clock is the plants\' goal', (kind, secs) => {
+      const def: LevelDef = {
+        ...Z1, id: 'z1-5', n: 5, kind, opponent: null, seconds: secs,
+        belt: kind === 'conveyor' ? { everySeconds: 5, cards: ['brainEater'] } : null,
+      };
+      const c = levelConfig(def, fresh(), 1);
+      expect(c.mode).toBe(kind);
+      expect(c.invulnerableBase).toBeNull();
+      expect(c.goalTicks).toBe(secs * 30);
+      expect(c.suddenDeath).toBe(false);
+      expect(c.noEnergy).toBe(kind === 'conveyor');
+    },
+  );
+
   it.each<[LevelDef['kind'], boolean]>([['breakthrough', false], ['boss', true]])('a %s: sudden death %s', (kind, sd) => {
     const c = levelConfig({ ...SAMPLE_BATTLE, kind }, fresh(), 1);
     expect(c.mode).toBe(kind);

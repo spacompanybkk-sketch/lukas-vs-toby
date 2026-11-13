@@ -133,6 +133,7 @@ describe('parseSave', () => {
     ['teached with an empty step', { ...g, teached: [''] }],
     ['teached with a step of 65 characters', { ...g, teached: ['t'.repeat(65)] }],
     ['teached twice', { ...g, teached: ['a', 'a'] }],
+    ['teached with 129 steps', { ...g, teached: Array.from({ length: 129 }, (_, i) => `s${i}`) }],
     ['negative updatedAt', { ...g, updatedAt: -5 }],
     ['fractional updatedAt', { ...g, updatedAt: 1.25 }],
   ])('rejects %s', (_what, raw) => {
@@ -155,6 +156,11 @@ describe('parseSave', () => {
       expect(parsed[missing as 'lastBattle' | 'teached']).toEqual(missing === 'lastBattle' ? null : []);
     },
   );
+
+  it('accepts teached with exactly 128 steps', () => {
+    const teached = Array.from({ length: 128 }, (_, i) => `s${i}`);
+    expect(parseSave({ ...g, teached })?.teached).toEqual(teached);
+  });
 
   it('accepts lastBattle null', () => {
     expect(parseSave({ ...g, lastBattle: null })).toEqual({ ...good, lastBattle: null });

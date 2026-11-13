@@ -41,8 +41,10 @@ export function starsFor(
 /**
  * A level's result on the player's save: coins (30 per star earned there for the first time, 10
  * for a win that earns none, 5 for a loss), the level's best stars (never lower), and the level's
- * unlock on a win, once. Exactly once per battle: a result whose `battleId` is the save's
- * `lastBattle` was applied already and changes nothing (a reload on the result screen).
+ * unlock on a win, once. A result whose `battleId` is the save's `lastBattle` was applied already
+ * and changes nothing (a reload on the result screen). Only the LAST battle id is remembered:
+ * applying A, then B, then A again pays A twice. Callers must give every battle a fresh id and
+ * keep at most one pending result, applied before the next battle starts.
  */
 export function applyLevelResult(
   save: Save, def: LevelDef, stars: Stars, now: number, battleId: string,

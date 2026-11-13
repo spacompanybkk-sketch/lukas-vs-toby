@@ -83,7 +83,9 @@ export function levelConfig(
       ? null
       : { everyTicks: seconds(def.belt.everySeconds), cards: [...def.belt.cards], slots: ADVENTURE.beltSlots },
     noEnergy: def.kind === 'conveyor',
-    invulnerableBase: def.kind === 'survive' || def.kind === 'conveyor' ? 'zombies' : null,
+    // A plant Survive or Conveyor: the zombie base cannot be hurt, the plants hold out. On the
+    // zombies' side those kinds are races: the plant base can be hurt, the clock wins for the plants.
+    invulnerableBase: player === 'plants' && (def.kind === 'survive' || def.kind === 'conveyor') ? 'zombies' : null,
   };
 
   return {

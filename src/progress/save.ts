@@ -51,6 +51,8 @@ const SAVE_KEYS = [
 ] as const;
 /** Keys added later: a save written before them still loads, with their defaults. */
 const LATER_KEYS = ['lastBattle', 'teached'] as const;
+/** At most this many tutorial steps are kept in `teached`. */
+export const MAX_TEACHED = 128;
 /** A battle id or a tutorial step id: 1–64 characters. */
 const isTag = (v: unknown): v is string => typeof v === 'string' && v.length >= 1 && v.length <= 64;
 
@@ -129,7 +131,8 @@ export function parseSave(raw: unknown): Save | null {
   const lastBattle = Object.hasOwn(o, 'lastBattle') ? o.lastBattle : null;
   if (lastBattle !== null && !isTag(lastBattle)) return null;
   const teached = Object.hasOwn(o, 'teached') ? o.teached : [];
-  if (!Array.isArray(teached) || !teached.every(isTag) || new Set(teached).size !== teached.length) return null;
+  if (!Array.isArray(teached) || teached.length > MAX_TEACHED) return null;
+  if (!teached.every(isTag) || new Set(teached).size !== teached.length) return null;
 
   return {
     v: 1, slot: o.slot, name: o.name, picture: o.picture,

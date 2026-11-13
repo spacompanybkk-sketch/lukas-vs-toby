@@ -71,6 +71,16 @@ describe('mergeSaves: nothing either side earned is lost', () => {
     expect(mergeSaves(older, { ...newer, lastBattle: null }, T0 + 500).lastBattle).toBeNull();
   });
 
+  it('keeps at most 128 tutorial steps, the newer copy\'s first, in a stable order', () => {
+    const steps = (from: number, n: number): string[] => Array.from({ length: n }, (_, i) => `s${from + i}`);
+    const m2 = mergeSaves({ ...older, teached: steps(100, 128) }, { ...newer, teached: steps(0, 128) }, T0 + 500);
+    expect(m2.teached).toEqual(steps(0, 128));
+    const m3 = mergeSaves({ ...older, teached: steps(50, 100) }, { ...newer, teached: steps(0, 100) }, T0 + 500);
+    expect(m3.teached).toEqual(steps(0, 128));
+    expect(mergeSaves({ ...newer, teached: steps(0, 100) }, { ...older, teached: steps(50, 100) }, T0 + 500)).toEqual(m3);
+    expect(parseSave(m3)).toEqual(m3);
+  });
+
   it('refuses to merge two different slots', () => {
     expect(() => mergeSaves(older, { ...newer, slot: 'p02' }, T0)).toThrow();
   });

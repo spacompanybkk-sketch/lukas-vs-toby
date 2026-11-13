@@ -131,6 +131,15 @@ describe('applyLevelResult: exactly once per battle (review-focus 4)', () => {
     expect(lost.save).toBe(r1.save);
   });
 
+  it('remembers only the LAST battle id: A, B, then A again pays A twice (callers use fresh ids)', () => {
+    const a = applyLevelResult(fresh(), SAMPLE_BATTLE, 3, T0 + 10, 'A');
+    const b = applyLevelResult(a.save, SAMPLE_BATTLE, 3, T0 + 20, 'B');
+    const a2 = applyLevelResult(b.save, SAMPLE_BATTLE, 3, T0 + 30, 'A');
+    expect([a.coins, b.coins, a2.coins]).toEqual([90, 10, 10]);
+    expect(a2.save.coins).toBe(110);
+    expect(a2.save.lastBattle).toBe('A');
+  });
+
   it('survives a trip through the wire format (a reload on the result screen)', () => {
     const r1 = applyLevelResult(fresh(), SAMPLE_BATTLE, 2, T0 + 10, 'battle-8');
     const reloaded = parseSave(JSON.parse(JSON.stringify(r1.save)))!;
