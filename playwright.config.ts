@@ -18,7 +18,9 @@ export default defineConfig({
   reporter: [['list']],
   outputDir: 'artifacts/e2e',
   webServer: {
-    command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
+    // Always the fake cloud: a browser test never reaches the children's real data, whatever
+    // VITE_CLOUD is set to elsewhere (and every page URL carries ?cloud=fake as well).
+    command: `VITE_CLOUD=fake npm run build && npx vite preview --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
     timeout: 240_000,

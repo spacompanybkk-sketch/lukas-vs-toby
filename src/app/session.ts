@@ -100,7 +100,8 @@ export class PlayerSession {
   /** Replaces the cloud, storage and clock (tests, the debug clock); logs out. */
   configure(deps: SessionDeps): void {
     this.live.peek()?.sync.dispose();
-    const mode = deps.mode ?? 'live';
+    // Without a mode, a reconfigure keeps the page's (a test hook swapping the cloud must not move to the live keys).
+    const mode = deps.mode ?? this.live.peek()?.mode ?? 'live';
     const storage = modeStorage(deps.storage ?? defaultStorage(), mode);
     const now = deps.now ?? (() => Date.now());
     const sync = new SaveSync(deps.cloud, storage, {

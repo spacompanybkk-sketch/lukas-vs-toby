@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures';
-import { openTitle, typePin, waitLive } from './helpers';
+import { forceResult, openTitle, typePin, waitLive } from './helpers';
 
 // Phase 4a: players, numbers, the lock-out and coins, by taps only, on the fake cloud (the app's
 // default until the database rules are deployed). Battles are fast-forwarded and ended with the
@@ -74,8 +74,10 @@ test('create a player by taps, log out, three wrong numbers lock, the lock ends,
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.locator('[data-coins]')).toHaveAttribute('data-coins', String(earned));
 
-  // The difficulty chosen for zombies was saved with the player (the fake cloud's device keys are lvt2f_).
+  // The difficulty chosen for zombies was saved with the player.
+  // On the fake cloud the device copy is kept under the fake's own prefix, never the real lvt2_ keys.
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lvt2f_save_p03') ?? 'null'));
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('lvt2_') && k !== 'lvt2_settings' && k !== 'lvt2_fake_cloud'))).toEqual([]);
   expect(saved).toMatchObject({ coins: earned, computerWins: 1, difficulty: { zombies: 'easy' } });
 
   // Reload: Mia is still first on this device, and her coins come back with her number.
@@ -111,3 +113,28 @@ test('the lock-out survives a reload, and Lukas and Toby are there from the firs
   await page.locator('[data-player="p02"]').click();
   await expect(page.locator('[data-lock]')).toBeVisible();
 });
+
+test('offline on a fresh device: play anyway as a guest, no player and no coins, and the result goes back to the title', async ({ page }) => {
+  await openTitle(page);
+  // The cloud stops answering (a fresh iPad with no connection): every call is "offline".
+  await page.evaluate(() => {
+    (window.__lvt as any).players.configure({
+      cloud: new Proxy({}, { get: (_t, k) => (k === 'then' ? undefined : async () => 'offline') }),
+      mode: 'fake',
+    });
+  });
+  await page.locator('[data-action="play"]').click();
+  await expect(page.locator('[data-offline]')).toBeVisible();
+  await page.locator('[data-action="guest"]').click();
+  await expect(page.locator('[data-screen="sidepick"]')).toBeVisible();
+  await page.locator('[data-side="zombies"]').click();
+  await page.locator('[data-action="start"]').click();
+  await waitLive(page);
+  await forceResult(page, 'plants');
+  await expect(page.locator('[data-screen="result"]')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('[data-coins-earned]')).toHaveCount(0);
+  expect(await page.evaluate(() => (window.__lvt as any).players.player.value)).toBeNull();
+  await page.locator('[data-action="menu"]').click();
+  await expect(page.locator('[data-screen="title"]')).toBeVisible();
+});
+

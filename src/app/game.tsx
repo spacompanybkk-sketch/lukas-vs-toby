@@ -15,6 +15,7 @@ import { installDebug, markReady } from './debug';
 import { loadSettings } from './settings';
 import type { Settings } from './settings';
 import { board } from './board';
+import { announceCloudMode } from './cloudMode';
 import { session } from './session';
 import { Stage } from './Stage';
 import { defaultCloud, pageCloudMode } from '../cloud/restClient';
@@ -66,6 +67,7 @@ export function mountGame(
   const cloud = defaultCloud();
   // Each cloud keeps its own device keys (lvt2_ live, lvt2f_ fake, lvt2t_ test).
   const mode = pageCloudMode();
+  announceCloudMode(mode);
   let local: Storage | undefined;
   try {
     local = typeof localStorage === 'undefined' ? undefined : localStorage;

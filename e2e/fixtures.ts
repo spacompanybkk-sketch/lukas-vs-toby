@@ -46,6 +46,14 @@ export const test = base.extend<{ problems: Problems }, { launchOptions: LaunchO
         }
       });
       page.on('pageerror', (e) => problems.errors.push(`pageerror: ${e.message}`));
+      // Every page a test opens is on the fake cloud: a URL without cloud=fake fails the test.
+      page.on('framenavigated', (frame) => {
+        if (frame !== page.mainFrame()) return;
+        const url = new URL(frame.url());
+        if (url.protocol.startsWith('http') && url.searchParams.get('cloud') !== 'fake') {
+          problems.errors.push(`navigation without cloud=fake: ${frame.url()}`);
+        }
+      });
       page.on('console', (m) => {
         if (m.type() === 'error') problems.errors.push(`console.error: ${m.text()}`);
         if ((m.type() === 'warning' || m.type() === 'error') && /too many (active )?webgl contexts|context lost|oldest context/i.test(m.text())) {
