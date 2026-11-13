@@ -18,18 +18,18 @@ const units = (c: BattleController, side: Faction) => c.match.state.units.filter
 
 describe('a level\'s HUD info', () => {
   it('a battle has no clock, no waves, no belt', () => {
-    expect(level('p1-1').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false });
+    expect(level('p1-1').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false });
   });
   it('survive: the clock and the waves with the big wave flagged', () => {
     const info = level('p1-6').level!;
     expect(info).toMatchObject({ mode: 'survive', goalSeconds: 150, clockStars: false, belt: false, flags: [110] });
-    expect(info.lastWave).toBeCloseTo(112.5);
+    expect(info.lastWave).toBe(150); // the bar spans the clock
   });
   it('breakthrough: the stars are on the clock', () => {
     expect(level('z1-3').level).toMatchObject({ mode: 'breakthrough', goalSeconds: 120, clockStars: true, enemy: 'plants' });
   });
   it('conveyor: the belt is the player\'s', () => {
-    expect(level('p1-5').level).toMatchObject({ mode: 'conveyor', belt: true });
+    expect(level('p1-5').level).toMatchObject({ mode: 'conveyor', belt: true, noEnergy: true });
     expect(level('z1-5').level).toMatchObject({ mode: 'conveyor', belt: true });
   });
   it('a Quick Battle has none', () => {

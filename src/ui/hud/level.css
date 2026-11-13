@@ -76,12 +76,13 @@
 .lvl-waves.side-zombies .lvl-waves__fill { background: var(--c-purple); box-shadow: inset 0 3px 0 var(--c-purple-hi), inset 0 -3px 0 var(--c-purple-lo); }
 .lvl-waves__flag {
   position: absolute;
-  bottom: 40%;
-  width: calc(var(--hud-h) * 0.56);
-  height: calc(var(--hud-h) * 0.56);
+  bottom: 20%;
+  width: calc(var(--hud-h) * 0.72);
+  height: calc(var(--hud-h) * 0.72);
   transform: translateX(-28%);
 }
 .lvl-waves__flag.is-passed { filter: grayscale(1) brightness(0.7); transform: translate(-28%, 30%); }
+.lvl-waves__flag { z-index: 1; }
 .lvl-waves__head {
   position: absolute;
   top: 50%;
@@ -208,6 +209,19 @@
 .lresult__buttons { grid-area: buttons; }
 .lresult__btn { min-width: clamp(64px, 10vh, 96px); }
 .lresult__btn .pixel-icon { width: calc(var(--hud-h) * 0.8); height: calc(var(--hud-h) * 0.8); display: block; }
+.lresult__btn .ico { --ico-size: calc(var(--hud-h) * 0.8); }
+/* With the unit on the turntable: the coins have fallen, only their sum stays, so the panel keeps
+ * clear of the unit; the golden burst stands at the unit's shoulder, over the stage. */
+.has-turntable .coin-rain__blocks { display: none; }
+.lresult__unlock--stage {
+  grid-area: auto; /* not the panel's 'unlock' area: placed on the whole layer */
+  position: absolute;
+  left: 30vw;
+  top: 16vh;
+  z-index: 2;
+  pointer-events: none;
+}
+.has-turntable .lresult__burst { width: clamp(80px, 16vh, 140px); height: clamp(80px, 16vh, 140px); }
 .lresult__next { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---- Pause in a level: a fourth button, the map ---- */

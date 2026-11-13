@@ -181,6 +181,12 @@ function LevelResultOverlay(props: ResultOverlayProps & { level: LevelOutcome })
       data-screen="result" data-level-result={level.levelId} data-stars={level.stars} data-step={step}
       class={`layer layer--dim result result--${tone}${onStage ? ' has-turntable' : ''}`} role="dialog" aria-label={word}
     >
+      {onStage && (
+        // Over the stage, at the unit's shoulder (the turntable stands in the left of the screen).
+        <div class="lresult__unlock lresult__unlock--stage" data-unlock={unlocked}>
+          <span class="lresult__burst"><PixelIcon art={BURST} /></span>
+        </div>
+      )}
       <div class={`result__panel panel px pal-side side-${playerFaction}`}>
         <h2 class="result__word inked">{word}</h2>
         <div class="row result__winners">
@@ -207,10 +213,10 @@ function LevelResultOverlay(props: ResultOverlayProps & { level: LevelOutcome })
               ? <CoinRain coins={level.coins}>{rankUp !== null && <RankUpBadge up={rankUp} />}</CoinRain>
               : rankUp !== null && <div class="coin-rain"><RankUpBadge up={rankUp} /></div>
           )}
-          {unlocked !== null && (
+          {unlocked !== null && !onStage && (
             <div class="lresult__unlock" data-unlock={unlocked}>
               <span class="lresult__burst"><PixelIcon art={BURST} /></span>
-              {!onStage && cards[unlocked] !== undefined && (
+              {cards[unlocked] !== undefined && (
                 <span class="lresult__unit card px pal-side"><img src={cards[unlocked]} alt="" draggable={false} /></span>
               )}
             </div>

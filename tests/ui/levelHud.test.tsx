@@ -149,6 +149,7 @@ describe('the battle screen in a level', () => {
     expect(all('[data-flag]').map((f) => f.dataset.flag)).toEqual(['110']);
     expect(q('[data-hud="tray"]')).not.toBeNull();
     expect(q('[data-hud="belt"]')).toBeNull();
+    expect(q('[data-hud="energy"]')).not.toBeNull();
   });
 
   it('Breakthrough: the clock with its two star marks; no wave bar without a script', () => {
@@ -163,6 +164,7 @@ describe('the battle screen in a level', () => {
     screen(s);
     expect(q('[data-hud="tray"]')).toBeNull();
     expect(need('[data-hud="belt"]')).toBeDefined();
+    expect(q('[data-hud="energy"]')).toBeNull(); // no energy in a conveyor level
     expect(all('[data-belt]')).toHaveLength(0);
     act(() => { c.step(); });
     expect(all('[data-belt]')).toHaveLength(1);

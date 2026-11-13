@@ -154,7 +154,7 @@ export function BattleScreen(props: BattleScreenProps) {
     <div data-screen="battle" class={`battle side-${side}`}>
       <div class="battle__top">
         <div class="battle__left">
-          <LiveEnergy hud={hud} side={side} anchorRef={energyRef} />
+          {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} />}
         </div>
         <LiveClock hud={hud} />
         <div class="battle__right">

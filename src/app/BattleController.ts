@@ -93,12 +93,17 @@ export interface LevelHudInfo {
   goalSeconds: number | null;
   /** Breakthrough: the stars are counted on the clock left, at these shares of it. */
   clockStars: boolean;
-  /** The scripted waves: when the last unit comes (seconds; 0 when none) and the big waves' flags (seconds). */
+  /**
+   * The scripted waves: where the wave bar ends (seconds: the clock, or the last unit's arrival
+   * without one; 0 when there is no script) and the big waves' flags (seconds).
+   */
   lastWave: number; flags: number[];
   /** Whose units the script brings. */
   enemy: Faction;
   /** The belt is the player's: it replaces the card tray. */
   belt: boolean;
+  /** No energy in this level: the energy counter is not shown. */
+  noEnergy: boolean;
 }
 
 /** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
@@ -198,10 +203,12 @@ export class BattleController {
         mode: config.mode,
         goalSeconds: config.goalTicks === null ? null : config.goalTicks / TICKS_PER_SECOND,
         clockStars: config.mode === 'breakthrough',
-        lastWave: last === undefined ? 0 : last.tick / TICKS_PER_SECOND,
+        // The wave bar spans the whole clock when there is one (its flags then sit where they come in the level).
+        lastWave: last === undefined ? 0 : Math.max(last.tick, config.goalTicks ?? 0) / TICKS_PER_SECOND,
         flags: flags.map((t) => t / TICKS_PER_SECOND),
         enemy: this.opponent,
         belt: config.belt !== null && config.belt.side === this.playerFaction,
+        noEnergy: config.noEnergy,
       };
     } else {
       const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);

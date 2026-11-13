@@ -1270,6 +1270,33 @@ async function onMap(page, side, stars, unlocked, card) {
   await settleUi(page);
 }
 
+/** From the map, `id` started by its card's play button; waits for the fight. */
+async function inLevel(page, side, stars, unlocked, id) {
+  await onMap(page, side, stars, unlocked, id);
+  await page.click('[data-action="start-level"]');
+  await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
+  await page.waitForSelector('[data-banner]', { state: 'detached' });
+}
+
+/** The running level fast-forwarded to `seconds`. */
+async function levelAt(page, seconds) {
+  await page.evaluate((s) => window.__lvt.fastForward(Math.round(s * 30)), seconds);
+  await nextFrames(page, 10);
+  await page.waitForTimeout(300);
+}
+
+/** The running level decided against `loser` (a little play first), then `wait` ms of the result show. */
+async function levelEnd(page, loser, wait) {
+  await page.evaluate((l) => {
+    window.__lvt.fastForward(300);
+    window.__lvt.damageBase(l, 99999);
+    window.__lvt.fastForward(1);
+  }, loser);
+  await page.waitForSelector('[data-level-result]', { timeout: 30_000 });
+  await page.waitForTimeout(wait);
+  await nextFrames(page, 3);
+}
+
 /** The Play menu, the map and the level card at the iPad (1024x704) and laptop (1440x900) sizes. */
 function adventureShots() {
   const sizes = [['ipad', { width: 1024, height: 704 }], ['laptop', { width: 1440, height: 900 }]];
@@ -1297,6 +1324,45 @@ function adventureShots() {
     ['level-card-survive', (page) => onMap(page, 'plants', starsUpTo('plants', [3, 2]), [], 'p1-3')],
     ['level-card-boss', (page) => onMap(page, 'plants', starsUpTo('plants', [3, 2, 3, 1, 2, 3, 1]), ['potatoMine', 'kernelPult'], 'p1-8')],
     ['level-card-locked', (page) => onMap(page, 'plants', starsUpTo('plants', [3]), [], 'p1-5')],
+    // Task 5: playing a level.
+    // Survive p1-6 at 100 s: the clock bar, the wave bar with the head marching up to the big wave's flag.
+    ['level-survive-hud', async (page) => {
+      await inLevel(page, 'plants', starsUpTo('plants', [3, 3, 3, 3, 3]), ['potatoMine'], 'p1-6');
+      await levelAt(page, 100);
+    }],
+    // Breakthrough z1-3 at 40 s: the clock with its two star marks.
+    ['level-breakthrough-hud', async (page) => {
+      await inLevel(page, 'zombies', starsUpTo('zombies', [3, 3]), [], 'z1-3');
+      await levelAt(page, 40);
+    }],
+    // Conveyor p1-5 at 22 s: the belt in place of the tray, a card picked, the mouse over a tile.
+    ['level-conveyor-belt', async (page) => {
+      await inLevel(page, 'plants', starsUpTo('plants', [3, 3, 3, 3]), ['potatoMine'], 'p1-5');
+      await levelAt(page, 22);
+      await page.click('[data-belt][data-slot="1"]');
+      const at = await page.evaluate(() => window.__lvt.tileToClient(2, 3));
+      await page.mouse.move(at.x, at.y, { steps: 4 });
+      await nextFrames(page, 6);
+    }],
+    // A first win of p1-1: three stars popped, 90 coins fallen.
+    ['level-result-3stars', async (page) => {
+      await inLevel(page, 'plants', {}, [], 'p1-1');
+      await levelEnd(page, 'zombies', 3200);
+    }],
+    // A first win of p1-3 with the base at 60%: two stars, then the Potato Mine on the turntable.
+    ['level-result-unlock', async (page) => {
+      await inLevel(page, 'plants', starsUpTo('plants', [3, 3]), [], 'p1-3');
+      await page.evaluate(() => {
+        const s = window.__lvt.session.controller.match.state;
+        window.__lvt.damageBase('plants', Math.round(s.baseMaxHp.plants * 0.4));
+      });
+      await levelEnd(page, 'zombies', 5200);
+    }],
+    // A loss: grey stars, the consolation coins, replay and map.
+    ['level-result-lost', async (page) => {
+      await inLevel(page, 'plants', {}, [], 'p1-1');
+      await levelEnd(page, 'plants', 2500);
+    }],
   ];
   return sizes.flatMap(([size, viewport]) => base.map(([name, steps]) => ({
     name: `${name}-${size}`,
