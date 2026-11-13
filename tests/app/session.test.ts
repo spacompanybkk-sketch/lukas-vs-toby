@@ -437,3 +437,41 @@ describe('grown-up', () => {
     expect((await s.roster()).players.map((p) => p.slot)).toEqual(['p01', 'p02']);
   });
 });
+
+describe('a fake or test cloud keeps to its own device keys', () => {
+  it('fake: saves, hashes, sync, locks and last player under lvt2f_; the old save is carried but never marked used', async () => {
+    const shared = new MemoryStorage();
+    shared.setItem(OLD_SAVE_KEYS.lukas, JSON.stringify({ tobyDollars: 300, currentLevel: 1, upgrades: {} }));
+    const fake = new PlayerSession();
+    fake.configure({ cloud: createFakeCloud(new FakeDatabase({ now: clock.now })), storage: shared, now: clock.now, window: null, document: null, mode: 'fake' });
+    expect(asSave(await fake.create('Lukas', 'peashooter', '123', 'p01')).coins).toBe(300);
+    fake.logout();
+    for (const pin of ['000', '001', '002']) await fake.login('p01', pin);
+    fake.dispose();
+    const keys = Array.from({ length: shared.length }, (_, i) => shared.key(i) as string);
+    expect(keys.filter((k) => k.startsWith('lvt2_'))).toEqual([]);
+    expect(keys).toEqual(expect.arrayContaining(['lvt2f_save_p01', 'lvt2f_hash_p01', 'lvt2f_lock_p01', 'lvt2f_last_slot']));
+    expect(keys.some((k) => k.includes('oldimport'))).toBe(false);
+    expect(shared.getItem(OLD_SAVE_KEYS.lukas)).not.toBeNull();
+
+    // The real game on this device later: none of that is seen, and the old coins are still there to carry.
+    const live = new PlayerSession();
+    live.configure({ cloud: createFakeCloud(db), storage: shared, now: clock.now, window: null, document: null, mode: 'live' });
+    expect(live.lockedUntil('p01')).toBe(0);
+    expect((await live.roster()).players.find((p) => p.slot === 'p01')?.exists).toBe(false);
+    expect(asSave(await live.create('Lukas', 'peashooter', '123', 'p01')).coins).toBe(300);
+    expect(shared.getItem('lvt2_oldimport_p01')).toBe('1');
+    live.dispose();
+  });
+
+  it('test: under lvt2t_', async () => {
+    const shared = new MemoryStorage();
+    const t = new PlayerSession();
+    t.configure({ cloud: createFakeCloud(db), storage: shared, now: clock.now, window: null, document: null, mode: 'test' });
+    asSave(await t.create('Mia', 'sunflower', '123'));
+    t.dispose();
+    const keys = Array.from({ length: shared.length }, (_, i) => shared.key(i) as string);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.every((k) => k.startsWith('lvt2t_'))).toBe(true);
+  });
+});

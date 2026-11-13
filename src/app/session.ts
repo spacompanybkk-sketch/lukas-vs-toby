@@ -1,7 +1,9 @@
 import { computed, signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { grownUpHash, pinHash, PIN } from '../cloud/hash';
-import { defaultCloud } from '../cloud/restClient';
+import { defaultCloud, pageCloudMode } from '../cloud/restClient';
+import type { CloudMode } from '../cloud/restClient';
+import { modeStorage } from '../cloud/modeStorage';
 import { SaveSync, hashKey, syncKey } from '../cloud/sync';
 import type { SaveSyncOptions, SyncState } from '../cloud/sync';
 import type { Cloud, CloudError, PublicPlayer } from '../cloud/types';
@@ -61,6 +63,11 @@ export interface SessionDeps {
   now?: () => number;
   window?: SaveSyncOptions['window'];
   document?: SaveSyncOptions['document'];
+  /**
+   * Which cloud this is (default `live`). The fake and test clouds keep their device keys under
+   * their own prefix (see modeStorage), and only the live one marks the boys' old saves as used.
+   */
+  mode?: CloudMode;
 }
 
 function defaultStorage(): Storage | undefined {
@@ -71,7 +78,7 @@ function defaultStorage(): Storage | undefined {
   }
 }
 
-interface Live { cloud: Cloud; storage: Storage | undefined; now: () => number; sync: SaveSync }
+interface Live { cloud: Cloud; storage: Storage | undefined; now: () => number; sync: SaveSync; mode: CloudMode }
 
 /**
  * Who is playing: logging in by picture and number, making a player, the lock-out, the grown-up
@@ -91,7 +98,8 @@ export class PlayerSession {
   /** Replaces the cloud, storage and clock (tests, the debug clock); logs out. */
   configure(deps: SessionDeps): void {
     this.live.peek()?.sync.dispose();
-    const storage = deps.storage ?? defaultStorage();
+    const mode = deps.mode ?? 'live';
+    const storage = modeStorage(deps.storage ?? defaultStorage(), mode);
     const now = deps.now ?? (() => Date.now());
     const sync = new SaveSync(deps.cloud, storage, {
       now,
@@ -99,13 +107,13 @@ export class PlayerSession {
       ...(deps.document !== undefined ? { document: deps.document } : {}),
     });
     this.pending = null;
-    this.live.value = { cloud: deps.cloud, storage, now, sync };
+    this.live.value = { cloud: deps.cloud, storage, now, sync, mode };
   }
 
   private get d(): Live {
     let l = this.live.peek();
     if (l === null) {
-      this.configure({ cloud: defaultCloud() });
+      this.configure({ cloud: defaultCloud(), mode: pageCloudMode() });
       l = this.live.peek() as Live;
     }
     return l;
@@ -218,6 +226,14 @@ export class PlayerSession {
     return sync.adopt(save, pin);
   }
 
+  /**
+   * Remembers on the device that a boy's old save has been carried. Only on the live cloud:
+   * playing on the fake or test cloud must never use up the real import.
+   */
+  private markOldUsed(slot: Slot): void {
+    if (this.d.mode === 'live') writeKey(this.d.storage, oldImportKey(slot), '1');
+  }
+
   /** Carries the old game's save of Lukas or Toby into the logged-in save, if this device has one. */
   private importOld(slot: Slot): void {
     const { storage, sync } = this.d;
@@ -225,7 +241,7 @@ export class PlayerSession {
     if (!isBoy(slot) || !save || save.importedOld || readKey(storage, oldImportKey(slot)) !== null) return;
     const raw = readKey(storage, BOYS[slot].old);
     if (raw === null) return;
-    writeKey(storage, oldImportKey(slot), '1');
+    this.markOldUsed(slot);
     sync.update((s) => importOldSave(s, raw, this.now()));
   }
 
@@ -264,7 +280,7 @@ export class PlayerSession {
       }
       if (typeof r === 'string') return r;
       this.pending = null;
-      if (r.importedOld && isBoy(target)) writeKey(storage, oldImportKey(target), '1');
+      if (r.importedOld && isBoy(target)) this.markOldUsed(target);
       this.clearWrong(target);
       return r;
     }

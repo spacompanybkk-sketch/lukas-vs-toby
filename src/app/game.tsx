@@ -17,7 +17,8 @@ import type { Settings } from './settings';
 import { board } from './board';
 import { session } from './session';
 import { Stage } from './Stage';
-import { defaultCloud } from '../cloud/restClient';
+import { defaultCloud, pageCloudMode } from '../cloud/restClient';
+import { modeStorage } from '../cloud/modeStorage';
 import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
 import { AlmanacStage } from '../scenes/almanacStage';
@@ -62,8 +63,16 @@ export function mountGame(
   let skew = 0;
   // The leaderboard reads the same cloud (one fake database for the page).
   const cloud = defaultCloud();
-  session.configure({ cloud, now: () => Date.now() + skew });
-  board.configure({ cloud });
+  // Each cloud keeps its own device keys (lvt2_ live, lvt2f_ fake, lvt2t_ test).
+  const mode = pageCloudMode();
+  let local: Storage | undefined;
+  try {
+    local = typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    local = undefined;
+  }
+  session.configure({ cloud, mode, now: () => Date.now() + skew });
+  board.configure({ cloud, ...(local ? { storage: modeStorage(local, mode) as Storage } : {}) });
   lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };
   lvt.players = session;
