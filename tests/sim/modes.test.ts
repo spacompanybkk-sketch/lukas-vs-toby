@@ -361,13 +361,16 @@ describe('every level ends (100 seeds per mode, random commands)', () => {
   // Sudden death from 30 s, so the battles end in a test's time; the rule is the shipped one.
   const fast = withMinion(classicBalance());
   fast.suddenDeath = { ...fast.suddenDeath, startSeconds: 30 };
-  /** The last tick a battle can still be running: when sudden death alone has drained a full base. */
+  /**
+   * The last tick a battle can still be running: when sudden death alone has drained a full base
+   * (each base loses the same share of its own maximum, so any full base falls on the same tick).
+   */
   function suddenDeathBound(baseHp: number): number {
     const start = seconds(fast.suddenDeath.startSeconds);
     let drained = 0;
     let tick = start;
     while (drained < baseHp) {
-      drained += fast.baseHp * (fast.suddenDeath.baseRate + fast.suddenDeath.growthPerSecond * (tick - start) / TICKS_PER_SECOND) / TICKS_PER_SECOND;
+      drained += baseHp * (fast.suddenDeath.baseRate + fast.suddenDeath.growthPerSecond * (tick - start) / TICKS_PER_SECOND) / TICKS_PER_SECOND;
       tick += 1;
     }
     return tick;
@@ -382,7 +385,7 @@ describe('every level ends (100 seeds per mode, random commands)', () => {
     for (let seed = 1; seed <= 100; seed++) {
       const config = levelConfig(mode, seed, fast, seed % 3 === 0);
       const m = new Match(config, fast);
-      const bound = config.goalTicks ?? suddenDeathBound(config.baseHp.plants);
+      const bound = config.goalTicks ?? suddenDeathBound(Math.max(config.baseHp.plants, config.baseHp.zombies));
       let reached = false;
       while (m.state.winner === null && m.state.tick < bound + 1) {
         if (eventsOf(m.step(randomCommands(seed, m.state)), 'goalReached').length > 0) reached = true;
