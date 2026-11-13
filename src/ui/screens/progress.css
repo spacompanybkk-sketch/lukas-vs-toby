@@ -129,10 +129,16 @@
 .almanac__name { font-size: var(--fs-btn); color: var(--white); line-height: 1.05; }
 .almanac__stat { display: grid; grid-template-columns: clamp(34px, 5.4vh, 52px) 1fr; align-items: center; gap: 10px; }
 .almanac__stat-icon { width: 100%; aspect-ratio: 1; }
-.almanac__track { display: block; height: clamp(22px, 3.6vh, 34px); padding: 4px; --fill: #3a2c1c; --hi: #2a1b0e; --lo: #4a3828; }
+.almanac__track { display: flex; height: clamp(22px, 3.6vh, 34px); padding: 4px; --fill: #3a2c1c; --hi: #2a1b0e; --lo: #4a3828; }
 .almanac__fill { display: block; height: 100%; min-width: 6px; animation: bar-grow 360ms steps(6, end) both; transform-origin: left; }
 .almanac__fill--hp { background: var(--c-red); box-shadow: inset 0 3px 0 var(--c-red-hi), inset 0 -3px 0 var(--c-red-lo); }
 .almanac__fill--dps { background: var(--c-sun); box-shadow: inset 0 3px 0 #fff4b0, inset 0 -3px 0 var(--c-sun-lo); }
+/* What a Marketplace upgrade adds: gold blocks with bright seams, right after the plain part. */
+.almanac__fill--up {
+  min-width: 0;
+  background: repeating-linear-gradient(90deg, #ffb300 0 8px, #fff1a8 8px 11px);
+  box-shadow: inset 0 3px 0 #fff6c8, inset 0 -3px 0 #c77800;
+}
 .almanac__fill--speed { background: var(--c-sky); box-shadow: inset 0 3px 0 var(--c-sky-hi), inset 0 -3px 0 #2e86c1; }
 @keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .almanac__instead { display: block; width: clamp(34px, 5.4vh, 52px); aspect-ratio: 1; }

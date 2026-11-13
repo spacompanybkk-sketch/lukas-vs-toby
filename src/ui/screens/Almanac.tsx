@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { session } from '../../app/session';
+import { actionSound } from '../../audio/bindings';
 import { go } from '../../app/store';
 import { UNIT_INFO, factionOf, isCard } from '../../data/units';
 import { renderPortraits } from '../../render/portraits';
@@ -56,7 +57,11 @@ function useExtraPortraits(): Record<string, string> {
   return extra;
 }
 
-function Bar({ kind, icon, share, instead }: { kind: string; icon: PixelArt; share: number | null; instead: PixelArt }) {
+function Bar({ kind, icon, share, plain, instead }: {
+  kind: string; icon: PixelArt; share: number | null; plain: number | null; instead: PixelArt;
+}) {
+  // The part an upgrade adds is drawn in gold after the plain part.
+  const gain = share !== null && plain !== null && share - plain > 0.0005 ? share - plain : 0;
   return (
     <div class="almanac__stat" data-stat={kind}>
       <span class="almanac__stat-icon"><PixelIcon art={icon} /></span>
@@ -64,7 +69,13 @@ function Bar({ kind, icon, share, instead }: { kind: string; icon: PixelArt; sha
         <span class="almanac__instead" data-instead={kind}><PixelIcon art={instead} /></span>
       ) : (
         <span class="almanac__track px pal-stone">
-          <span class={`almanac__fill almanac__fill--${kind}`} data-bar={kind} data-share={share.toFixed(3)} style={{ width: `${Math.round(share * 100)}%` }} />
+          <span
+            class={`almanac__fill almanac__fill--${kind}`} data-bar={kind} data-share={share.toFixed(3)}
+            style={{ width: `${(share - gain) * 100}%` }}
+          />
+          {gain > 0 && (
+            <span class="almanac__fill almanac__fill--up" data-bar-up={kind} style={{ width: `${gain * 100}%` }} />
+          )}
         </span>
       )}
     </div>
@@ -98,7 +109,9 @@ export function Almanac({ portraits = {}, host }: { portraits?: Record<string, s
     setLevel((l) => Math.min(l, levelsOf(key).length));
   };
   const side = factionOf(unit);
-  const bars = statBars(unit);
+  const me = session.player.value;
+  const upgrade = me !== null && isCard(unit) ? (me.upgrades[unit] ?? 0) : 0;
+  const bars = statBars(unit, level, upgrade);
   const role = (ROLE_ART[roleOf(unit)] ?? ROLE_ART.Basic) as PixelArt;
   const levels = levelsOf(unit);
 
@@ -115,9 +128,9 @@ export function Almanac({ portraits = {}, host }: { portraits?: Record<string, s
           <span class="almanac__role px pal-cream" data-role={roleOf(unit)} aria-label={roleOf(unit)}><PixelIcon art={role} /></span>
           <span class="almanac__name inked">{nameOf(unit)}</span>
         </div>
-        <Bar kind="hp" icon={HEART} share={bars.hp} instead={role} />
-        <Bar kind="dps" icon={SWORD} share={bars.dps} instead={role} />
-        <Bar kind="speed" icon={BOOT} share={bars.speed} instead={ROOT} />
+        <Bar kind="hp" icon={HEART} share={bars.hp} plain={bars.hpPlain} instead={role} />
+        <Bar kind="dps" icon={SWORD} share={bars.dps} plain={bars.dpsPlain} instead={role} />
+        <Bar kind="speed" icon={BOOT} share={bars.speed} plain={bars.speed} instead={ROOT} />
         <div class="almanac__pips" role="group" aria-label="Level">
           {levels.map((n) => (
             <button
@@ -131,7 +144,11 @@ export function Almanac({ portraits = {}, host }: { portraits?: Record<string, s
         </div>
         <button
           type="button" data-action="act" aria-label="Play its move" class="btn btn--big pal-leaf almanac__act"
-          onClick={() => { uiSound('click'); host?.play(); }}
+          onClick={() => {
+            // The move's own sound (its shot, bite or ability, as in battle), or a click with none.
+            const clip = host?.play() ?? null;
+            uiSound(actionSound(unit, clip) ?? 'click');
+          }}
         >
           <span class="ico ico--play" aria-hidden="true" />
         </button>

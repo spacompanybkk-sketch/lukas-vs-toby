@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AudioEngine } from '../../src/audio/AudioEngine';
 import type { PlayOptions, SfxName } from '../../src/audio/AudioEngine';
-import { SoundGate, playEventSounds } from '../../src/audio/bindings';
+import { SoundGate, actionSound, playEventSounds } from '../../src/audio/bindings';
 import { BALANCE } from '../../src/data/balance';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { ProjectileKind, SimEvent, StatusKind } from '../../src/sim/types';
@@ -116,5 +116,42 @@ describe('playEventSounds for the full roster', () => {
       most = Math.max(most, engine.voiceCount);
     }
     expect(most).toBeLessThanOrEqual(24);
+  });
+});
+
+describe('actionSound: what the Almanac plays with a unit\'s move, from the same event mapping', () => {
+  /** What the battle plays for these events. */
+  const heard = (events: SimEvent[]): SfxName[] => {
+    const { audio, calls } = recorder();
+    playEventSounds(audio, events, 'plants');
+    return names(calls);
+  };
+
+  it('a shot sounds as its projectile does when fired', () => {
+    for (const key of ['peashooter', 'kernelPult', 'mangoPult', 'brainEater', 'desertZombie', 'skeletonArcher', 'cowboyZombie', 'tridentZombie', 'brainRot'] as const) {
+      const kind = BALANCE.units[key]?.shot?.kind as ProjectileKind;
+      expect(actionSound(key, 'shoot'), key).toBe(heard([spawned(kind, 5)])[0]);
+    }
+  });
+
+  it('a bite sounds as a melee attack does', () => {
+    const bite: SimEvent = { type: 'unitAttacked', unitId: 1, attack: 'melee', targetId: 2, targetBase: null };
+    for (const key of ['veryFastWalker', 'skeletonWarrior', 'hotTopic', 'boneMinion'] as const) {
+      expect(actionSound(key, 'melee'), key).toBe(heard([bite])[0]);
+    }
+  });
+
+  it('an ability sounds as its event does: the mine as its blast, the others as the ability itself', () => {
+    const used = (ability: 'fuse' | 'leap' | 'lasso' | 'raise'): SimEvent => ({ type: 'abilityUsed', unitId: 1, ability, lane: 0, x: 5, targetId: null });
+    expect(actionSound('potatoMine', 'ability')).toBe(heard([{ type: 'explosion', lane: 0, x: 5, radius: 1, sourceKey: 'potatoMine' }])[0]);
+    expect(actionSound('cherryBomber', 'ability')).toBe(heard([used('fuse')])[0]);
+    expect(actionSound('pumpkinSquash', 'ability')).toBe(heard([used('leap')])[0]);
+    expect(actionSound('cowboyZombie', 'ability')).toBe(heard([used('lasso')])[0]);
+    expect(actionSound('necromancer', 'ability')).toBe(heard([used('raise')])[0]);
+  });
+
+  it('no move, no sound', () => {
+    expect(actionSound('sunflower', null)).toBeNull();
+    expect(actionSound('peashooter', 'melee')).toBeNull(); // it has no bite
   });
 });

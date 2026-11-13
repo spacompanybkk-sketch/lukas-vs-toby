@@ -2,7 +2,13 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { session } from '../../src/app/session';
 import { go, screen } from '../../src/app/store';
+import { actionSound } from '../../src/audio/bindings';
+import { FakeDatabase } from '../../src/cloud/fakeCloud';
+import { createFakeCloud } from '../../src/cloud/restClient';
+import { setUiSound } from '../../src/ui/uiSound';
+import { MemoryStorage } from '../progress/memoryStorage';
 import { BALANCE } from '../../src/data/balance';
 import type { UnitKey } from '../../src/sim/types';
 import { Almanac } from '../../src/ui/screens/Almanac';
@@ -46,16 +52,48 @@ describe('stat bars from the balance table', () => {
     return shares.filter(([, s]) => s === top).map(([k]) => k);
   };
 
-  it('each bar is a share of the biggest on its own side', () => {
+  it('each bar is a share of the biggest on its own side at the top level and full upgrade', () => {
     for (const side of ['plants', 'zombies'] as const) {
       for (const k of ALMANAC_UNITS[side]) {
-        const b = statBars(k);
-        expect(b.hp).toBeGreaterThan(0);
-        expect(b.hp).toBeLessThanOrEqual(1);
-        if (b.dps !== null) expect(b.dps).toBeLessThanOrEqual(1);
+        for (const [level, up] of [[1, 0], [3, 4], [5, 10]] as const) {
+          const b = statBars(k, level, up);
+          expect(b.hp).toBeGreaterThan(0);
+          expect(b.hp).toBeLessThanOrEqual(1);
+          if (b.dps !== null) expect(b.dps).toBeLessThanOrEqual(1);
+        }
       }
-      expect(Math.max(...ALMANAC_UNITS[side].map((k) => statBars(k).hp))).toBe(1);
+      expect(Math.max(...ALMANAC_UNITS[side].map((k) => statBars(k, 5, 10).hp))).toBe(1);
+      expect(Math.max(...ALMANAC_UNITS[side].map((k) => statBars(k, 5, 10).dps ?? 0))).toBe(1);
     }
+  });
+
+  it('a higher level makes the health and damage bars longer, never the speed bar', () => {
+    for (const k of ['peashooter', 'avocadoBunker', 'brainEater', 'cowboyZombie'] as const) {
+      for (let l = 1; l < 5; l++) {
+        const a = statBars(k, l);
+        const b = statBars(k, l + 1);
+        expect(b.hp, `${k} ${l}`).toBeGreaterThan(a.hp);
+        if (a.dps !== null) expect(b.dps ?? 0).toBeGreaterThan(a.dps);
+        expect(b.speed).toBe(a.speed);
+      }
+    }
+  });
+
+  it('an upgrade makes them longer too; the plain part stays what it was without it', () => {
+    for (const k of ['peashooter', 'brainEater'] as const) {
+      const plain = statBars(k, 2, 0);
+      const up = statBars(k, 2, 6);
+      expect(up.hp).toBeGreaterThan(plain.hp);
+      expect(up.dps ?? 0).toBeGreaterThan(plain.dps ?? 0);
+      expect(up.hpPlain).toBeCloseTo(plain.hp, 10);
+      expect(up.dpsPlain ?? 0).toBeCloseTo(plain.dps ?? 0, 10);
+      expect(up.speed).toBe(plain.speed);
+      expect(plain.hpPlain).toBe(plain.hp);
+    }
+  });
+
+  it('the Bone Minion takes no upgrade', () => {
+    expect(statBars('boneMinion', 1, 10)).toEqual(statBars('boneMinion', 1, 0));
   });
 
   it("the Avocado Bunker's health bar is the longest among plants", () => {
@@ -114,7 +152,7 @@ describe('Almanac screen', () => {
     tap('[data-level="4"]');
     expect(calls).toContain('show avocadoBunker 4');
     expect(q('[data-level="4"]')?.getAttribute('aria-pressed')).toBe('true');
-    expect(Number(q('[data-bar="hp"]')?.dataset.share)).toBeCloseTo(statBars('avocadoBunker').hp, 3);
+    expect(Number(q('[data-bar="hp"]')?.dataset.share)).toBeCloseTo(statBars('avocadoBunker', 4).hp, 3);
     // No bite or shot: the role picture stands in; a plant has roots, not a speed bar.
     expect(q('[data-instead="dps"]')).not.toBeNull();
     expect(q('[data-instead="speed"]')).not.toBeNull();
@@ -133,10 +171,54 @@ describe('Almanac screen', () => {
     expect(calls.at(-1)).toBe('show boneMinion 1');
   });
 
-  it('play plays the move', () => {
+  it('play plays the move, with the sound of its shot', () => {
+    const heard: string[] = [];
+    setUiSound((n) => heard.push(n));
     mount();
     tap('[data-action="act"]');
     expect(calls).toContain('play');
+    // The fake turntable plays the shot: the Peashooter's pea.
+    expect(heard.at(-1)).toBe(actionSound('peashooter', 'shoot'));
+    expect(heard.at(-1)).toBe('pea');
+    setUiSound(null);
+  });
+
+  it('a higher pip makes the health bar longer', () => {
+    mount();
+    tap('[data-unit="brainEater"]');
+    const at = (n: number): number => {
+      tap(`[data-level="${n}"]`);
+      return Number(q('[data-bar="hp"]')?.dataset.share);
+    };
+    const one = at(1);
+    const five = at(5);
+    expect(five).toBeGreaterThan(one);
+  });
+
+  describe('with a player logged in', () => {
+    beforeEach(async () => {
+      const db = new FakeDatabase({ now: () => 1_762_900_000_000 });
+      session.configure({ cloud: createFakeCloud(db), storage: new MemoryStorage(), now: () => 1_762_900_000_000, window: null, document: null });
+      const made = await session.create('Mia', 'sunflower', '123');
+      if (typeof made === 'string') throw new Error(made);
+    });
+    afterEach(() => session.dispose());
+
+    it("the bars grow with the player's upgrade of that unit, the gain in gold", () => {
+      mount();
+      tap('[data-unit="brainEater"]');
+      const plain = Number(q('[data-bar="hp"]')?.dataset.share);
+      expect(q('[data-bar-up="hp"]')).toBeNull();
+      act(() => session.update((save) => ({ ...save, upgrades: { brainEater: 10 } })));
+      const up = Number(q('[data-bar="hp"]')?.dataset.share);
+      expect(up).toBeGreaterThan(plain);
+      expect(up).toBeCloseTo(statBars('brainEater', 1, 10).hp, 3);
+      expect(q('[data-bar-up="hp"]')).not.toBeNull();
+      expect(q('[data-bar-up="dps"]')).not.toBeNull();
+      // Another unit's upgrade does not touch this one.
+      tap('[data-unit="cowboyZombie"]');
+      expect(q('[data-bar-up="hp"]')).toBeNull();
+    });
   });
 
   it('every role has a picture, every picture is square and in the palette', () => {
