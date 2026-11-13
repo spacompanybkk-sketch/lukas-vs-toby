@@ -25,12 +25,12 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'spell pairs: spread of plants win (10x10)': '46 points (10): at 100 seeds a pair the noise floor alone is about 25',
 };
 
-/** Long: a whole group of bands is one series of thousands of matches. */
-const BULK_MS = 1_800_000;
+/** Long: a whole group of bands is one series of thousands of matches (minutes on an idle machine, far more under load). */
+const BULK_MS = 10_800_000;
 
-/** One test per band whose name or group matches `select`. */
-export function bandTests(select: RegExp): void {
-  const bands = allBands(1).filter((b) => select.test(b.group));
+/** One test per band whose group matches `select` (and whose name matches `name`, if given). */
+export function bandTests(select: RegExp, name?: RegExp): void {
+  const bands = allBands(1).filter((b) => select.test(b.group) && (name === undefined || name.test(b.name)));
   let measured: Promise<Map<Band, number>> | undefined;
   const values = (): Promise<Map<Band, number>> => {
     measured ??= measureBands(bands, async (spec, seeds) => playSeries(matchupOf(spec), seeds, SHIPPED, 1).results, SHIPPED)
