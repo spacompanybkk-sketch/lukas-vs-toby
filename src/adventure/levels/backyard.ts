@@ -51,7 +51,7 @@ const PLANTS: LevelDef[] = [
     // Teaches: the Walnut Bomb holds a lane while the Peashooters work. 90 s of waves in lanes
     // 1–3, a flag wave at the end. Unlocks the Potato Mine.
     ...base('p1-3', 3), side: 'plants', kind: 'survive', cards: ['peashooter', 'sunflower', 'walnutBomb'],
-    seconds: 90, baseHp: { plants: 4000 },
+    seconds: 90, baseHp: { plants: 4500 },
     waves: [...trickle('brainEater', 20, 6, 9, [2, 1, 3]), ...flag('brainEater', 72, [1, 2, 3, 2])],
     unlocks: 'potatoMine',
   },
