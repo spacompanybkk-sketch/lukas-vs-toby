@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures';
 import type { Locator } from '@playwright/test';
 import type { Page } from './fixtures';
-import { glContexts, logIn, openTitle, waitLive } from './helpers';
+import { boxHitsPolygon, forceResult, frames, glContexts, lawnCorners, logIn, openTitle, tilePoint, waitLive } from './helpers';
 
 // Phase 3 Task 4: the way into Adventure: the Play menu, the map on the shared stage, the level card.
 
@@ -151,3 +151,123 @@ test('a guest reaches Quick Battle only; the map side tabs switch between Lukas\
   await expect(page.locator('[data-stone="z1-1"]')).toHaveAttribute('data-state', 'next');
   await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.scene.getObjectByName('map-stone-z1-1') !== undefined)).toBe(true);
 });
+
+// Phase 3 Task 5: playing a level. The result reaches the save exactly once, also across a reload.
+
+const coins = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).players.player.value.coins as number);
+const pending = (page: Page): Promise<string | null> => page.evaluate(() => localStorage.getItem('lvt2f_pending_p01'));
+
+/** From the map, open `id`'s card and start it; waits for the fight. */
+async function startFromMap(page: Page, id: string): Promise<void> {
+  await press(page.locator(`[data-stone="${id}"]`));
+  await press(page.locator('[data-action="start-level"]'));
+  await waitLive(page);
+}
+
+/** Wins the running level: a little play by fast-forward, then the enemy base falls. */
+async function winLevel(page: Page, enemy: 'plants' | 'zombies' = 'zombies'): Promise<void> {
+  await page.evaluate(() => (window.__lvt as any).fastForward(300));
+  await forceResult(page, enemy);
+  await expect(page.locator('[data-level-result]')).toBeVisible({ timeout: 30_000 });
+}
+
+test('win p1-1: three stars and 90 coins, the map shows them and p1-2 open; a reload keeps them', async ({ page }) => {
+  test.setTimeout(150_000);
+  await openTitle(page);
+  await logIn(page);
+  const before = await coins(page);
+  await toMap(page);
+  await startFromMap(page, 'p1-1');
+  await winLevel(page);
+  await expect(page.locator('.lresult__stars[data-lit="3"]')).toBeVisible();
+  await expect(page.locator('[data-coins-earned="90"]')).toBeVisible();
+  expect(await coins(page)).toBe(before + 90);
+  expect(await pending(page)).toBeNull();
+  await expect(page.locator('[data-action="next-level"][data-next="p1-2"]')).toBeVisible();
+  expect(await smallTargets(page, '[data-screen="result"]')).toEqual([]);
+
+  await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  await expect(page.locator('[data-stone="p1-1"]')).toHaveAttribute('data-stars', '3');
+  await expect(page.locator('[data-stone="p1-2"]')).toHaveAttribute('data-state', 'next');
+
+  await openTitle(page); // a reload
+  await logIn(page);
+  expect(await coins(page)).toBe(before + 90);
+  await toMap(page);
+  await expect(page.locator('[data-stone="p1-1"]')).toHaveAttribute('data-stars', '3');
+  await expect(page.locator('[data-stone="p1-2"]')).toHaveAttribute('data-state', 'next');
+});
+
+test('a reload on the result screen neither loses nor doubles the reward; a result left pending is applied at log-in', async ({ page }) => {
+  test.setTimeout(150_000);
+  await openTitle(page);
+  await logIn(page);
+  const before = await coins(page);
+  await toMap(page);
+  await startFromMap(page, 'p1-1');
+  await winLevel(page);
+  const battleId = await page.evaluate(() => (window.__lvt as any).players.player.value.lastBattle as string);
+  await page.reload();
+  await page.evaluate(() => window.__lvt.ready);
+  await logIn(page);
+  expect(await coins(page)).toBe(before + 90);
+
+  // The page went away between keeping a result and saving it: it is applied at the next log-in, once.
+  await page.evaluate((id) => localStorage.setItem('lvt2f_pending_p01', JSON.stringify(
+    { battleId: `${id}x`, levelId: 'p1-2', side: 'plants', stars: 2, won: true })), battleId);
+  // The old record again too (already applied): nothing more.
+  await openTitle(page);
+  await logIn(page);
+  await expect.poll(() => coins(page)).toBe(before + 90 + 60);
+  expect(await pending(page)).toBeNull();
+  await page.evaluate((id) => localStorage.setItem('lvt2f_pending_p01', JSON.stringify(
+    { battleId: id, levelId: 'p1-1', side: 'plants', stars: 3, won: true })), `${battleId}x`);
+  await openTitle(page);
+  await logIn(page);
+  await expect.poll(() => pending(page)).toBeNull();
+  expect(await coins(page)).toBe(before + 150);
+  await toMap(page);
+  await expect(page.locator('[data-stone="p1-2"]')).toHaveAttribute('data-stars', '2');
+});
+
+test('a conveyor level: the belt replaces the tray, a belt card goes on a tile for nothing; map from pause pays nothing', async ({ page }) => {
+  test.setTimeout(150_000);
+  await openTitle(page);
+  await logIn(page);
+  await page.evaluate(() => (window.__lvt as any).players.update((s: any) => ({
+    ...s, plants: { stars: { 'p1-1': 3, 'p1-2': 3, 'p1-3': 3, 'p1-4': 3 }, unlocked: ['potatoMine'] },
+  })));
+  const before = await coins(page);
+  await toMap(page);
+  await startFromMap(page, 'p1-5');
+  await expect(page.locator('[data-hud="tray"]')).toHaveCount(0);
+  await expect(page.locator('[data-hud="belt"]')).toBeVisible();
+  await expect(page.locator('[data-hud="clock-goal"]')).toBeVisible();
+  const card = page.locator('[data-belt][data-slot="0"]');
+  await expect(card).toBeVisible();
+  const key = await card.getAttribute('data-card');
+  await press(card);
+  await expect(card).toHaveAttribute('aria-pressed', 'true');
+  const at = await tilePoint(page, 2, 2);
+  if (test.info().project.name === 'ipad') await page.touchscreen.tap(at.x, at.y);
+  else await page.mouse.click(at.x, at.y);
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
+    .filter((u: any) => u.faction === 'plants' && u.lane === 2 && Math.floor(u.x) === 2).map((u: any) => u.key))).toEqual([key]);
+
+  // The belt keeps clear of lanes 0–4 at the smallest iPad window.
+  await page.setViewportSize({ width: 1024, height: 650 });
+  await frames(page, 5);
+  const lawn = await lawnCorners(page);
+  const belt = await page.locator('[data-hud="belt"]').evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  expect(boxHitsPolygon(belt, lawn)).toBe(false);
+  expect(await targetsBelow44(page, '[data-hud="belt"]')).toEqual([]);
+
+  await press(page.locator('[data-hud="pause"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="map"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="map"]'));
+  await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  expect(await coins(page)).toBe(before);
+  expect(await pending(page)).toBeNull();
+});
+
