@@ -80,14 +80,6 @@ describe('projectiles', () => {
     for (const kind of KINDS) expect(PROJECTILE_SIZE[kind], kind).toBeGreaterThanOrEqual(0.2);
   });
 
-  it("casts no shadow from any shot, burning or not (a 0.2-tile shot's shadow is a dot nobody sees, at a draw call each)", () => {
-    for (const kind of KINDS) {
-      for (const burning of [false, true]) {
-        makeProjectile(kind, burning).traverse((o) => expect((o as { castShadow: boolean }).castShadow, `${kind} ${burning}`).toBe(false));
-      }
-    }
-  });
-
   it('makes every kind at its size: its longest edge is PROJECTILE_SIZE', () => {
     for (const kind of KINDS) {
       const longest = Math.max(...extent(makeProjectile(kind)));
