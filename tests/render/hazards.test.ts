@@ -84,7 +84,7 @@ describe('Hazards', () => {
     expect(m.emissiveIntensity).toBeGreaterThanOrEqual(1.5);
   });
 
-  it('draws every puddle's bubbles in one call, each shown bubble once, none on its own', () => {
+  it("draws every puddle's bubbles in one call, each shown bubble once, none on its own", () => {
     const h = new Hazards();
     for (let id = 0; id < 6; id++) h.add(id, id % 5, 1 + id, 0.75, 4);
     run(h, 0.2);
