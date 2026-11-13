@@ -8,11 +8,13 @@
  *   zombie is merged while it walks (until it is past the middle of the lawn or at the top level,
  *   then a new one is sent); a plant is merged where it stands up to the top level, then a new one
  *   is planted.
- * - `createRandomChild`: a small child. Every so often (2 s as zombies, 3 s as plants) it taps a
- *   random card it can afford and a random lane (or tile). It never merges and never waits. With a
- *   longer interval (`SLOW_TAP_EVERY`, 6 s) it is the slow tapper.
- * - `createNewestCardChild`: the same child, but it always taps the most expensive card it can
- *   afford (the newest, shiniest one), into a random lane or tile.
+ * - `createRandomChild`: a small child. Every so often (2 s as zombies, 3 s as plants) it taps:
+ *   a glowing hero or spell button first when one is ready (`childPower`: aimed at random, half the
+ *   time where something is happening), otherwise a random card it can afford into a random lane
+ *   (or tile). It never merges and never waits. With a longer interval (`SLOW_TAP_EVERY`, 6 s) it
+ *   is the slow tapper.
+ * - `createNewestCardChild`: the same child, but its card is always the most expensive it can
+ *   afford (the newest, shiniest one).
  * - `createFortressPlants`: an adult as plants the way Michal first played: one lane built up
  *   first (Sunflowers at the back, Peashooters, a Walnut Bomb in front), then the next lane out,
  *   and so on; then more Peashooters. It rebuilds what it loses in the same order, fires its hero
@@ -38,7 +40,7 @@ import type { Bot } from './bot';
 import { shotDps } from './laneModel';
 import { mergeCommand, placeCommand, readLawn, sendCommand } from './lawn';
 import type { BotRng } from './lawn';
-import { newPowerMemory, powerMove } from './powers';
+import { childPower, newPowerMemory, powerMove } from './powers';
 
 /** Keeps stand-ins of different kinds made with one seed from drawing the same numbers. */
 const SALT = {
@@ -139,6 +141,8 @@ export function createRandomChild(faction: Faction, seed: number, every = CHILD_
     think(match) {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
+      const power = childPower(match, faction, rng); // the big glowing buttons first
+      if (power !== null) return [power];
       const legal = s.config.cards[faction].flatMap((unit) => placements(match, faction, unit));
       if (legal.length === 0) return [];
       return [legal[randomInt(rng, legal.length)] as Command];
@@ -154,6 +158,8 @@ export function createNewestCardChild(faction: Faction, seed: number, every = CH
     think(match) {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
+      const power = childPower(match, faction, rng); // the big glowing buttons first
+      if (power !== null) return [power];
       let legal: Command[] = [];
       let price = -1;
       for (const unit of s.config.cards[faction]) {

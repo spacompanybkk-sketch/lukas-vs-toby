@@ -68,15 +68,18 @@ describe('stand-in players', () => {
     expect(match.state.units.some((u) => u.faction === side && u.level >= 2) || match.state.winner !== null).toBe(true);
   });
 
-  it.each(['plants', 'zombies'] as Faction[])('the random child as %s taps every 2 or 3 s, more than one card, never merges', (side) => {
+  it.each(['plants', 'zombies'] as Faction[])('the random child as %s taps every 2 or 3 s: more than one card, the hero and spell buttons, never a merge', (side) => {
     const { commands, problems } = play([createRandomChild(side, 9), createBasicBot(opponent(side), 'easy', 9)], 9, 6000);
     expect(problems).toEqual([]);
     const mine = commands.filter((c) => c.cmd.faction === side);
     expect(mine.length).toBeGreaterThan(10);
     for (const c of mine) {
-      expect(c.cmd.type).toBe('place');
+      expect(['place', 'hero', 'spell']).toContain(c.cmd.type);
       expect(c.tick % CHILD_EVERY[side]).toBe(0);
     }
+    // A child presses the big glowing buttons as soon as they are ready.
+    expect(mine.some((c) => c.cmd.type === 'hero'), 'the hero').toBe(true);
+    expect(mine.some((c) => c.cmd.type === 'spell'), 'a spell').toBe(true);
     // It taps whatever it can afford at that moment, so cheap cards come up most (as zombies it
     // rarely holds enough for a Skeleton Warrior), but never just one.
     expect(new Set(mine.map((c) => (c.cmd.type === 'place' ? c.cmd.unit : ''))).size).toBeGreaterThan(1);

@@ -332,3 +332,31 @@ function gravePick(grid: Grid, faction: Faction, minCol: number): Pick {
   const col = Math.min(COLS - 1, Math.max(minCol, front === undefined ? minCol : Math.floor(front.x) + 1));
   return { cmd: { type: 'spell', faction, spell: 'graveRise', lane, col }, score: 1 };
 }
+
+/**
+ * A small child's press of a glowing button: the first ready power (the hero, then the spells in
+ * deal order), aimed at a random spot, half the time on the half of the lawn where most units are
+ * (where something is happening) and otherwise anywhere. Null when nothing is ready or no spot is
+ * legal after a few tries.
+ */
+export function childPower(match: Match, faction: Faction, rng: BotRng): Command | null {
+  const s = match.state;
+  const player = s.players[faction];
+  const ready: Array<SpellKey | 'hero'> = [];
+  if (s.config.heroes[faction] && player.heroTimer === 0) ready.push('hero');
+  for (const slot of player.spells) if (slot.timer === 0) ready.push(slot.key);
+  const power = ready[0];
+  if (power === undefined) return null;
+  let left = 0;
+  let right = 0;
+  for (const u of s.units) if (isStanding(u)) { if (u.x < COLS / 2) left += 1; else right += 1; }
+  for (let tries = 0; tries < 8; tries++) {
+    const busy = nextRandom(rng) < 0.5;
+    const lane = randomInt(rng, LANES);
+    const half = right > left ? COLS / 2 : 0;
+    const col = busy ? half + randomInt(rng, COLS / 2) : randomInt(rng, COLS);
+    const cmd: Command = power === 'hero' ? { type: 'hero', faction, lane } : { type: 'spell', faction, spell: power, lane, col };
+    if (match.check(cmd) === null) return cmd;
+  }
+  return null;
+}
