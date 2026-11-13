@@ -194,6 +194,7 @@ export function createFortressPlants(seed: number, every = ADULT_EVERY): Bot {
     think(match) {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
+      // A person does one thing at a time: a power takes this second's only action.
       const power = powerMove(match, 'plants');
       if (power !== null) return [power];
       const lawn = readLawn(s);
@@ -242,6 +243,7 @@ export function createSteadyZombies(seed: number, every = ADULT_EVERY): Bot {
     think(match) {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
+      // A person does one thing at a time: a power takes this second's only action.
       const power = powerMove(match, 'zombies');
       if (power !== null) return [power];
       if (lane < 0) {

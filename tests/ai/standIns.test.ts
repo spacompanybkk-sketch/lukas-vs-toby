@@ -107,7 +107,8 @@ describe('difficulty setup', () => {
 
   it('makes the computer err most on Easy and never on Hard, and earn most on Hard', () => {
     // Phase 1 also asked Hard to give the human no extra income; Hard as zombies now gives the
-    // human 30% more (an adult sending steady waves must win 15-40%, Michal 2026-11-12).
+    // human more (`DIFFICULTY.hard.zombies.income.human`, above 1: an adult sending steady waves must
+    // win 15-40%, Michal 2026-11-12).
     for (const human of ['plants', 'zombies'] as Faction[]) {
       const { easy, medium, hard } = { easy: DIFFICULTY.easy[human], medium: DIFFICULTY.medium[human], hard: DIFFICULTY.hard[human] };
       expect(easy.randomShare).toBeGreaterThanOrEqual(medium.randomShare);

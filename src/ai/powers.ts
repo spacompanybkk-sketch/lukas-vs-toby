@@ -13,7 +13,7 @@
  * - Frenzy: the 3×3 whose zombies are biting plants hardest, or about to.
  * - Healing Rain: the 3×3 with the most plant health to give back.
  * - Rock Wall: in front of the lane with the most zombie health closing in.
- * - Grave Rise: three minions just right of the front plant of the lane its zombies push hardest.
+ * - Grave Rise: its minions just right of the front plant of the lane its zombies push hardest.
  * - Sun Shower / Brain Feast: as soon as they are ready.
  */
 
@@ -45,6 +45,15 @@ export const POWER_LINES = {
   /** Rock Wall: zombie health closing in on the lane. */
   rock: 500,
 } as const;
+
+/** A zombie this close to the plant base (x) counts double for the Mega Mower: it is at the gate. */
+const GATE_X = 3;
+/** Vines only count zombies already on the lawn proper (left of the graveyard's middle). */
+const ON_LAWN_X = 8.5;
+/** Fog only counts plants with a zombie this close ahead: they would be shooting during the fog. */
+const FOG_REACH = 7;
+/** Frenzy counts zombies this close to the front plant of their lane: they are about to bite. */
+const ABOUT_TO_BITE = 2.5;
 
 /** The lawn as the powers see it: each standing unit, by side, on its tile. */
 interface Grid {
@@ -115,7 +124,7 @@ function heroPick(b: Balance, grid: Grid, faction: Faction): Pick | null {
   for (const u of grid.units) {
     if (u.faction === faction) continue;
     let v = Math.min(u.hp, damage) + (u.hp <= damage ? priceOf(u.key) : 0);
-    if (faction === 'plants' && u.x < 3) v *= 2; // a zombie at the gate
+    if (faction === 'plants' && u.x < GATE_X) v *= 2; // a zombie at the gate
     scores[u.lane] = (scores[u.lane] ?? 0) + v;
   }
   let best: Pick | null = null;
@@ -179,22 +188,22 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey): P
       // Zombies with a plant somewhere ahead of them in their lane.
       const fronts = Array.from({ length: LANES }, (_, lane) => frontPlant(grid, lane)?.x ?? -1);
       return bestArea(grid, faction, spell, stats.size, 'zombies', POWER_LINES.vines,
-        (z) => (fronts[z.lane] ?? -1) >= 0 && z.x < 8.5 ? z.hp : 0);
+        (z) => (fronts[z.lane] ?? -1) >= 0 && z.x < ON_LAWN_X ? z.hp : 0);
     }
     case 'fog': {
       // Plants with a zombie in their lane they could be shooting at for the whole fog.
       const near = Array.from({ length: LANES }, (_, lane) => frontZombie(grid, lane)?.x ?? Infinity);
       const secs = stats.seconds ?? 0;
       return bestArea(grid, faction, spell, stats.size, 'plants', POWER_LINES.fog,
-        (p) => ((near[p.lane] ?? Infinity) - p.x < 7 ? shotDps(b, p) * secs : 0));
+        (p) => ((near[p.lane] ?? Infinity) - p.x < FOG_REACH ? shotDps(b, p) * secs : 0));
     }
     case 'frenzy': {
       const secs = stats.seconds ?? 0;
       const extra = (stats.factor ?? 1) - 1;
-      // Zombies biting, or about to (within 2.5 tiles of the lane's front plant): faster feet and teeth.
+      // Zombies biting, or about to (within ABOUT_TO_BITE of the lane's front plant): faster feet and teeth.
       const fronts = Array.from({ length: LANES }, (_, lane) => frontPlant(grid, lane)?.x ?? -Infinity);
       return bestArea(grid, faction, spell, stats.size, 'zombies', POWER_LINES.frenzy,
-        (z) => (z.blocked || z.x - (fronts[z.lane] ?? -Infinity) < 2.5 ? biteDps(b, z) * secs * extra : 0));
+        (z) => (z.blocked || z.x - (fronts[z.lane] ?? -Infinity) < ABOUT_TO_BITE ? biteDps(b, z) * secs * extra : 0));
     }
     case 'healingRain': {
       const amount = stats.amount ?? 0;

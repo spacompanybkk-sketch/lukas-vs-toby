@@ -30,7 +30,7 @@
  */
 
 import type { Balance } from '../data/balance';
-import { isCard } from '../data/units';
+import { UNIT_INFO, isCard } from '../data/units';
 import type { Match } from '../sim/match';
 import { randomInt } from '../sim/rng';
 import { MAX_LEVEL } from '../sim/types';
@@ -104,7 +104,7 @@ function* zombieWants(
     if (energy > plan.mergeSpareSeconds * income && target !== undefined) yield { cmd: mergeCommand(target) };
   }
 
-  const rush = energy >= RUSH_RESERVE + 50 ? rushLane(lawn, rng) : undefined;
+  const rush = energy >= RUSH_RESERVE + UNIT_INFO.veryFastWalker.price ? rushLane(lawn, rng) : undefined;
   if (rush !== undefined) yield { cmd: sendCommand('veryFastWalker', rush), onChosen: () => { memory.lastLane = rush; } };
 
   // Open lanes come first: while any lane has no plant at all, every zombie goes to press it.
