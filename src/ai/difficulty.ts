@@ -39,15 +39,15 @@ export const DIFFICULTY: DifficultyTable = {
     plants: { skill: 'easy', income: { human: 2.5, computer: 0.7 }, randomShare: 0.9 },
     // Toby on Easy: plants that build well but play a random card more often than not, and 30%
     // more income for him (a child tapping once every 6 s still wins about half).
-    zombies: { skill: 'hard', income: { human: 1.3, computer: 1 }, randomShare: 0.7 },
+    zombies: { skill: 'hard', income: { human: 1.3, computer: 1 }, randomShare: 0.8 },
   },
   medium: {
     // Medium zombies that mostly play at random, so a child finds openings, and twice the Sun
     // trickle for him.
     plants: { skill: 'medium', income: { human: 2, computer: 0.8 }, randomShare: 0.9 },
     // An adult sending steady waves wins about half (steadyZombies 40-65%): the computer plants'
-    // hero and peas out-play plain waves at equal income, so the zombies earn half as much again.
-    zombies: { skill: 'medium', income: { human: 1.5, computer: 1 }, randomShare: 0 },
+    // hero and peas out-play plain waves at equal income, so the zombies earn 40% more.
+    zombies: { skill: 'medium', income: { human: 1.4, computer: 1 }, randomShare: 0 },
   },
   hard: {
     plants: { skill: 'hard', income: { human: 1, computer: 1.05 }, randomShare: 0 },

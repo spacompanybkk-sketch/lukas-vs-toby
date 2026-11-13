@@ -278,7 +278,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // Rock Wall's rock: never a card. Its health is set here and nowhere else; it only stands.
     rock: { recharge: 1, hp: 1500, armor: 0, speed: 0 },
   },
-  trickle: { plants: 2.5, zombies: 14 },
+  trickle: { plants: 2.5, zombies: 14.5 },
   bountyShare: { plants: 0.5, zombies: 0.5 },
   baseShotFactor: 0.3,
   hitRadius: 0.35,
