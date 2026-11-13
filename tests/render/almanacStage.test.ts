@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { PerspectiveCamera, Scene } from 'three';
+import { Mesh, PerspectiveCamera, Scene } from 'three';
+import type { BufferGeometry, Material, Object3D } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Any WebGL renderer made while the Almanac opens and closes is counted: there must be none.
@@ -81,6 +82,49 @@ describe('AlmanacStage', () => {
     expect(stage.camera.view?.enabled ?? false).toBe(false);
     expect(stage.camera.near).toBe(near);
     expect(stage.scene.children.length).toBe(before);
+  });
+
+  it('closing disposes what the Almanac made (the pedestal) and leaves the models\' shared geometry alone', () => {
+    const stage = fakeStage();
+    const almanac = new AlmanacStage(stage);
+    const meshesOf = (o: Object3D): Mesh[] => {
+      const out: Mesh[] = [];
+      o.traverse((c) => { if (c instanceof Mesh) out.push(c); });
+      return out;
+    };
+    for (let i = 0; i < 4; i++) {
+      almanac.open(all[i] as never, 2);
+      const table = stage.scene.getObjectByName('almanac') as Object3D;
+      const pedestal = stage.scene.getObjectByName('almanac-pedestal') as Mesh;
+      const model = almanac.current;
+      expect(model).not.toBeNull();
+      const modelGeometry = new Set(meshesOf(model!.root).map((m) => m.geometry));
+      const disposed = new Set<BufferGeometry | Material>();
+      for (const m of meshesOf(table)) {
+        m.geometry.addEventListener('dispose', () => disposed.add(m.geometry));
+        for (const mat of ([] as Material[]).concat(m.material)) mat.addEventListener('dispose', () => disposed.add(mat));
+      }
+      almanac.close();
+      expect(disposed.has(pedestal.geometry)).toBe(true);
+      expect(disposed.has(pedestal.material as Material)).toBe(true);
+      // Everything else that went is the model, whose geometry and materials every instance shares.
+      for (const g of modelGeometry) expect(disposed.has(g)).toBe(false);
+      expect(model!.root.parent).toBeNull();
+      expect(table.children).toHaveLength(0);
+    }
+  });
+
+  it('switching units disposes nothing shared and leaves only the new model and the pedestal on the turntable', () => {
+    const stage = fakeStage();
+    const almanac = new AlmanacStage(stage);
+    almanac.open('peashooter', 1);
+    const first = almanac.current;
+    almanac.show('hotTopic', 3);
+    almanac.show('hotTopic', 4);
+    const table = stage.scene.getObjectByName('almanac') as Object3D;
+    expect(first?.root.parent).toBeNull();
+    expect(table.children.map((c) => c.name).sort()).toEqual(['almanac-pedestal', 'hotTopic@4']);
+    almanac.close();
   });
 
   it('another director taking the stage takes the turntable out too', () => {

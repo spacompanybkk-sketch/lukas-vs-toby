@@ -176,6 +176,35 @@ describe('leaderboard', () => {
     expect(q('[data-empty]')).not.toBeNull();
   });
 
+  it('a fetch that throws: the kept copy with the no-connection picture, not a blank panel', async () => {
+    await loginAs('p01', 'Lukas', 'peashooter', 2);
+    seed('p03', 'hotTopic', { computerWins: 7 });
+    act(() => go({ name: 'leaderboard' }));
+    mount();
+    await see('[data-row="p03"]');
+    act(() => render(null, root));
+
+    const spy = vi.spyOn(board, 'fetch').mockRejectedValue(new Error('boom'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    act(() => go({ name: 'leaderboard' }));
+    mount();
+    await see('[data-offline]');
+    expect(order()).toEqual(['p03', 'p01']);
+    spy.mockRestore();
+    err.mockRestore();
+  });
+
+  it('a fetch that throws with nothing kept: the podium and the no-connection picture', async () => {
+    const spy = vi.spyOn(board, 'fetch').mockRejectedValue(new Error('boom'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    act(() => go({ name: 'leaderboard' }));
+    mount();
+    await see('[data-offline]');
+    expect(q('[data-empty]')).not.toBeNull();
+    spy.mockRestore();
+    err.mockRestore();
+  });
+
   it('back goes Home for a player, to the title without one', async () => {
     act(() => go({ name: 'leaderboard' }));
     mount();

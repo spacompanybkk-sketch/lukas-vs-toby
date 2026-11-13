@@ -31,7 +31,14 @@ function useBoard(): BoardView | null {
   useEffect(() => {
     let alive = true;
     const load = (): void => {
-      void board.fetch().then((v) => { if (alive) setView(v); }, (e: unknown) => console.error('board failed', e));
+      void board.fetch().then(
+        (v) => { if (alive) setView(v); },
+        (e: unknown) => {
+          // No answer at all: the copy kept here (or the empty podium) with the no-connection picture.
+          console.error('board failed', e);
+          if (alive) setView({ rows: board.cached() ?? [], online: false });
+        },
+      );
     };
     load();
     window.addEventListener('online', load);

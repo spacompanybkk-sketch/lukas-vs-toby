@@ -57,6 +57,24 @@ describe('rankChange', () => {
     expect(rankChange(base, save('p02'), save('p02', { computerWins: 1 }))).toEqual({ table: 'computer', rank: 2 });
   });
 
+  it('entering a table, however high, never outranks a real climb of one place elsewhere', () => {
+    const base = [
+      row('p01', { computerWins: 5 }), row('p02', { computerWins: 2 }), row('p03', { computerWins: 1 }),
+      row('p05', { versusWins: 1 }), row('p06', { versusWins: 1 }), row('p07', { versusWins: 1 }),
+    ];
+    const before = save('p03', { computerWins: 1 });
+    // computer: 3rd → 2nd (a climb of 1); versus: in for the first time, at 1st (from "below 7").
+    const after = save('p03', { computerWins: 3, versusWins: 2 });
+    expect(rankChange(base, before, after)).toEqual({ table: 'computer', rank: 2 });
+  });
+
+  it('with only entries, the best entry is shown', () => {
+    const base = [row('p01', { versusWins: 5, stars: 1 }), row('p02', { stars: 9 })];
+    // versus: in at 2nd (behind p01's 5); wave: in at 1st (nobody else has a wave). Both are entries.
+    const after = { ...save('p03'), bestWave: 4, versusWins: 1 };
+    expect(rankChange(base, save('p03'), after)).toEqual({ table: 'wave', rank: 1 });
+  });
+
   it('with one player there is no cue', () => {
     expect(rankChange([row('p01')], save('p01'), save('p01', { computerWins: 1 }))).toBeNull();
     expect(rankChange([], save('p01'), save('p01', { computerWins: 1 }))).toBeNull();
@@ -68,9 +86,9 @@ describe('rankChange', () => {
       row('p03', { computerWins: 3, versusWins: 2 }), row('p04', { computerWins: 1, versusWins: 0 }),
     ];
     const before = save('p04', { computerWins: 1 });
-    // computer: 4th → 1st (3 places); versus: unranked → 1st.
+    // computer: 4th → 1st (3 places); versus: unranked → 1st. A real climb beats a first entry.
     const after = save('p04', { computerWins: 6, versusWins: 4 });
-    expect(rankChange(base, before, after)).toEqual({ table: 'versus', rank: 1 });
+    expect(rankChange(base, before, after)).toEqual({ table: 'computer', rank: 1 });
     const after2 = save('p04', { computerWins: 6, versusWins: 1 });
     // computer: 4th → 1st (+3); versus: unranked (5) → 3rd (+2).
     expect(rankChange(base, before, after2)).toEqual({ table: 'computer', rank: 1 });

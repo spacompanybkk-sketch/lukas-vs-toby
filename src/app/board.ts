@@ -55,8 +55,8 @@ export interface RankUp { table: Table; rank: number }
 /**
  * After a battle: the player's best move up in any table, comparing their place on `base` with
  * their row as it was (`before`) and as it is now (`after`); the others' rows stay as on `base`.
- * Entering a table counts as coming from below everyone. Null when nothing moved up, or when
- * the board holds only this player.
+ * Entering a table counts as moving up, but any real climb in another table is shown first.
+ * Null when nothing moved up, or when the board holds only this player.
  */
 export function rankChange(base: readonly BoardRow[], before: Save, after: Save): RankUp | null {
   const others = base.filter((r) => r.slot !== before.slot);
@@ -65,18 +65,23 @@ export function rankChange(base: readonly BoardRow[], before: Save, after: Save)
   const was = [...others, rowOf(before, mine?.updatedAt ?? before.updatedAt)];
   // The new row was saved last: it stands behind everyone it ties with.
   const now = [...others, rowOf(after, Number.MAX_SAFE_INTEGER)];
-  let best: RankUp | null = null;
-  let bestGain = 0;
+  // A real climb (already on the table, now higher) always wins over entering a table for the
+  // first time, however high the entry: the biggest climb, else the highest entry.
+  let climb: RankUp | null = null;
+  let climbGain = 0;
+  let entry: RankUp | null = null;
   for (const table of TABLES) {
     const to = placeOf(now, table, after.slot);
     if (to === null) continue;
-    const from = placeOf(was, table, before.slot) ?? was.length + 1;
-    const gain = from - to;
-    if (gain > bestGain) {
-      bestGain = gain;
-      best = { table, rank: to };
+    const from = placeOf(was, table, before.slot);
+    if (from === null) {
+      if (entry === null || to < entry.rank) entry = { table, rank: to };
+    } else if (from - to > climbGain) {
+      climbGain = from - to;
+      climb = { table, rank: to };
     }
   }
+  const best = climb ?? entry;
   return best;
 }
 
