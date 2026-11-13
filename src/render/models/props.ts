@@ -403,7 +403,7 @@ export function makeProjectile(kind: ProjectileKind, burning = false): Object3D 
     ? new Mesh(shared('pea-burning', burningPeaGeometry), glowingProp())
     : new Mesh(shared(kind, SHOT_GEOMETRY[kind]), plasticMaterial());
   mesh.name = fire ? 'projectile-pea-burning' : `projectile-${kind}`;
-  mesh.castShadow = true;
+  // No shadow: at 0.2-0.4 tiles a shot's shadow is a dot nobody sees, and it cost a draw call each.
   return mesh;
 }
 
