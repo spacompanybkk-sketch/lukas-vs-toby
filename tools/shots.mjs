@@ -371,12 +371,12 @@ const SCENARIOS = [
   ...[
     ['boss-titan-enter', 'brainTitan', [0.5, 1.0]],
     ['boss-titan-windup', 'brainTitan', [10.8, 11.6]],
-    ['boss-titan-shield', 'brainTitan', [24]],
-    ['boss-titan-defeat', 'brainTitan', [71.4, 72.1, 72.6]],
+    ['boss-titan-shield', 'brainTitan', [15]],
+    ['boss-titan-defeat', 'brainTitan', [51.9, 52.6, 53.1]], // falls at 51.7 s (the merged boss numbers)
     ['boss-oak-enter', 'elderOak', [0.5, 1.0]],
     ['boss-oak-barrage', 'elderOak', [10.15, 10.6]],
-    ['boss-oak-shield', 'elderOak', [34.4, 34.6, 36]],
-    ['boss-oak-defeat', 'elderOak', [43.8, 44.5, 45.3]],
+    ['boss-oak-shield', 'elderOak', [30.8, 31, 32.4]], // armours up at 30.6 s
+    ['boss-oak-defeat', 'elderOak', [37.6, 38.3, 39.1]], // falls at 37.3 s
   ].map(([name, boss, times]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
     return {
@@ -1516,6 +1516,26 @@ function adventureShots() {
       await page.waitForSelector('[data-free-result]', { timeout: 30_000 });
       await page.waitForTimeout(2600);
       await nextFrames(page, 3);
+    }],
+    // Fix round 1: the armed Quit in a run shows what ending now banks (the flag and the coins).
+    ['freeplay-quit-bank', async (page) => {
+      await inFreePlay(page, 'plants');
+      await page.evaluate(() => window.__lvt.fastForward(30 * 51));
+      await page.click('[data-hud="pause"]');
+      await page.click('[data-screen="pause"] [data-action="quit"]');
+      await settleUi(page);
+    }],
+    // p1-2: the Sunflower's first payout: the counter pulses big and golden, once.
+    ['tutorial-sun-pays', async (page) => {
+      await inLevel(page, 'plants', starsUpTo('plants', [3]), [], 'p1-2', ['p1-2.sun-card', 'p1-2.sun-tile', 'p1-2.pea-card', 'p1-2.pea-tile']);
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        const c = lvt.session.controller;
+        c.select('sunflower'); c.click({ lane: 1, col: 0 }, null); lvt.fastForward(1);
+        c.select('peashooter'); c.click({ lane: 1, col: 1 }, null); lvt.fastForward(1);
+        while (c.tutorial.sunPulse.value === 0) lvt.fastForward(1);
+      });
+      await page.waitForTimeout(220); // the pulse at its biggest
     }],
     // A loss: grey stars, the consolation coins, replay and map.
     ['level-result-lost', async (page) => {
