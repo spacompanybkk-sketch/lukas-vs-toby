@@ -82,7 +82,6 @@ export interface SoundContext {
   gate?: SoundGate;
 }
 
-/** x of unit `id` in the state, or NaN (centred) when it is not there. */
 /** Each boss's signature call: its entrance and its patterns. */
 const BOSS_CALL = { brainTitan: 'titanRoar', elderOak: 'oakCreak' } as const;
 
@@ -91,6 +90,7 @@ function unitKey(state: SimState | undefined, id: number): UnitKey | undefined {
   return state?.units.find((u) => u.id === id)?.key;
 }
 
+/** x of unit `id` in the state, or NaN (centred) when it is not there. */
 function unitX(state: SimState | undefined, id: number): number {
   if (state === undefined) return Number.NaN;
   const units = state.units;
