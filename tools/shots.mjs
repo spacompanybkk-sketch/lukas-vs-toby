@@ -362,6 +362,29 @@ const SCENARIOS = [
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),
+  // The two bosses as models, and their moves (phase 3 Task 3).
+  { name: 'gallery-bosses', url: '/?scene=gallery&models=brainTitan,elderOak&t=0.4' },
+  moves('brainTitan', [['windup', 'ability', 1.3], ['strike', 'ability', 1.62], ['roar', 'cheer', 0.3], ['topple', 'die', 0.9]]),
+  moves('elderOak', [['fling', 'shoot', 0.3], ['bark', 'idle', 0.4, 'barkL'], ['shake', 'ability', 0.2], ['fall', 'die', 1.0]]),
+  // The bosses (`?scene=boss-demo`, phase 3 Task 3): each frozen at its entrance, its tell, its
+  // shield and its defeat, on the full lawn with the clock and the boss bar.
+  ...[
+    ['boss-titan-enter', 'brainTitan', [0.5, 1.0]],
+    ['boss-titan-windup', 'brainTitan', [10.8, 11.6]],
+    ['boss-titan-shield', 'brainTitan', [21.2]],
+    ['boss-titan-defeat', 'brainTitan', [69.6, 70.3, 70.8]],
+    ['boss-oak-enter', 'elderOak', [0.5, 1.0]],
+    ['boss-oak-barrage', 'elderOak', [10.15, 10.6]],
+    ['boss-oak-shield', 'elderOak', [34.3]],
+    ['boss-oak-defeat', 'elderOak', [43.8, 44.5, 45.3]],
+  ].map(([name, boss, times]) => {
+    const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}`;
+    return {
+      name,
+      url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
   // ---- The game: menus, HUD, pause and result (Tasks 14 and 15, wired) ----
   { name: 'title', url: '/', steps: (page) => demoAt(page, 45) },
   { name: 'portrait', url: '/', viewport: { width: 768, height: 1024 }, steps: (page) => demoAt(page, 20) },

@@ -3,6 +3,7 @@ import { installDebug } from './app/debug';
 import { battleOptionsFrom, mountGame } from './app/game';
 import * as gallery from './render/gallery';
 import * as battleDemo from './scenes/battleDemo';
+import * as bossDemo from './scenes/bossDemo';
 import * as boot from './scenes/boot';
 import * as fx from './scenes/fx';
 import * as hudGallery from './scenes/hudGallery';
@@ -32,6 +33,7 @@ const SCENES = new Map<string, SceneModule>([
   ['fx-gallery', fxGallery],
   ['battle-demo', battleDemo],
   ['roster-demo', rosterDemo],
+  ['boss-demo', bossDemo],
   ['stress', stress],
   ['hud-gallery', hudGallery],
 ]);
