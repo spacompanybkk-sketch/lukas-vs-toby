@@ -372,6 +372,7 @@ const SCENARIOS = [
       await demoAt(page, 45);
       await asPlayer(page, 'Mia', 'sunflower');
       await page.click('[data-home="play"]');
+      await page.click('[data-play="quick"]');
       await settleUi(page);
     },
   },
@@ -391,6 +392,7 @@ const SCENARIOS = [
       await demoAt(page, 45);
       await asPlayer(page, 'Mia', 'sunflower');
       await page.click('[data-home="play"]');
+      await page.click('[data-play="quick"]');
       await page.click('[data-side="zombies"]');
       await settleUi(page);
     },
@@ -417,6 +419,7 @@ const SCENARIOS = [
   ...playerShots(),
   // Phase 4a: the leaderboard and the Almanac at the iPad and laptop sizes.
   ...progressShots(),
+  ...adventureShots(),
   // The phase-2 HUD pieces (?scene=hud-gallery) at the iPad, iPad Air and laptop sizes.
   ...hudGallery(),
   // ---- Hero powers and spells, wired (wiring B) ----
@@ -714,6 +717,7 @@ function playerShots() {
     ['result-coins', async (page) => {
       await asPlayer(page, 'Lukas', 'peashooter', 'p01');
       await page.click('[data-home="play"]');
+      await page.click('[data-play="quick"]');
       await page.click('[data-action="start"]');
       await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
       await battleAt(page, 30);
@@ -1159,6 +1163,7 @@ function progressShots() {
     ['result-rankup', async (page) => {
       await boardPlayers(page, 6);
       await page.click('[data-home="play"]');
+      await page.click('[data-play="quick"]');
       await page.click('[data-action="start"]');
       await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
       await battleAt(page, 30);
@@ -1238,6 +1243,63 @@ function progressShots() {
   return sizes.flatMap(([size, viewport]) => base.map(([name, steps]) => ({
     name: `${name}-${size}`,
     url: '/',
+    viewport,
+    steps: async (page) => {
+      await page.evaluate(() => window.__lvt.portraits);
+      await steps(page);
+    },
+  })));
+}
+
+/** Stars on `side` for the levels `1..n` (each given), as a finished level would have saved them. */
+function starsUpTo(side, list) {
+  const letter = side === 'plants' ? 'p' : 'z';
+  return Object.fromEntries(list.map((n, i) => [`${letter}1-${i + 1}`, n]));
+}
+
+/** Lukas with Adventure progress, on the map of `side` (and the card of `card`, if given). */
+async function onMap(page, side, stars, unlocked, card) {
+  await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+  await page.evaluate(([sd, st, un]) => window.__lvt.players.update((v) => ({ ...v, [sd]: { stars: st, unlocked: un } })), [side, stars, unlocked]);
+  await page.click('[data-home="play"]');
+  await page.click('[data-play="adventure"]');
+  await page.click(`[data-side="${side}"]`);
+  await page.waitForSelector('[data-screen="map"]');
+  if (card) await page.click(`[data-stone="${card}"]`);
+  await settleUi(page);
+}
+
+/** The Play menu, the map and the level card at the iPad (1024x704) and laptop (1440x900) sizes. */
+function adventureShots() {
+  const sizes = [['ipad', { width: 1024, height: 704 }], ['laptop', { width: 1440, height: 900 }]];
+  const base = [
+    ['play-menu', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="play"]');
+      await settleUi(page);
+    }],
+    ['play-side', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="play"]');
+      await page.click('[data-play="adventure"]');
+      await settleUi(page);
+    }],
+    ['play-guest', async (page) => {
+      await page.evaluate(() => window.__lvt.go({ name: 'play' }));
+      await settleUi(page);
+    }],
+    ['map-fresh', (page) => onMap(page, 'plants', {}, [])],
+    ['map-midway', (page) => onMap(page, 'plants', starsUpTo('plants', [3, 2, 3, 1]), ['potatoMine'])],
+    ['map-done', (page) => onMap(page, 'plants', starsUpTo('plants', [3, 3, 2, 3, 3, 1, 2, 3]), ['potatoMine', 'kernelPult'])],
+    ['map-zombies', (page) => onMap(page, 'zombies', starsUpTo('zombies', [2, 1]), [])],
+    ['level-card-battle', (page) => onMap(page, 'plants', {}, [], 'p1-1')],
+    ['level-card-survive', (page) => onMap(page, 'plants', starsUpTo('plants', [3, 2]), [], 'p1-3')],
+    ['level-card-boss', (page) => onMap(page, 'plants', starsUpTo('plants', [3, 2, 3, 1, 2, 3, 1]), ['potatoMine', 'kernelPult'], 'p1-8')],
+    ['level-card-locked', (page) => onMap(page, 'plants', starsUpTo('plants', [3]), [], 'p1-5')],
+  ];
+  return sizes.flatMap(([size, viewport]) => base.map(([name, steps]) => ({
+    name: `${name}-${size}`,
+    url: '/?cloud=fake',
     viewport,
     steps: async (page) => {
       await page.evaluate(() => window.__lvt.portraits);

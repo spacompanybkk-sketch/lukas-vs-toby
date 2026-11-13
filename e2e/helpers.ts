@@ -46,12 +46,13 @@ export async function logIn(page: Page, pin = '123'): Promise<void> {
 }
 
 /**
- * From the title (logging in as Lukas) or from Home: Play → pick a side and difficulty → START.
+ * From the title (logging in as Lukas) or from Home: Play → Quick Battle → pick a side and difficulty → START.
  * Does not wait for the fight to begin.
  */
 export async function pickAndStart(page: Page, side: Side, skill: Skill = 'medium'): Promise<void> {
   if (await page.locator('[data-screen="title"]').isVisible()) await logIn(page);
   await page.locator('[data-home="play"]').click();
+  await page.locator('[data-play="quick"]').click();
   await page.locator('[data-screen="sidepick"]').waitFor();
   await page.locator(`[data-side="${side}"]`).click();
   await page.locator(`[data-skill="${skill}"]`).click();

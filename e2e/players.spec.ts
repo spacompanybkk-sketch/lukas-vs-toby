@@ -55,6 +55,7 @@ test('create a player by taps, log out, three wrong numbers lock, the lock ends,
 
   // Play, win (the base knocked down by the debug hook), see the coins fall, back Home with them.
   await page.locator('[data-home="play"]').click();
+  await page.locator('[data-play="quick"]').click();
   await page.locator('[data-side="zombies"]').click();
   await page.locator('[data-skill="easy"]').click();
   await page.locator('[data-action="start"]').click();
@@ -73,8 +74,8 @@ test('create a player by taps, log out, three wrong numbers lock, the lock ends,
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.locator('[data-coins]')).toHaveAttribute('data-coins', String(earned));
 
-  // The difficulty chosen for zombies was saved with the player.
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lvt2_save_p03') ?? 'null'));
+  // The difficulty chosen for zombies was saved with the player (the fake cloud's device keys are lvt2f_).
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lvt2f_save_p03') ?? 'null'));
   expect(saved).toMatchObject({ coins: earned, computerWins: 1, difficulty: { zombies: 'easy' } });
 
   // Reload: Mia is still first on this device, and her coins come back with her number.
