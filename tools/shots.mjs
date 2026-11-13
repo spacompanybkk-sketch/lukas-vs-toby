@@ -370,7 +370,8 @@ const SCENARIOS = [
     url: '/',
     steps: async (page) => {
       await demoAt(page, 45);
-      await page.click('[data-action="play"]');
+      await asPlayer(page, 'Mia', 'sunflower');
+      await page.click('[data-home="play"]');
       await settleUi(page);
     },
   },
@@ -388,7 +389,8 @@ const SCENARIOS = [
     url: '/',
     steps: async (page) => {
       await demoAt(page, 45);
-      await page.click('[data-action="play"]');
+      await asPlayer(page, 'Mia', 'sunflower');
+      await page.click('[data-home="play"]');
       await page.click('[data-side="zombies"]');
       await settleUi(page);
     },
@@ -411,6 +413,8 @@ const SCENARIOS = [
   result('result-lose', 'plants'),
   cheer('result-cheer-plants', 'zombies', 'zombies'),
   cheer('result-cheer-zombies', 'plants', 'plants'),
+  // ---- Players: log-in, number pad, new player, Home, grown-up (phase 4a Task 3) ----
+  ...playerShots(),
   // The phase-2 HUD pieces (?scene=hud-gallery) at the iPad, iPad Air and laptop sizes.
   ...hudGallery(),
   // ---- Hero powers and spells, wired (wiring B) ----
@@ -540,6 +544,173 @@ async function battleAt(page, seconds) {
   await page.evaluate(() => window.__lvt.portraits);
   await page.evaluate((s) => window.__lvt.fastForward(Math.round(s * 30)), seconds);
   await nextFrames(page, 10);
+}
+
+/** Makes a player on the page's fake cloud through the session (as the taps would) and opens Home. */
+async function asPlayer(page, name, picture, slot) {
+  await page.evaluate(async ([n, p, sl]) => {
+    const r = await window.__lvt.players.create(n, p, '123', sl ?? undefined);
+    if (typeof r !== 'object') throw new Error(`create ${n}: ${r}`);
+    window.__lvt.go({ name: 'home' });
+  }, [name, picture, slot ?? null]);
+  await settleUi(page);
+}
+
+/** Every cloud call from now on answers "offline" (the device copies stay). */
+function goOffline(page) {
+  return page.evaluate(() => {
+    window.__lvt.players.configure({ cloud: new Proxy({}, { get: (_t, k) => (k === 'then' ? undefined : async () => 'offline') }) });
+  });
+}
+
+/** Several players, then back to the pictures with nobody logged in. */
+async function manyPlayers(page, n) {
+  const pics = ['sunflower', 'hotTopic', 'torchwood', 'necromancer', 'kernelPult', 'cowboyZombie', 'mangoPult', 'skeletonArcher', 'cherryBomber', 'desertZombie'];
+  await page.evaluate(async ([count, pictures]) => {
+    const names = ['Mia', 'Ben', 'Ella', 'Max', 'Sofia', 'Jakub', 'Nina', 'Adam', 'Ema', 'Leo', 'Zoe', 'Tom', 'Lili', 'Oskar'];
+    const s = window.__lvt.players;
+    for (const [slot, name, pic] of [['p01', 'Lukas', 'peashooter'], ['p02', 'Toby', 'brainEater']]) {
+      await s.create(name, pic, '123', slot);
+      s.logout();
+    }
+    for (let i = 0; i < count; i++) {
+      const r = await s.create(`${names[i % names.length]}${i >= names.length ? i : ''}`, pictures[i % pictures.length], '123');
+      if (typeof r !== 'object') throw new Error(`create ${i}: ${r}`);
+      s.logout();
+    }
+    await s.login('p01', '123');
+    s.logout();
+    window.__lvt.go({ name: 'players' });
+  }, [n, pics]);
+  await settleUi(page);
+}
+
+/** Each player screen at the iPad (1024x704) and the laptop (1440x900) size. */
+function playerShots() {
+  const sizes = [['ipad', { width: 1024, height: 704 }], ['laptop', { width: 1440, height: 900 }]];
+  const base = [
+    ['players-first', async (page) => {
+      await page.click('[data-action="play"]');
+      await settleUi(page);
+    }],
+    ['players-few', async (page) => {
+      await manyPlayers(page, 3);
+    }],
+    ['players-full', async (page) => {
+      await manyPlayers(page, 28);
+    }],
+    ['players-offline', async (page) => {
+      await manyPlayers(page, 2);
+      await page.evaluate(() => { window.__lvt.go({ name: 'title' }); });
+      await goOffline(page);
+      await page.click('[data-action="play"]');
+      await settleUi(page);
+    }],
+    ['pinpad', async (page) => {
+      await manyPlayers(page, 2);
+      await page.click('[data-player="p01"]');
+      await page.click('[data-key="4"]');
+      await settleUi(page);
+    }],
+    ['pinpad-wrong', async (page) => {
+      await manyPlayers(page, 2);
+      await page.click('[data-player="p02"]');
+      for (const d of '999') await page.click(`[data-key="${d}"]`);
+      await page.waitForFunction(() => document.querySelector('[data-pin-boxes].is-wrong') !== null, null, { polling: 'raf' });
+      await page.waitForTimeout(60);
+    }],
+    ['pinpad-locked', async (page) => {
+      await manyPlayers(page, 2);
+      await page.click('[data-player="p01"]');
+      for (const pin of ['000', '001', '002']) {
+        for (const d of pin) await page.click(`[data-key="${d}"]`);
+        await page.waitForTimeout(500);
+      }
+      await page.waitForSelector('[data-lock]');
+      await settleUi(page);
+    }],
+    ['create-choose', async (page) => {
+      await page.click('[data-action="play"]');
+      await page.click('[data-player="p02"]');
+      await page.waitForSelector('[data-pin-step="1"]');
+      await page.click('[data-key="7"]');
+      await settleUi(page);
+    }],
+    ['create-picture', async (page) => {
+      await page.click('[data-action="play"]');
+      await page.click('[data-action="new-player"]');
+      await page.waitForSelector('[data-pick]');
+      await settleUi(page);
+    }],
+    ['create-name', async (page) => {
+      await page.click('[data-action="play"]');
+      await page.click('[data-action="new-player"]');
+      await page.click('[data-pick="hotTopic"]');
+      for (const ch of 'MIA') await page.click(`[data-letter="${ch}"]`);
+      await settleUi(page);
+    }],
+    ['create-offline', async (page) => {
+      await goOffline(page);
+      await page.click('[data-action="play"]');
+      await page.click('[data-action="new-player"]');
+      await page.waitForSelector('[data-step="offline"]');
+      await settleUi(page);
+    }],
+    ['home', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.evaluate(() => window.__lvt.players.update((s) => ({ ...s, coins: 1250 })));
+      await settleUi(page);
+    }],
+    ['home-toby', async (page) => {
+      await asPlayer(page, 'Toby', 'brainEater', 'p02');
+    }],
+    ['grownup-code', async (page) => {
+      await page.click('[data-action="play"]');
+      const lock = await page.waitForSelector('[data-action="grownup"]');
+      const box = await lock.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(2200);
+      await page.mouse.up();
+      await page.waitForSelector('[data-screen="grownup"]');
+      for (const d of '24') await page.click(`[data-key="${d}"]`);
+      await settleUi(page);
+    }],
+    ['grownup-list', async (page) => {
+      await manyPlayers(page, 4);
+      await page.evaluate(async () => {
+        await window.__lvt.players.setGrownUp('246802');
+        window.__lvt.go({ name: 'grownup' });
+      });
+      await page.waitForSelector('[data-pin-boxes]');
+      for (const d of '246802') await page.click(`[data-key="${d}"]`);
+      await page.waitForSelector('[data-row]');
+      await settleUi(page);
+    }],
+    ['result-coins', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="play"]');
+      await page.click('[data-action="start"]');
+      await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
+      await battleAt(page, 30);
+      await page.evaluate(() => {
+        window.__lvt.damageBase('zombies', 1e9);
+        window.__lvt.fastForward(1);
+      });
+      await page.waitForFunction(() => window.__lvt.session?.resultReady.value === true, null, { timeout: 15_000 });
+      await page.waitForSelector('[data-coins-earned]');
+      await page.waitForTimeout(1600);
+    }],
+  ];
+  return sizes.flatMap(([size, viewport]) => base.map(([name, steps]) => ({
+    name: `${name}-${size}`,
+    url: '/',
+    viewport,
+    steps: async (page) => {
+      await page.evaluate(() => window.__lvt.portraits);
+      await steps(page);
+    },
+  })));
 }
 
 /** Lets stepped UI animations (pops, drops) finish. */

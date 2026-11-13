@@ -22,9 +22,36 @@ export async function openTitle(page: Page): Promise<void> {
   await expect(page.locator('[data-screen="title"]')).toBeVisible();
 }
 
-/** Title → PLAY → pick a side and difficulty → START. Does not wait for the fight to begin. */
-export async function pickAndStart(page: Page, side: Side, skill: Skill = 'medium'): Promise<void> {
+/** Taps a number on the open number pad. */
+export async function typePin(page: Page, pin: string): Promise<void> {
+  for (const d of pin) await page.locator(`[data-key="${d}"]`).click();
+}
+
+/**
+ * Title → PLAY → the players' pictures → Lukas → his number (chosen twice the first time on this
+ * fresh browser, typed once after that) → Home. Only taps, on the fake cloud.
+ */
+export async function logIn(page: Page, pin = '123'): Promise<void> {
   await page.locator('[data-action="play"]').click();
+  await page.locator('[data-player="p01"]').click();
+  const choosing = page.locator('[data-pin-step="1"]');
+  const pad = page.locator('[data-screen="pinpad"]');
+  await expect(choosing.or(pad)).toBeVisible();
+  await typePin(page, pin);
+  if (await page.locator('[data-pin-step]').count() > 0) {
+    await expect(page.locator('[data-pin-step="2"]')).toBeVisible();
+    await typePin(page, pin);
+  }
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+}
+
+/**
+ * From the title (logging in as Lukas) or from Home: Play → pick a side and difficulty → START.
+ * Does not wait for the fight to begin.
+ */
+export async function pickAndStart(page: Page, side: Side, skill: Skill = 'medium'): Promise<void> {
+  if (await page.locator('[data-screen="title"]').isVisible()) await logIn(page);
+  await page.locator('[data-home="play"]').click();
   await page.locator('[data-screen="sidepick"]').waitFor();
   await page.locator(`[data-side="${side}"]`).click();
   await page.locator(`[data-skill="${skill}"]`).click();

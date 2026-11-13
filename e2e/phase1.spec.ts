@@ -340,7 +340,8 @@ test('quit to the menu and a second match: one canvas, one WebGL context, a fres
   await page.locator('[data-hud="pause"]').click();
   await page.locator('[data-action="quit"]').click(); // arms Quit (a tick shows)
   await page.locator('[data-action="quit"]').click(); // quits
-  await expect(page.locator('[data-screen="title"]')).toBeVisible();
+  // A logged-in player quits to their Home (phase 4a); the next match starts from there.
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await pickAndStart(page, 'zombies', 'easy');
   // The new session has just been made: its clock has not moved.
   await page.waitForFunction(() => {
