@@ -1,5 +1,6 @@
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
+import { bossFallen } from './boss';
 import { damageBase } from './damage';
 import { hasClock } from './script';
 import { TICKS_PER_SECOND } from './types';
@@ -28,13 +29,15 @@ import type { Faction, SimEvent, SimState } from './types';
  * of time (breakthrough). `goalReached` then `matchEnded`. A match with a clock therefore lasts at
  * most `goalTicks` steps.
  *
- * Seam for bosses (Task 3): a boss level ends like a battle (a base falls, or sudden death); a
- * "the boss is down" winner check belongs in `decideWinner`, before the clock.
+ * The boss first: in a boss level the boss being down ends the match at once with its foes winning
+ * (`bossDefeated`, then `matchEnded`; see `bossFallen`), even if a base falls on the same step (the
+ * player who beat the boss wins, whatever else happened that step); then the bases.
  */
 export function tickEndgame(s: SimState, b: Balance, events: SimEvent[]): void {
   if (s.winner !== null) return;
   tickSuddenDeath(s, b, events);
-  decideWinner(s, events);
+  decideBoss(s, events);
+  if (s.winner === null) decideWinner(s, events);
   if (s.winner === null) tickGoal(s, events);
 }
 
@@ -55,8 +58,15 @@ function tickSuddenDeath(s: SimState, b: Balance, events: SimEvent[]): void {
   }
   const secondsSinceStart = (s.tick - startTick) / TICKS_PER_SECOND;
   const amount = b.baseHp * (rule.baseRate + rule.growthPerSecond * secondsSinceStart) / TICKS_PER_SECOND;
-  damageBase(s, 'plants', amount, null, events);
-  damageBase(s, 'zombies', amount, null, events);
+  damageBase(s, b, 'plants', amount, null, events);
+  damageBase(s, b, 'zombies', amount, null, events);
+}
+
+function decideBoss(s: SimState, events: SimEvent[]): void {
+  const winner = bossFallen(s, events);
+  if (winner === null) return;
+  s.winner = winner;
+  events.push({ type: 'matchEnded', winner });
 }
 
 function decideWinner(s: SimState, events: SimEvent[]): void {

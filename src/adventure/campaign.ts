@@ -73,9 +73,7 @@ export function levelConfig(
   const startEnergy = { ...base.startEnergy };
   if (def.startEnergy !== null) startEnergy[player] = def.startEnergy;
 
-  // TODO(merge): `def.boss` is not mapped yet (the bosses arrive with Task 3); until then a boss
-  // level is the sim's 'boss' mode, which plays by battle rules against the level's `opponent`.
-  const level: Pick<MatchConfig, 'mode' | 'script' | 'prepared' | 'goalTicks' | 'belt' | 'noEnergy' | 'invulnerableBase'> = {
+  const level: Pick<MatchConfig, 'mode' | 'script' | 'prepared' | 'goalTicks' | 'belt' | 'noEnergy' | 'invulnerableBase' | 'boss'> = {
     mode: def.kind,
     script,
     prepared: def.prepared.map(spawn),
@@ -87,11 +85,15 @@ export function levelConfig(
     // A plant Survive or Conveyor: the zombie base cannot be hurt, the plants hold out. On the
     // zombies' side those kinds are races: the plant base can be hurt, the clock wins for the plants.
     invulnerableBase: player === 'plants' && (def.kind === 'survive' || def.kind === 'conveyor') ? 'zombies' : null,
+    // The level's boss stands on its own side (the Titan with the zombies, the Oak with the plants);
+    // the simulation's `checkLevel` wants one exactly in a boss level.
+    boss: def.boss === null ? null : { key: def.boss.key, faction: factionOf(def.boss.key), lane: def.boss.lane },
   };
 
   return {
     ...base,
     startEnergy,
+    baseHp: { ...base.baseHp, ...def.baseHp },
     cards: {
       [player]: def.cards.filter((k) => held.includes(k)),
       [enemy]: def.opponent === null ? [] : [...def.opponent.cards],

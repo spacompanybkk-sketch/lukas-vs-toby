@@ -1,8 +1,6 @@
 import type { Skill } from '../ai/bot';
-import type { CardKey, Faction, UnitKey } from '../sim/types';
+import type { BossKey, CardKey, Faction, UnitKey } from '../sim/types';
 
-// TODO(merge): `BossKey` comes from src/sim/types.ts once Task 3 (bosses) lands.
-export type BossKey = 'brainTitan' | 'elderOak';
 
 /**
  * One step of a level's tutorial: what the glove points at, and the player's own action that ends
@@ -35,6 +33,11 @@ export interface LevelDef {
   /** Conveyor only. */
   belt: { everySeconds: number; cards: CardKey[] } | null;
   boss: { key: BossKey; lane: number } | null;
+  /**
+   * The bases' health where the level wants other than the balance's (a short tutorial battle, a
+   * small garden). Left out (or a side left out) = the balance default.
+   */
+  baseHp?: Partial<Record<Faction, number>>;
   /** The player's start energy; null = the balance default. */
   startEnergy: number | null;
   spells: boolean; unlocks: CardKey | null; teaches: TutorialStep[] | null;

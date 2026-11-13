@@ -18,7 +18,8 @@ const B = withMinion(classicBalance());
 
 function withMode(mode: LevelMode, patch: Partial<MatchConfig> = {}, balance: Balance = B): Match {
   const goalTicks = mode === 'battle' || mode === 'boss' ? null : 90;
-  return new Match({ ...classicConfig(3, balance), mode, goalTicks, ...patch }, balance);
+  const boss: MatchConfig['boss'] = mode === 'boss' ? { key: 'brainTitan', faction: 'zombies', lane: 2 } : null;
+  return new Match({ ...classicConfig(3, balance), mode, goalTicks, boss, ...patch }, balance);
 }
 
 /** Steps until the match ends or `limit` steps have run; the events of the last step. */
@@ -31,23 +32,32 @@ function runOut(m: Match, limit: number): SimEvent[] {
 describe('a default battle', () => {
   it('has every level field at its neutral value', () => {
     const c = defaultConfig(1);
-    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase]).toEqual([
-      'battle', [], [], null, null, false, null,
+    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase, c.boss, c.endless]).toEqual([
+      'battle', [], [], null, null, false, null, null, null,
     ]);
     const m = new Match(c);
     expect([m.state.scriptIndex, m.state.belt]).toEqual([0, []]);
   });
 
   /**
-   * The same scripted battles as before the level modes, with the checksums the code printed then
-   * (commit 28a6d4f). The new fields hash after everything that was there before (the setup's level
-   * fields at the end of the setup, which ends the old layout, then `scriptIndex` and `belt`), so
-   * the old checksum continued over their neutral bytes must be today's: the battle played the same.
+   * The same scripted battles as before the level modes, with their checksums. First pinned against
+   * the code at commit 28a6d4f (its checksums continued over the neutral level bytes). Re-pinned in
+   * Task 3 (bosses), when every unit gained four fields (`pattern` .. `phase`) in the middle of the
+   * layout and the setup its `boss`: a scratch replay of these three battles at the commit before
+   * (4469587) and with the bosses gave equal events on every step and equal snapshots at tick 1000
+   * and at the end once the new fields (all 0, boss null) were taken out, so the battles still play
+   * the same; only the bytes hashed changed. Re-pinned again in Task 7a (Free Play), when the setup
+   * gained `endless` and the state `wave` .. `incoming`: a scratch replay of these three battles at
+   * a92eff8 and with Free Play gave equal events on every step and equal snapshots at tick 1000 and
+   * at the end once the new fields (all 0 / null / empty) were taken out. Re-pinned in Task 8
+   * (levels), when every unit gained `stunFatigue` (a boss's stun resistance): a scratch replay at
+   * 4726149 and with it gave equal events on every step and equal snapshots at tick 1000 and at the
+   * end once `stunFatigue` (always 0 outside a boss) was taken out.
    */
   const BEFORE: Array<[number, number, number]> = [ // seed, checksum at tick 1000, checksum at the end (tick 6880)
-    [1, 2535456419, 4177412511],
-    [2, 1772428623, 2166383439],
-    [3, 852128596, 688752288],
+    [1, 228950009, 4019655029],
+    [2, 3745210085, 497565829],
+    [3, 3742689830, 3612142098],
   ];
   function commandsAt(tick: number): Command[] {
     const out: Command[] = [];
@@ -58,25 +68,6 @@ describe('a default battle', () => {
     if (tick % 500 === 250) out.push(place('plants', 'peashooter', (tick / 500 | 0) % 5, 2 + ((tick / 2500) | 0) % 5));
     if (tick % 200 === 100) out.push({ type: 'hero', faction: tick % 400 === 100 ? 'plants' : 'zombies', lane: (tick / 200 | 0) % 5 });
     return out;
-  }
-  /** FNV-1a continued from `h` over the neutral level fields, in the layout of src/sim/hash.ts. */
-  function continueNeutral(h: number): number {
-    const bytes: number[] = [];
-    const num = (v: number): void => {
-      const view = new DataView(new ArrayBuffer(8));
-      view.setFloat64(0, v, true);
-      for (let i = 0; i < 8; i++) bytes.push(view.getUint8(i));
-    };
-    num(6); // mode: 'battle'
-    for (const c of 'battle') bytes.push(c.charCodeAt(0), 0);
-    num(0); // script: none
-    num(0); // prepared: none
-    bytes.push(0, 0, 0, 0); // goalTicks, belt: null; noEnergy: false; invulnerableBase: null
-    num(0); // scriptIndex
-    num(0); // belt: empty
-    let x = h | 0;
-    for (const b of bytes) x = Math.imul(x ^ b, 0x01000193);
-    return x >>> 0;
   }
   it.each(BEFORE)('plays seed %i exactly as before the level modes', (seed, at1000, atEnd) => {
     const b = classicBalance();
@@ -90,8 +81,8 @@ describe('a default battle', () => {
       if (m.state.tick === 1000) mid = m.hash();
     }
     expect([m.state.tick, m.state.winner]).toEqual([6880, 'zombies']);
-    expect(mid).toBe(continueNeutral(at1000));
-    expect(m.hash()).toBe(continueNeutral(atEnd));
+    expect(mid).toBe(at1000);
+    expect(m.hash()).toBe(atEnd);
   });
 });
 
@@ -128,11 +119,6 @@ describe('the clock goal', () => {
     expect([m.state.tick, m.state.winner]).toEqual([2, 'zombies']);
   });
 
-  it('an endless survive (no goalTicks) runs until a base falls', () => {
-    const m = withMode('survive', { goalTicks: null });
-    runOut(m, 500);
-    expect(m.state.winner).toBeNull();
-  });
 });
 
 describe('sudden death by mode', () => {
@@ -162,18 +148,6 @@ describe('an invulnerable base', () => {
     expect(eventsOf(seen, 'baseDamaged')).toEqual([]);
     expect(m.state.baseHp.zombies).toBe(3000);
     expect(m.state.projectiles.every((p) => p.x < 10)).toBe(true); // those that hit are gone
-  });
-
-  it('takes no bites either, while the other base still does', () => {
-    const m = withMode('battle', { invulnerableBase: 'plants' });
-    spawnUnit(m.state, B, 'brainEater', 0, 0.3);
-    spawnUnit(m.state, B, 'peashooter', 1, 7.5);
-    const seen: SimEvent[] = [];
-    for (let i = 0; i < 90; i++) seen.push(...m.step());
-    expect(eventsOf(seen, 'unitAttacked').filter((e) => e.targetBase === 'plants').length).toBeGreaterThan(0);
-    expect(m.state.baseHp.plants).toBe(3000);
-    expect(eventsOf(seen, 'baseDamaged').map((e) => e.faction)).toContain('zombies');
-    expect(eventsOf(seen, 'baseDamaged').map((e) => e.faction)).not.toContain('plants');
   });
 
   it('is spared by sudden death too', () => {
@@ -213,6 +187,20 @@ describe('checking the mode', () => {
     ['goalTicks -30', { mode: 'survive', goalTicks: -30 }, 'goalTicks'],
     ['goalTicks 1.5', { mode: 'survive', goalTicks: 1.5 }, 'goalTicks'],
     ['an invulnerable base of no side', { invulnerableBase: 'robots' as Faction }, 'invulnerableBase'],
+    // The clock's winner is always the plants: a safe plant base would leave a zombie player no way to win.
+    ['an invulnerable plant base', { invulnerableBase: 'plants' }, 'invulnerableBase'],
+    ['an invulnerable plant base in a zombie conveyor', {
+      mode: 'conveyor', goalTicks: 100, noEnergy: true, invulnerableBase: 'plants',
+      belt: { side: 'zombies', everyTicks: 30, cards: ['brainEater'], slots: 5 },
+    }, 'invulnerableBase'],
+    ['a survive with no clock', { mode: 'survive', goalTicks: null }, 'goalTicks'],
+    ['a script entry at goalTicks', {
+      mode: 'survive', goalTicks: 100, script: [{ tick: 100, unit: 'brainEater', faction: 'zombies', lane: 0, level: 1 }],
+    }, 'never comes'],
+    ['a script entry after goalTicks', {
+      mode: 'survive', goalTicks: 100, script: [{ tick: 250, unit: 'brainEater', faction: 'zombies', lane: 0, level: 1 }],
+    }, 'never comes'],
+    ['a noEnergy that is no boolean', { noEnergy: 1 as unknown as boolean }, 'noEnergy'],
   ];
   it.each(cases)('refuses %s', (_name, patch, message) => {
     expect(() => new Match({ ...classicConfig(1, B), ...patch }, B)).toThrow(message);
@@ -241,12 +229,32 @@ function pick<T>(r: Rng, items: readonly T[]): T {
   return items[randomInt(r, items.length)]!;
 }
 
-/** A level of `mode` for `seed`: waves, a prepared garden, a belt, as the mode would have them. */
-function levelConfig(mode: LevelMode, seed: number, balance: Balance): MatchConfig {
+/**
+ * The strong scripted attack a fuzz run may add for the zombies (the side that loses at the clock):
+ * a level-5 Skeleton Warrior or Brain Eater every 1.5 s from 1 s in, lane after lane, so the plant
+ * base falls before the clock unless the random play happens to hold it.
+ */
+function strongAttack(goalTicks: number): ScriptEntry[] {
+  const out: ScriptEntry[] = [];
+  for (let tick = 30, i = 0; tick < goalTicks; tick += 45, i++) {
+    out.push({ tick, unit: i % 2 === 0 ? 'skeletonWarrior' : 'brainEater', faction: 'zombies', lane: i % LANES, level: 5 });
+  }
+  return out;
+}
+
+/** Joins two scripts, keeping them sorted by tick (ties: `a` first). */
+function joinScripts(a: ScriptEntry[], b: ScriptEntry[]): ScriptEntry[] {
+  return [...a, ...b].map((e, i) => ({ e, i })).sort((x, y) => x.e.tick - y.e.tick || x.i - y.i).map(({ e }) => e);
+}
+
+/**
+ * A level of `mode` for `seed`: waves, a prepared garden, a belt, as the mode would have them; with
+ * `attack`, the zombies also get `strongAttack` (clocked modes), so the level can end by a base falling.
+ */
+function levelConfig(mode: LevelMode, seed: number, balance: Balance, attack = false): MatchConfig {
   const r: Rng = { rng: (seed * 2654435761) >>> 0 };
   nextRandom(r);
   const zombies: CardKey[] = ['brainEater', 'veryFastWalker', 'skeletonWarrior'];
-  const plants: CardKey[] = ['peashooter', 'sunflower', 'walnutBomb'];
   const script: ScriptEntry[] = [];
   for (let tick = 60; tick < 1800; tick += 60 + randomInt(r, 120)) {
     script.push({ tick, unit: pick(r, zombies), faction: 'zombies', lane: randomInt(r, LANES), level: 1 + randomInt(r, 2) });
@@ -259,10 +267,22 @@ function levelConfig(mode: LevelMode, seed: number, balance: Balance): MatchConf
     prepared.push({ unit: pick(r, ['peashooter', 'walnutBomb'] as const), faction: 'plants', lane, x: 3.5 + randomInt(r, 3), level: 1 + randomInt(r, 3) });
   }
   const config: MatchConfig = { ...classicConfig(seed, balance), heroes: { plants: true, zombies: true }, spells: { plants: 2, zombies: 2 }, mode };
+  const level = levelOf(mode, seed, config, script, prepared);
+  if (attack && level.goalTicks !== null) level.script = joinScripts(level.script, strongAttack(level.goalTicks));
+  return level;
+}
+
+function levelOf(mode: LevelMode, seed: number, config: MatchConfig, script: ScriptEntry[], prepared: PreparedUnit[]): MatchConfig {
+  const zombies: CardKey[] = ['brainEater', 'veryFastWalker', 'skeletonWarrior'];
+  const plants: CardKey[] = ['peashooter', 'sunflower', 'walnutBomb'];
   switch (mode) {
     case 'battle':
-    case 'boss':
       return config;
+    case 'boss': // the plants' boss (the Brain Titan) on odd seeds, the zombies' (the Elder Oak) on even ones
+      return {
+        ...config, script: seed % 2 === 1 ? script.filter((e) => e.faction === 'zombies') : [],
+        boss: seed % 2 === 1 ? { key: 'brainTitan', faction: 'zombies', lane: seed % LANES } : { key: 'elderOak', faction: 'plants', lane: 2 },
+      };
     case 'survive':
       return { ...config, goalTicks: 1800, script, invulnerableBase: 'zombies' };
     case 'breakthrough':
@@ -272,7 +292,7 @@ function levelConfig(mode: LevelMode, seed: number, balance: Balance): MatchConf
       const belt: BeltConfig = { side, everyTicks: 45, cards: side === 'plants' ? plants : zombies, slots: 5 };
       return {
         ...config, goalTicks: 1800, belt, noEnergy: true,
-        invulnerableBase: side === 'plants' ? 'zombies' : 'plants',
+        invulnerableBase: side === 'plants' ? 'zombies' : null,
         script: side === 'plants' ? script : [], prepared: side === 'zombies' ? prepared : [],
       };
     }
@@ -353,17 +373,33 @@ describe('every level ends (100 seeds per mode, random commands)', () => {
     return tick;
   }
 
+  // Every third seed the zombies also get a strong scripted attack, so a clocked level can end by
+  // the plant base falling as well as at the clock; both endings must occur across the seeds.
   it.each(['battle', 'boss', 'survive', 'breakthrough', 'conveyor'] as const)('%s', (mode) => {
     const winners = new Map<string, number>();
+    let atClock = 0;
+    let baseFell = 0;
     for (let seed = 1; seed <= 100; seed++) {
-      const config = levelConfig(mode, seed, fast);
+      const config = levelConfig(mode, seed, fast, seed % 3 === 0);
       const m = new Match(config, fast);
       const bound = config.goalTicks ?? suddenDeathBound(config.baseHp.plants);
-      while (m.state.winner === null && m.state.tick < bound + 1) m.step(randomCommands(seed, m.state));
+      let reached = false;
+      while (m.state.winner === null && m.state.tick < bound + 1) {
+        if (eventsOf(m.step(randomCommands(seed, m.state)), 'goalReached').length > 0) reached = true;
+      }
       expect(m.state.winner, `${mode} seed ${seed}`).not.toBeNull();
       expect(m.state.tick, `${mode} seed ${seed}`).toBeLessThanOrEqual(bound);
+      if (reached) atClock += 1;
+      else baseFell += 1;
       winners.set(String(m.state.winner), (winners.get(String(m.state.winner)) ?? 0) + 1);
     }
     expect([...winners.values()].reduce((a, b) => a + b, 0)).toBe(100);
+    if (config0(mode).goalTicks !== null) {
+      expect(atClock, `${mode}: ended at the clock`).toBeGreaterThan(0);
+      expect(baseFell, `${mode}: ended by a base falling`).toBeGreaterThan(0);
+    }
   });
+  function config0(mode: LevelMode): MatchConfig {
+    return levelConfig(mode, 1, fast);
+  }
 });

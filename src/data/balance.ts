@@ -1,5 +1,5 @@
 import { TICKS_PER_SECOND } from '../sim/types';
-import type { Faction, Flight, ProjectileKind, SpellKey, SpellSize, StatusKind, UnitKey } from '../sim/types';
+import type { BossKey, Faction, Flight, ProjectileKind, SpellKey, SpellSize, StatusKind, UnitKey } from '../sim/types';
 
 /** A close-range attack. Interval in seconds, reach in tiles. */
 export interface MeleeStats { damage: number; interval: number; reach: number }
@@ -90,6 +90,50 @@ export interface SpellStats {
   minCol?: number;
 }
 
+/**
+ * One of a boss's patterns (see `src/sim/boss.ts`). The timed ones (`everySeconds` above 0) take
+ * turns in table order, never two at once: `everySeconds` is the gap AFTER the previous pattern
+ * went off (the first's: after the boss arrives). So a pattern comes round once per the sum of
+ * all the gaps (the Titan's slam every 12 + 6 = 18 s, the Oak's barrage every 10 + 6 = 16 s). A
+ * shield is not timed (`everySeconds` 0): it goes up as the boss's health falls to each of
+ * `atHealth` (shares of its max, highest first).
+ *
+ * - slam: winds up for its last `windupSeconds` (standing still, not biting), then hits the plant
+ *   on the tile in front of it (`reach` tiles ahead of its x) for `damage` and the plants on that
+ *   column in the lanes beside for `sideDamage`.
+ * - summon: `count` of `unit` at `level`; a zombie in as many different random lanes at the spawn
+ *   edge, a plant on as many random free tiles in columns `minCol`..`maxCol` (a plant summon needs them).
+ * - barrage: `count` acorns, lobbed at `speed` (tiles/s) into as many random lanes that have a
+ *   zombie, each at that lane's foremost one: `damage`, and the same within `splash` of it.
+ * - shield: for `seconds`, all damage times `damageFactor`; with `bouncesStraight`, straight shots
+ *   bounce off (lobbed shots, blasts, heroes and spells still hurt).
+ */
+export type BossPattern =
+  | { kind: 'slam'; everySeconds: number; windupSeconds: number; damage: number; sideDamage: number; reach: number }
+  | { kind: 'summon'; everySeconds: number; unit: UnitKey; count: number; level: number; minCol?: number; maxCol?: number }
+  | { kind: 'barrage'; everySeconds: number; count: number; damage: number; splash: number; speed: number }
+  | { kind: 'shield'; everySeconds: 0; atHealth: readonly number[]; seconds: number; damageFactor: number; bouncesStraight: boolean };
+
+/**
+ * A boss's numbers: a unit's (`hp`, `speed`, a bite, …; `recharge` is a placeholder nothing reads)
+ * and its patterns, plus:
+ * - `maxStunSeconds`: a stun on it lasts at most this long (it cannot be tied or blinded at all);
+ * - `stunFalloff`, `stunWindowSeconds`: stun resistance. Each stun in the last `stunWindowSeconds`
+ *   takes `stunFalloff` of `maxStunSeconds` off the next one (0.5: the second 0.5 s, the third
+ *   none), so several Kernel-pults cannot keep it stunned (and its patterns frozen);
+ * - `hitCap`: a hero power or a blast (Thunderbolt, Meteor, a mine, a Cherry, a Walnut) takes at
+ *   most this share of its max health per hit;
+ * - `col`: a boss that stands still stands on this column's middle (the Elder Oak); a walker
+ *   comes on at the spawn edge;
+ * - `guardFactor`: while it stands, its side's base cannot be hurt; whatever would hurt the base
+ *   (a bite, a shot, sudden death) hurts the boss instead, times this (the Oak's roots).
+ */
+export type BossStats = UnitStats & {
+  patterns: readonly BossPattern[];
+  maxStunSeconds: number; stunFalloff: number; stunWindowSeconds: number; hitCap: number;
+  col?: number; guardFactor?: number;
+};
+
 /** Every tunable number of the game. The simulation reads these and nothing else. */
 export interface Balance {
   units: Partial<Record<UnitKey, UnitStats>>;
@@ -140,6 +184,22 @@ export interface Balance {
    * times its health and `1 + damage × n` times its bite and shot damage (see `upgradeScale`).
    */
   upgradeStep: Record<Faction, { hp: number; damage: number }>;
+  /** The bosses (see `BossStats`). Starting numbers; the level-tuning task adjusts them. */
+  bosses: Record<BossKey, BossStats>;
+  /**
+   * Free Play (see `src/sim/endless.ts`). Wave (or garden) w is bought with `budgetBase +
+   * budgetStep × w` energy, its units at level `1 + floor((w − 1) / levelEvery)` (at most 5); every
+   * `bossEvery`-th also brings one level-5 unit of its priciest card (the big one). Survive: a wave
+   * starts every `gapSeconds` and its units walk on over its first `spreadSeconds`. Breakthrough: the
+   * clock starts at `clockSeconds` and gains `clockBonusSeconds` per garden broken; garden g's plant
+   * base has `gardenBaseHp × (1 + gardenHpStep × (g − 1))` health (not the setup's base); plants stand in columns
+   * `gardenMinCol`..`gardenMaxCol`.
+   */
+  endless: {
+    budgetBase: number; budgetStep: number; gapSeconds: number; levelEvery: number; bossEvery: number;
+    clockSeconds: number; clockBonusSeconds: number; gardenBaseHp: number; gardenHpStep: number;
+    spreadSeconds: number; gardenMinCol: number; gardenMaxCol: number;
+  };
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -325,6 +385,35 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   upgradeStep: {
     plants: { hp: 0.005, damage: 0.05 },
     zombies: { hp: 0, damage: 0.03 },
+  },
+  bosses: {
+    brainTitan: {
+      recharge: 0, hp: 3100, armor: 0, speed: 0.1,
+      melee: { damage: 60, interval: 1.5, reach: 0.6 },
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
+      patterns: [
+        { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
+        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 1, bouncesStraight: true },
+      ],
+    },
+    elderOak: {
+      recharge: 0, hp: 4000, armor: 0, speed: 0,
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
+      patterns: [
+        { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
+        { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
+      ],
+    },
+  },
+  endless: {
+    // Task 8, measured (tools/levels.ts --free, 200 seeds, three blocks): survive, the wave reached
+    // by the beginner / average / expert 7 / 12-13 / 25-27; breakthrough, gardens broken 3 / 2-3 / 3
+    // (garden 1 at 1500, not the battle's 6000: the review found garden 1 unbreakable).
+    budgetBase: 250, budgetStep: 68, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
+    clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
+    spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
 });
 

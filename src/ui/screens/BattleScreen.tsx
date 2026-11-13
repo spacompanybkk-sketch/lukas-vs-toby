@@ -11,6 +11,7 @@ import type { Settings } from '../../app/settings';
 import type { Faction, SpellKey, UnitKey } from '../../sim/types';
 import { SettingsPanel } from '../SettingsPanel';
 import { BaseBar } from '../hud/BaseBars';
+import { BossBar } from '../hud/BossBar';
 import type { BoyPortraits } from '../hud/BaseBars';
 import { CardTray } from '../hud/CardTray';
 import { useTrayLayout } from '../hud/trayLayout';
@@ -63,6 +64,8 @@ export interface BattleSessionLike {
   skipIntro?: boolean;
   /** The last hero power used, by either side: its boy's banner shows for `HERO_BANNER_MS`. */
   heroBanner?: ReadonlySignal<{ side: Faction; n: number } | null>;
+  /** A tap on the boss's entrance card: the lawn ends its entrance show too. */
+  skipBossEntrance?(): void;
 }
 
 /** Builds a session for a battle; throws Error('webgl2-unavailable') when the device cannot draw it. */
@@ -168,8 +171,16 @@ export function BattleScreen(props: BattleScreenProps) {
       </div>
       </ResultClears>
       {ctl.level != null && <LiveLevel hud={hud} info={ctl.level} />}
-      {/* BOSS BAR SLOT (Task 3): the bosses task's bar, nothing else. */}
-      {bossBar !== undefined && <div class="battle__boss" data-hud-slot="boss">{bossBar}</div>}
+      {/* BOSS BAR SLOT (Task 3): the bosses task's bar, nothing else. A passed bar wins; otherwise the
+          live one, whose own box stays on the screen (display: contents) so its intro card still
+          covers the lawn; in a level it sits under the level's goal bars. */}
+      {bossBar !== undefined
+        ? <div class="battle__boss" data-hud-slot="boss">{bossBar}</div>
+        : (
+          <div class={`battle__boss-live${ctl.level != null ? ' is-level' : ''}`} data-hud-slot="boss">
+            <LiveBoss hud={hud} onSkip={() => session.skipBossEntrance?.()} />
+          </div>
+        )}
       <LiveBottom ctl={ctl} portraits={portraits} powers={powers} boys={boys} />
       {ctl.levelHud !== undefined && session.tileToClient !== undefined && (
         <IncomingCues incoming={ctl.levelHud.incoming} at={(lane, side) => session.tileToClient?.(lane, side === 'zombies' ? 9 : 0) ?? null} />
@@ -253,6 +264,11 @@ function LiveEnergy({ hud, side, anchorRef }: { hud: HudSignals; side: Faction; 
 
 function LiveClock({ hud }: { hud: HudSignals }) {
   return <TopBar seconds={hud.seconds.value} suddenDeath={hud.suddenDeath.value} />;
+}
+
+/** The boss bar, in a boss level only. */
+function LiveBoss({ hud, onSkip }: { hud: HudSignals; onSkip: () => void }) {
+  return <BossBar boss={hud.boss.value} onSkip={onSkip} />;
 }
 
 function LiveBase({ hud, faction, playerFaction, portrait }: { hud: HudSignals; faction: Faction; playerFaction: Faction; portrait: string | undefined }) {

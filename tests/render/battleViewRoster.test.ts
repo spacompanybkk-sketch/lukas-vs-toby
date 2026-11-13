@@ -89,7 +89,7 @@ const died = (u: Unit, cause: 'damage' | 'spent' = 'damage'): SimEvent => ({
 describe('BattleView projectiles of every kind', () => {
   const owners: Record<ProjectileKind, UnitKey> = {
     pea: 'peashooter', kernel: 'kernelPult', butter: 'kernelPult', mango: 'mangoPult', brain: 'brainEater',
-    sand: 'desertZombie', arrow: 'skeletonArcher', bullet: 'cowboyZombie', trident: 'tridentZombie', rot: 'brainRot',
+    sand: 'desertZombie', arrow: 'skeletonArcher', bullet: 'cowboyZombie', trident: 'tridentZombie', rot: 'brainRot', acorn: 'elderOak',
   };
   for (const [kind, key] of Object.entries(owners) as [ProjectileKind, UnitKey][]) {
     it(`a ${kind} shows its own shape while it flies and is gone after its hit`, () => {

@@ -4,7 +4,16 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1940 bytes). Re-pinned in phase 3
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 2254 bytes). Re-pinned in phase 3
+ * Task 8 (levels) when units gained `stunFatigue` (a boss's stun resistance; 8 bytes per unit, after
+ * `phase`), from the code itself - not cross-checked by a second implementation; before that it was
+ * 1176279507 over 2238 bytes, re-pinned in phase 3 Task 7a (Free Play) when the setup gained `endless` and the state `wave`, `waveTimer`, `clock` and
+ * `incoming` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()`; the same script gives the earlier 2646483390 over 2057 bytes with the new
+ * fields left out); before that it was 2646483390 over 2057 bytes, re-pinned in phase 3
+ * Task 3 (bosses) when units gained `pattern`, `patternTimer`, `shieldLeft` and `phase` and the setup
+ * its `boss` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()`); before that it was 525061730 over 1940 bytes, re-pinned in phase 3
  * (Adventure) when the setup gained its level fields (`mode` .. `invulnerableBase`) and the state
  * `scriptIndex` and `belt` (cross-checked by a separate Python FNV-1a feeding the 456 new bytes on
  * from the earlier checksum); before that it was 1403206276 over 1484 bytes, re-pinned in phase 4a
@@ -22,7 +31,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 525061730;
+const GOLDEN_HASH = 3852161195;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -35,13 +44,13 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
-        expires: 0, haste: 0, hasteCarry: 0, hurt: 0,
+        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
-        expires: 0, haste: 45, hasteCarry: 1, hurt: 15,
+        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12,
       },
     ],
     projectiles: [
@@ -89,9 +98,15 @@ function makeState(): SimState {
       belt: { side: 'plants', everyTicks: 90, cards: ['peashooter', 'walnutBomb'], slots: 5 },
       noEnergy: true,
       invulnerableBase: 'zombies',
+      boss: { key: 'elderOak', faction: 'plants', lane: 2 },
+      endless: { cards: ['brainEater', 'veryFastWalker'], firstWaveTicks: 90 },
     },
     scriptIndex: 1,
     belt: ['peashooter'],
+    wave: 3,
+    waveTimer: 250,
+    clock: 1200,
+    incoming: [{ tick: 130, unit: 'brainEater', lane: 4, x: 9.5, level: 2, index: 1 }],
   };
 }
 
@@ -272,6 +287,33 @@ describe('hashState', () => {
     ['a belt card', (s) => { s.belt[0] = 'walnutBomb'; }],
     ['the number of belt cards', (s) => { s.belt.push('peashooter'); }],
     ['an empty belt', (s) => { s.belt = []; }],
+    // Bosses.
+    ['a unit pattern', (s) => { unit(s, 1).pattern = 0; }],
+    ['a unit pattern of 0 becoming 1', (s) => { unit(s, 0).pattern = 1; }],
+    ['a unit patternTimer', (s) => { unit(s, 1).patternTimer -= 1; }],
+    ['a unit shieldLeft', (s) => { unit(s, 1).shieldLeft -= 1; }],
+    ['a unit stunFatigue', (s) => { unit(s, 1).stunFatigue -= 1; }],
+    ['a unit phase', (s) => { unit(s, 1).phase = 1; }],
+    ['config boss null', (s) => { s.config.boss = null; }],
+    ['config boss key', (s) => { s.config.boss!.key = 'brainTitan'; }],
+    ['config boss faction', (s) => { s.config.boss!.faction = 'zombies'; }],
+    ['config boss lane', (s) => { s.config.boss!.lane = 1; }],
+    // Free Play.
+    ['config endless null', (s) => { s.config.endless = null; }],
+    ['config endless cards', (s) => { s.config.endless!.cards = ['veryFastWalker', 'brainEater']; }],
+    ['config the number of endless cards', (s) => { s.config.endless!.cards.pop(); }],
+    ['config endless firstWaveTicks', (s) => { s.config.endless!.firstWaveTicks = 91; }],
+    ['wave', (s) => { s.wave = 4; }],
+    ['waveTimer', (s) => { s.waveTimer -= 1; }],
+    ['clock', (s) => { s.clock -= 1; }],
+    ['no incoming unit', (s) => { s.incoming = []; }],
+    ['the number of incoming units', (s) => { s.incoming.push({ tick: 140, unit: 'veryFastWalker', lane: 0, x: 9.5, level: 1, index: 2 }); }],
+    ['an incoming tick', (s) => { s.incoming[0]!.tick = 131; }],
+    ['an incoming unit', (s) => { s.incoming[0]!.unit = 'veryFastWalker'; }],
+    ['an incoming lane', (s) => { s.incoming[0]!.lane = 3; }],
+    ['an incoming x', (s) => { s.incoming[0]!.x = 9; }],
+    ['an incoming level', (s) => { s.incoming[0]!.level = 3; }],
+    ['an incoming index', (s) => { s.incoming[0]!.index = 0; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {

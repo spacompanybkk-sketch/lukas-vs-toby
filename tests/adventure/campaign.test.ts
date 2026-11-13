@@ -6,6 +6,7 @@ import type { Balance } from '../../src/data/balance';
 import { newSave } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
 import { Match } from '../../src/sim/match';
+import { checkLevel } from '../../src/sim/script';
 import type { Faction } from '../../src/sim/types';
 import { SAMPLE_BATTLE, SAMPLE_SURVIVE } from './sampleLevels';
 
@@ -168,6 +169,23 @@ describe('levelConfig', () => {
     expect(c.suddenDeath).toBe(sd);
     expect(c.invulnerableBase).toBeNull();
     expect(c.noEnergy).toBe(false);
+  });
+
+  it.each([['plants', 'brainTitan', 'zombies', 2], ['zombies', 'elderOak', 'plants', 2]] as const)(
+    'a %s boss level puts the %s on the %s side, in its lane; the simulation accepts it', (side, key, faction, lane) => {
+      const def: LevelDef = { ...SAMPLE_BATTLE, side, kind: 'boss', cards: side === 'plants' ? ['peashooter'] : ['brainEater'], boss: { key, lane } };
+      const c = levelConfig(def, fresh(), 1);
+      expect(c.mode).toBe('boss');
+      expect(c.boss).toEqual({ key, faction, lane });
+      expect(() => checkLevel(c, BALANCE)).not.toThrow();
+      expect(() => new Match(c)).not.toThrow();
+    },
+  );
+
+  it('a boss level without its boss is refused by the simulation (no plain-battle fallback)', () => {
+    const c = levelConfig({ ...SAMPLE_BATTLE, kind: 'boss' }, fresh(), 1);
+    expect(c.boss).toBeNull();
+    expect(() => checkLevel(c, BALANCE)).toThrow(/boss/);
   });
 
   it('refuses a plant spawn without a column (a level data error)', () => {

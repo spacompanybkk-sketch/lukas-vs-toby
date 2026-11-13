@@ -2,6 +2,8 @@ import {
   BackSide, Box3, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, Raycaster,
   Vector2, Vector3, type Camera, type Object3D, type Scene,
 } from 'three';
+import { BALANCE } from '../../data/balance';
+import type { Balance, DeepReadonly } from '../../data/balance';
 import { factionOf } from '../../data/units';
 import type { Faction, Flight, ProjectileKind, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
 import { BASE_STOP_X, COLS, MAX_LEVEL, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from '../../sim/types';
@@ -20,6 +22,7 @@ import { ModelInstance } from '../voxel/rig';
 import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
 import { BoxBatch } from '../world/boxes';
 import type { Lawn } from '../world/Lawn';
+import { BossFx, isBossKey } from './BossFx';
 import { Hazards } from './Hazards';
 import { HeroFx } from './HeroFx';
 import { SpellFx } from './SpellFx';
@@ -81,7 +84,7 @@ const ZOMBIE_BAR_FLOOR = 1.1;
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
 const PROJECTILE_SCALE: Record<ProjectileKind, number> = {
   pea: 1.2, brain: 1.1,
-  kernel: 1.2, butter: 1.2, mango: 1.2, sand: 1.1, arrow: 1.1, bullet: 1.1, trident: 1.1, rot: 1.1,
+  kernel: 1.2, butter: 1.2, mango: 1.2, sand: 1.1, arrow: 1.1, bullet: 1.1, trident: 1.1, rot: 1.1, acorn: 1.2,
 };
 /** Sudden death warms the sun and sky towards this over two seconds. */
 const SUDDEN_DEATH_TINT = new Color('#FF8A3D');
@@ -204,6 +207,8 @@ const client = { width: 1, height: 1 };
 export interface BattleViewOptions {
   /** Model keys that can appear, built ahead so nothing hitches later (default: every model). */
   units?: readonly string[];
+  /** The match's numbers, for what the view must know of the rules (a boss's slam wind-up). Default: the shipped table. */
+  balance?: DeepReadonly<Balance>;
 }
 
 export class BattleView {
@@ -217,6 +222,8 @@ export class BattleView {
   readonly spells: SpellFx;
   /** The two hero powers' shows. */
   private readonly heroFx: HeroFx;
+  /** The bosses' shows: entrance, wind-up, shield, defeat. */
+  readonly bossFx: BossFx;
   /** A number per hero show, so each flashes a unit once (see `heroHit`). */
   private heroShow = 0;
   private readonly rocks = new Map<number, RockView>();
@@ -245,7 +252,7 @@ export class BattleView {
   private readonly projectiles = new Map<number, ProjectileView>();
   private readonly flying: ProjectileView[] = [];
   private readonly spare: Record<ProjectileKind, Object3D[]> = {
-    pea: [], brain: [], kernel: [], butter: [], mango: [], sand: [], arrow: [], bullet: [], trident: [], rot: [],
+    pea: [], brain: [], kernel: [], butter: [], mango: [], sand: [], arrow: [], bullet: [], trident: [], rot: [], acorn: [],
   };
   /** Burning peas waiting to be used again. */
   private readonly spareBurning: Object3D[] = [];
@@ -302,7 +309,8 @@ export class BattleView {
     scene.add(this.bases.plants.group, this.bases.zombies.group, this.bars.mesh, this.marks.group, this.puddles.group);
     this.spells = new SpellFx(fx, fx.particles, { onFeel: (f) => this.onFeel(f) });
     this.heroFx = new HeroFx(fx, { onFeel: (f) => this.onFeel(f) });
-    scene.add(this.spells.group, this.heroFx.group, this.ropeBatch.mesh);
+    this.bossFx = new BossFx(fx, (f) => this.onFeel(f), options.balance ?? BALANCE);
+    scene.add(this.spells.group, this.heroFx.group, this.ropeBatch.mesh, this.bossFx.group);
     this.rockHeight = new Box3().setFromObject(makeRock(0)).max.y;
     this.hooks = {
       mergePeak: (view) => this.mergePeak(view),
@@ -384,9 +392,13 @@ export class BattleView {
         continue;
       }
       let view = this.views.get(u.id);
-      if (!view) view = this.addUnit(u.id, u.key, u.faction, u.lane, u.x, u.level); // joined mid-match
+      if (!view) {
+        view = this.addUnit(u.id, u.key, u.faction, u.lane, u.x, u.level); // joined mid-match
+        if (isBossKey(u.key)) this.bossFx.enter(view, true);
+      }
       view.setSim(u.x, u.hp, u.maxHp, u.blocked);
       this.syncUnit(view, u);
+      if (view.boss) this.bossFx.sync(view, u, state);
     }
     // Puddles the view has not been told about (it joined late).
     for (let i = 0; i < state.hazards.length; i++) {
@@ -424,6 +436,7 @@ export class BattleView {
       view.currX = p.x;
       view.targetX = p.targetX;
       if (p.burning && !view.burning) this.ignite(view);
+      if (p.kind === 'acorn') this.bossFx.aimAcorn(p.id, p.lane, p.x, p.targetX); // its landing mark
     }
     // One the state no longer lists left with no hit to show (one still to be seen is kept).
     for (let i = this.flying.length - 1; i >= 0; i--) {
@@ -487,6 +500,7 @@ export class BattleView {
     this.puddles.update(dt);
     this.spells.update(dt);
     this.heroFx.update(dt);
+    this.bossFx.update(dt);
     this.moveRopes(dt);
 
     // The winners' confetti, on real frames even while the game clock is slowed for the finale.
@@ -506,7 +520,7 @@ export class BattleView {
     for (let lane = 0; lane < 5; lane++) {
       for (let i = 0; i < this.list.length; i++) {
         const view = this.list[i] as UnitView;
-        if (view.lane !== lane || view.dying || view.leaping || !(view.hp < view.maxHp)) continue;
+        if (view.lane !== lane || view.dying || view.leaping || view.boss || !(view.hp < view.maxHp)) continue;
         v1.copy(view.wrapper.position);
         v1.x += view.faction === 'plants' ? -BAR_SHIFT : BAR_SHIFT;
         // A stack's bars stand in a column over the lane's centre line, one bar height apart, so
@@ -788,6 +802,7 @@ export class BattleView {
     this.puddles.dispose();
     this.spells.dispose();
     this.heroFx.dispose();
+    this.bossFx.dispose();
     for (const rock of this.rockList) rock.wrapper.removeFromParent();
     this.rockList.length = 0;
     this.rocks.clear();
@@ -872,7 +887,8 @@ export class BattleView {
         view.play('spawn');
         v1.set(e.x, 0, e.lane + 0.5);
         this.fx.dirt(v1);
-        if (e.faction === 'zombies') this.raiseGrave(e.x, e.lane);
+        if (view.boss) this.bossFx.enter(view, false);
+        else if (e.faction === 'zombies') this.raiseGrave(e.x, e.lane);
         break;
       }
       case 'unitMerged':
@@ -903,6 +919,7 @@ export class BattleView {
         }
         const view = this.views.get(e.unitId);
         if (view && !this.justTied(view)) view.hurt();
+        if (view?.boss && this.bossFx.barkShut) this.bossFx.barkHit(view); // it takes half: sparks off the plates
         break;
       }
       case 'unitDied': {
@@ -919,6 +936,7 @@ export class BattleView {
         this.marks.forget(view.id);
         view.statusBits = 0;
         view.die(e.cause === 'spent');
+        if (view.boss) this.bossFx.fell(view);
         break;
       }
       case 'explosion': {
@@ -1030,6 +1048,13 @@ export class BattleView {
         // The Rock Wall's rock heaves up from its own unitSpawned (and from the state, late).
         if (e.spell !== 'rockWall') this.spells.cast(e.spell, e.lane, e.col, e.size);
         break;
+      case 'bossPattern':
+        this.bossFx.pattern(e, this.views.get(e.unitId));
+        break;
+      case 'bossDefeated':
+        // The winning blow: a long slow motion while it falls (the fall and burst are its unitDied's).
+        this.onFeel({ slowMo: 2.5 });
+        break;
       case 'commandRejected':
       case 'heroReady': // the HUD's button pulses; the call is a sound
       case 'spellReady':
@@ -1038,6 +1063,9 @@ export class BattleView {
       case 'beltCard':
       case 'beltUsed':
       case 'goalReached':
+      case 'waveStarted': // Free Play: the HUD shows the wave number
+      case 'gardenBroken':
+      case 'bossPhase': // the shield's pattern event and the HUD's notches show it
         break;
       default: {
         const unhandled: never = e;
@@ -1140,6 +1168,10 @@ export class BattleView {
   }
 
   private burst(view: UnitView): void {
+    if (view.boss) {
+      this.bossFx.burst(view);
+      return;
+    }
     const key = `${view.key}@${view.level}`;
     let colors = this.colors.get(key);
     if (!colors) {
@@ -1362,6 +1394,7 @@ export class BattleView {
 
   private release(view: ProjectileView): void {
     this.projectiles.delete(view.id);
+    if (view.kind === 'acorn') this.bossFx.landAcorn(view.id);
     const i = this.flying.indexOf(view);
     if (i >= 0) {
       this.flying[i] = this.flying[this.flying.length - 1] as ProjectileView;
@@ -1399,9 +1432,9 @@ export class BattleView {
     if (view && view.shown && !view.doomed) v1.copy(view.object.position);
     else v1.set(x, 0.55, lane + 0.5);
     if (target) {
-      // At the front of the unit it hit.
-      v1.x = target.wrapper.position.x + (target.faction === 'zombies' ? -0.2 : 0.2);
-      v1.z = target.wrapper.position.z;
+      // At the front of the unit it hit (a wide boss: in the lane the shot flew down).
+      v1.x = target.wrapper.position.x + (target.faction === 'zombies' ? -0.2 : 0.2) * (target.boss ? 3 : 1);
+      v1.z = target.boss ? lane + 0.5 : target.wrapper.position.z;
     } else if (targetBase === 'zombies') v1.x = Math.min(v1.x, 10.1);
     else if (targetBase === 'plants') v1.x = Math.max(v1.x, -0.1);
     if (blocked) v1.y = Math.max(v1.y, 0.5);
@@ -1425,6 +1458,12 @@ export class BattleView {
   /** A projectile lands at `at`: a spark, or a block flash and the shield going up. */
   private impact(at: Vector3, blocked: boolean, target: UnitView | undefined): void {
     if (target && this.justTied(target)) return;
+    if (blocked && target?.boss) {
+      // Bounced off a boss's shield dome: a ping of sparks, no shield to raise.
+      this.fx.blockFlash(at);
+      this.bossFx.ping(at);
+      return;
+    }
     if (blocked) {
       this.fx.blockFlash(at);
       target?.play('shoot'); // the shield goes up

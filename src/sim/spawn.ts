@@ -50,6 +50,7 @@ export function spawnUnit(
     stun: 0, blind: 0, tied: 0, poison: 0, poisonDps: 0, burn: 0, burnDps: 0,
     stacks: 0, ownerId: null,
     expires: 0, haste: 0, hasteCarry: 0, hurt: 0,
+    pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
   };
   s.nextId += 1;
   s.units.push(unit);
@@ -80,4 +81,23 @@ export function spawnMinion(
 /** Reports that `u` used `ability` (on `targetId`, or on nobody). */
 export function abilityUsed(u: Unit, ability: AbilityName, targetId: number | null, events: SimEvent[]): void {
   events.push({ type: 'abilityUsed', unitId: u.id, ability, lane: u.lane, x: u.x, targetId });
+}
+
+/**
+ * A unit as a level puts it on the lawn: `spawnUnit` (its side's Marketplace level applies, as for a
+ * placed card), then at `level` its max health and health are its base health times the `hp` level
+ * curve times `upgradeScale`, rounded, and its `spent` is its price × level (0 for a unit that is no
+ * card), so it pays a bounty like a unit merged up to that level.
+ */
+export function spawnAtLevel(
+  s: SimState, b: Balance, key: UnitKey, lane: number, x: number, level: number, events: SimEvent[],
+): Unit {
+  const u = spawnUnit(s, b, key, lane, x, events);
+  if (level !== 1) {
+    u.level = level;
+    u.maxHp = Math.round(statsFor(b, key).hp * levelScale(b, u.faction, level, 'hp') * upgradeScale(b, s.config, u, 'hp'));
+    u.hp = u.maxHp;
+  }
+  u.spent = priceOf(key) * level;
+  return u;
 }

@@ -61,6 +61,11 @@ export class BattleSession implements Director, InputTarget {
   /** The last hero power used, by either side: the HUD shows its boy's banner. */
   readonly heroBanner = signal<HeroBanner | null>(null);
 
+  /** A tap on the boss's entrance card ends the lawn's entrance show. */
+  skipBossEntrance(): void {
+    this.view.bossFx.skipEntrance();
+  }
+
   private readonly stage: StageLike;
   private readonly audio: AudioEngine;
   private readonly input: BattleInput;
@@ -92,6 +97,7 @@ export class BattleSession implements Director, InputTarget {
     // The Bone Minion is no card, but a Necromancer or Grave Rise brings them: built ahead like the rest.
     this.view = new BattleView(stage.scene, stage.camera, stage.lawn, stage.fx, opts.playerFaction, {
       units: modelsFor(this.controller.match.state),
+      balance: this.controller.match.balance,
     });
     this.view.onFeel = (f) => this.clock.feel(f, stage.rig);
     this.view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);

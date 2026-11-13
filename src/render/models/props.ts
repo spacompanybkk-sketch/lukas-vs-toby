@@ -29,6 +29,7 @@ export const PROJECTILE_SIZE: Record<ProjectileKind, number> = {
   bullet: 0.22,
   trident: 0.5,
   rot: 0.3,
+  acorn: 0.42, // the Elder Oak's: big, so a child sees it coming
 };
 /** Emissive intensity of a token: past the bloom threshold, so it glows. */
 export const TOKEN_GLOW = 2;
@@ -180,6 +181,10 @@ export const SHOT_COLORS = {
   burn: '#FF7A1A',
   burnGlint: '#FFD23F',
   burnRim: '#E0400A',
+  acorn: '#C98F55',
+  acornDark: '#A8703A',
+  acornCap: '#7B4A22',
+  acornCapLight: '#9A6232',
 } as const;
 
 function kernelGeometry(): BufferGeometry {
@@ -303,6 +308,40 @@ function rotGeometry(): BufferGeometry {
   );
 }
 
+/**
+ * The Elder Oak's acorn, so it reads as an acorn and not a lump: a light walnut nut narrowing to a
+ * point, under a wider, dark, checked cap that overhangs it, with a stalk on top. Seven cells each way.
+ */
+function acornGeometry(): BufferGeometry {
+  const n = 7;
+  const cell = PROJECTILE_SIZE.acorn / n;
+  const nut = paint(SHOT_COLORS.acorn);
+  const nutDark = paint(SHOT_COLORS.acornDark);
+  const u = (i: number, m: number): number => ((i + 0.5) / m) * 2 - 1;
+  const batch = new BoxBatch();
+  const half = (n * cell) / 2;
+  // The nut: 5 of the 7 cells wide, 5 tall, narrowing to its point at the bottom.
+  batch.transformed(new Matrix4().makeTranslation(-2.5 * cell, -half, -2.5 * cell), () =>
+    batch.voxels(
+      cell,
+      [0, 0, 0],
+      [4, 4, 4],
+      (i, j, k) => u(i, 5) ** 2 + u(k, 5) ** 2 <= (j >= 2 ? 1.2 : 0.3 + j * 0.35),
+      (i, j, k) => (j === 0 || (i + k + j) % 4 === 0 ? nutDark : nut),
+    ),
+  );
+  // The cap: all 7 cells wide, overhanging the nut, checked dark and darker; a stalk.
+  const capY = -half + 5 * cell;
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < n; k++) {
+      if ((i === 0 || i === n - 1) && (k === 0 || k === n - 1)) continue; // round its corners
+      batch.box(-half + i * cell, capY, -half + k * cell, cell, 1.5 * cell, cell, (i + k) % 2 === 0 ? SHOT_COLORS.acornCap : SHOT_COLORS.acornCapLight);
+    }
+  }
+  batch.box(-cell / 2, capY + 1.5 * cell, -cell / 2, cell, 0.5 * cell, cell, PALETTE.walnutDark);
+  return batch.build();
+}
+
 /** The pea once it has passed through a Torchwood: the same pea, burning. */
 function burningPeaGeometry(): BufferGeometry {
   const n = 5;
@@ -328,6 +367,7 @@ const SHOT_GEOMETRY: Record<ProjectileKind, () => BufferGeometry> = {
   bullet: bulletGeometry,
   trident: tridentGeometry,
   rot: rotGeometry,
+  acorn: acornGeometry,
 };
 
 const hexNumber = (color: string): number => parseInt(color.slice(1), 16);
@@ -344,6 +384,7 @@ export const PROJECTILE_TRAIL: Record<ProjectileKind, number> = {
   bullet: hexNumber(SHOT_COLORS.muzzle),
   trident: hexNumber(SHOT_COLORS.trident),
   rot: hexNumber(PALETTE.poison),
+  acorn: hexNumber(SHOT_COLORS.acorn),
 };
 /** A burning pea's trail: fire. */
 export const BURNING_TRAIL = hexNumber(PALETTE.fire);
@@ -363,6 +404,7 @@ export const PROJECTILE_TUMBLE: Record<ProjectileKind, number> = {
   bullet: 0,
   trident: 0,
   rot: 0.7,
+  acorn: 0, // cap up, so it reads as an acorn all the way down
 };
 
 /** Emissive intensity of a burning pea and of the glowing props: past the bloom threshold. */

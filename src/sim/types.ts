@@ -18,10 +18,21 @@ export type ZombieKey =
 /** A unit a player can play from the hand. */
 export type CardKey = PlantKey | ZombieKey;
 /**
- * Every unit that can stand on the lawn: the cards, and two that are never cards: the Bone Minion
- * (a zombie) and the rock of the Rock Wall spell (a plant: no attack, no merge, no bounty).
+ * The bosses (spec 8): the Brain Titan (a zombie, ends the plants' Backyard) and the Elder Oak (a
+ * plant, ends the zombies'). Never cards; a level brings one on through `MatchConfig.boss`.
  */
-export type UnitKey = CardKey | 'boneMinion' | 'rock';
+export type BossKey = 'brainTitan' | 'elderOak';
+/**
+ * How many lanes either side of its own a boss also stands in: its body's width (geometry, like
+ * `LANES`, not a tuning number). The Elder Oak, set in lane 2, stands in lanes 1–3: it blocks and is
+ * hit there as if it stood in each, and a lane-wide power or spell hits it once.
+ */
+export const BOSS_HALF_WIDTH: Record<BossKey, number> = { brainTitan: 0, elderOak: 1 };
+/**
+ * Every unit that can stand on the lawn: the cards, and those that are never cards: the Bone Minion
+ * (a zombie), the rock of the Rock Wall spell (a plant: no attack, no merge, no bounty) and the bosses.
+ */
+export type UnitKey = CardKey | 'boneMinion' | 'rock' | BossKey;
 /** The spells (spec 21), five a side. */
 export type PlantSpell = 'thunderbolt' | 'vines' | 'sunShower' | 'healingRain' | 'rockWall';
 export type ZombieSpell = 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise';
@@ -30,7 +41,7 @@ export type SpellKey = PlantSpell | ZombieSpell;
  * The area a spell covers: 0 none (not aimed), 1 the tapped tile, 2 a 2×2, 3 a 3×3 (see `spellArea`).
  */
 export type SpellSize = 0 | 1 | 2 | 3;
-export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot';
+export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot' | 'acorn';
 /**
  * How a projectile travels. `straight` hits the first enemy it meets; `lobbed` arcs over everyone
  * and lands on the enemy it was aimed at; `piercing` hits each enemy it meets, up to a number.
@@ -60,6 +71,12 @@ export interface Unit {
   haste: number; // ticks left of Frenzy's haste, 0 = not hasted
   hasteCarry: number; // hasted timer countdown not yet taken, in 1/1000 of a tick; always whole
   hurt: number; // ticks left in which a Sun maker that took damage makes no Sun; 0 for everyone else
+  // A boss's attack patterns (see `src/sim/boss.ts`); all 0 for everyone else.
+  pattern: number; // which of its timed patterns comes next (an index into them, in table order)
+  patternTimer: number; // ticks until that pattern goes off; a slam winds up over its last `windupSeconds`
+  shieldLeft: number; // ticks left of its shield phase, 0 = no shield
+  phase: number; // how many of its shield health marks it has passed (0 = none yet)
+  stunFatigue: number; // ticks: each stun adds `stunWindowSeconds`, 1 wears off a tick; shortens the next stuns
 }
 
 export interface Projectile {
@@ -119,15 +136,44 @@ export interface MatchConfig {
   script: ScriptEntry[];
   /** Units on the lawn from the start (spawned in list order on the step of tick 0); a plant's `x` is a tile's middle. */
   prepared: PreparedUnit[];
-  /** The tick count at which the plants win (survive, breakthrough, conveyor); null in battle and boss, and for an endless survive. */
+  /** The tick count at which the plants win (survive, breakthrough, conveyor); null in battle and boss. */
   goalTicks: number | null;
   /** The card belt of a conveyor level: who plays it, how often a card arrives, from which cards, how many may wait. */
   belt: BeltConfig | null;
   /** No trickle, no Sun, no bounty, no energy spell; energy stays 0, `place` and `merge` are refused `'no-energy'`. */
   noEnergy: boolean;
-  /** The side whose base cannot be hurt (no `baseDamaged`, no health lost), or null. */
+  /** The side whose base cannot be hurt (no `baseDamaged`, no health lost), or null; only `'zombies'` is allowed (`checkLevel`). */
   invulnerableBase: Faction | null;
+  /**
+   * The boss of a boss level (only in mode `'boss'`, which needs one), on the lawn from the step of
+   * tick 0, after the prepared units: `key` on its own side (`faction`), in `lane` (the Elder Oak's
+   * middle lane, 1..3). The match ends the moment it falls, its foes winning. See `src/sim/boss.ts`.
+   */
+  boss: BossConfig | null;
+  /**
+   * Free Play (see `src/sim/endless.ts`), or null: an endless, escalating source of the other side's
+   * units. Only in `'survive'` (zombie waves on a timer; no clock needed; ends when the plant base
+   * falls) and `'breakthrough'` (a garden of plants; each broken garden is replaced by a stronger one
+   * and adds to the clock in `SimState.clock`; `goalTicks` must be null). Checked by `checkEndless`.
+   */
+  endless: EndlessConfig | null;
 }
+
+/**
+ * See `MatchConfig.endless`: the cards the waves (or gardens) are drawn from, all of the side the
+ * player plays against, and the ticks until the first wave (survive; 0 in breakthrough, whose first
+ * garden is laid on the first step). Every other number is in `Balance.endless`.
+ */
+export interface EndlessConfig { cards: CardKey[]; firstWaveTicks: number }
+
+/** A unit of a started Free Play wave still to walk on at `tick` (`index`: its place in the wave). */
+export interface IncomingUnit { tick: number; unit: CardKey; lane: number; x: number; level: number; index: number }
+
+/** See `MatchConfig.boss`. */
+export interface BossConfig { key: BossKey; faction: Faction; lane: number }
+
+/** What a boss can do (see `BossPattern` in `src/data/balance.ts`). */
+export type BossPatternKind = 'slam' | 'summon' | 'barrage' | 'shield';
 
 /** The level rules a match plays by (see `MatchConfig.mode`). */
 export type LevelMode = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';
@@ -151,6 +197,11 @@ export interface SimState {
   config: MatchConfig;
   scriptIndex: number; // the next `config.script` entry to come on
   belt: CardKey[]; // the cards waiting on the belt, oldest first (slot 0)
+  // Free Play (`config.endless`; all 0 / empty otherwise). The score is `wave`.
+  wave: number; // survive: waves started so far; breakthrough: gardens broken so far
+  waveTimer: number; // survive: ticks until the next wave starts; 0 otherwise
+  clock: number; // breakthrough: ticks left on the clock (the match ends at 0); 0 otherwise
+  incoming: IncomingUnit[]; // survive: units of started waves still to come, in wave order
 }
 
 export type Command =
@@ -167,7 +218,8 @@ export type CommandRejection =
   | 'recharging' | 'bad-lane' | 'bad-column' | 'occupied' | 'no-target' | 'wrong-type'
   | 'max-level' | 'not-yours' | 'plants-only' | 'hero-charging' | 'hero-off'
   | 'spell-charging' | 'spell-not-dealt' | 'spells-off'
-  | 'no-belt' | 'bad-slot'; // belt: this side has no belt; no card waits in that slot
+  | 'no-belt' | 'bad-slot' // belt: this side has no belt; no card waits in that slot
+  | 'boss'; // remove: a boss cannot be dug up
 
 export type SimEvent =
   | { type: 'commandRejected'; command: Command; reason: CommandRejection }
@@ -210,5 +262,15 @@ export type SimEvent =
   | { type: 'waveSkipped'; index: number; unit: UnitKey; lane: number; reason: 'occupied' } // a scripted plant's tile was taken
   | { type: 'beltCard'; card: CardKey } // a card joined the end of the belt
   | { type: 'beltUsed'; slot: number } // that slot's card was played; the later ones moved down
+  // Free Play: wave (survive) or garden (breakthrough) number `wave` started, `units` units strong
+  // (the big one included), bought with `budget` energy; its waveSpawned events follow (index = place in the wave).
+  | { type: 'waveStarted'; wave: number; budget: number; units: number }
+  | { type: 'gardenBroken'; wave: number } // breakthrough Free Play: the plant base fell; `wave` gardens broken so far
   | { type: 'goalReached'; winner: Faction } // the clock ran out (survive, breakthrough, conveyor); matchEnded follows
+  // A boss's pattern: a slam's wind-up (`windup` true; `col` the tile column it will hit, in its lane
+  // and the two beside it) and then its strike, a summon, a barrage (its acorns follow as
+  // projectiles), a shield going up. `col` is null but for a slam.
+  | { type: 'bossPattern'; unitId: number; kind: BossPatternKind; lane: number; col: number | null; windup: boolean }
+  | { type: 'bossPhase'; unitId: number; phase: number } // the boss passed shield mark number `phase` (1, 2, …)
+  | { type: 'bossDefeated'; unitId: number; key: BossKey; faction: Faction } // the boss fell; matchEnded follows
   | { type: 'matchEnded'; winner: Faction | 'draw' };

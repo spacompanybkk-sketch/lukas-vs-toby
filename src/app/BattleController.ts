@@ -11,7 +11,7 @@ import { spellArea } from '../sim/spells';
 import type { SpellTile } from '../sim/spells';
 import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
-import type { CardKey, Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
+import type { BossKey, CardKey, Command, CommandRejection, Faction, SimEvent, SimState, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 import { bigWaveRuns, levelProblem, levelRecord } from './levelSession';
 import type { LevelPlay, LevelRecord } from './levelSession';
@@ -68,6 +68,33 @@ export interface HudSignals {
   heroSelected: Signal<boolean>; // the hero power is picked and waits for a lane
   spells: Signal<SpellVM[]>; // the player's dealt spells, in deal order
   spellSelected: Signal<SpellKey | null>; // the aimed spell picked and waiting for a tile
+  boss: Signal<BossVM | null>; // the level's boss while it stands (the HUD's boss bar), else null
+}
+
+/**
+ * The boss of a boss level: which, its health (never below 0, rounded up to the bar's blocks) and
+ * max, whether its shield is up, and the health marks (shares of max) where its shield goes up.
+ */
+export interface BossVM { key: BossKey; hp: number; max: number; shield: boolean; notches: readonly number[] }
+
+/** The boss bar fills in this many blocks: `hud.boss` changes only when a block does. */
+export const BOSS_BAR_BLOCKS = 40;
+
+/**
+ * The boss as the HUD shows it: null in a level with no boss (or before it has come on); once it
+ * has fallen, 0 health. Health is rounded up to the next of the bar's `BOSS_BAR_BLOCKS` blocks, so
+ * the signal changes only when the bar does, not on every hit. Notches from `balance`.
+ */
+export function bossOf(s: Readonly<SimState>, balance: Balance): BossVM | null {
+  const key = s.config.boss?.key;
+  if (key === undefined || s.tick === 0) return null;
+  let notches: readonly number[] = [];
+  for (const p of balance.bosses[key].patterns) if (p.kind === 'shield') notches = p.atHealth;
+  const u = s.units.find((x) => x.key === key);
+  if (u === undefined) return { key, hp: 0, max: 1, shield: false, notches };
+  const block = u.maxHp / BOSS_BAR_BLOCKS;
+  const hp = u.hp > 0 ? Math.min(u.maxHp, Math.ceil(u.hp / block) * block) : 0;
+  return { key, hp, max: u.maxHp, shield: u.shieldLeft > 0, notches };
 }
 
 /** A level's own HUD signals (all quiet in a Quick Battle). */
@@ -230,6 +257,7 @@ export class BattleController {
       hero: signal<HeroVM>({ ready: false, fraction: 0 }),
       heroSelected: signal(false),
       spells: signal<SpellVM[]>([]), spellSelected: signal<SpellKey | null>(null),
+      boss: signal<BossVM | null>(null),
     };
     this.levelHud = {
       belt: signal<BeltCardVM[]>([]), beltSlot: signal<number | null>(null),
@@ -733,6 +761,12 @@ export class BattleController {
       return n !== undefined && o.key === n.key && o.ready === n.ready && o.fraction === n.fraction;
     });
     if (!same) this.hud.spells.value = spells;
+
+    const boss = bossOf(s, this.match.balance);
+    const oldBoss = this.hud.boss.peek();
+    const sameBoss = boss === null ? oldBoss === null
+      : oldBoss !== null && oldBoss.key === boss.key && oldBoss.hp === boss.hp && oldBoss.max === boss.max && oldBoss.shield === boss.shield;
+    if (!sameBoss) this.hud.boss.value = boss;
 
     if (this.level?.belt === true) {
       const old = this.levelHud.belt.peek();

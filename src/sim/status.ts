@@ -12,9 +12,10 @@
  * it acts again on tick T+n, `n` ticks after the one it was struck on.
  */
 
+import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { damageUnit } from './damage';
-import { isStanding } from './lookup';
+import { isBoss, isStanding } from './lookup';
 import { TICKS_PER_SECOND } from './types';
 import type { SimEvent, SimState, StatusKind, Unit } from './types';
 
@@ -39,6 +40,31 @@ export function applyStatus(
   u[kind] = ticks;
   if (quietRefresh && before > 0) return;
   events.push({ type: 'statusApplied', unitId: u.id, status: kind, ticks, sourceId });
+}
+
+/**
+ * `applyStatus` with the boss rules, the way every rule of the game puts a status on a unit: a boss
+ * cannot be tied or blinded (nothing happens, nothing is reported), and a stun on it lasts at most
+ * its `maxStunSeconds`.
+ */
+export function inflictStatus(
+  s: SimState, b: Balance, u: Unit, kind: StatusKind, ticks: number, dps: number, sourceId: number | null, events: SimEvent[],
+  quietRefresh = false,
+): void {
+  if (isBoss(u.key)) {
+    if (kind === 'tied' || kind === 'blind') return;
+    if (kind === 'stun') {
+      // Stun resistance: each stun within the window takes `stunFalloff` of the longest stun off.
+      const stats = b.bosses[u.key];
+      const window = seconds(stats.stunWindowSeconds);
+      const recent = window > 0 ? Math.ceil(u.stunFatigue / window) : 0;
+      const share = Math.max(0, 1 - stats.stunFalloff * recent);
+      ticks = Math.min(ticks, Math.floor(seconds(stats.maxStunSeconds) * share));
+      if (ticks <= 0) return;
+      u.stunFatigue += window;
+    }
+  }
+  applyStatus(s, u, kind, ticks, dps, sourceId, events, quietRefresh);
 }
 
 /**

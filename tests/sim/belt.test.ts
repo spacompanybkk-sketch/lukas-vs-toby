@@ -11,11 +11,11 @@ const B = classicBalance();
 const PLANT_BELT: BeltConfig = { side: 'plants', everyTicks: 30, cards: ['peashooter', 'walnutBomb', 'sunflower'], slots: 5 };
 const ZOMBIE_BELT: BeltConfig = { side: 'zombies', everyTicks: 30, cards: ['brainEater', 'veryFastWalker'], slots: 5 };
 
-/** A conveyor level of the classic setup: no energy, the zombie base safe, a 5-minute clock. */
+/** A conveyor level of the classic setup: no energy, a 5-minute clock; the zombie base safe on a plant belt (a zombie belt is a race: both bases can be hurt). */
 function conveyor(belt: BeltConfig = PLANT_BELT, patch: Partial<MatchConfig> = {}): Match {
   return new Match({
     ...classicConfig(11, B), mode: 'conveyor', goalTicks: 9000, belt, noEnergy: true,
-    invulnerableBase: belt.side === 'plants' ? 'zombies' : 'plants', ...patch,
+    invulnerableBase: belt.side === 'plants' ? 'zombies' : null, ...patch,
   }, B);
 }
 
