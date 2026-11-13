@@ -132,6 +132,8 @@ export class Tutorial {
   private sentIsStep = false;
   /** A Sunflower step is done: the next Sunflower payout pulses the counter (once). */
   private sunWatch = false;
+  /** `relevance()` when the step was last worked out by `tick` (NaN: never). */
+  private lastRelevance = Number.NaN;
 
   constructor(steps: readonly TutorialStep[], host: TutorialHost) {
     this.host = host;
@@ -182,7 +184,13 @@ export class Tutorial {
 
   /** Called once per controller step call (held or not), before the match steps. */
   tick(): void {
-    this.update();
+    // Re-worked out only when something the step reads changed: while a child looks at the glove
+    // the match stands still and this costs a few reads, not commands and checks 30 times a second.
+    const key = this.relevance();
+    if (key !== this.lastRelevance) {
+      this.lastRelevance = key;
+      this.update();
+    }
     if (this.current === null || !this.started) return;
     if (this.ready) {
       this.grace = 0;
@@ -523,6 +531,38 @@ export class Tutorial {
     for (const t of candidates) if (legal(t)) return t;
     for (let lane = 0; lane < LANES; lane++) for (let col = minCol; col <= lastCol; col++) if (legal({ lane, col })) return { lane, col };
     return null;
+  }
+
+  /**
+   * A number that changes whenever anything `update` reads may have changed: the step and its
+   * state, the tick (when the step aims at moving things or waits for a charge), whether the match
+   * has begun or ended, the pick, the player's energy, the step card's recharge, the belt, and the
+   * units (count, ids, levels). Same number: same outcome, so `tick` need not work it out again.
+   */
+  private relevance(): number {
+    const step = this.current;
+    const s = this.host.match.state;
+    const side = this.host.playerFaction;
+    const me = s.players[side];
+    let h = (this.index * 31 + (this.started ? 1 : 0) * 7 + (this.armed ? 1 : 0) * 3) | 0;
+    const mix = (v: number): void => { h = (Math.imul(h ^ (v | 0), 0x01000193) + 0x9e3779b9) | 0; };
+    if (step === null) return h;
+    const moving = step.show === 'unit' || step.show === 'hero' || step.show === 'spell' || step.after !== undefined;
+    mix(moving ? s.tick : s.tick > 0 ? 1 : 0);
+    mix(s.winner === null ? 0 : 1);
+    mix(Math.floor(me.energy * 16));
+    const card = step.show === 'card' || step.show === 'tile' || step.show === 'unit' ? step.card : null;
+    const selected = this.host.selected();
+    mix(selected === null ? -1 : selected.length * 131 + selected.charCodeAt(0) * 7 + selected.charCodeAt(selected.length - 1));
+    mix(this.host.heroPicked() ? 1 : 0);
+    const spell = this.host.spellPicked();
+    mix(spell === null ? -1 : spell.length * 131 + spell.charCodeAt(0));
+    if (card !== null) mix(Math.ceil(me.recharge[card] ?? 0));
+    for (const k of s.belt) mix(k.length * 131 + k.charCodeAt(0) * 7 + k.charCodeAt(k.length - 1));
+    mix(s.belt.length);
+    mix(s.units.length);
+    for (const u of s.units) mix(u.id * 8 + u.level);
+    return h;
   }
 
   /** Writes the glove signal when what it shows changed: only while the step is armed. */

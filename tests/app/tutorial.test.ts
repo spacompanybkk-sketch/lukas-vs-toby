@@ -321,3 +321,34 @@ describe('powers', () => {
     expect(c.hud.denied.peek()).toBe(0);
   });
 });
+
+describe('cost while the glove waits (iPad)', () => {
+  it('a held step re-checks nothing while nothing relevant changes; a pick, energy or a new unit re-checks at once', () => {
+    for (const id of ['p1-1', 'p1-3', 'z1-1']) {
+      const c = taught(id);
+      run(c, 5);
+      expect(c.tutorial!.holding, id).toBe(true);
+      const match = c.match;
+      const check = match.check.bind(match);
+      let checks = 0;
+      match.check = (cmd) => { checks += 1; return check(cmd); };
+      run(c, 90); // three seconds of a child looking at the glove
+      expect(checks, `${id}: checks while held`).toBe(0);
+      // The step's card picked: the glove moves to the tile at once (a re-check).
+      const card = c.tutorial!.glove.value!.aim;
+      expect(card.kind).toBe('card');
+      if (card.kind !== 'card') throw new Error('not a card');
+      c.select(card.card);
+      expect(c.tutorial!.glove.value!.aim.kind).toBe('tile');
+      run(c, 1); // the tick after a change works the step out once
+      checks = 0;
+      run(c, 30);
+      expect(checks, `${id}: checks while held on the tile`).toBe(0);
+      // Energy changing under it (a test poke): the next tick re-checks.
+      match.state.players[c.playerFaction].energy += 1;
+      run(c, 1);
+      expect(checks).toBeGreaterThan(0);
+      match.check = check;
+    }
+  });
+});
