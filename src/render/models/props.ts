@@ -329,7 +329,7 @@ function acornGeometry(): BufferGeometry {
     ),
   );
   const y = (n * cell) / 2;
-  batch.box(-cell * 0.5, y, -cell * 0.5, cell, cell * 1.2, cell, PALETTE.walnutDark);
+  batch.box(-cell * 0.5, y, -cell * 0.5, cell, cell * 0.6, cell, PALETTE.walnutDark);
   return batch.build();
 }
 

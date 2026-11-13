@@ -21,7 +21,7 @@ import {
 } from '../../src/render/models/props';
 import type { ProjectileKind } from '../../src/render/types';
 
-const KINDS: ProjectileKind[] = ['pea', 'brain', 'kernel', 'butter', 'mango', 'sand', 'arrow', 'bullet', 'trident', 'rot'];
+const KINDS: ProjectileKind[] = ['pea', 'brain', 'kernel', 'butter', 'mango', 'sand', 'arrow', 'bullet', 'trident', 'rot', 'acorn'];
 
 function meshes(root: Object3D): Mesh[] {
   const out: Mesh[] = [];
