@@ -86,8 +86,8 @@ const PLANTS: LevelDef[] = [
     // Tests: everything against the Medium computer.
     ...base('p1-7', 7), side: 'plants', kind: 'battle',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
-    baseHp: { zombies: 3500 },
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'], incomeScale: 0.4 },
+    baseHp: { zombies: 3000 },
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'], incomeScale: 0.3 },
     spells: true,
   },
   {
@@ -106,21 +106,21 @@ const ZOMBIES: LevelDef[] = [
     // Teaches: send a Brain Eater, it eats the plant in its way. Two Peashooters guard lanes 1 and
     // 3; a small plant base.
     ...base('z1-1', 1), side: 'zombies', kind: 'battle', cards: ['brainEater'],
-    baseHp: { plants: 2500 },
+    baseHp: { plants: 3500 },
     prepared: garden('peashooter', [[1, 2], [3, 2]]),
   },
   {
     // Teaches: the Very Fast Walker runs past where nothing shoots; the hero's button lights up.
     // An Easy computer with Peashooters and Sunflowers on a slow income.
     ...base('z1-2', 2), side: 'zombies', kind: 'battle', cards: ['brainEater', 'veryFastWalker'],
-    baseHp: { plants: 3000 },
+    baseHp: { plants: 3500 },
     opponent: { skill: 'easy', cards: ['peashooter', 'sunflower'], incomeScale: 0.5 },
   },
   {
     // Teaches: a Skeleton Warrior walks in front and takes the peas. Crack a small garden in two
     // minutes. Unlocks the Desert Zombie.
     ...base('z1-3', 3), side: 'zombies', kind: 'breakthrough', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior'],
-    seconds: 120, baseHp: { plants: 2000 },
+    seconds: 120, baseHp: { plants: 1000 },
     prepared: garden('peashooter', [[0, 2], [2, 3], [4, 2]]).concat(garden('walnutBomb', [[1, 5], [3, 5]])),
     unlocks: 'desertZombie',
   },
@@ -138,7 +138,7 @@ const ZOMBIES: LevelDef[] = [
     ...base('z1-5', 5), side: 'zombies', kind: 'conveyor',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'],
     belt: { everySeconds: 5, cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'] },
-    seconds: 150, baseHp: { plants: 4000 },
+    seconds: 150, baseHp: { plants: 5000, zombies: 10000 },
     prepared: garden('peashooter', [[0, 3], [1, 2], [2, 3], [3, 2], [4, 3]]),
     waves: regrow('peashooter', [[40, 1, 1], [40, 3, 1], [80, 0, 1], [80, 4, 1], [120, 2, 1], [120, 1, 0]]),
     spells: true,
@@ -147,8 +147,8 @@ const ZOMBIES: LevelDef[] = [
     // Tests: break through a wall of Walnut Bombs (their blasts!) in 150 s. Unlocks the Skeleton Archer.
     ...base('z1-6', 6), side: 'zombies', kind: 'breakthrough',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'],
-    seconds: 150, baseHp: { plants: 2500 },
-    prepared: garden('walnutBomb', [[0, 5], [1, 5], [2, 5], [3, 5], [4, 5]]).concat(garden('peashooter', [[0, 2], [2, 2], [4, 2], [1, 1], [3, 1]])),
+    seconds: 150, baseHp: { plants: 500 },
+    prepared: garden('walnutBomb', [[0, 5], [1, 5], [2, 5], [3, 5], [4, 5]]).concat(garden('peashooter', [[0, 2], [2, 2], [4, 2]])),
     spells: true, unlocks: 'skeletonArcher',
   },
   {
