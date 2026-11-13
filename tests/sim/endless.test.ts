@@ -16,7 +16,7 @@ import { eventsOf } from './helpers';
  */
 const B: Balance = (() => {
   const b = cloneBalance(BALANCE);
-  b.endless = { ...b.endless, budgetBase: 100, budgetStep: 60, gardenBaseHp: 6000 };
+  b.endless = { ...b.endless, budgetBase: 100, budgetStep: 60, gardenBaseHp: 6000, clockBonusSeconds: 30 };
   return b;
 })();
 const ZOMBIES: CardKey[] = ['brainEater', 'veryFastWalker', 'skeletonWarrior'];
@@ -62,7 +62,7 @@ describe('the numbers of a wave', () => {
   it('keeps every number in Balance.endless (Task 8: measured with the level stand-ins)', () => {
     expect(BALANCE.endless).toEqual({
       budgetBase: 250, budgetStep: 65, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
-      clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
+      clockSeconds: 90, clockBonusSeconds: 45, gardenBaseHp: 1500, gardenHpStep: 0.15,
       spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
     });
   });

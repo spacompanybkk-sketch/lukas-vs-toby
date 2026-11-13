@@ -12,9 +12,10 @@ import type { Faction, SimEvent, SimState } from './types';
  *
  * Sudden death is a function of the tick: it is active on every step where `config.suddenDeath`
  * is true and `tick >= startTick` (`startTick = seconds(startSeconds)`). On each such step both
- * bases lose `balance.baseHp × (baseRate + growthPerSecond × secondsSinceStart) / 30`, where
- * `secondsSinceStart = (tick − startTick) / 30`, the same absolute amount for both (plants' base
- * first, `lane: null`), so the healthier base outlasts the other. The `suddenDeath` event is
+ * base loses `its max × (baseRate + growthPerSecond × secondsSinceStart) / 30`, where
+ * `secondsSinceStart = (tick − startTick) / 30`: the same share of its own maximum (plants' base
+ * first, `lane: null`), so the less hurt base outlasts the other, and a level's small base does not
+ * fall first just for being small. Equal bases lose exactly the old equal amounts. The `suddenDeath` event is
  * emitted once, on the first step where it is active and the state flag was still false; that
  * step sets the flag. In a match counting up from tick 0 that first step is tick `startTick`.
  *
@@ -57,9 +58,12 @@ function tickSuddenDeath(s: SimState, b: Balance, events: SimEvent[]): void {
     events.push({ type: 'suddenDeath' });
   }
   const secondsSinceStart = (s.tick - startTick) / TICKS_PER_SECOND;
-  const amount = b.baseHp * (rule.baseRate + rule.growthPerSecond * secondsSinceStart) / TICKS_PER_SECOND;
-  damageBase(s, b, 'plants', amount, null, events);
-  damageBase(s, b, 'zombies', amount, null, events);
+  // The same SHARE of each base's own maximum, so a level's small base does not fall first just for
+  // being small (an idle player must not win by waiting); with equal bases this is the old rule.
+  // (Computed in the old order - max × rate / ticks - so equal bases lose exactly the old amounts.)
+  const rate = rule.baseRate + rule.growthPerSecond * secondsSinceStart;
+  damageBase(s, b, 'plants', s.baseMaxHp.plants * rate / TICKS_PER_SECOND, null, events);
+  damageBase(s, b, 'zombies', s.baseMaxHp.zombies * rate / TICKS_PER_SECOND, null, events);
 }
 
 function decideBoss(s: SimState, events: SimEvent[]): void {
