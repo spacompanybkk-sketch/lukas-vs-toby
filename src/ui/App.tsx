@@ -22,7 +22,8 @@ import { BattleScreen } from './screens/BattleScreen';
 import type { BattleSessionLike, SessionFactory } from './screens/BattleScreen';
 import { CreatePlayer } from './screens/CreatePlayer';
 import { GrownUp } from './screens/GrownUp';
-import { Home, Soon } from './screens/Home';
+import { Home } from './screens/Home';
+import { Marketplace } from './screens/Marketplace';
 import { Leaderboard } from './screens/Leaderboard';
 import { Almanac } from './screens/Almanac';
 import type { AlmanacHost } from './screens/Almanac';
@@ -194,7 +195,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       body = <Almanac portraits={portraits} host={almanac} />;
       break;
     case 'marketplace':
-      body = <Soon place={s.name} />;
+      body = <Marketplace portraits={portraits} />;
       break;
     case 'grownup':
       body = <GrownUp portraits={portraits} />;

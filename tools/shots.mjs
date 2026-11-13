@@ -558,6 +558,13 @@ async function asPlayer(page, name, picture, slot) {
   await settleUi(page);
 }
 
+/** A player with `coins` and Marketplace `upgrades`, on Home. */
+async function marketPlayer(page, name, picture, slot, coins, upgrades) {
+  await asPlayer(page, name, picture, slot);
+  await page.evaluate(([c, u]) => window.__lvt.players.update((v) => ({ ...v, coins: c, upgrades: u })), [coins, upgrades]);
+  await settleUi(page);
+}
+
 /** Every cloud call from now on answers "offline" (the device copies stay). */
 function goOffline(page) {
   return page.evaluate(() => {
@@ -1108,7 +1115,7 @@ async function boardPlayers(page, lukasWins) {
   }, lukasWins);
 }
 
-/** The leaderboard and the Almanac at the iPad (1024x704) and laptop (1440x900) sizes. */
+/** The leaderboard, the Almanac and the Marketplace at the iPad (1024x704) and laptop (1440x900) sizes. */
 function progressShots() {
   const sizes = [['ipad', { width: 1024, height: 704 }], ['laptop', { width: 1440, height: 900 }]];
   const base = [
@@ -1180,6 +1187,39 @@ function progressShots() {
       await page.click('[data-level="3"]');
       await page.waitForTimeout(1200);
       await nextFrames(page, 3);
+    }],
+    ['almanac-upgraded', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.evaluate(() => window.__lvt.players.update((v) => ({ ...v, upgrades: { ...v.upgrades, peashooter: 8 } })));
+      await page.click('[data-home="almanac"]');
+      await page.click('[data-level="3"]');
+      await page.waitForTimeout(1200);
+      await nextFrames(page, 3);
+    }],
+    // Marketplace: Lukas with coins and a few levels bought (one at the top, gold); a buy caught mid-hop.
+    ['market', async (page) => {
+      await marketPlayer(page, 'Lukas', 'peashooter', 'p01', 1650, { peashooter: 10, sunflower: 3, walnutBomb: 1, kernelPult: 6, potatoMine: 2 });
+      await page.click('[data-home="marketplace"]');
+      await page.waitForSelector('[data-card="peashooter"]');
+      await settleUi(page);
+      await page.click('[data-buy="mangoPult"]');
+      // Hold the hop at its top (25% of 420 ms).
+      await page.evaluate(() => {
+        for (const a of document.querySelector('[data-card="mangoPult"] .market__pic').getAnimations()) { a.pause(); a.currentTime = 105; }
+      });
+    }],
+    // Toby on the zombie tab with too few coins: a tap on "+" caught mid-shake.
+    ['market-zombies', async (page) => {
+      await marketPlayer(page, 'Toby', 'brainEater', 'p02', 240, { brainEater: 4, veryFastWalker: 1, necromancer: 10 });
+      await page.click('[data-home="marketplace"]');
+      await page.waitForSelector('[data-card="brainEater"]');
+      await settleUi(page);
+      await page.click('[data-buy="hotTopic"]');
+      await page.click('[data-buy="brainEater"]');
+      // Hold the shake at its first swing (20% of 420 ms).
+      await page.evaluate(() => {
+        for (const a of document.querySelector('[data-card="brainEater"]').getAnimations()) { a.pause(); a.currentTime = 84; }
+      });
     }],
     ['almanac-minion', async (page) => {
       await asPlayer(page, 'Lukas', 'peashooter', 'p01');

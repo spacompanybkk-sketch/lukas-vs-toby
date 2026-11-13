@@ -97,17 +97,3 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
     </div>
   );
 }
-
-const SOON_ART: Record<Place, PixelArt> = { marketplace: MARKET, almanac: BOOK, leaderboard: TROPHY };
-
-/** Until its own task builds it: the place's picture and a back arrow to Home. */
-export function Soon({ place }: { place: Place }) {
-  return (
-    <div data-screen={place} class="layer layer--menu soon">
-      <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={() => go({ name: 'home' })}>
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
-      <span class="soon__pic px pal-slate"><PixelIcon art={SOON_ART[place]} class="soon__icon" /></span>
-    </div>
-  );
-}

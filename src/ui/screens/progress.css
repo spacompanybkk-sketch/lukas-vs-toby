@@ -133,11 +133,11 @@
 .almanac__fill { display: block; height: 100%; min-width: 6px; animation: bar-grow 360ms steps(6, end) both; transform-origin: left; }
 .almanac__fill--hp { background: var(--c-red); box-shadow: inset 0 3px 0 var(--c-red-hi), inset 0 -3px 0 var(--c-red-lo); }
 .almanac__fill--dps { background: var(--c-sun); box-shadow: inset 0 3px 0 #fff4b0, inset 0 -3px 0 var(--c-sun-lo); }
-/* What a Marketplace upgrade adds: gold blocks with bright seams, right after the plain part. */
+/* What a Marketplace upgrade adds: orange-gold blocks with bright seams, set off by an ink line. */
 .almanac__fill--up {
   min-width: 0;
-  background: repeating-linear-gradient(90deg, #ffb300 0 8px, #fff1a8 8px 11px);
-  box-shadow: inset 0 3px 0 #fff6c8, inset 0 -3px 0 #c77800;
+  background: repeating-linear-gradient(90deg, #ff9f1a 0 7px, #ffe27a 7px 10px);
+  box-shadow: inset 3px 0 0 var(--ink), inset 0 3px 0 #ffd0a0, inset 0 -3px 0 #b85c00;
 }
 .almanac__fill--speed { background: var(--c-sky); box-shadow: inset 0 3px 0 var(--c-sky-hi), inset 0 -3px 0 #2e86c1; }
 @keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
@@ -166,3 +166,103 @@
 .almanac__tile .almanac__pic { width: 100%; box-shadow: none; }
 .almanac__tile:active { --lip: 1px; transform: translateY(calc(var(--px-lip) - 1px)); filter: brightness(var(--press-dim)); }
 .almanac__tile.is-on { outline: calc(var(--px-line) + 1px) solid var(--c-sun); outline-offset: 3px; --fill: var(--side-hi); }
+
+/* ---- Marketplace: coins top right, two picture tabs, ten unit cards (5 × 2) ---- */
+.market svg.pixel-icon { display: block; width: 100%; height: 100%; }
+.market {
+  grid-template-rows: auto 1fr;
+  align-items: stretch;
+  justify-items: center;
+  gap: clamp(8px, 1.6vh, 18px);
+  padding-top: var(--gutter-top);
+}
+.market__top { display: flex; justify-content: center; }
+.market__tabs { display: flex; gap: clamp(10px, 1.6vw, 22px); padding-top: 2px; }
+.market__tab { width: calc(var(--btn-h) * 1.25); padding: 0 0 var(--px-bev); }
+.market__tab .market__tab-icon { --ico-size: calc(var(--btn-h) * 0.66); }
+.market__tab:not(.is-on) .market__tab-icon { filter: saturate(0.6) brightness(0.92); }
+.market__tab.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: calc(var(--px-line) * 2); }
+.market__coins {
+  position: absolute;
+  top: var(--gutter-top);
+  right: var(--gutter-x);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--btn-h);
+  padding: 0 clamp(12px, 1.6vw, 20px) 0 clamp(8px, 1vw, 12px);
+  font-size: var(--fs-big);
+  color: var(--c-sun);
+}
+.market__coin { width: calc(var(--fs-big) * 1.05) !important; height: calc(var(--fs-big) * 1.05) !important; }
+.market__coins .inked { animation: px-pop 200ms steps(3, end) both; }
+.market__grid {
+  --card-gap: clamp(10px, 1.6vw, 22px);
+  align-self: center;
+  width: min(100%, 1240px);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: var(--card-gap);
+  padding: 6px 8px calc(var(--px-line) + 6px);
+  max-height: 100%;
+  min-height: 0;
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.market__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(4px, 1vh, 10px);
+  padding: clamp(8px, 1.4vh, 14px) clamp(6px, 0.8vw, 12px);
+  min-height: 0;
+}
+.market__pic { width: clamp(64px, min(13vh, 9.5vw), 132px); flex: none; }
+.market__pic.is-hop-a { animation: px-hop-a 420ms steps(6, end) both; }
+.market__pic.is-hop-b { animation: px-hop-b 420ms steps(6, end) both; }
+.market__card.is-deny-a { animation: pin-shake-a 420ms steps(6, end); }
+.market__card.is-deny-b { animation: pin-shake-b 420ms steps(6, end); }
+/* Ten pips in two rows of five: the level as blocks to count. */
+.market__pips {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(3px, 0.5vh, 5px);
+  width: 86%;
+}
+.market__pip {
+  aspect-ratio: 1;
+  background: #3a2c1c;
+  box-shadow: inset 2px 2px 0 #2a1b0e, 0 0 0 2px var(--ink);
+}
+.market__pip.is-on { background: var(--c-leaf); box-shadow: inset 2px 2px 0 var(--c-leaf-hi), inset -2px -2px 0 var(--c-leaf-lo), 0 0 0 2px var(--ink); }
+.market__pip.is-new { animation: px-pop 260ms steps(4, end) both; }
+.market__buy-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
+.market__price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: clamp(18px, 3.2vh, 32px);
+  color: var(--c-sun);
+  min-width: 0;
+}
+.market__price-coin { flex: none; width: 1.1em !important; height: 1.1em !important; }
+.market__card.is-poor .market__price { color: var(--c-red); }
+.market__card.is-poor .market__price-coin { filter: grayscale(1) brightness(0.9); }
+.market__plus {
+  flex: none;
+  width: clamp(48px, min(8vh, 5.6vw), 76px);
+  height: clamp(48px, min(8vh, 5.6vw), 76px);
+  padding: 0 0 var(--px-bev);
+}
+.market__plus-icon { width: 64% !important; height: 64% !important; }
+.market__card.is-poor .market__plus-icon { filter: grayscale(1) brightness(1.1); }
+/* Level 10: framed in gold, all ten pips gold, a big coin where the price was. */
+.market__card.is-max {
+  outline: calc(var(--px-line) + 2px) solid var(--c-sun);
+  outline-offset: calc(var(--px-line) + 1px);
+  --fill: #ffe9a0; --hi: #fff6cf; --lo: var(--c-sun-lo); color: var(--ink);
+}
+.market__card.is-max .market__pip.is-on { background: var(--c-sun); box-shadow: inset 2px 2px 0 #fff4b0, inset -2px -2px 0 var(--c-sun-lo), 0 0 0 2px var(--ink); }
+.market__done { display: grid; place-items: center; height: clamp(48px, min(8vh, 5.6vw), 76px); }
+.market__done-coin { display: block; width: clamp(40px, 6.5vh, 64px); height: clamp(40px, 6.5vh, 64px); animation: px-breathe 900ms steps(3, end) infinite alternate; }
