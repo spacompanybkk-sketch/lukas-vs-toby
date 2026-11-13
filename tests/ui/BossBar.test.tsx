@@ -92,8 +92,10 @@ describe('bossOf (the controller\'s hud.boss)', () => {
     const m = bossDemoMatch('brainTitan', 1);
     m.step();
     const notches = [0.66, 0.33];
-    expect(bossOf(m.state, B)).toEqual({ key: 'brainTitan', hp: 6000, max: 6000, shield: false, notches });
+    const max = BALANCE.bosses.brainTitan.hp; // the shipped Titan (Task 8 tunes it)
+    expect(bossOf(m.state, B)).toEqual({ key: 'brainTitan', hp: max, max, shield: false, notches });
     const boss = m.state.units.find((u) => u.key === 'brainTitan')!;
+    boss.maxHp = 6000; // the arithmetic below: 40 blocks of 150
     boss.hp = 3000.4; // into block 21 of 40 (150 a block)
     boss.shieldLeft = 5;
     expect(bossOf(m.state, B)).toEqual({ key: 'brainTitan', hp: 3150, max: 6000, shield: true, notches });
