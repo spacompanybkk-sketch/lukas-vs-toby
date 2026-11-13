@@ -609,8 +609,8 @@ describe('damageUnit and damageBase', () => {
   it('damageBase lowers the base, may take it below zero, and reports the lane', () => {
     const m = fresh();
     const events: SimEvent[] = [];
-    damageBase(m.state, 'zombies', 99999, null, events);
-    damageBase(m.state, 'plants', 12, 3, events);
+    damageBase(m.state, BALANCE, 'zombies', 99999, null, events);
+    damageBase(m.state, BALANCE, 'plants', 12, 3, events);
     expect(m.state.baseHp).toEqual({ plants: 2988, zombies: 3000 - 99999 });
     expect(events).toEqual([
       { type: 'baseDamaged', faction: 'zombies', amount: 99999, hp: 3000 - 99999, lane: null },

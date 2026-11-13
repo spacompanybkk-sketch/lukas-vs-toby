@@ -1,13 +1,42 @@
 /** Read-only lookups shared by the step stages. None of them changes the state. */
 
-import type { Balance, UnitStats } from '../data/balance';
-import type { CardKey, Faction, MatchConfig, SimState, Unit, UnitKey } from './types';
+import type { Balance, BossPattern, BossStats, UnitStats } from '../data/balance';
+import { BOSS_HALF_WIDTH } from './types';
+import type { BossKey, CardKey, Faction, MatchConfig, SimState, Unit, UnitKey } from './types';
 
-/** A unit type's numbers. A key the table has no numbers for is an error, never a silent zero. */
+/**
+ * A unit type's numbers (a boss's from `Balance.bosses`). A key the table has no numbers for is an
+ * error, never a silent zero.
+ */
 export function statsFor(b: Balance, key: UnitKey): UnitStats {
-  const stats = b.units[key];
+  const stats = isBoss(key) ? b.bosses[key] : b.units[key];
   if (!stats) throw new Error(`The balance table has no numbers for "${key}"`);
   return stats;
+}
+
+/** Whether a key is one of the bosses. */
+export function isBoss(key: UnitKey): key is BossKey {
+  return Object.hasOwn(BOSS_HALF_WIDTH, key);
+}
+
+/** A boss's numbers. */
+export function bossStats(b: Balance, key: BossKey): BossStats {
+  return b.bosses[key];
+}
+
+/** A boss's shield pattern, if it has one. */
+export function shieldOf(b: Balance, key: BossKey): Extract<BossPattern, { kind: 'shield' }> | undefined {
+  for (const p of b.bosses[key].patterns) if (p.kind === 'shield') return p;
+  return undefined;
+}
+
+/**
+ * Whether a unit stands in `lane`: its own, or for a boss as wide as several, any of those
+ * (`BOSS_HALF_WIDTH`). Everything that looks for a unit in a lane asks this.
+ */
+export function inLane(u: Unit, lane: number): boolean {
+  if (u.lane === lane) return true;
+  return isBoss(u.key) && Math.abs(u.lane - lane) <= BOSS_HALF_WIDTH[u.key];
 }
 
 /** Which of the balance table's level curves a number follows (see `Balance.levelCurves`). */
@@ -56,7 +85,7 @@ export function isStanding(u: Unit): boolean {
 /**
  * The nearest standing unit of the side opposite `faction` in `lane` that is ahead of `x` by at
  * most `reach` tiles. Ahead means towards larger x for plants and towards smaller x for zombies;
- * a unit standing exactly at `x` counts. Ties go to the lower id (`s.units` is kept in ascending
+ * a unit standing exactly at `x` counts; a wide boss counts in each lane it stands in (`inLane`). Ties go to the lower id (`s.units` is kept in ascending
  * id order).
  *
  * Game rule: a unit that is down (see `isStanding`) never counts. Within a tick, a unit brought
@@ -70,7 +99,7 @@ export function nearestEnemyAhead(
   let nearest: Unit | null = null;
   let nearestDistance = 0;
   for (const u of s.units) {
-    if (u.faction === faction || u.lane !== lane || !isStanding(u)) continue;
+    if (u.faction === faction || !inLane(u, lane) || !isStanding(u)) continue;
     const distance = faction === 'plants' ? u.x - x : x - u.x;
     if (distance < 0 || distance > reach) continue;
     if (nearest === null || distance < nearestDistance) {

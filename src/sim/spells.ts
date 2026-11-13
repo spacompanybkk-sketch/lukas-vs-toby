@@ -9,11 +9,11 @@
 
 import { seconds } from '../data/balance';
 import type { Balance, SpellStats } from '../data/balance';
-import { damageUnit } from './damage';
-import { isStanding } from './lookup';
+import { capHit, damageUnit } from './damage';
+import { inLane, isBoss, isStanding } from './lookup';
 import { randomInt } from './rng';
 import { spawnMinion, spawnUnit } from './spawn';
-import { applyStatus } from './status';
+import { inflictStatus } from './status';
 import { COLS, LANES, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
   Command, CommandRejection, Faction, PlayerState, SimEvent, SimState, SpellKey, SpellSize, StatusKind, Unit,
@@ -106,16 +106,16 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
   switch (cmd.spell) {
     case 'thunderbolt':
     case 'meteor':
-      for (const u of enemies()) damageUnit(s, b, u, need(stats.damage, cmd.spell), events, true);
+      for (const u of enemies()) damageUnit(s, b, u, capHit(b, u, need(stats.damage, cmd.spell)), events, true);
       break;
     case 'vines':
-      putOn(s, enemies(), 'tied', stats, cmd.spell, events);
+      putOn(s, b, enemies(), 'tied', stats, cmd.spell, events);
       break;
     case 'fog':
-      putOn(s, enemies(), 'blind', stats, cmd.spell, events);
+      putOn(s, b, enemies(), 'blind', stats, cmd.spell, events);
       break;
     case 'frenzy':
-      putOn(s, friends(), 'haste', stats, cmd.spell, events);
+      putOn(s, b, friends(), 'haste', stats, cmd.spell, events);
       break;
     case 'sunShower':
     case 'brainFeast': {
@@ -130,7 +130,7 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
     }
     case 'healingRain':
       for (const u of friends()) {
-        if (u.key === 'rock') continue; // a rock is no plant: it does not grow back
+        if (u.key === 'rock' || isBoss(u.key)) continue; // a rock is no plant: it does not grow back; a boss is never healed
         const gain = Math.min(need(stats.amount, cmd.spell), u.maxHp - u.hp);
         if (gain <= 0) continue;
         u.hp += gain;
@@ -157,17 +157,17 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
 function inArea(s: SimState, cmd: SpellCommand, stats: SpellStats, which: (u: Unit) => boolean): Unit[] {
   const tiles = spellArea(cmd.faction, stats.size, cmd.lane, cmd.col);
   return s.units.filter((u) => isStanding(u) && which(u)
-    && tiles.some((t) => t.lane === u.lane && t.col === Math.floor(u.x)));
+    && tiles.some((t) => inLane(u, t.lane) && t.col === Math.floor(u.x))); // a wide boss once, however many of its lanes
 }
 
-function putOn(s: SimState, units: Unit[], kind: StatusKind, stats: SpellStats, spell: SpellKey, events: SimEvent[]): void {
+function putOn(s: SimState, b: Balance, units: Unit[], kind: StatusKind, stats: SpellStats, spell: SpellKey, events: SimEvent[]): void {
   const ticks = seconds(need(stats.seconds, spell));
-  for (const u of units) applyStatus(s, u, kind, ticks, 0, null, events);
+  for (const u of units) inflictStatus(s, b, u, kind, ticks, 0, null, events);
 }
 
 /** Whether a standing plant (a rock included) is on the tile; one already down does not count. */
 function plantOn(s: SimState, lane: number, col: number): boolean {
-  return s.units.some((u) => u.faction === 'plants' && isStanding(u) && u.lane === lane && Math.floor(u.x) === col);
+  return s.units.some((u) => u.faction === 'plants' && isStanding(u) && inLane(u, lane) && Math.floor(u.x) === col);
 }
 
 /** A number the spell's row must have; a row without it is an error in the table, never a silent zero. */

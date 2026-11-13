@@ -5,12 +5,14 @@
  */
 
 import type { Balance } from '../data/balance';
-import { factionOf, isCard, priceOf } from '../data/units';
+import { factionOf, isCard } from '../data/units';
 import { checkBeltConfig, plantAt } from './belt';
-import { levelScale, statsFor, upgradeScale } from './lookup';
-import { spawnUnit } from './spawn';
+import { checkBoss, spawnBoss } from './boss';
+import { spawnAtLevel } from './spawn';
+
+export { spawnAtLevel } from './spawn'; // where the level code looked for it first
 import { LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
-import type { LevelMode, MatchConfig, SimEvent, SimState, Unit, UnitKey } from './types';
+import type { LevelMode, MatchConfig, SimEvent, SimState, UnitKey } from './types';
 
 const MODES: readonly LevelMode[] = ['battle', 'survive', 'breakthrough', 'conveyor', 'boss'];
 
@@ -29,9 +31,10 @@ const NON_CARDS: ReadonlySet<UnitKey> = new Set<UnitKey>(['boneMinion', 'rock'])
  *   and conveyor, not allowed in battle and boss (they end by sudden death);
  * - `noEnergy` true or false;
  * - `belt` exactly in conveyor, and sound (see `checkBeltConfig`);
+ * - `boss` exactly in boss mode, and sound (see `checkBoss`);
  * - `invulnerableBase` null or `'zombies'` (a safe plant base would make the clock unwinnable for zombies);
  * - every prepared unit and script entry: a unit the balance table has numbers for (a card or a
- *   Bone Minion or rock), its own side, a lane 0..4, a level 1..`MAX_LEVEL`; a plant's `x` the
+ *   Bone Minion or rock; never a boss, which comes through `boss`), its own side, a lane 0..4, a level 1..`MAX_LEVEL`; a plant's `x` the
  *   middle of a plant tile (col + 0.5, col 0..7), a zombie's (optional in the script) a number
  *   0..`ZOMBIE_SPAWN_X`; no two prepared plants on one tile;
  * - script ticks whole, not below 0, in order (ties keep list order), and before `goalTicks`.
@@ -50,6 +53,7 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
     throw new RangeError(c.mode === 'conveyor' ? 'a conveyor level needs a belt' : `a ${c.mode} level has no belt`);
   }
   if (c.belt !== null) checkBeltConfig(c.belt, b);
+  checkBoss(c, b);
   if (typeof c.noEnergy !== 'boolean') throw new RangeError(`noEnergy ${String(c.noEnergy)} is not true or false`);
   if (c.invulnerableBase !== null && c.invulnerableBase !== 'zombies') {
     // The clock's winner is always the plants, so a plant base that cannot be hurt would make a
@@ -98,27 +102,8 @@ function checkPlacement(
 }
 
 /**
- * A unit as a level puts it on the lawn: `spawnUnit` (its side's Marketplace level applies, as for a
- * placed card), then at `level` its max health and health are its base health times the `hp` level
- * curve times `upgradeScale`, rounded, and its `spent` is its price × level (0 for a unit that is no
- * card), so it pays a bounty like a unit merged up to that level.
- */
-export function spawnAtLevel(
-  s: SimState, b: Balance, key: UnitKey, lane: number, x: number, level: number, events: SimEvent[],
-): Unit {
-  const u = spawnUnit(s, b, key, lane, x, events);
-  if (level !== 1) {
-    u.level = level;
-    u.maxHp = Math.round(statsFor(b, key).hp * levelScale(b, u.faction, level, 'hp') * upgradeScale(b, s.config, u, 'hp'));
-    u.hp = u.maxHp;
-  }
-  u.spent = priceOf(key) * level;
-  return u;
-}
-
-/**
  * Step stage 0, before the commands. On the step of tick 0 the prepared units come on, in list
- * order (`unitSpawned` each, no `waveSpawned`). Then every script entry whose tick has come, in list
+ * order (`unitSpawned` each, no `waveSpawned`), then the level's boss (`spawnBoss`). Then every script entry whose tick has come, in list
  * order: `waveSpawned` then the unit's own `unitSpawned`; a zombie at its `x`, or at
  * `ZOMBIE_SPAWN_X` with none; a plant on its tile, unless a plant already stands there: then it is
  * skipped with `waveSkipped` (reason `'occupied'`). Either way `scriptIndex` moves past it.
@@ -127,6 +112,7 @@ export function tickScript(s: SimState, b: Balance, events: SimEvent[]): void {
   const c = s.config;
   if (s.tick === 0) {
     for (const p of c.prepared) spawnAtLevel(s, b, p.unit, p.lane, p.x, p.level, events);
+    spawnBoss(s, b, events);
   }
   while (s.scriptIndex < c.script.length) {
     const index = s.scriptIndex;

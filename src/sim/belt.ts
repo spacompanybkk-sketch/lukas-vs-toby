@@ -6,7 +6,7 @@
 import type { Balance } from '../data/balance';
 import { UNIT_INFO, isCard } from '../data/units';
 import { levelUp } from './levelUp';
-import { isStanding } from './lookup';
+import { inLane, isStanding } from './lookup';
 import { randomInt } from './rng';
 import { spawnUnit } from './spawn';
 import { COLS, LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
@@ -92,7 +92,7 @@ export function playBelt(s: SimState, b: Balance, cmd: BeltCommand, events: SimE
 
 /** The standing plant on the tile, if any (a plant already down counts as gone, as for a hand merge). */
 export function plantAt(s: SimState, lane: number, col: number): Unit | undefined {
-  return s.units.find((u) => u.faction === 'plants' && isStanding(u) && u.lane === lane && Math.floor(u.x) === col);
+  return s.units.find((u) => u.faction === 'plants' && isStanding(u) && inLane(u, lane) && Math.floor(u.x) === col);
 }
 
 function zombieNear(s: SimState, lane: number, col: number, key: Unit['key']): Unit | undefined {

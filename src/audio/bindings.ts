@@ -17,7 +17,7 @@ const FULL_FIELD = 24;
 /** Each projectile kind's sound as it is fired. */
 const SHOT_SOUND: Record<ProjectileKind, SfxName> = {
   pea: 'pea', brain: 'brainThrow', kernel: 'kernel', butter: 'butter', mango: 'mango',
-  sand: 'sand', arrow: 'arrow', bullet: 'bullet', trident: 'trident', rot: 'rot',
+  sand: 'sand', arrow: 'arrow', bullet: 'bullet', trident: 'trident', rot: 'rot', acorn: 'mango',
 };
 /** Blasts with a sound of their own; any other is the Walnut Bomb's `explode`. */
 const BLAST_SOUND: Partial<Record<UnitKey, SfxName>> = { potatoMine: 'mineBoom', cherryBomber: 'cherryBoom' };
@@ -206,6 +206,9 @@ export function playEventSounds(
       case 'beltCard':
       case 'beltUsed':
       case 'goalReached':
+      case 'bossPattern':
+      case 'bossPhase':
+      case 'bossDefeated':
         break;
       default: {
         const unhandled: never = e;

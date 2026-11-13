@@ -18,7 +18,8 @@ const B = withMinion(classicBalance());
 
 function withMode(mode: LevelMode, patch: Partial<MatchConfig> = {}, balance: Balance = B): Match {
   const goalTicks = mode === 'battle' || mode === 'boss' ? null : 90;
-  return new Match({ ...classicConfig(3, balance), mode, goalTicks, ...patch }, balance);
+  const boss: MatchConfig['boss'] = mode === 'boss' ? { key: 'brainTitan', faction: 'zombies', lane: 2 } : null;
+  return new Match({ ...classicConfig(3, balance), mode, goalTicks, boss, ...patch }, balance);
 }
 
 /** Steps until the match ends or `limit` steps have run; the events of the last step. */
@@ -31,23 +32,26 @@ function runOut(m: Match, limit: number): SimEvent[] {
 describe('a default battle', () => {
   it('has every level field at its neutral value', () => {
     const c = defaultConfig(1);
-    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase]).toEqual([
-      'battle', [], [], null, null, false, null,
+    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase, c.boss]).toEqual([
+      'battle', [], [], null, null, false, null, null,
     ]);
     const m = new Match(c);
     expect([m.state.scriptIndex, m.state.belt]).toEqual([0, []]);
   });
 
   /**
-   * The same scripted battles as before the level modes, with the checksums the code printed then
-   * (commit 28a6d4f). The new fields hash after everything that was there before (the setup's level
-   * fields at the end of the setup, which ends the old layout, then `scriptIndex` and `belt`), so
-   * the old checksum continued over their neutral bytes must be today's: the battle played the same.
+   * The same scripted battles as before the level modes, with their checksums. First pinned against
+   * the code at commit 28a6d4f (its checksums continued over the neutral level bytes). Re-pinned in
+   * Task 3 (bosses), when every unit gained four fields (`pattern` .. `phase`) in the middle of the
+   * layout and the setup its `boss`: a scratch replay of these three battles at the commit before
+   * (4469587) and with the bosses gave equal events on every step and equal snapshots at tick 1000
+   * and at the end once the new fields (all 0, boss null) were taken out, so the battles still play
+   * the same; only the bytes hashed changed.
    */
   const BEFORE: Array<[number, number, number]> = [ // seed, checksum at tick 1000, checksum at the end (tick 6880)
-    [1, 2535456419, 4177412511],
-    [2, 1772428623, 2166383439],
-    [3, 852128596, 688752288],
+    [1, 2800645155, 3737783959],
+    [2, 1321641031, 2738939591],
+    [3, 3685741090, 4182220966],
   ];
   function commandsAt(tick: number): Command[] {
     const out: Command[] = [];
@@ -58,25 +62,6 @@ describe('a default battle', () => {
     if (tick % 500 === 250) out.push(place('plants', 'peashooter', (tick / 500 | 0) % 5, 2 + ((tick / 2500) | 0) % 5));
     if (tick % 200 === 100) out.push({ type: 'hero', faction: tick % 400 === 100 ? 'plants' : 'zombies', lane: (tick / 200 | 0) % 5 });
     return out;
-  }
-  /** FNV-1a continued from `h` over the neutral level fields, in the layout of src/sim/hash.ts. */
-  function continueNeutral(h: number): number {
-    const bytes: number[] = [];
-    const num = (v: number): void => {
-      const view = new DataView(new ArrayBuffer(8));
-      view.setFloat64(0, v, true);
-      for (let i = 0; i < 8; i++) bytes.push(view.getUint8(i));
-    };
-    num(6); // mode: 'battle'
-    for (const c of 'battle') bytes.push(c.charCodeAt(0), 0);
-    num(0); // script: none
-    num(0); // prepared: none
-    bytes.push(0, 0, 0, 0); // goalTicks, belt: null; noEnergy: false; invulnerableBase: null
-    num(0); // scriptIndex
-    num(0); // belt: empty
-    let x = h | 0;
-    for (const b of bytes) x = Math.imul(x ^ b, 0x01000193);
-    return x >>> 0;
   }
   it.each(BEFORE)('plays seed %i exactly as before the level modes', (seed, at1000, atEnd) => {
     const b = classicBalance();
@@ -90,8 +75,8 @@ describe('a default battle', () => {
       if (m.state.tick === 1000) mid = m.hash();
     }
     expect([m.state.tick, m.state.winner]).toEqual([6880, 'zombies']);
-    expect(mid).toBe(continueNeutral(at1000));
-    expect(m.hash()).toBe(continueNeutral(atEnd));
+    expect(mid).toBe(at1000);
+    expect(m.hash()).toBe(atEnd);
   });
 });
 
@@ -286,8 +271,12 @@ function levelOf(mode: LevelMode, seed: number, config: MatchConfig, script: Scr
   const plants: CardKey[] = ['peashooter', 'sunflower', 'walnutBomb'];
   switch (mode) {
     case 'battle':
-    case 'boss':
       return config;
+    case 'boss': // the plants' boss (the Brain Titan) on odd seeds, the zombies' (the Elder Oak) on even ones
+      return {
+        ...config, script: seed % 2 === 1 ? script.filter((e) => e.faction === 'zombies') : [],
+        boss: seed % 2 === 1 ? { key: 'brainTitan', faction: 'zombies', lane: seed % LANES } : { key: 'elderOak', faction: 'plants', lane: 2 },
+      };
     case 'survive':
       return { ...config, goalTicks: 1800, script, invulnerableBase: 'zombies' };
     case 'breakthrough':

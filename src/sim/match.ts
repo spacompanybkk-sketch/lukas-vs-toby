@@ -3,6 +3,7 @@ import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
 import type { UnitInfo } from '../data/units';
 import { tickAbilities } from './abilities';
+import { tickBoss } from './boss';
 import { checkBelt, playBelt, tickBelt } from './belt';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
@@ -11,7 +12,7 @@ import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
 import { levelUp } from './levelUp';
-import { isStanding, statsFor } from './lookup';
+import { inLane, isBoss, isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { checkLevel, tickScript } from './script';
 import { spawnUnit } from './spawn';
@@ -44,6 +45,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     spells: { plants: 2, zombies: 2 },
     upgrades: { plants: {}, zombies: {} },
     mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null,
+    boss: null,
   };
 }
 
@@ -65,6 +67,7 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     belt: c.belt === null ? null : { ...c.belt, cards: [...c.belt.cards] },
     noEnergy: c.noEnergy,
     invulnerableBase: c.invulnerableBase,
+    boss: c.boss === null || c.boss === undefined ? (c.boss as null) : { ...c.boss },
   };
 }
 
@@ -129,7 +132,7 @@ export class Match {
    *   `recharging`, `no-energy`.
    * - merge: `wrong-side`, `not-in-hand`, `no-target` (no living unit has that id), `not-yours`,
    *   `wrong-type`, `max-level`, `recharging`, `no-energy`.
-   * - remove: `plants-only`, `no-target`, `not-yours`.
+   * - remove: `plants-only`, `no-target`, `not-yours`, `boss`.
    * - hero: `hero-off`, `bad-lane`, `hero-charging` (see `checkHero`).
    * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `occupied`, `spell-charging`
    *   (see `checkSpell`).
@@ -162,7 +165,7 @@ export class Match {
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
    * the level's script (prepared units on tick 0, then waves; `tickScript`), the belt's arrival
-   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, projectiles, hazards, statuses, deaths,
+   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, the boss (`tickBoss`), projectiles, hazards, statuses, deaths,
    * endgame, then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
@@ -212,6 +215,7 @@ export class Match {
     // Step-local, so nothing outside the state carries over from one step (or match) to the next.
     const felled = tickBaseDefense(s, b, events);
     tickAbilities(s, b, events);
+    tickBoss(s, b, events);
     tickProjectiles(s, b, events);
     tickHazards(s, b, events);
     tickStatuses(s, b, events);
@@ -236,7 +240,7 @@ export class Match {
     if (cmd.faction === 'plants') {
       if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
       const taken = this.state.units.some(
-        (u) => u.faction === 'plants' && u.lane === cmd.lane && Math.floor(u.x) === cmd.col,
+        (u) => u.faction === 'plants' && inLane(u, cmd.lane) && Math.floor(u.x) === cmd.col,
       );
       if (taken) return 'occupied';
     }
@@ -259,6 +263,7 @@ export class Match {
     const target = this.livingUnit(cmd.targetId);
     if (target === undefined) return 'no-target';
     if (target.faction !== cmd.faction) return 'not-yours';
+    if (isBoss(target.key)) return 'boss';
     return null;
   }
 

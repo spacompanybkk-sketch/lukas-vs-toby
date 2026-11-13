@@ -17,9 +17,10 @@ import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance'
 import { burnOnHit, grow, grownBite, ignitePea } from './abilities';
 import { damageBase, damageUnit, explode } from './damage';
 import { payBounty } from './economy';
-import { isStanding, levelScale, nearestEnemyAhead, statsFor, upgradeScale } from './lookup';
+import { bossSplash, isWindingUp } from './boss';
+import { inLane, isBoss, isStanding, levelScale, nearestEnemyAhead, shieldOf, statsFor, upgradeScale } from './lookup';
 import { nextRandom } from './rng';
-import { applyStatus, canAct } from './status';
+import { canAct, inflictStatus } from './status';
 import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
 import type { Faction, Hazard, Projectile, SimEvent, SimState, Unit } from './types';
 
@@ -45,7 +46,7 @@ export { damageBase, damageUnit, explode } from './damage'; // where the tests a
  */
 export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
-    if (!canAct(u)) continue;
+    if (!canAct(u) || isWindingUp(b, u)) continue; // a boss winding up a slam holds its bite
     const stats = statsFor(b, u.key);
     if (stats.melee && u.blocked && u.meleeTimer === 0) bite(s, b, u, stats, stats.melee, events);
     if (stats.shot && !u.blocked && u.shotTimer === 0) shoot(s, b, u, stats.shot, events);
@@ -65,7 +66,7 @@ function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeSt
     if (stats.grow && !isStanding(plant)) grow(s, b, z, stats.grow, events); // only a standing plant is bitten
   } else {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
-    damageBase(s, 'plants', amount, z.lane, events);
+    damageBase(s, b, 'plants', amount, z.lane, events);
   }
 }
 
@@ -244,7 +245,7 @@ function flyPiercing(s: SimState, b: Balance, p: Projectile, events: SimEvent[])
   const from = advance(p);
   const reach = p.speed + b.hitRadius;
   const met = s.units
-    .filter((u) => u.faction !== p.faction && u.lane === p.lane && isStanding(u) && !p.hitIds.includes(u.id))
+    .filter((u) => u.faction !== p.faction && inLane(u, p.lane) && isStanding(u) && !p.hitIds.includes(u.id))
     .map((u) => ({ u, distance: p.faction === 'plants' ? u.x - from : from - u.x }))
     .filter(({ distance }) => distance >= 0 && distance <= reach)
     .sort((a, c) => a.distance - c.distance || a.u.id - c.u.id);
@@ -260,11 +261,11 @@ function flyPiercing(s: SimState, b: Balance, p: Projectile, events: SimEvent[])
 /** A projectile past the far edge hits that side's base. Returns true when it did. */
 function reachBase(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
   if (p.faction === 'plants' && p.x >= COLS) {
-    hitBase(s, p, 'zombies', COLS, p.damage * b.baseShotFactor, events);
+    hitBase(s, b, p, 'zombies', COLS, p.damage * b.baseShotFactor, events);
     return true;
   }
   if (p.faction === 'zombies' && p.x <= 0) {
-    hitBase(s, p, 'plants', 0, p.damage, events);
+    hitBase(s, b, p, 'plants', 0, p.damage, events);
     return true;
   }
   return false;
@@ -275,7 +276,7 @@ function nearestTo(s: SimState, p: Projectile, x: number, radius: number): Unit 
   let nearest: Unit | null = null;
   let nearestDistance = 0;
   for (const u of s.units) {
-    if (u.faction === p.faction || u.lane !== p.lane || !isStanding(u)) continue;
+    if (u.faction === p.faction || !inLane(u, p.lane) || !isStanding(u)) continue;
     const distance = Math.abs(u.x - x);
     if (distance > radius) continue;
     if (nearest === null || distance < nearestDistance) {
@@ -294,10 +295,10 @@ function land(s: SimState, b: Balance, p: Projectile, primary: Unit | null, x: n
   });
   if (primary) wound(s, b, p, primary, events);
   const shot = b.units[p.sourceKey]?.shot;
-  const splash = shot?.splash ?? 0;
+  const splash = bossSplash(b, p) ?? shot?.splash ?? 0;
   if (splash > 0) {
     for (const u of s.units) {
-      if (u === primary || u.faction === p.faction || u.lane !== p.lane || !isStanding(u)) continue;
+      if (u === primary || u.faction === p.faction || !inLane(u, p.lane) || !isStanding(u)) continue;
       if (Math.abs(u.x - x) <= splash) wound(s, b, p, u, events);
     }
   }
@@ -329,13 +330,13 @@ function leavePuddle(
  * puddle is silent. Then the hazard counts down; the tick it was laid counts as its first, and on reaching 0
  * it ends (`hazardEnded`) and leaves the lawn.
  */
-export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void {
+export function tickHazards(s: SimState, b: Balance, events: SimEvent[]): void {
   if (s.hazards.length === 0) return;
   const left: Hazard[] = [];
   for (const h of s.hazards) {
     for (const u of s.units) {
-      if (u.faction === h.faction || u.lane !== h.lane || !isStanding(u) || Math.abs(u.x - h.x) > h.radius) continue;
-      applyStatus(s, u, 'poison', h.poisonTicks, h.dps, null, events, true);
+      if (u.faction === h.faction || !inLane(u, h.lane) || !isStanding(u) || Math.abs(u.x - h.x) > h.radius) continue;
+      inflictStatus(s, b, u, 'poison', h.poisonTicks, h.dps, null, events, true);
     }
     h.ticksLeft -= 1;
     if (h.ticksLeft > 0) left.push(h);
@@ -344,15 +345,22 @@ export function tickHazards(s: SimState, _b: Balance, events: SimEvent[]): void 
   s.hazards = left;
 }
 
+/**
+ * A straight or piercing shot meets a unit: a ready shield (a Skeleton Warrior's) blocks a pea and
+ * recharges; a boss's shield phase that `bouncesStraight` bounces a straight shot (it recharges
+ * nothing); either way `projectileHit` says `blocked` and nothing is dealt. Otherwise `wound`.
+ */
 function hitUnit(s: SimState, b: Balance, p: Projectile, target: Unit, events: SimEvent[]): void {
   const shield = statsFor(b, target.key).shield;
-  const blocked = shield !== undefined && p.kind === 'pea' && target.abilityTimer === 0;
+  const bounced = p.flight === 'straight' && target.shieldLeft > 0 && isBoss(target.key)
+    && shieldOf(b, target.key)?.bouncesStraight === true;
+  const blocked = bounced || (shield !== undefined && p.kind === 'pea' && target.abilityTimer === 0);
   events.push({
     type: 'projectileHit', projectileId: p.id, lane: p.lane, x: target.x,
     targetId: target.id, targetBase: null, blocked, burning: p.burning,
   });
-  if (blocked) target.abilityTimer = seconds(shield.interval);
-  else wound(s, b, p, target, events);
+  if (!blocked) wound(s, b, p, target, events);
+  else if (!bounced && shield !== undefined) target.abilityTimer = seconds(shield.interval);
 }
 
 /**
@@ -366,15 +374,15 @@ function wound(s: SimState, b: Balance, p: Projectile, u: Unit, events: SimEvent
   if (!status) return;
   if (status.chance !== undefined && p.kind !== status.altKind) return; // this one did not roll it
   const dps = (status.dps ?? 0) * levelScale(b, p.faction, p.level, 'special');
-  applyStatus(s, u, status.kind, seconds(status.seconds), dps, p.ownerId, events);
+  inflictStatus(s, b, u, status.kind, seconds(status.seconds), dps, p.ownerId, events);
 }
 
-function hitBase(s: SimState, p: Projectile, side: Faction, x: number, amount: number, events: SimEvent[]): void {
+function hitBase(s: SimState, b: Balance, p: Projectile, side: Faction, x: number, amount: number, events: SimEvent[]): void {
   events.push({
     type: 'projectileHit', projectileId: p.id, lane: p.lane, x, targetId: null, targetBase: side, blocked: false,
     burning: p.burning,
   });
-  damageBase(s, side, amount, p.lane, events);
+  damageBase(s, b, side, amount, p.lane, events);
 }
 
 /**

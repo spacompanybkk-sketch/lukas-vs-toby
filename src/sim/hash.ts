@@ -1,7 +1,7 @@
 import { ALL_CARDS } from '../data/units';
 import { LANES } from './types';
 import type {
-  BeltConfig, CardKey, Faction, Hazard, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
+  BeltConfig, BossConfig, CardKey, Faction, Hazard, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
 } from './types';
 
 /**
@@ -130,6 +130,7 @@ const UNIT: Fields<Unit> = {
   stun: num, blind: num, tied: num, poison: num, poisonDps: num, burn: num, burnDps: num,
   stacks: num, ownerId: nullableNum,
   expires: num, haste: num, hasteCarry: num, hurt: num,
+  pattern: num, patternTimer: num, shieldLeft: num, phase: num,
 };
 
 const PROJECTILE: Fields<Projectile> = {
@@ -169,6 +170,7 @@ const PLAYER: Fields<PlayerState> = {
 const SCRIPT_ENTRY: Fields<ScriptEntry> = { tick: num, unit: str, faction: str, lane: num, x: optionalNum, level: num };
 const PREPARED_UNIT: Fields<PreparedUnit> = { unit: str, faction: str, lane: num, x: num, level: num };
 const BELT: Fields<BeltConfig> = { side: str, everyTicks: num, cards: strs, slots: num };
+const BOSS: Fields<BossConfig> = { key: str, faction: str, lane: num };
 
 /**
  * The level fields (`mode` .. `invulnerableBase`) come last, after everything the setup had before
@@ -198,6 +200,14 @@ const CONFIG: Fields<MatchConfig> = {
   },
   noEnergy: bool,
   invulnerableBase: nullableStr,
+  boss: (f, boss) => {
+    if (boss === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      record(f, BOSS, boss);
+    }
+  },
 };
 
 const STATE: Fields<SimState> = {

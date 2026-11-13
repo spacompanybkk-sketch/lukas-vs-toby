@@ -29,6 +29,7 @@ export const PROJECTILE_SIZE: Record<ProjectileKind, number> = {
   bullet: 0.22,
   trident: 0.5,
   rot: 0.3,
+  acorn: 0.42, // the Elder Oak's: big, so a child sees it coming
 };
 /** Emissive intensity of a token: past the bloom threshold, so it glows. */
 export const TOKEN_GLOW = 2;
@@ -180,6 +181,10 @@ export const SHOT_COLORS = {
   burn: '#FF7A1A',
   burnGlint: '#FFD23F',
   burnRim: '#E0400A',
+  acorn: '#C98F55',
+  acornDark: '#A8703A',
+  acornCap: '#7B4A22',
+  acornCapLight: '#9A6232',
 } as const;
 
 function kernelGeometry(): BufferGeometry {
@@ -303,6 +308,31 @@ function rotGeometry(): BufferGeometry {
   );
 }
 
+/** The Elder Oak's acorn: a fat walnut-brown nut under a dark checked cap with a stalk. */
+function acornGeometry(): BufferGeometry {
+  const n = 6;
+  const cell = PROJECTILE_SIZE.acorn / n;
+  const nut = paint(SHOT_COLORS.acorn);
+  const nutDark = paint(SHOT_COLORS.acornDark);
+  const cap = paint(SHOT_COLORS.acornCap);
+  const capLight = paint(SHOT_COLORS.acornCapLight);
+  const u = (i: number): number => ((i + 0.5) / n) * 2 - 1;
+  const batch = new BoxBatch();
+  batch.transformed(new Matrix4().makeTranslation((-n * cell) / 2, (-n * cell) / 2, (-n * cell) / 2), () =>
+    batch.voxels(
+      cell,
+      [0, 0, 0],
+      [n - 1, n - 1, n - 1],
+      // Rounder at the cap, narrowing to a point at the bottom.
+      (i, j, k) => u(i) ** 2 + u(k) ** 2 <= (j >= 3 ? 1.3 : 0.35 + j * 0.3),
+      (i, j, k) => (j >= 4 ? ((i + k + j) % 2 === 0 ? cap : capLight) : j === 0 || hash2(i, k, j) < 0.25 ? nutDark : nut),
+    ),
+  );
+  const y = (n * cell) / 2;
+  batch.box(-cell * 0.5, y, -cell * 0.5, cell, cell * 1.2, cell, PALETTE.walnutDark);
+  return batch.build();
+}
+
 /** The pea once it has passed through a Torchwood: the same pea, burning. */
 function burningPeaGeometry(): BufferGeometry {
   const n = 5;
@@ -328,6 +358,7 @@ const SHOT_GEOMETRY: Record<ProjectileKind, () => BufferGeometry> = {
   bullet: bulletGeometry,
   trident: tridentGeometry,
   rot: rotGeometry,
+  acorn: acornGeometry,
 };
 
 const hexNumber = (color: string): number => parseInt(color.slice(1), 16);
@@ -344,6 +375,7 @@ export const PROJECTILE_TRAIL: Record<ProjectileKind, number> = {
   bullet: hexNumber(SHOT_COLORS.muzzle),
   trident: hexNumber(SHOT_COLORS.trident),
   rot: hexNumber(PALETTE.poison),
+  acorn: hexNumber(SHOT_COLORS.acorn),
 };
 /** A burning pea's trail: fire. */
 export const BURNING_TRAIL = hexNumber(PALETTE.fire);
@@ -363,6 +395,7 @@ export const PROJECTILE_TUMBLE: Record<ProjectileKind, number> = {
   bullet: 0,
   trident: 0,
   rot: 0.7,
+  acorn: 0.6,
 };
 
 /** Emissive intensity of a burning pea and of the glowing props: past the bloom threshold. */

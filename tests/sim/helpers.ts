@@ -133,6 +133,7 @@ export function classicConfig(seed: number, balance: Balance = classicBalance())
   config.belt = null;
   config.noEnergy = false;
   config.invulnerableBase = null;
+  config.boss = null;
   return config;
 }
 

@@ -81,7 +81,7 @@ const ZOMBIE_BAR_FLOOR = 1.1;
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
 const PROJECTILE_SCALE: Record<ProjectileKind, number> = {
   pea: 1.2, brain: 1.1,
-  kernel: 1.2, butter: 1.2, mango: 1.2, sand: 1.1, arrow: 1.1, bullet: 1.1, trident: 1.1, rot: 1.1,
+  kernel: 1.2, butter: 1.2, mango: 1.2, sand: 1.1, arrow: 1.1, bullet: 1.1, trident: 1.1, rot: 1.1, acorn: 1.2,
 };
 /** Sudden death warms the sun and sky towards this over two seconds. */
 const SUDDEN_DEATH_TINT = new Color('#FF8A3D');
@@ -245,7 +245,7 @@ export class BattleView {
   private readonly projectiles = new Map<number, ProjectileView>();
   private readonly flying: ProjectileView[] = [];
   private readonly spare: Record<ProjectileKind, Object3D[]> = {
-    pea: [], brain: [], kernel: [], butter: [], mango: [], sand: [], arrow: [], bullet: [], trident: [], rot: [],
+    pea: [], brain: [], kernel: [], butter: [], mango: [], sand: [], arrow: [], bullet: [], trident: [], rot: [], acorn: [],
   };
   /** Burning peas waiting to be used again. */
   private readonly spareBurning: Object3D[] = [];
@@ -1038,6 +1038,9 @@ export class BattleView {
       case 'beltCard':
       case 'beltUsed':
       case 'goalReached':
+      case 'bossPattern':
+      case 'bossPhase':
+      case 'bossDefeated':
         break;
       default: {
         const unhandled: never = e;

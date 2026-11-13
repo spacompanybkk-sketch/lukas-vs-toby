@@ -18,10 +18,21 @@ export type ZombieKey =
 /** A unit a player can play from the hand. */
 export type CardKey = PlantKey | ZombieKey;
 /**
- * Every unit that can stand on the lawn: the cards, and two that are never cards: the Bone Minion
- * (a zombie) and the rock of the Rock Wall spell (a plant: no attack, no merge, no bounty).
+ * The bosses (spec 8): the Brain Titan (a zombie, ends the plants' Backyard) and the Elder Oak (a
+ * plant, ends the zombies'). Never cards; a level brings one on through `MatchConfig.boss`.
  */
-export type UnitKey = CardKey | 'boneMinion' | 'rock';
+export type BossKey = 'brainTitan' | 'elderOak';
+/**
+ * How many lanes either side of its own a boss also stands in: its body's width (geometry, like
+ * `LANES`, not a tuning number). The Elder Oak, set in lane 2, stands in lanes 1–3: it blocks and is
+ * hit there as if it stood in each, and a lane-wide power or spell hits it once.
+ */
+export const BOSS_HALF_WIDTH: Record<BossKey, number> = { brainTitan: 0, elderOak: 1 };
+/**
+ * Every unit that can stand on the lawn: the cards, and those that are never cards: the Bone Minion
+ * (a zombie), the rock of the Rock Wall spell (a plant: no attack, no merge, no bounty) and the bosses.
+ */
+export type UnitKey = CardKey | 'boneMinion' | 'rock' | BossKey;
 /** The spells (spec 21), five a side. */
 export type PlantSpell = 'thunderbolt' | 'vines' | 'sunShower' | 'healingRain' | 'rockWall';
 export type ZombieSpell = 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise';
@@ -30,7 +41,7 @@ export type SpellKey = PlantSpell | ZombieSpell;
  * The area a spell covers: 0 none (not aimed), 1 the tapped tile, 2 a 2×2, 3 a 3×3 (see `spellArea`).
  */
 export type SpellSize = 0 | 1 | 2 | 3;
-export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot';
+export type ProjectileKind = 'pea' | 'brain' | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot' | 'acorn';
 /**
  * How a projectile travels. `straight` hits the first enemy it meets; `lobbed` arcs over everyone
  * and lands on the enemy it was aimed at; `piercing` hits each enemy it meets, up to a number.
@@ -60,6 +71,11 @@ export interface Unit {
   haste: number; // ticks left of Frenzy's haste, 0 = not hasted
   hasteCarry: number; // hasted timer countdown not yet taken, in 1/1000 of a tick; always whole
   hurt: number; // ticks left in which a Sun maker that took damage makes no Sun; 0 for everyone else
+  // A boss's attack patterns (see `src/sim/boss.ts`); all 0 for everyone else.
+  pattern: number; // which of its timed patterns comes next (an index into them, in table order)
+  patternTimer: number; // ticks until that pattern goes off; a slam winds up over its last `windupSeconds`
+  shieldLeft: number; // ticks left of its shield phase, 0 = no shield
+  phase: number; // how many of its shield health marks it has passed (0 = none yet)
 }
 
 export interface Projectile {
@@ -127,7 +143,19 @@ export interface MatchConfig {
   noEnergy: boolean;
   /** The side whose base cannot be hurt (no `baseDamaged`, no health lost), or null; only `'zombies'` is allowed (`checkLevel`). */
   invulnerableBase: Faction | null;
+  /**
+   * The boss of a boss level (only in mode `'boss'`, which needs one), on the lawn from the step of
+   * tick 0, after the prepared units: `key` on its own side (`faction`), in `lane` (the Elder Oak's
+   * middle lane, 1..3). The match ends the moment it falls, its foes winning. See `src/sim/boss.ts`.
+   */
+  boss: BossConfig | null;
 }
+
+/** See `MatchConfig.boss`. */
+export interface BossConfig { key: BossKey; faction: Faction; lane: number }
+
+/** What a boss can do (see `BossPattern` in `src/data/balance.ts`). */
+export type BossPatternKind = 'slam' | 'summon' | 'barrage' | 'shield';
 
 /** The level rules a match plays by (see `MatchConfig.mode`). */
 export type LevelMode = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';
@@ -167,7 +195,8 @@ export type CommandRejection =
   | 'recharging' | 'bad-lane' | 'bad-column' | 'occupied' | 'no-target' | 'wrong-type'
   | 'max-level' | 'not-yours' | 'plants-only' | 'hero-charging' | 'hero-off'
   | 'spell-charging' | 'spell-not-dealt' | 'spells-off'
-  | 'no-belt' | 'bad-slot'; // belt: this side has no belt; no card waits in that slot
+  | 'no-belt' | 'bad-slot' // belt: this side has no belt; no card waits in that slot
+  | 'boss'; // remove: a boss cannot be dug up
 
 export type SimEvent =
   | { type: 'commandRejected'; command: Command; reason: CommandRejection }
@@ -211,4 +240,10 @@ export type SimEvent =
   | { type: 'beltCard'; card: CardKey } // a card joined the end of the belt
   | { type: 'beltUsed'; slot: number } // that slot's card was played; the later ones moved down
   | { type: 'goalReached'; winner: Faction } // the clock ran out (survive, breakthrough, conveyor); matchEnded follows
+  // A boss's pattern: a slam's wind-up (`windup` true; `col` the tile column it will hit, in its lane
+  // and the two beside it) and then its strike, a summon, a barrage (its acorns follow as
+  // projectiles), a shield going up. `col` is null but for a slam.
+  | { type: 'bossPattern'; unitId: number; kind: BossPatternKind; lane: number; col: number | null; windup: boolean }
+  | { type: 'bossPhase'; unitId: number; phase: number } // the boss passed shield mark number `phase` (1, 2, …)
+  | { type: 'bossDefeated'; unitId: number; key: BossKey; faction: Faction } // the boss fell; matchEnded follows
   | { type: 'matchEnded'; winner: Faction | 'draw' };

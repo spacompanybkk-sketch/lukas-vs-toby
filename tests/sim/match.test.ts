@@ -22,7 +22,7 @@ describe('defaultConfig', () => {
       heroes: { plants: true, zombies: true },
       spells: { plants: 2, zombies: 2 },
       upgrades: { plants: {}, zombies: {} },
-      mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null,
+      mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null, boss: null,
     });
   });
 
