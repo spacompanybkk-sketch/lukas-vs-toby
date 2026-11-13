@@ -2,14 +2,15 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
 import type { UnitInfo } from '../data/units';
-import { grownHealth, tickAbilities } from './abilities';
+import { tickAbilities } from './abilities';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
-import { isStanding, levelScale, statsFor, upgradeScale } from './lookup';
+import { levelUp } from './levelUp';
+import { isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { spawnUnit } from './spawn';
 import { tickStatuses } from './status';
@@ -272,27 +273,14 @@ export class Match {
 
   /**
    * Carries out a merge that `check` has passed: pays and starts the card's recharge, then the
-   * target goes up one level. Its max health becomes `hp` times the balance table's `hp` level
-   * curve times its Marketplace multiplier (`upgradeScale`) (times `grownHealth`, so a Hot Topic keeps its stacks and what they give), rounded, and its health keeps its share of the max, rounded, at least 1 and never above
-   * the max: both stay whole even when a tuned table has fractional level multipliers. `spent`
-   * grows by the price (bounties pay a share of it). Position, timers and everything else stay.
+   * target goes up one level (see `levelUp`: max health by the level curve and Marketplace level,
+   * health keeps its share, `spent` grows by the price).
    */
   private merge(cmd: MergeCommand, events: SimEvent[]): void {
     const target = this.livingUnit(cmd.targetId);
     if (target === undefined) throw new Error(`merge passed check but unit ${cmd.targetId} is gone`);
     this.payFor(cmd.faction, cmd.unit);
-    const oldHp = target.hp;
-    const oldMaxHp = target.maxHp;
-    target.level += 1;
-    const stats = statsFor(this.balance, target.key);
-    const maxHp = Math.round(
-      stats.hp * levelScale(this.balance, target.faction, target.level, 'hp')
-      * upgradeScale(this.balance, this.state.config, target, 'hp') * grownHealth(stats, target),
-    );
-    target.maxHp = maxHp;
-    target.hp = Math.min(maxHp, Math.max(1, Math.round(maxHp * oldHp / oldMaxHp)));
-    target.spent += UNIT_INFO[cmd.unit].price;
-    events.push({ type: 'unitMerged', unitId: target.id, level: target.level });
+    levelUp(this.state, this.balance, target, events);
   }
 
   /**
