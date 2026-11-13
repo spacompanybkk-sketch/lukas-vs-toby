@@ -6,6 +6,7 @@ import { factionOf } from '../../data/units';
 import type { Faction, Flight, ProjectileKind, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
 import { BASE_STOP_X, COLS, MAX_LEVEL, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
+import { InstanceBatch } from '../fx/InstanceBatch';
 import { MATTE_PLASTIC } from '../look';
 import { BaseView } from '../models/bases';
 import {
@@ -128,6 +129,8 @@ const ROPE_SAG = 0.18;
 const ROPE_THICK = 0.085;
 const VOXEL = 1 / 16;
 const ROPE_COLOR = '#A8743E';
+/** Ropes the one rope batch can draw at once (a rope per tied plant). */
+const MAX_ROPES = 32;
 const ROPE_LIGHT = '#C99560';
 
 /** How hard each kind of blast is felt: a Cherry Bomber shakes the most (plan Task 5: 80 ms hit-stop). */
@@ -253,6 +256,8 @@ export class BattleView {
   private readonly ropes: Rope[] = [];
   private readonly ropeGeometry = ropeSegment();
   private readonly ropeMaterial = new MeshStandardMaterial(MATTE_PLASTIC);
+  /** Every rope's segments in one draw call, casting no shadow (the segments themselves are layer-less stand-ins). */
+  private readonly ropeBatch = new InstanceBatch(this.ropeGeometry, this.ropeMaterial, MAX_ROPES * ROPE_SEGMENTS, 'lasso-ropes');
   private readonly tokens: TokenView[] = [];
   private readonly graves: GraveView[] = [];
   private readonly blasts: PendingBlast[] = [];
@@ -294,7 +299,7 @@ export class BattleView {
     scene.add(this.bases.plants.group, this.bases.zombies.group, this.bars.mesh, this.marks.group, this.puddles.group);
     this.spells = new SpellFx(fx, fx.particles, { onFeel: (f) => this.onFeel(f) });
     this.heroFx = new HeroFx(fx, { onFeel: (f) => this.onFeel(f) });
-    scene.add(this.spells.group, this.heroFx.group);
+    scene.add(this.spells.group, this.heroFx.group, this.ropeBatch.mesh);
     this.rockHeight = new Box3().setFromObject(makeRock(0)).max.y;
     this.hooks = {
       mergePeak: (view) => this.mergePeak(view),
@@ -787,6 +792,7 @@ export class BattleView {
     this.rockPickMaterial.dispose();
     for (const rope of this.ropes) rope.group.removeFromParent();
     this.ropes.length = 0;
+    this.ropeBatch.dispose();
     this.ropeGeometry.dispose();
     this.ropeMaterial.dispose();
     for (const t of this.tokens) (t.active = false), t.object.removeFromParent();
@@ -1225,7 +1231,8 @@ export class BattleView {
       for (let i = 0; i < ROPE_SEGMENTS; i++) {
         const mesh = new Mesh(this.ropeGeometry, this.ropeMaterial);
         mesh.name = 'lasso-segment';
-        mesh.castShadow = true;
+        // Posed here, drawn by the rope batch: on no layer, so neither camera nor shadow draws it.
+        mesh.layers.disableAll();
         group.add(mesh);
         segments.push(mesh);
       }
@@ -1287,6 +1294,23 @@ export class BattleView {
         seg.scale.set(length + 0.02, 1, 1);
       }
     }
+    const batch = this.ropeBatch;
+    batch.begin();
+    for (let r = 0; r < this.ropes.length; r++) {
+      const rope = this.ropes[r] as Rope;
+      if (!rope.active) continue;
+      rope.group.updateMatrixWorld(true);
+      for (let i = 0; i < ROPE_SEGMENTS; i++) {
+        const seg = rope.segments[i] as Mesh;
+        if (seg.visible) batch.add(seg);
+      }
+    }
+    batch.end();
+  }
+
+  /** How many draw calls the lasso ropes take now (all of them share one). */
+  get ropeDrawCalls(): number {
+    return this.ropeBatch.count > 0 ? 1 : 0;
   }
 
   private startTint(): void {
