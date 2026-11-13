@@ -395,6 +395,18 @@ describe('the zombies\' spells', () => {
     expect(z.haste).toBe(0);
   });
 
+  it('Frenzy: the haste carry is cleared on the tick the haste ends, even while the zombie is stunned', () => {
+    const m = ready('frenzy');
+    const z = spawn(m, 'brainEater', 2, 9.2);
+    z.meleeTimer = 30;
+    m.step([cast('frenzy', 2, 9)]); // the cast step is hasted: half a tick of carry
+    expect(z.hasteCarry).toBe(500);
+    z.stun = 400; // stunned: the carry is no longer counted down
+    steps(m, 179);
+    expect(z.haste).toBe(0);
+    expect(z.hasteCarry).toBe(0);
+  });
+
   it('Grave Rise: three level-1 Bone Minions in the tapped lane at the column\'s centre, unowned, spent 0', () => {
     const b = classicBalance();
     b.units.boneMinion = cloneBalance(BALANCE).units.boneMinion;

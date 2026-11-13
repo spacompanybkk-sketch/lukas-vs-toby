@@ -44,7 +44,7 @@ export function applyStatus(
 /**
  * Step stage, after projectiles and before deaths: every status on every unit, in ascending id and
  * the order stun, blind, tied, poison, burn, haste, counts down by one, and `statusEnded` is emitted when
- * one reaches 0 (a poison or burn then forgets its dps). Before counting down, a poison or burn
+ * one reaches 0 (a poison or burn then forgets its dps, a haste its carry). Before counting down, a poison or burn
  * deals its dps through `damageUnit`, ignoring armor, on every tick that is a whole second
  * (`tick % 30 === 0`), so `n` seconds of it deal `n` times its dps whenever it was put on. A unit
  * it brings to 0 is removed by `resolveDeaths` like any other: cause `'damage'`, bounty paid.
@@ -63,6 +63,7 @@ export function tickStatuses(s: SimState, b: Balance, events: SimEvent[]): void 
       if (u[kind] > 0) continue;
       if (kind === 'poison') u.poisonDps = 0;
       if (kind === 'burn') u.burnDps = 0;
+      if (kind === 'haste') u.hasteCarry = 0; // also when it cannot act and the economy skips it
       events.push({ type: 'statusEnded', unitId: u.id, status: kind });
     }
   }
