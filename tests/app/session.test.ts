@@ -522,6 +522,17 @@ describe('a fake or test cloud keeps to its own device keys', () => {
     live.dispose();
   });
 
+  it('a reconfigure without a mode keeps the page mode (a test hook swapping the cloud stays on lvt2f_)', async () => {
+    const shared = new MemoryStorage();
+    const p = new PlayerSession();
+    p.configure({ cloud: createFakeCloud(db), storage: shared, now: clock.now, window: null, document: null, mode: 'fake' });
+    p.configure({ cloud: createFakeCloud(db), storage: shared, now: clock.now, window: null, document: null });
+    asSave(await p.create('Mia', 'sunflower', '123'));
+    p.dispose();
+    expect(shared.getItem('lvt2f_save_p03')).not.toBeNull();
+    expect(shared.getItem('lvt2_save_p03')).toBeNull();
+  });
+
   it('test: under lvt2t_', async () => {
     const shared = new MemoryStorage();
     const t = new PlayerSession();
