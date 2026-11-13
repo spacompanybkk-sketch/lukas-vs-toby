@@ -241,7 +241,7 @@ function rockPick(grid: Grid, faction: Faction): Pick | null {
 }
 
 /**
- * Three minions in the lane where its zombies push hardest (most zombie health), or failing that
+ * Its minions (Grave Rise's `count`) in the lane where its zombies push hardest (most zombie health), or failing that
  * the lane with the fewest plants, just right of that lane's front plant (never left of `minCol`).
  */
 function gravePick(grid: Grid, faction: Faction, minCol: number): Pick {
