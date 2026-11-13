@@ -6,7 +6,9 @@ import type { SimState } from '../../src/sim/types';
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
  * layout documented in src/sim/hash.ts (standard FNV-1a over 2254 bytes). Re-pinned in phase 3
  * Task 8 (levels) when units gained `stunFatigue` (a boss's stun resistance; 8 bytes per unit, after
- * `phase`), from the code itself - not cross-checked by a second implementation; before that it was
+ * `phase`), cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()` (3852161195 over 2254 bytes; the same script without `stunFatigue` gives the
+ * earlier 1176279507 over 2238 bytes); before that it was
  * 1176279507 over 2238 bytes, re-pinned in phase 3 Task 7a (Free Play) when the setup gained `endless` and the state `wave`, `waveTimer`, `clock` and
  * `incoming` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
  * JSON of `makeState()`; the same script gives the earlier 2646483390 over 2057 bytes with the new

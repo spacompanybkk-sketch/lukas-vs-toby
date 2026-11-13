@@ -70,6 +70,10 @@ export function levelConfig(
     .map((w) => ({ tick: seconds(w.at), ...spawn(w) }))
     .sort((a, b2) => a.tick - b2.tick); // stable: arrivals on the same tick keep the level's order
 
+  for (const [side, hp] of Object.entries(def.baseHp ?? {})) {
+    if (!Number.isInteger(hp) || (hp as number) < 1) throw new RangeError(`level ${def.id}: the ${side} base needs a whole number of health from 1, not ${String(hp)}`);
+  }
+
   const startEnergy = { ...base.startEnergy };
   if (def.startEnergy !== null) startEnergy[player] = def.startEnergy;
 

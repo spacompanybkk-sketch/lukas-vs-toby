@@ -90,8 +90,9 @@ describe('the Backyard (Task 8 data)', () => {
     expect(['p1-3', 'p1-6', 'z1-3', 'z1-6'].map(secs)).toEqual([90, 150, 120, 150]);
   });
 
-  it('a level\'s own base health reaches the match (and the other side keeps the balance\'s)', () => {
+  it('a level\'s own base health is a whole number from 1 and reaches the match (the other side keeps the balance\'s)', () => {
     for (const l of BACKYARD) {
+      for (const hp of Object.values(l.baseHp ?? {})) expect(Number.isInteger(hp) && hp >= 1, `${l.id} ${hp}`).toBe(true);
       const c = levelConfig(l, standInSave('average', l), 1);
       for (const side of ['plants', 'zombies'] as const) expect(c.baseHp[side], `${l.id} ${side}`).toBe(l.baseHp?.[side] ?? BALANCE.baseHp);
     }

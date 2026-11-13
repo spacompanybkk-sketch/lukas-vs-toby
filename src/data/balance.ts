@@ -388,30 +388,30 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   },
   bosses: {
     brainTitan: {
-      recharge: 0, hp: 3100, armor: 0, speed: 0.1,
-      melee: { damage: 60, interval: 1.5, reach: 0.6 },
+      recharge: 0, hp: 3800, armor: 0, speed: 0.1,
+      melee: { damage: 40, interval: 1.5, reach: 0.6 },
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [
         { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
-        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
+        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 2, level: 1 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 1, bouncesStraight: true },
       ],
     },
     elderOak: {
-      recharge: 0, hp: 4000, armor: 0, speed: 0,
+      recharge: 0, hp: 4200, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
-        { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
-        { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        { kind: 'barrage', everySeconds: 10, count: 3, damage: 230, splash: 0.75, speed: 5 },
+        { kind: 'summon', everySeconds: 10, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
       ],
     },
   },
   endless: {
-    // Task 8, measured (tools/levels.ts --free, 200 seeds, three blocks): survive, the wave reached
-    // by the beginner / average / expert 7 / 12-13 / 25-27; breakthrough, gardens broken 3 / 2-3 / 3
-    // (garden 1 at 1500, not the battle's 6000: the review found garden 1 unbreakable).
-    budgetBase: 250, budgetStep: 68, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
+    // Task 8, measured (tools/levels.ts --free, 200 seeds, four blocks): survive, the wave reached
+    // by the beginner / average / expert 7 / 10-11 / 27-33; breakthrough, gardens broken about 3 for
+    // every stand-in (garden 1 at 1500, not the battle's 6000: the review found it unbreakable).
+    budgetBase: 250, budgetStep: 65, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
     clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
     spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },

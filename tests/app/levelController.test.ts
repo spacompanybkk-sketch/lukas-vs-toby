@@ -158,6 +158,7 @@ describe('the belt', () => {
 describe('the big wave cue', () => {
   it('each unit of a flagged wave cues its lane as it comes on; the trickle before does not', () => {
     const c = level('p1-6');
+    c.match.state.baseHp.plants = 1e6; // nobody defends here: the base must outlast the trickle to see the flag
     const cues: { lane: number; n: number }[] = [];
     c.levelHud.incoming.subscribe((v) => { if (v !== null) cues.push({ lane: v.lane, n: v.n }); });
     for (let i = 0; i < seconds(115); i++) c.step();

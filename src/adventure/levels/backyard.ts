@@ -44,14 +44,14 @@ const PLANTS: LevelDef[] = [
     // Teaches: Sunflowers pay for more Peashooters; the hero's button lights up. Brain Eaters in
     // two lanes (1 and 3), the first after 20 s, a pair now and then.
     ...base('p1-2', 2), side: 'plants', kind: 'battle', cards: ['peashooter', 'sunflower'],
-    baseHp: { zombies: 2500 },
-    waves: [...trickle('brainEater', 20, 9, 16, [1, 3]), ...flag('brainEater', 75, [1, 3]), ...flag('brainEater', 130, [1, 3])],
+    baseHp: { plants: 12000, zombies: 2500 },
+    waves: [...trickle('brainEater', 20, 9, 16, [1, 3]), ...flag('brainEater', 75, [1, 3])],
   },
   {
     // Teaches: the Walnut Bomb holds a lane while the Peashooters work. 90 s of waves in lanes
     // 1–3, a flag wave at the end. Unlocks the Potato Mine.
     ...base('p1-3', 3), side: 'plants', kind: 'survive', cards: ['peashooter', 'sunflower', 'walnutBomb'],
-    seconds: 90, baseHp: { plants: 2500 },
+    seconds: 90, baseHp: { plants: 4500 },
     waves: [...trickle('brainEater', 20, 6, 9, [2, 1, 3]), ...flag('brainEater', 72, [1, 2, 3, 2])],
     unlocks: 'potatoMine',
   },
@@ -59,7 +59,7 @@ const PLANTS: LevelDef[] = [
     // Tests: the four cards together against a real (Easy) computer; first spells.
     ...base('p1-4', 4), side: 'plants', kind: 'battle', cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine'],
     baseHp: { zombies: 3000 },
-    opponent: { skill: 'easy', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior'], incomeScale: 0.6 },
+    opponent: { skill: 'easy', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior'], incomeScale: 0.5 },
     spells: true,
   },
   {
@@ -67,7 +67,7 @@ const PLANTS: LevelDef[] = [
     // a mine for the next one. Scripted waves in all five lanes for two minutes.
     ...base('p1-5', 5), side: 'plants', kind: 'conveyor', cards: ['peashooter', 'walnutBomb', 'potatoMine'],
     belt: { everySeconds: 5, cards: ['peashooter', 'walnutBomb', 'potatoMine'] },
-    seconds: 120, baseHp: { plants: 4000 },
+    seconds: 120, baseHp: { plants: 6000 },
     waves: [...trickle('brainEater', 15, 7, 12, [2, 0, 4, 1, 3]), ...trickle('veryFastWalker', 55, 14, 3, [1, 3, 0]), ...flag('brainEater', 100, [0, 2, 4])],
     spells: true,
   },
@@ -75,19 +75,20 @@ const PLANTS: LevelDef[] = [
     // Tests: a full defence for 150 s, ending with a flag wave of Skeleton Warriors in every lane.
     // Unlocks the Kernel-pult.
     ...base('p1-6', 6), side: 'plants', kind: 'survive', cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine'],
-    seconds: 150, baseHp: { plants: 4000 },
+    seconds: 150, baseHp: { plants: 3500 },
     waves: [
-      ...trickle('brainEater', 20, 8, 12, [2, 1, 3, 0, 4]),
+      ...trickle('brainEater', 20, 7, 14, [2, 1, 3, 0, 4]),
       ...flag('skeletonWarrior', 120, [0, 1, 2, 3, 4]),
     ],
     spells: true, unlocks: 'kernelPult',
   },
   {
-    // Tests: everything against the Medium computer.
+    // Tests: everything against the Medium computer's choices - on a quarter of the zombies' usual
+    // income (×0.25), so it plays well but sends little.
     ...base('p1-7', 7), side: 'plants', kind: 'battle',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
     baseHp: { zombies: 3000 },
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'], incomeScale: 0.3 },
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'], incomeScale: 0.25 },
     spells: true,
   },
   {
@@ -96,7 +97,7 @@ const PLANTS: LevelDef[] = [
     ...base('p1-8', 8), side: 'plants', kind: 'boss',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
     boss: { key: 'brainTitan', lane: 2 },
-    waves: trickle('brainEater', 25, 12, 14, [0, 4, 1, 3]),
+    waves: trickle('brainEater', 30, 16, 9, [0, 4, 1, 3]),
     spells: true,
   },
 ];
@@ -113,7 +114,7 @@ const ZOMBIES: LevelDef[] = [
     // Teaches: the Very Fast Walker runs past where nothing shoots; the hero's button lights up.
     // Peashooters guard lanes 1 and 3 and more grow there now and then; the other lanes are open.
     ...base('z1-2', 2), side: 'zombies', kind: 'battle', cards: ['brainEater', 'veryFastWalker'],
-    baseHp: { plants: 3500 },
+    baseHp: { plants: 3500, zombies: 14000 },
     prepared: garden('peashooter', [[1, 3], [3, 3]]),
     waves: regrow('peashooter', [[30, 1, 2], [30, 3, 2], [60, 1, 1], [60, 3, 1], [90, 1, 4], [90, 3, 4], [120, 1, 0], [120, 3, 0]]),
   },
@@ -121,7 +122,7 @@ const ZOMBIES: LevelDef[] = [
     // Teaches: a Skeleton Warrior walks in front and takes the peas. Crack a small garden (lanes
     // 1 and 3) in two minutes. Unlocks the Desert Zombie.
     ...base('z1-3', 3), side: 'zombies', kind: 'breakthrough', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior'],
-    seconds: 120, baseHp: { plants: 1250 },
+    seconds: 120, baseHp: { plants: 1000 },
     prepared: garden('peashooter', [[1, 2], [1, 3], [3, 2], [3, 3]]).concat(garden('walnutBomb', [[1, 5], [3, 5]])),
     unlocks: 'desertZombie',
   },
@@ -139,7 +140,7 @@ const ZOMBIES: LevelDef[] = [
     ...base('z1-5', 5), side: 'zombies', kind: 'conveyor',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'],
     belt: { everySeconds: 5, cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'] },
-    seconds: 150, baseHp: { plants: 5000, zombies: 10000 },
+    seconds: 150, baseHp: { plants: 4600, zombies: 10000 },
     prepared: garden('peashooter', [[0, 3], [1, 2], [2, 3], [3, 2], [4, 3]]),
     waves: regrow('peashooter', [[40, 1, 1], [40, 3, 1], [80, 0, 1], [80, 4, 1], [120, 2, 1], [120, 1, 0]]),
     spells: true,
@@ -148,16 +149,17 @@ const ZOMBIES: LevelDef[] = [
     // Tests: break through a wall of Walnut Bombs (their blasts!) in 150 s. Unlocks the Skeleton Archer.
     ...base('z1-6', 6), side: 'zombies', kind: 'breakthrough',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'],
-    seconds: 150, baseHp: { plants: 500 },
+    seconds: 150, baseHp: { plants: 600 },
     prepared: garden('walnutBomb', [[0, 5], [1, 5], [2, 5], [3, 5], [4, 5]]).concat(garden('peashooter', [[0, 2], [2, 2], [4, 2]])),
     spells: true, unlocks: 'skeletonArcher',
   },
   {
-    // Tests: everything against the Medium computer.
+    // Tests: everything against the Medium computer's choices - on ×0.4 of the plants' income and a
+    // 2800 base, so it plays well but builds slowly.
     ...base('z1-7', 7), side: 'zombies', kind: 'battle',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'],
-    baseHp: { plants: 3500 },
-    opponent: { skill: 'medium', cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine'], incomeScale: 0.7 },
+    baseHp: { plants: 2800 },
+    opponent: { skill: 'medium', cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine'], incomeScale: 0.4 },
     spells: true,
   },
   {
