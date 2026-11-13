@@ -300,12 +300,12 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   spells: {
     // Task 8b: felt and equal. Each one, alone against a side with none, gives its side about +12
     // points of Medium v Medium (band 8-16, 600 seeds); rarer and big rather than frequent and tiny.
-    thunderbolt: { cooldown: 120, firstReady: 45, size: 2, damage: 200 },
+    thunderbolt: { cooldown: 150, firstReady: 45, size: 2, damage: 300 },
     vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 10 },
     sunShower: { cooldown: 90, firstReady: 45, size: 0, amount: 50 },
     healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 150 },
     rockWall: { cooldown: 60, firstReady: 45, size: 1, seconds: 15 }, // the rock's health: units.rock
-    meteor: { cooldown: 120, firstReady: 45, size: 2, damage: 60 },
+    meteor: { cooldown: 180, firstReady: 90, size: 2, damage: 150 },
     fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 7 },
     brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 100 },
     frenzy: { cooldown: 75, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
