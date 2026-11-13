@@ -313,6 +313,26 @@ export class PlayerSession {
     this.d.sync.logout();
   }
 
+  /** How long logging out waits for an unsent save to reach the cloud. */
+  static readonly LOGOUT_WAIT_MS = 2000;
+
+  /**
+   * Logs out after pushing any unsent change to the cloud, waiting at most `waitMs`; logs out
+   * regardless (the device copy keeps the change and is pushed at the next log-in).
+   */
+  async logoutAfterSaving(waitMs = PlayerSession.LOGOUT_WAIT_MS): Promise<void> {
+    const { sync } = this.d;
+    if (sync.save.peek() !== null && sync.state.peek() !== 'synced') {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        sync.flush().catch(() => {}),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, waitMs); }),
+      ]);
+      clearTimeout(timer);
+    }
+    sync.logout();
+  }
+
   /** Changes the logged-in player's save (device at once, cloud as soon as it can). */
   update(fn: (s: Save) => Save): void {
     this.d.sync.update(fn);

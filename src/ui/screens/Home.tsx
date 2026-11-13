@@ -76,8 +76,8 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
         type="button" data-action="logout" aria-label="Log out" class="btn btn--square pal-wood home__door"
         onClick={() => {
           uiSound('click');
-          session.logout();
-          go({ name: 'players' });
+          // An unsent save goes to the cloud first (at most a moment), then out regardless.
+          void session.logoutAfterSaving().then(() => go({ name: 'players' }));
         }}
       >
         <PixelIcon art={DOOR} class="home__door-icon" />

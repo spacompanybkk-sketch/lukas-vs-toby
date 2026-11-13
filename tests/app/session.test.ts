@@ -335,6 +335,31 @@ describe('update', () => {
     expect(s.buy('peashooter')).toBe('no-player');
   });
 
+  it('logging out pushes an unsent save first', async () => {
+    asSave(await s.create('Mia', 'sunflower', '123'));
+    db.offline = true;
+    s.update((save) => ({ ...save, coins: 33 }));
+    await s.flush();
+    db.offline = false;
+    await s.logoutAfterSaving();
+    expect(s.player.value).toBeNull();
+    const other = deviceSession(new MemoryStorage());
+    expect(asSave(await other.login('p03', '123')).coins).toBe(33);
+    other.dispose();
+  });
+
+  it('logging out waits only a moment when the cloud hangs, then logs out anyway (the device keeps it)', async () => {
+    asSave(await s.create('Mia', 'sunflower', '123'));
+    db.hang = true;
+    s.update((save) => ({ ...save, coins: 34 }));
+    const started = Date.now();
+    await s.logoutAfterSaving(50);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(s.player.value).toBeNull();
+    expect(loadLocal('p03', storage)?.coins).toBe(34);
+    db.hang = false;
+  });
+
   it('logout forgets the player', async () => {
     asSave(await s.create('Mia', 'sunflower', '123'));
     s.logout();
