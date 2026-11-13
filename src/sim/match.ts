@@ -160,12 +160,14 @@ export class Match {
     tickEconomy(s, b, events);
     tickMovement(s, b);
     tickAttacks(s, b, events);
-    tickBaseDefense(s, b, events);
+    // Zombies the base's strike felled this step: resolveDeaths gives them cause 'base', no bounty.
+    // Step-local, so nothing outside the state carries over from one step (or match) to the next.
+    const felled = tickBaseDefense(s, b, events);
     tickAbilities(s, b, events);
     tickProjectiles(s, b, events);
     tickHazards(s, b, events);
     tickStatuses(s, b, events);
-    resolveDeaths(s, b, events);
+    resolveDeaths(s, b, events, felled);
     tickEndgame(s, b, events);
     s.tick += 1;
     return events;

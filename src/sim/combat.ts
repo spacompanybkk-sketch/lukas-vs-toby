@@ -124,31 +124,29 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
  * tick it reaches BASE_STOP_X (it walked that tick, so it is not `blocked` yet). A zombie brought
  * to 0 here (the strike was its killing blow; one already down is never struck) is removed by
  * `resolveDeaths`: with `baseDefense.paysBounty` false, cause `'base'` and no bounty, otherwise like any
- * other, cause `'damage'` and a bounty to the plants.
+ * other, cause `'damage'` and a bounty to the plants. Returns those it felled with `paysBounty`
+ * false, for the step to hand to `resolveDeaths` (step-local: nothing outside the state remembers it).
  * Damage 0 switches the stage off: it then changes nothing and emits nothing. The timers are only
  * read and reset here; `tickEconomy` counts them down.
  */
-export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): void {
+export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): ReadonlySet<Unit> {
   const { damage, interval, paysBounty } = b.baseDefense;
-  if (!(damage > 0)) return;
+  const felled = new Set<Unit>();
+  if (!(damage > 0)) return felled;
   for (let lane = 0; lane < LANES; lane++) {
     if (s.baseDefenseTimers[lane] !== 0) continue;
     const target = biterAtBase(s, lane);
     if (target === null) continue;
     events.push({ type: 'baseStruck', lane, targetId: target.id });
     damageUnit(s, b, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
-    if (!paysBounty && !isStanding(target)) felledByBase.add(target); // this strike was the killing blow
+    if (!paysBounty && !isStanding(target)) felled.add(target); // this strike was the killing blow
     s.baseDefenseTimers[lane] = seconds(interval);
   }
+  return felled;
 }
 
-/**
- * Zombies the plant base's strike brought to 0 this tick while `baseDefense.paysBounty` is false;
- * `resolveDeaths` removes them with cause `'base'` and no bounty. Only ever holds units that are
- * down, which nothing can hit or heal again, so it is emptied in the same tick and never needs to
- * be part of the state, its hash or a snapshot.
- */
-const felledByBase = new WeakSet<Unit>();
+/** No unit felled by the plant base this step (the default for `resolveDeaths`). */
+const NONE_FELLED: ReadonlySet<Unit> = new Set();
 
 /** The lowest-id zombie in `lane` that is biting the plant base: standing, blocked, at BASE_STOP_X. */
 function biterAtBase(s: SimState, lane: number): Unit | null {
@@ -384,7 +382,9 @@ function hitBase(s: SimState, p: Projectile, side: Faction, x: number, amount: n
  * explodes, damaging every standing enemy within its radius. Repeats until everyone left is
  * standing, so blasts can chain within one step.
  */
-export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void {
+export function resolveDeaths(
+  s: SimState, b: Balance, events: SimEvent[], felledByBase: ReadonlySet<Unit> = NONE_FELLED,
+): void {
   // Units already down when this stage starts fell to attacks or projectiles. Blasts are the only
   // damage dealt in here and they skip units already down, so everyone who falls in a later round
   // took their last damage from a blast.
@@ -398,7 +398,7 @@ export function resolveDeaths(s: SimState, b: Balance, events: SimEvent[]): void
     }
     s.units = standing;
     for (const u of dying) {
-      const byBase = felledByBase.delete(u);
+      const byBase = felledByBase.has(u);
       events.push({
         type: 'unitDied', unitId: u.id, key: u.key, faction: u.faction, lane: u.lane, x: u.x, level: u.level,
         cause: byBase ? 'base' : cause,
