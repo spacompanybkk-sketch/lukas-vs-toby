@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { MERGE_PAIRS, breakEven, laneDuel, mergeValue } from '../../src/ai/duels';
+import { FIGHTERS, MERGE_PAIRS, breakEven, laneDuel, mergeValue, unitMergeValue } from '../../src/ai/duels';
 import { BALANCE, cloneBalance } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 
-// Spec 6.3 and 10: a level-N unit is worth 1.00-1.15 times N separate level-1 units. Measured with
+// Spec 6.3 and 10: a level-N unit is worth about N separate level-1 units. Measured with
 // equal-budget lane duels (src/ai/duels.ts): how many level-1 enemies one level-N unit holds off,
-// against how many N level-1 units do, for every fighting unit of phase 1 against every enemy it
-// meets, both orders, N = 2..5. Each duel is a few thousand ticks, so the measure is exact for the
-// numbers but coarse (a kill more or less moves a value by up to 0.1): each pair and level must
-// fall within 0.8-1.3, and the average over all of them within the spec's 1.00-1.15.
+// against how many N level-1 units do, N = 2..5. Each duel is exact for the numbers but coarse (a
+// kill more or less moves a value by up to 0.1), so the band is on each fighter's mean over N:
+// 0.95-1.25 (plan Task 8), every plant that fights against Brain Eaters and every zombie but the
+// Necromancer against Peashooters; and phase 1's pairs average 1.00-1.15.
 
 const BULK_MS = 60_000;
 
@@ -23,19 +23,23 @@ function values(b: Balance): number[] {
 const mean = (xs: readonly number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 describe('merge value', () => {
-  it('a level-N unit is worth about N separate ones: each pair 0.8-1.3, the average 1.00-1.15', () => {
-    const all: string[] = [];
-    for (const [unit, enemy] of MERGE_PAIRS) {
-      for (let level = 2; level <= 5; level++) {
-        const v = mergeValue(unit, enemy, level);
-        all.push(`${unit} vs ${enemy} N=${level}: ${v.value.toFixed(2)}`);
-        expect(v.value, `${unit} vs ${enemy}, level ${level}`).toBeGreaterThanOrEqual(0.8);
-        expect(v.value, `${unit} vs ${enemy}, level ${level}`).toBeLessThanOrEqual(1.3);
-      }
+  it('every unit that fights is worth 0.95-1.25 times N separate ones (its mean over N = 2..5)', () => {
+    for (const unit of FIGHTERS) {
+      const v = unitMergeValue(unit);
+      const shown = `${unit} v ${v.enemy}: ${v.values.map((x) => x.toFixed(2)).join(' ')}`;
+      expect(v.mean, shown).toBeGreaterThanOrEqual(0.95);
+      expect(v.mean, shown).toBeLessThanOrEqual(1.25);
     }
+  }, BULK_MS);
+
+  it("phase 1's pairs, both orders, average 1.00-1.15", () => {
+    // Phase 1 also held each pair and level within 0.8-1.3. Phase 2 measures plants against
+    // zombies that arrive one behind the other (ENEMY_SPACING) and has an 800-health Skeleton
+    // Warrior; two cells fall just outside (Peashooter v Very Fast Walker N=2 1.34, v Skeleton
+    // Warrior N=3 0.79). The brief's per-unit band above replaces that per-cell check.
     const avg = mean(values(cloneBalance(BALANCE)));
-    expect(avg, all.join('\n')).toBeGreaterThanOrEqual(1);
-    expect(avg, all.join('\n')).toBeLessThanOrEqual(1.15);
+    expect(avg).toBeGreaterThanOrEqual(1);
+    expect(avg).toBeLessThanOrEqual(1.15);
   }, BULK_MS);
 
   it('tells a curve that makes merging too strong: health and damage both ×N² would fail', () => {

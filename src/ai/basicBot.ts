@@ -16,6 +16,7 @@ import type { Bot, Skill } from './bot';
 import { randomLegal } from './lawn';
 import type { BotRng } from './lawn';
 import { plantMove } from './plantStrategy';
+import { powerMove } from './powers';
 import { newZombieMemory, zombieMove } from './zombieStrategy';
 
 export interface SkillTable {
@@ -27,6 +28,8 @@ export interface SkillTable {
   readonly sunflowers: number;
   /** Plants: the level it merges its Sunflowers up to once it has them all (1: no merging). */
   readonly sunflowerLevel: number;
+  /** Plants: the level it merges each Sunflower up to before it plants another (1: none). */
+  readonly sunflowerFloor: number;
   /** Plants: how much more stopping power than the zombies' health it wants in a lane. */
   readonly defenceMargin: number;
   /** Plants: energy kept back for emergencies before it buys economy or spare Peashooters. */
@@ -44,16 +47,16 @@ export interface SkillTable {
 export type SkillTables = Readonly<Record<Faction, Readonly<Record<Skill, SkillTable>>>>;
 
 /** The fields a side does not use, filled in so every table has the same shape. */
-const UNUSED = { sunflowers: 0, sunflowerLevel: 1, defenceMargin: 1, reserve: 0, mergeSpareSeconds: 0, tankAt: 0 };
+const UNUSED = { sunflowers: 0, sunflowerLevel: 1, sunflowerFloor: 1, defenceMargin: 1, reserve: 0, mergeSpareSeconds: 0, tankAt: 0 };
 
 export const SKILLS: SkillTables = {
   plants: {
     easy: { ...UNUSED, thinkEvery: 210, randomShare: 0.2, sunflowers: 1, sunflowerLevel: 1, defenceMargin: 1 },
     medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 4, sunflowerLevel: 3, defenceMargin: 1 },
-    hard: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 5, sunflowerLevel: 4, defenceMargin: 2 },
+    hard: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 5, sunflowerLevel: 4, sunflowerFloor: 2, defenceMargin: 2 },
   },
   zombies: {
-    easy: { ...UNUSED, thinkEvery: 60, randomShare: 0.6, mergeSpareSeconds: 0, tankAt: 2 },
+    easy: { ...UNUSED, thinkEvery: 120, randomShare: 0.85, mergeSpareSeconds: 0, tankAt: 2 },
     medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, mergeSpareSeconds: 0, tankAt: 2 },
     hard: { ...UNUSED, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2 },
   },
@@ -74,10 +77,24 @@ export function createBasicBot(
   // Which tick of each interval it acts on: a seeded phase, so two bots rarely move in lockstep.
   const phase = randomInt(rng, table.thinkEvery);
 
-  const decide = (match: Match): Command | null => {
-    if (table.randomShare > 0 && nextRandom(rng) < table.randomShare) return randomLegal(match, faction, rng);
-    if (faction === 'plants') return plantMove(match, rng, table);
-    return zombieMove(match, rng, table, memory);
+  /**
+   * One think: a random legal card play (a mistake), or the hero or a spell where it pays plus the
+   * strategy's card play. A power never takes the card play's place: it costs no energy, so using
+   * it should not delay the next card.
+   */
+  const decide = (match: Match): Command[] => {
+    if (table.randomShare > 0 && nextRandom(rng) < table.randomShare) {
+      const cmd = randomLegal(match, faction, rng);
+      return cmd === null ? [] : [cmd];
+    }
+    const out: Command[] = [];
+    const power = powerMove(match, faction);
+    if (power !== null) out.push(power);
+    const card = faction === 'plants' ? plantMove(match, rng, table) : zombieMove(match, rng, table, memory);
+    // A Rock Wall takes its tile at once, so a plant for that same tile would be refused.
+    const clash = power?.type === 'spell' && card?.type === 'place' && card.lane === power.lane && card.col === power.col;
+    if (card !== null && !clash) out.push(card);
+    return out;
   };
 
   return {
@@ -86,8 +103,7 @@ export function createBasicBot(
       const s = match.state;
       // A finished match gets no thought at all, so it draws no random numbers either.
       if (s.winner !== null || s.tick % table.thinkEvery !== phase) return [];
-      const cmd = decide(match);
-      return cmd === null ? [] : [cmd];
+      return decide(match);
     },
   };
 }

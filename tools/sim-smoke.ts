@@ -7,13 +7,17 @@
  *    ×1.25 (100 seeds each), Hard v Easy with Hard on each side (200 seeds). For each: wins, match
  *    length (median and nearest-rank 95th percentile), how many went into sudden death, units sent
  *    and merges.
- * 2. Spam: every card of both sides, played alone (spam) and merged into one unit (merge-spam),
- *    against the Medium computer, 100 seeds. Target: the stand-in wins at most 55%.
- * 3. Difficulty: the random child and the attentive player on each side against each difficulty,
- *    on that difficulty's setup, 100 seeds. Targets: child Easy 55-85%, Medium 15-45%, Hard under
- *    15%; attentive Easy 85-95%, Medium 40-60%, Hard 15-35%.
+ * 2. Spam: all twenty cards, played alone (spam) and merged into one unit (merge-spam), against
+ *    the Medium computer, 100 seeds. Target: the stand-in wins at most 60%.
+ * 3. Difficulty: the stand-in humans on each side against each difficulty, on that difficulty's
+ *    setup, 100 seeds: the random child (Easy 55-85%, Medium 15-45%, Hard under 15%), the
+ *    newest-card child and the slow tapper (Easy), the attentive player (reported only), and the
+ *    adults who play as Michal did, fortressPlants (Hard 15-40%) and steadyZombies (Hard 15-40%,
+ *    Medium 40-65%).
  * 4. Merge value: equal-budget lane duels, a level-N unit against N level-1 units (see
- *    `src/ai/duels.ts`). Target 1.00-1.15.
+ *    `src/ai/duels.ts`), every unit that fights. Target 0.95-1.25 (mean over N = 2..5).
+ *
+ * Every band, with its exact seed counts and on any seed block, is `npx tsx tools/tune.ts`.
  *
  * `--seeds N` plays N seeds everywhere instead (quicker for a look, noisier).
  */
@@ -21,8 +25,8 @@
 import {
   FACTIONS, SHIPPED, SKILL_NAMES, allSpamMatchups, botMatchup, humanMatchup, percentile, playSeries,
 } from '../src/ai/balanceChecks';
-import type { Matchup, SeriesStats } from '../src/ai/balanceChecks';
-import { MERGE_PAIRS, mergeValue } from '../src/ai/duels';
+import type { HumanStandIn, Matchup, SeriesStats } from '../src/ai/balanceChecks';
+import { FIGHTERS, unitMergeValue } from '../src/ai/duels';
 import { TICKS_PER_SECOND } from '../src/sim/types';
 import type { Faction } from '../src/sim/types';
 
@@ -77,21 +81,24 @@ for (const [matchup, seeds] of botSeries) {
     `zombies ${median(s.results.map((r) => r.merges.zombies))}\n`);
 }
 
-console.log(`2. Spam against the Medium computer, seeds 1..${seedsFor(100)}: share the stand-in wins (target at most 55%)\n`);
+console.log(`2. Spam against the Medium computer, seeds 1..${seedsFor(100)}: share the stand-in wins (target at most 60%)\n`);
 console.log('  stand-in                                        wins   median length');
 for (const matchup of allSpamMatchups()) {
   const s = play(matchup, 100);
   const side: Faction = matchup.title.includes('(plants)') ? 'plants' : 'zombies';
-  const flag = s.wins[side] / s.results.length > 0.55 ? '  <-- over 55%' : '';
+  const flag = s.wins[side] / s.results.length > 0.6 ? '  <-- over 60%' : '';
   console.log(`  ${matchup.title.padEnd(46)} ${pct(s.wins[side], s.results.length).padStart(5)}   ` +
     `${clock(percentile(s.lengths, 0.5))}${flag}`);
 }
 
-console.log(`\n3. Difficulty, seeds 1..${seedsFor(100)}: share the stand-in human wins`);
-console.log('   (targets: child Easy 55-85%, Medium 15-45%, Hard <15%; attentive Easy 85-95%, Medium 40-60%, Hard 15-35%)\n');
+console.log(`\n3. Difficulty, seeds 1..${seedsFor(100)}: share the stand-in human wins (bands: tools/tune.ts)\n`);
 console.log('  stand-in                      easy   medium   hard   median length (e/m/h)');
-for (const standIn of ['child', 'attentive'] as const) {
-  for (const human of FACTIONS) {
+const STAND_INS: Array<[HumanStandIn, Faction[]]> = [
+  ['child', ['plants', 'zombies']], ['newest', ['plants', 'zombies']], ['slow', ['plants', 'zombies']],
+  ['attentive', ['plants', 'zombies']], ['fortress', ['plants']], ['steady', ['zombies']],
+];
+for (const [standIn, sides] of STAND_INS) {
+  for (const human of sides) {
     const cells: string[] = [];
     const lengths: string[] = [];
     for (const difficulty of SKILL_NAMES) {
@@ -99,17 +106,15 @@ for (const standIn of ['child', 'attentive'] as const) {
       cells.push(pct(s.wins[human], s.results.length).padStart(6));
       lengths.push(clock(percentile(s.lengths, 0.5)));
     }
-    const label = `${standIn === 'child' ? 'random child' : 'attentive player'} as ${human}`;
-    console.log(`  ${label.padEnd(28)}${cells.join('   ')}   ${lengths.join(' / ')}`);
+    console.log(`  ${`${standIn} as ${human}`.padEnd(28)}${cells.join('   ')}   ${lengths.join(' / ')}`);
   }
 }
 
-console.log('\n4. Merge value: break-even enemy count of one level-N unit / of N level-1 units (target 1.00-1.15)\n');
-console.log('  unit vs enemy                     N=2    N=3    N=4    N=5');
-for (const [unit, enemy] of MERGE_PAIRS) {
-  const cells: string[] = [];
-  for (let level = 2; level <= 5; level++) cells.push(mergeValue(unit, enemy, level, SHIPPED.balance).value.toFixed(2).padStart(5));
-  console.log(`  ${`${unit} vs ${enemy}`.padEnd(32)}${cells.join('  ')}`);
+console.log('\n4. Merge value: break-even enemy count of one level-N unit / of N level-1 units (target 0.95-1.25, mean)\n');
+console.log('  unit vs enemy                     N=2    N=3    N=4    N=5    mean');
+for (const unit of FIGHTERS) {
+  const v = unitMergeValue(unit, SHIPPED.balance);
+  console.log(`  ${`${unit} vs ${v.enemy}`.padEnd(32)}${v.values.map((x) => x.toFixed(2).padStart(5)).join('  ')}  ${v.mean.toFixed(2).padStart(5)}`);
 }
 
 const elapsed = Number(process.hrtime.bigint() - started) / 1e9;

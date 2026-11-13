@@ -59,18 +59,22 @@ describe('the spell table', () => {
   });
 
   it('has the starting values of spec 21 and the plan\'s cooldowns, first ready at 20 s', () => {
+    // Task 8b tuned these (felt, and each worth about +12 points of Medium v Medium on its own);
+    // the rules tests below use spec 21's starting values through classicBalance().
     expect(BALANCE.spells).toEqual({
-      thunderbolt: { cooldown: 50, firstReady: 20, size: 2, damage: 300 },
-      vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 4 },
-      sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 150 },
-      healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 400 },
-      rockWall: { cooldown: 45, firstReady: 20, size: 1, hp: 800, seconds: 12 },
-      meteor: { cooldown: 50, firstReady: 20, size: 2, damage: 220 },
-      fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 5 },
-      brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 200 },
-      frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 6, factor: 1.5 },
-      graveRise: { cooldown: 55, firstReady: 20, size: 1, count: 3, minCol: 4 },
+      thunderbolt: { cooldown: 90, firstReady: 45, size: 2, damage: 300 },
+      vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 8 },
+      sunShower: { cooldown: 120, firstReady: 45, size: 0, amount: 50 },
+      healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 125 },
+      rockWall: { cooldown: 90, firstReady: 45, size: 1, seconds: 12 },
+      meteor: { cooldown: 90, firstReady: 45, size: 2, damage: 200 },
+      fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 6 },
+      brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
+      frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
+      graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
     });
+    expect(BALANCE.units.rock?.hp).toBe(1500); // Rock Wall's rock
+    expect(classicBalance().spells.thunderbolt.damage).toBe(300); // spec 21's starting values, for the rules tests
   });
 
   it('deals two a side in the default setup and none in the classic one', () => {
@@ -89,7 +93,7 @@ describe('the deal', () => {
         const pool = [...SPELLS[side]];
         const expected = [pool.splice(randomInt(rng, pool.length), 1)[0], pool.splice(randomInt(rng, pool.length), 1)[0]];
         expect(m.state.players[side].spells.map((x) => x.key)).toEqual(expected);
-        expect(m.state.players[side].spells.every((x) => x.timer === seconds(20))).toBe(true);
+        expect(m.state.players[side].spells.every((x) => x.timer === seconds(BALANCE.spells[x.key].firstReady))).toBe(true);
       }
       expect(m.state.rng).toBe(rng.rng);
     }
@@ -224,6 +228,25 @@ describe('the plants\' spells', () => {
       { type: 'unitHealed', unitId: hurt.id, amount: 400, hp: 500 },
       { type: 'unitHealed', unitId: nearly.id, amount: 100, hp: 1000 },
     ]);
+  });
+
+  it('Healing Rain never heals a Rock Wall rock (it is no plant that grows back)', () => {
+    const m = ready('healingRain');
+    m.state.players.plants.spells.push({ key: 'rockWall', timer: 0 });
+    m.step([cast('rockWall', 2, 3)]);
+    const rock = m.state.units.find((u) => u.key === 'rock');
+    if (!rock) throw new Error('no rock');
+    rock.hp = 100;
+    const events = m.step([cast('healingRain', 2, 3)]);
+    expect(rock.hp).toBe(100);
+    expect(eventsOf(events, 'unitHealed')).toEqual([]);
+  });
+
+  it('Rock Wall: a tile whose plant is already down this tick counts as free', () => {
+    const m = ready('rockWall');
+    const p = idle(m, 'plants', 1, 6.5, 1000);
+    p.hp = 0; // down, removed at the end of the tick
+    expect(m.check(cast('rockWall', 1, 6))).toBeNull();
   });
 
   it('Rock Wall: an 800-hp rock on an empty plant tile that leaves after 360 ticks, spent', () => {
@@ -371,6 +394,18 @@ describe('the zombies\' spells', () => {
     steps(m, 179);
     expect(z.meleeTimer).toBe(30);
     expect(z.haste).toBe(0);
+  });
+
+  it('Frenzy: the haste carry is cleared on the tick the haste ends, even while the zombie is stunned', () => {
+    const m = ready('frenzy');
+    const z = spawn(m, 'brainEater', 2, 9.2);
+    z.meleeTimer = 30;
+    m.step([cast('frenzy', 2, 9)]); // the cast step is hasted: half a tick of carry
+    expect(z.hasteCarry).toBe(500);
+    z.stun = 400; // stunned: the carry is no longer counted down
+    steps(m, 179);
+    expect(z.haste).toBe(0);
+    expect(z.hasteCarry).toBe(0);
   });
 
   it('Grave Rise: three level-1 Bone Minions in the tapped lane at the column\'s centre, unowned, spent 0', () => {
