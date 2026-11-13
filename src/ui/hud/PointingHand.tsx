@@ -95,8 +95,8 @@ function lawnBox(aim: GloveAim, host: GloveHost): Box | null {
   }
 }
 
-/** Frames after an aim appears (or the window changes) during which an HTML target is measured every frame (its pop-in settling). */
-const SETTLE_FRAMES = 20;
+/** Frames after an aim appears (or the window changes) during which an HTML target is measured every frame (its pop-in or a belt card's 600 ms slide-in settling: 40 frames is 667 ms at 60 fps). */
+const SETTLE_FRAMES = 40;
 /** After that, an HTML target is measured again this often (frames) in case the layout moved it. */
 const RECHECK_FRAMES = 30;
 
