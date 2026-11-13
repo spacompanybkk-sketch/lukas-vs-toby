@@ -5,6 +5,7 @@ import type { Slot } from '../../progress/save';
 import { session } from '../../app/session';
 import { go } from '../../app/store';
 import { factionOf } from '../../data/units';
+import { frameColor } from '../frameColor';
 import { PixelIcon } from '../hud/PixelIcon';
 import { uiSound } from '../uiSound';
 import { PODIUM } from './boardPictures';
@@ -112,8 +113,7 @@ export function Leaderboard({ portraits = {} }: { portraits?: Record<string, str
                 class={`board__row px pal-side side-${factionOf(row.picture)}${row.slot === me ? ' is-me' : ''}`}
               >
                 <RankBlock rank={rank} class="board__rank" />
-                {/* TODO(frameColor): frame the picture in frameColor(row.slot) once Task 3's helper lands. */}
-                <PlayerPicture picture={row.picture} portraits={portraits} class="board__pic" />
+                <PlayerPicture picture={row.picture} portraits={portraits} class="board__pic" frame={frameColor(row.slot)} />
                 <span class="board__name inked">{row.name}</span>
                 <span class="board__score" data-score={scoreOf(row, table)}>
                   <PixelIcon art={TABLE_ART[table]} class="board__score-icon" />

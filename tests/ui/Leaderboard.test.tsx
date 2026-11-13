@@ -13,6 +13,7 @@ import type { BoardRow, Cloud } from '../../src/cloud/types';
 import type { Slot } from '../../src/progress/save';
 import type { CardKey, Faction, UnitKey } from '../../src/sim/types';
 import { App } from '../../src/ui/App';
+import { frameColor } from '../../src/ui/frameColor';
 import { ResultOverlay } from '../../src/ui/hud/ResultOverlay';
 import type { BattleSessionLike, SessionFactory } from '../../src/ui/screens/BattleScreen';
 import { Home } from '../../src/ui/screens/Home';
@@ -101,6 +102,9 @@ describe('leaderboard', () => {
     expect(need('[data-row="p03"] [data-rank]').className).toContain('rank--gold');
     expect(need('[data-row="p04"] [data-rank]').className).toContain('rank--iron');
     expect(need('[data-row="p01"] [data-score]').dataset.score).toBe('3');
+    // Each picture in its player's own frame colour (two players may share a picture).
+    expect(need('[data-row="p03"] [data-frame]').dataset.frame).toBe(frameColor('p03'));
+    expect(need('[data-row="p04"] [data-frame]').dataset.frame).toBe(frameColor('p04'));
   });
 
   it("highlights the logged-in player's row and scrolls it into view", async () => {
