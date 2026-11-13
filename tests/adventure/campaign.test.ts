@@ -188,6 +188,15 @@ describe('levelConfig', () => {
     expect(() => checkLevel(c, BALANCE)).toThrow(/boss/);
   });
 
+  it.each([0, -5, Number.NaN, 1500.5, Infinity])('refuses a level base of %s health (a level data error)', (hp) => {
+    expect(() => levelConfig({ ...SAMPLE_BATTLE, baseHp: { zombies: hp } }, fresh(), 1)).toThrow(RangeError);
+  });
+
+  it('takes a level\'s own base health, whole numbers from 1; the other side keeps the balance\'s', () => {
+    const c = levelConfig({ ...SAMPLE_BATTLE, baseHp: { zombies: 1 } }, fresh(), 1);
+    expect(c.baseHp).toEqual({ plants: BALANCE.baseHp, zombies: 1 });
+  });
+
   it('refuses a plant spawn without a column (a level data error)', () => {
     const bad: LevelDef = { ...SAMPLE_SURVIVE, prepared: [{ at: 0, unit: 'peashooter', lane: 1 }] };
     expect(() => levelConfig(bad, fresh(), 1)).toThrow(RangeError);
