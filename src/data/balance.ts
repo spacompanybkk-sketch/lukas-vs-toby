@@ -302,7 +302,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // points of Medium v Medium (band 8-16, 600 seeds); rarer and big rather than frequent and tiny.
     thunderbolt: { cooldown: 90, firstReady: 45, size: 2, damage: 300 },
     vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 8 },
-    sunShower: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
+    sunShower: { cooldown: 120, firstReady: 45, size: 0, amount: 50 },
     healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 125 },
     rockWall: { cooldown: 90, firstReady: 45, size: 1, seconds: 12 }, // the rock's health: units.rock
     meteor: { cooldown: 90, firstReady: 45, size: 2, damage: 200 },

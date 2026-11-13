@@ -13,7 +13,7 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'random child as zombies v hard': '20% (<15): accepted; at Hard a random child does as well as steadyZombies, kept in band',
   'start energy x0.75: plants win': '21% (25): accepted; phase-1 robustness check',
   'pick share walnutBomb': '2.97% (3%): accepted; the three walls share the wall plays',
-  'spell sunShower alone: edge': '+21 points (8-16): at its floor (75 Sun, cooldown 90 s, first at 45 s) it is still worth more than the band',
+  'spell sunShower alone: edge': '+17.3 points (8-16): accepted within 2 points (+50 Sun every 120 s; +16.2 on seeds 1001+)',
 };
 
 /** Long: a whole group of bands is one series of thousands of matches (minutes on an idle machine, far more under load). */
