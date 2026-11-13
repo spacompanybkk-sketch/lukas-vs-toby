@@ -34,14 +34,19 @@ const SPELL_ENERGY_LANE = 2;
 /** A tile of the lawn. */
 export interface SpellTile { lane: number; col: number }
 
+/** The spells that only give energy: worthless in a level without energy. */
+export const INCOME_SPELLS: ReadonlySet<SpellKey> = new Set<SpellKey>(['sunShower', 'brainFeast']);
+
 /**
  * Deals each side its spells, plants first: `config.spells[side]` distinct ones (at most five),
  * each drawn with `randomInt` from those of its five not yet drawn, in table order; each starts at
- * `seconds(firstReady)`. A side dealt none draws nothing.
+ * `seconds(firstReady)`. A side dealt none draws nothing. With `noEnergy` (a conveyor) the income
+ * spells (Sun Shower, Brain Feast) are left out of the draw: a glowing button that does nothing is
+ * no use to a five-year-old; the deal is then from the other four.
  */
 export function dealSpells(s: SimState, b: Balance): void {
   for (const side of ['plants', 'zombies'] as const) {
-    const pool = [...SPELLS[side]];
+    const pool = SPELLS[side].filter((k) => !(s.config.noEnergy && INCOME_SPELLS.has(k)));
     const dealt: PlayerState['spells'] = [];
     const n = Math.min(pool.length, Math.max(0, Math.floor(s.config.spells[side])));
     for (let i = 0; i < n; i++) {
