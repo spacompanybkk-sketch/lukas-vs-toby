@@ -44,7 +44,7 @@ const PLANTS: LevelDef[] = [
     // Teaches: Sunflowers pay for more Peashooters; the hero's button lights up. Brain Eaters in
     // two lanes (1 and 3), the first after 20 s, a pair now and then.
     ...base('p1-2', 2), side: 'plants', kind: 'battle', cards: ['peashooter', 'sunflower'],
-    baseHp: { plants: 8000, zombies: 2500 },
+    baseHp: { plants: 12000, zombies: 2500 },
     waves: [...trickle('brainEater', 20, 9, 16, [1, 3]), ...flag('brainEater', 75, [1, 3])],
   },
   {
