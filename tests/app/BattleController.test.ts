@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BattleController } from '../../src/app/BattleController';
 import { DIFFICULTY, battleConfig } from '../../src/ai/difficulty';
-import { seconds } from '../../src/data/balance';
+import { BALANCE, seconds } from '../../src/data/balance';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
 import type { Faction } from '../../src/sim/types';
 
@@ -203,11 +203,14 @@ describe('BattleController setup', () => {
     },
   );
 
-  it('gives the human on Easy more income than on Medium, on both sides', () => {
+  it('is kinder on Easy than on Medium, on both sides: more income for the human or more random moves by the computer', () => {
+    // Phase 2 (Task 8): Toby's Easy leans on the computer's mistakes, Lukas's on his income.
     for (const side of ['plants', 'zombies'] as const) {
       const easy = new BattleController({ playerFaction: side, skill: 'easy', seed: 3 }).match.state.config;
       const medium = new BattleController({ playerFaction: side, skill: 'medium', seed: 3 }).match.state.config;
-      expect(easy.incomeMultiplier[side], side).toBeGreaterThan(medium.incomeMultiplier[side]);
+      const kinder = easy.incomeMultiplier[side] > medium.incomeMultiplier[side]
+        || DIFFICULTY.easy[side].randomShare > DIFFICULTY.medium[side].randomShare;
+      expect(kinder, side).toBe(true);
     }
   });
 
@@ -254,7 +257,7 @@ describe('BattleController merge, shovel, hotkeys, hover', () => {
     const c = make();
     c.select('peashooter');
     c.hotkey('x');
-    c.hotkey('9');
+    c.hotkey('-'); // phase 2 deals ten cards, so every digit names one
     expect(c.hud.selected.value).toBe('peashooter');
   });
 
@@ -461,7 +464,7 @@ describe('BattleController spells', () => {
     d.click({ lane: 0, col: 5 }, null);
     d.step();
     expect(d.hud.spells.value[0]).toMatchObject({ key: 'thunderbolt', ready: false });
-    expect(d.hud.spells.value[0]?.fraction).toBeCloseTo(1 / seconds(50), 12);
+    expect(d.hud.spells.value[0]?.fraction).toBeCloseTo(1 / seconds(BALANCE.spells.thunderbolt.cooldown), 12);
   });
 
   it('picking an aimed spell clears the card, the shovel and the hero; a tap casts it and puts it down', () => {
@@ -533,7 +536,7 @@ describe('BattleController spells', () => {
     expect(c.hud.spellSelected.value).toBeNull();
     const events = c.step();
     expect(events).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'brainFeast', size: 0 }));
-    expect(c.match.state.players.zombies.energy).toBeGreaterThanOrEqual(brains + 200);
+    expect(c.match.state.players.zombies.energy).toBeGreaterThanOrEqual(brains + (BALANCE.spells.brainFeast.amount ?? 0));
   });
 
   it('a spell not dealt is ignored, and paused or over nothing is picked', () => {

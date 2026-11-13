@@ -66,7 +66,7 @@ describe('the shipped starting numbers', () => {
     expect(u.kernelPult).toEqual({
       recharge: 5, hp: 300, armor: 0, speed: 0,
       shot: {
-        kind: 'kernel', damage: 14, interval: 1, range: 10, // Task 8: 12 -> 14 (merge value)
+        kind: 'kernel', damage: 13, interval: 1, range: 10, // Task 8: 12 -> 13 (merge value)
         speed: 7, flight: 'lobbed',
         status: { kind: 'stun', seconds: 2, chance: 0.3, altKind: 'butter' },
       },
