@@ -16,7 +16,7 @@ export interface Snapshot {
 
 /** Opens the title and waits for the first picture and the card portraits. */
 export async function openTitle(page: Page): Promise<void> {
-  await page.goto('/?debug'); // the hooks on window.__lvt are there only with ?debug in a build
+  await page.goto('/?debug&cloud=fake'); // the hooks on window.__lvt are there only with ?debug in a build
   await page.evaluate(() => window.__lvt.ready);
   await page.evaluate(() => window.__lvt.portraits);
   await expect(page.locator('[data-screen="title"]')).toBeVisible();
@@ -46,12 +46,13 @@ export async function logIn(page: Page, pin = '123'): Promise<void> {
 }
 
 /**
- * From the title (logging in as Lukas) or from Home: Play → pick a side and difficulty → START.
+ * From the title (logging in as Lukas) or from Home: Play → Quick Battle → pick a side and difficulty → START.
  * Does not wait for the fight to begin.
  */
 export async function pickAndStart(page: Page, side: Side, skill: Skill = 'medium'): Promise<void> {
   if (await page.locator('[data-screen="title"]').isVisible()) await logIn(page);
   await page.locator('[data-home="play"]').click();
+  await page.locator('[data-play="quick"]').click();
   await page.locator('[data-screen="sidepick"]').waitFor();
   await page.locator(`[data-side="${side}"]`).click();
   await page.locator(`[data-skill="${skill}"]`).click();

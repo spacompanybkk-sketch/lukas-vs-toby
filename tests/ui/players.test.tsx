@@ -297,6 +297,10 @@ describe('Players', () => {
     tap('[data-action="play"]');
     await see('[data-offline]');
     tap('[data-action="guest"]');
+    // A guest has Quick Battle only (Adventure and Free Play need a player).
+    await see('[data-screen="play"]');
+    expect(need('[data-play="adventure"]').hasAttribute('data-locked')).toBe(true);
+    tap('[data-play="quick"]');
     await see('[data-screen="sidepick"]');
     expect(session.player.value).toBeNull();
     tap('[data-side="plants"]');
@@ -311,7 +315,11 @@ describe('Players', () => {
     tap((await see('[data-action="new-player"]')) && '[data-action="new-player"]');
     await see('[data-step="offline"]');
     tap('[data-action="guest"]');
+    await see('[data-screen="play"]');
+    tap('[data-play="quick"]');
     await see('[data-screen="sidepick"]');
+    tap('[data-action="back"]');
+    expect(screen.value.name).toBe('play');
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('title');
   });
@@ -335,9 +343,10 @@ describe('Players', () => {
     expect(need('[data-sync]').getAttribute('data-sync')).toBe('offline');
   });
 
-  it('Home: Play goes to the side pick preset from the save; a changed difficulty is saved; back to Home', async () => {
+  it('Home: Play → Quick Battle goes to the side pick preset from the save; a changed difficulty is saved; back to the Play menu and Home', async () => {
     await makeLukas();
     tap('[data-home="play"]');
+    tap(await see('[data-play="quick"]') && '[data-play="quick"]');
     await see('[data-screen="sidepick"]');
     expect(need('[data-side="plants"]').getAttribute('aria-pressed')).toBe('true');
     expect(need('[data-skill="medium"]').getAttribute('aria-pressed')).toBe('true');
@@ -345,9 +354,27 @@ describe('Players', () => {
     expect(session.player.value?.difficulty.plants).toBe('hard');
     expect(loadLocal('p01', storage)?.difficulty.plants).toBe('hard');
     tap('[data-action="back"]');
+    await see('[data-screen="play"]');
+    tap('[data-action="back"]');
     await see('[data-screen="home"]');
     tap('[data-home="play"]');
+    tap('[data-play="quick"]');
     await see('[data-skill="hard"][aria-pressed="true"]');
+  });
+
+  it('while the door waits to push an unsent save, Home\'s buttons are disabled', async () => {
+    await makeLukas();
+    db.hang = true;
+    session.update((save) => ({ ...save, coins: 5 }));
+    tap('[data-action="logout"]');
+    expect(need('[data-screen="home"]').hasAttribute('data-leaving')).toBe(true);
+    for (const sel of ['[data-home="play"]', '[data-home="marketplace"]', '[data-action="logout"]']) {
+      expect((need(sel) as HTMLButtonElement).disabled, sel).toBe(true);
+    }
+    tap('[data-home="play"]');
+    expect(screen.value.name).toBe('home');
+    db.hang = false;
+    await see('[data-screen="players"]');
   });
 
   it('Home buttons reach Marketplace, Almanac and Leaderboard, each with a way back', async () => {
@@ -517,6 +544,7 @@ describe('after a battle', () => {
     await typePin('123');
     await see('[data-screen="home"]');
     tap('[data-home="play"]');
+    tap('[data-play="quick"]');
     tap('[data-action="start"]');
     await see('[data-screen="battle"]');
     act(() => { hud().result.value = { winner: 'plants', playerWon: true }; });
@@ -543,6 +571,7 @@ describe('after a battle', () => {
     await see('[data-screen="home"]');
     act(() => session.update((save) => ({ ...save, upgrades: { peashooter: 4, brainEater: 2 } })));
     tap('[data-home="play"]');
+    tap('[data-play="quick"]');
     tap('[data-action="start"]');
     await see('[data-screen="battle"]');
     expect(seen.at(-1)).toMatchObject({ playerFaction: 'plants', upgrades: { peashooter: 4, brainEater: 2 } });
@@ -559,3 +588,38 @@ describe('after a battle', () => {
     expect(screen.value.name).toBe('title');
   });
 });
+
+describe('the fake-cloud test tube', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    history.replaceState(null, '', '/');
+  });
+
+  it('a production build on the fake cloud shows it on the Title and the Players screens', async () => {
+    vi.stubEnv('DEV', false);
+    history.replaceState(null, '', '/');
+    mount();
+    expect(q('[data-screen="title"] [data-fake-cloud]')).not.toBeNull();
+    tap('[data-action="play"]');
+    await see('[data-screen="players"] [data-fake-cloud]');
+  });
+
+  it('never in live mode, never with ?debug, never in development', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_CLOUD', 'live');
+    mount();
+    expect(q('[data-fake-cloud]')).toBeNull();
+    act(() => render(null, root));
+    vi.unstubAllEnvs();
+    vi.stubEnv('DEV', false);
+    history.replaceState(null, '', '/?debug');
+    mount();
+    expect(q('[data-fake-cloud]')).toBeNull();
+    act(() => render(null, root));
+    vi.unstubAllEnvs();
+    history.replaceState(null, '', '/');
+    mount();
+    expect(q('[data-fake-cloud]')).toBeNull();
+  });
+});
+

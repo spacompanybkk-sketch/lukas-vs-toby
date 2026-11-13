@@ -9,6 +9,7 @@ import { frameColor } from '../frameColor';
 import { uiSound } from '../uiSound';
 import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
+import { FakeBadge } from './FakeBadge';
 import { GuestPlay, PlayerPicture } from './PlayerPicture';
 import { CLOUD_OFF, HOURGLASS, LOCK, PLUS } from './pictures';
 import './players.css';
@@ -127,6 +128,7 @@ function PlayerGrid({ roster, portraits }: { roster: Roster | null; portraits: R
         </span>
       )}
       {offline && <GuestPlay />}
+      <FakeBadge />
       <div class="players__grid" style={{ gridTemplateColumns: `repeat(${cols}, ${size}px)`, '--tile': `${size}px` }}>
         {players.map((p, i) => {
           const locked = session.lockedUntil(p.slot) > 0;

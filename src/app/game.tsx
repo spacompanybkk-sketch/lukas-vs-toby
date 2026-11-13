@@ -15,13 +15,16 @@ import { installDebug, markReady } from './debug';
 import { loadSettings } from './settings';
 import type { Settings } from './settings';
 import { board } from './board';
+import { announceCloudMode } from './cloudMode';
 import { session } from './session';
+import { watchPending } from './levelSession';
 import { Stage } from './Stage';
 import { defaultCloud, pageCloudMode } from '../cloud/restClient';
 import { modeStorage } from '../cloud/modeStorage';
 import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
 import { AlmanacStage } from '../scenes/almanacStage';
+import { MapStage } from '../scenes/mapStage';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
 export const PORTRAIT_SIZE = 120;
@@ -65,6 +68,7 @@ export function mountGame(
   const cloud = defaultCloud();
   // Each cloud keeps its own device keys (lvt2_ live, lvt2f_ fake, lvt2t_ test).
   const mode = pageCloudMode();
+  announceCloudMode(mode);
   let local: Storage | undefined;
   try {
     local = typeof localStorage === 'undefined' ? undefined : localStorage;
@@ -76,6 +80,9 @@ export function mountGame(
   lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };
   lvt.players = session;
+  // A level result still on the device (the page went away before it reached the save) goes in
+  // first, at start and at every log-in.
+  const stopPending = watchPending(session);
   lvt.go = go;
   let stage: Stage | null = null;
   try {
@@ -101,6 +108,9 @@ export function mountGame(
   // The Almanac's turntable takes the same stage (no second renderer or context).
   const almanac = stage ? new AlmanacStage(stage) : null;
   lvt.almanac = almanac;
+  // The Adventure map's board, on the same stage too.
+  const map = stage ? new MapStage(stage) : null;
+  lvt.map = map;
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
@@ -172,7 +182,7 @@ export function mountGame(
   // The menus have the demo battle behind them and their own tune.
   const stopScreens = effect(() => {
     const s = screen.value;
-    if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac') {
+    if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac' && s.name !== 'map') {
       demo?.show();
       audio.startMusic('menu');
     }
@@ -188,7 +198,7 @@ export function mountGame(
   const onGesture = (): boolean | Promise<boolean> =>
     audio.needsGesture ? audio.unlock().then(() => !audio.needsGesture) : true;
 
-  const playUi = (name: Parameters<AudioEngine['play']>[0]): void => audio.play(name);
+  const playUi = (name: Parameters<AudioEngine['play']>[0], opts?: { pitch?: number }): void => audio.play(name, opts);
 
   const renderer = stage?.renderer;
   renderer?.countDrawCalls(fps);
@@ -198,13 +208,14 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
-      onSound={playUi} almanac={almanac ?? undefined}
+      onSound={playUi} almanac={almanac ?? undefined} map={map ?? undefined}
     />
   );
   render(<Root />, ui);
 
   return () => {
     stopScreens();
+    stopPending();
     render(null, ui);
     session.dispose();
     current?.dispose();

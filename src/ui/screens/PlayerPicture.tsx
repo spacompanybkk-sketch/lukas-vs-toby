@@ -35,7 +35,7 @@ export function PlayerPicture({ picture, portraits, class: cls = '', frame }: { 
 /**
  * Play without a player, when the cloud cannot be reached (a fresh device, an iPad whose storage
  * was wiped): a stone Play with a crossed-out cloud on its corner. A guest battle pays no coins,
- * goes on no leaderboard, and its result returns to the title.
+ * goes on no leaderboard, and its result returns to the title. A guest has Quick Battle only.
  */
 export function GuestPlay({ class: cls = '' }: { class?: string }) {
   return (
@@ -44,7 +44,7 @@ export function GuestPlay({ class: cls = '' }: { class?: string }) {
       onClick={() => {
         uiSound('click');
         session.logout();
-        go({ name: 'sidepick' });
+        go({ name: 'play' });
       }}
     >
       <span class="ico ico--play guest-play__icon" aria-hidden="true" />

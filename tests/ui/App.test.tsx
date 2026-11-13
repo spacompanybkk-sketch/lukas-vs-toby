@@ -158,9 +158,11 @@ describe('App flow', () => {
     expect(hops()).toEqual(['', '']);
   });
 
-  it('the back arrow on the side pick returns to the title', () => {
+  it('the back arrow on the side pick returns to the Play menu, and its back arrow to the title', () => {
     act(() => render(<App />, root));
     toSidePick();
+    tap('[data-action="back"]');
+    expect(screen.value.name).toBe('play');
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('title');
   });

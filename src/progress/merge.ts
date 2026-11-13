@@ -1,4 +1,5 @@
 import type { CardKey } from '../sim/types';
+import { MAX_TEACHED } from './save';
 import type { Save, SideProgress } from './save';
 
 /**
@@ -7,8 +8,9 @@ import type { Save, SideProgress } from './save';
  *
  * - stars: the best per level, per side; unlocked cards: the union;
  * - coins, bestWave, versusWins, computerWins, upgrade levels: the larger;
- * - name, picture, difficulty: from the copy with the newer `updatedAt`;
- * - importedOld: true if either copy imported the old save.
+ * - name, picture, difficulty, lastBattle: from the copy with the newer `updatedAt`;
+ * - importedOld: true if either copy imported the old save;
+ * - teached (tutorial steps seen): the union, newer copy's order first, at most `MAX_TEACHED`.
  *
  * A child who spends coins on both devices at once may keep a few coins or an upgrade for free;
  * that is accepted (losing progress is not). The result is stamped `now`, past both copies.
@@ -44,5 +46,7 @@ export function mergeSaves(a: Save, b: Save, now: number): Save {
     difficulty: { ...newer.difficulty },
     importedOld: a.importedOld || b.importedOld,
     updatedAt: Math.max(Math.floor(now), newer.updatedAt + 1),
+    lastBattle: newer.lastBattle,
+    teached: [...newer.teached, ...older.teached.filter((t) => !newer.teached.includes(t))].slice(0, MAX_TEACHED),
   };
 }

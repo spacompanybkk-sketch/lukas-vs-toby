@@ -330,9 +330,25 @@ export const ARROW = art(outlined([
   '............',
 ]));
 
+/** A boxy test tube: this build plays on the fake cloud. */
+export const TEST_TUBE = art(outlined([
+  '............',
+  '...wwwwww...',
+  '....cccc....',
+  '....cccc....',
+  '....cccc....',
+  '....cccc....',
+  '....gggg....',
+  '....gggg....',
+  '....gGgg....',
+  '....gggg....',
+  '.....gg.....',
+  '............',
+]));
+
 /** Every picture here, for the tests (square, one palette). */
 export const ALL_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({
-  COIN, DOOR, CLOUD, CLOUD_OFF, HOURGLASS, LOCK, PLUS, CHECK, CROSS, BACKSPACE, TROPHY, BOOK, MARKET, KEY, TABLET, LAPTOP, ARROW,
+  COIN, DOOR, CLOUD, CLOUD_OFF, HOURGLASS, LOCK, PLUS, CHECK, CROSS, BACKSPACE, TROPHY, BOOK, MARKET, KEY, TABLET, LAPTOP, ARROW, TEST_TUBE,
 });
 
 /** A 5×7 pixel font for the number pad and the hourglass, with an ink edge (7×9 each). */

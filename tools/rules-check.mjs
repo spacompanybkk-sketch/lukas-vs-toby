@@ -10,7 +10,7 @@
  * `v2test` and removes them again at the end (and at the start, in case an earlier run stopped
  * half-way) with the grown-up proof. `v2test/admin/secret` is set on the first run and can never
  * be changed afterwards except with the current code (the script changes it and back), so keep
- * the same four-digit LVT_TEST_GROWNUP_CODE for every run.
+ * the same six-digit LVT_TEST_GROWNUP_CODE for every run.
  *
  * No SDK; plain fetch to the REST API. Never touches `v2`, `presence`, `rooms` or `challenges`
  * except the read-only check of `presence`.
@@ -161,6 +161,12 @@ const ROWS = [
   ['grown-up proof with a wrong code', () => put(`${R}/admin/proof/${WRONG}`, { touch: SV }), 401],
   ['delete a player with a wrong grown-up code', () => patch({ ...removeBody(A), [`admin/proof/${G}`]: null, [`admin/proof/${WRONG}`]: { touch: SV } }), 401],
   ['write anything else under v2test', () => put(`${R}/notes`, 'hi'), 401],
+  // The whole lists at once: never, with or without a pin proof (only one row per slot is writable).
+  ['overwrite the whole players list', () => put(`${R}/players`, { [A]: { name: 'Hacked', picture: 'peashooter' } }), 401],
+  ['delete the whole players list', () => call('DELETE', `${R}/players`), 401],
+  ['overwrite the whole board', () => put(`${R}/board`, { [A]: row(A, 'CheckA', { stars: 240 }) }), 401],
+  ['delete the whole board', () => call('DELETE', `${R}/board`), 401],
+  ['null the players list inside an honest owner write', () => patch({ ...ownerWrite(A, 'CheckA', hA), players: null }), 401],
 
   // Fix round 1.
   ['owner deletes own player row (would leave a ghost)', () => patch({ [`saves/${A}/${hA}`]: rec(A, JSON.stringify(save(A, 'CheckA'))), [`players/${A}`]: null }), 401],

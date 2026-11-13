@@ -1,4 +1,5 @@
-import { defaultCloud } from '../cloud/restClient';
+import { defaultCloud, pageCloudMode } from '../cloud/restClient';
+import { modeStorage } from '../cloud/modeStorage';
 import type { BoardRow, Cloud } from '../cloud/types';
 import { isPicture, isSlot, totalStars } from '../progress/save';
 import type { Save, Slot } from '../progress/save';
@@ -115,11 +116,13 @@ function validRow(r: unknown): r is BoardRow {
  */
 export class BoardStore {
   private cloud: Cloud | null = null;
-  private storage: Storage | undefined = defaultStorage();
+  /** This page's cloud's own device keys (`lvt2f_board` on the fake; see modeStorage). */
+  private storage: Storage | undefined = modeStorage(defaultStorage(), pageCloudMode());
 
+  /** A new cloud; the device storage stays the page's unless one is given (tests). */
   configure({ cloud, storage }: { cloud: Cloud; storage?: Storage }): void {
     this.cloud = cloud;
-    this.storage = storage ?? defaultStorage();
+    if (storage !== undefined) this.storage = storage;
   }
 
   private get c(): Cloud {
