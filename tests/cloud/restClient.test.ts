@@ -249,6 +249,13 @@ describe('the save on the wire', () => {
     expect(saveFromWire(saveToWire(t))).toEqual(t);
   });
 
+  it('carries lastBattle and teached, and reads a string written before they existed', () => {
+    const t: Save = { ...s, lastBattle: 'b1', teached: ['p1-1:0'] };
+    expect(saveFromWire(saveToWire(t))).toEqual(t);
+    const { lastBattle: _l, teached: _t, ...before } = t;
+    expect(saveFromWire(JSON.stringify(before))).toEqual({ ...t, lastBattle: null, teached: [] });
+  });
+
   it('refuses anything that is not a string holding a valid save', () => {
     expect(saveFromWire(s)).toBeNull();
     expect(saveFromWire('{nope')).toBeNull();

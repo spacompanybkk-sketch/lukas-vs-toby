@@ -29,6 +29,7 @@ describe('newSave', () => {
       bestWave: 0, versusWins: 0, computerWins: 0,
       difficulty: { plants: 'medium', zombies: 'medium' },
       importedOld: false, updatedAt: T0,
+      lastBattle: null, teached: [],
     });
   });
 
@@ -63,6 +64,8 @@ describe('parseSave', () => {
     bestWave: 12, versusWins: 2, computerWins: 7,
     difficulty: { plants: 'hard', zombies: 'easy' },
     importedOld: true,
+    lastBattle: 'b-17',
+    teached: ['p1-1:0', 'p1-1:1'],
   };
   const g = good as unknown as Record<string, unknown>;
 
@@ -122,10 +125,39 @@ describe('parseSave', () => {
     ['unknown difficulty', { ...g, difficulty: { plants: 'nightmare', zombies: 'easy' } }],
     ['difficulty missing a side', { ...g, difficulty: { plants: 'easy' } }],
     ['importedOld not a boolean', { ...g, importedOld: 1 }],
+    ['lastBattle a number', { ...g, lastBattle: 7 }],
+    ['lastBattle empty', { ...g, lastBattle: '' }],
+    ['lastBattle of 65 characters', { ...g, lastBattle: 'b'.repeat(65) }],
+    ['teached not a list', { ...g, teached: 'p1-1:0' }],
+    ['teached with a number', { ...g, teached: [1] }],
+    ['teached with an empty step', { ...g, teached: [''] }],
+    ['teached with a step of 65 characters', { ...g, teached: ['t'.repeat(65)] }],
+    ['teached twice', { ...g, teached: ['a', 'a'] }],
     ['negative updatedAt', { ...g, updatedAt: -5 }],
     ['fractional updatedAt', { ...g, updatedAt: 1.25 }],
   ])('rejects %s', (_what, raw) => {
     expect(parseSave(raw)).toBeNull();
+  });
+
+  it('reads a save written before lastBattle and teached existed, with their defaults', () => {
+    const old: Record<string, unknown> = { ...g };
+    delete old.lastBattle;
+    delete old.teached;
+    expect(parseSave(old)).toEqual({ ...good, lastBattle: null, teached: [] });
+  });
+
+  it.each<[string, string]>([['lastBattle', 'teached'], ['teached', 'lastBattle']])(
+    'reads a save that has only one of them (missing %s)', (missing, kept) => {
+      const o: Record<string, unknown> = { ...g };
+      delete o[missing];
+      const parsed = parseSave(o)!;
+      expect(parsed[kept as 'lastBattle' | 'teached']).toEqual(good[kept as 'lastBattle' | 'teached']);
+      expect(parsed[missing as 'lastBattle' | 'teached']).toEqual(missing === 'lastBattle' ? null : []);
+    },
+  );
+
+  it('accepts lastBattle null', () => {
+    expect(parseSave({ ...g, lastBattle: null })).toEqual({ ...good, lastBattle: null });
   });
 
   it('returns a copy that does not share objects with its input', () => {
@@ -133,6 +165,8 @@ describe('parseSave', () => {
     const parsed = parseSave(raw)!;
     raw.upgrades.peashooter = 9;
     raw.plants.unlocked.push('torchwood');
+    raw.teached.push('z1-1:0');
+    expect(parsed.teached).toEqual(['p1-1:0', 'p1-1:1']);
     expect(parsed.upgrades.peashooter).toBe(3);
     expect(parsed.plants.unlocked).toEqual(['peashooter', 'sunflower']);
   });
