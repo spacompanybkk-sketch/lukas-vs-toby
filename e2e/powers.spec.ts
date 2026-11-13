@@ -104,7 +104,13 @@ for (const side of ['plants', 'zombies'] as Side[]) {
       const c = (window.__lvt as any).session.controller;
       return c.match.state.players[c.playerFaction].energy as number;
     });
-    expect(after).toBeGreaterThanOrEqual(before + 100);
+    // The spell's own amount, read from the balance table the match runs on (the tuner owns the number).
+    const amount = await page.evaluate((spell) => {
+      const c = (window.__lvt as any).session.controller;
+      return c.match.balance.spells[spell].amount as number;
+    }, unaimed);
+    expect(amount).toBeGreaterThan(0);
+    expect(after).toBeGreaterThanOrEqual(before + amount);
     await frames(page, 60);
   });
 }
