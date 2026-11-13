@@ -8,8 +8,8 @@
  *   front of a zombie; as zombies any card into any lane), never merges; presses every glowing
  *   button (hero, spells) about 1.5 s after it lights, aimed like a child (`childPower`). On a belt
  *   he takes a random card to a sensible tile.
- * - **average** (Lukas, 8, on Normal): the Medium computer's choices, a little slow (one decision
- *   every 2 s), powers paced as Medium; Marketplace upgrades as the campaign's rewards allow
+ * - **average** (Lukas, 8, on Normal): the Medium computer's choices, a little slow and careless
+ *   (one decision every 3 s, 15% of them random, no powers before 20 s, at most 4 Sunflowers); Marketplace upgrades as the campaign's rewards allow
  *   (`averageUpgrade`: `floor(coins earned so far / 1500)` on his three favourite units).
  * - **expert** (on Normal, no upgrades): the Hard computer's choices. Against the Brain Titan it
  *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane (the
@@ -44,8 +44,11 @@ export const STAND_IN_DIFFICULTY: Readonly<Record<LevelStandIn, Skill>> = { begi
 export const BEGINNER_TAP = { min: 120, max: 180 } as const;
 /** The beginner presses a glowing button this long after it lights (ticks). */
 export const BEGINNER_REACTION = 45;
-/** The average player decides once every 2 s. */
-export const AVERAGE_EVERY = 60;
+/**
+ * The average player, a plausible eight-year-old (coordinator, Task 8 fix round): one decision every
+ * 3 s, 15% of them a random legal play, no hero or spell before 20 s, at most 4 Sunflowers.
+ */
+export const AVERAGE = { every: 90, randomShare: 0.15, powerFirst: 20, sunflowers: 4 } as const;
 /** How often the expert takes a belt card (ticks). */
 export const EXPERT_BELT_EVERY = 15;
 
@@ -65,7 +68,10 @@ export function averageUpgrade(coins: number): number {
 /** The skill table each stand-in decides with (the beginner has none: he taps). */
 export function standInTable(kind: Exclude<LevelStandIn, 'beginner'>, side: Faction): SkillTable {
   if (kind === 'expert') return SKILLS[side].hard;
-  return { ...SKILLS[side].medium, ...POWER_PACING.medium, thinkEvery: AVERAGE_EVERY, randomShare: 0 };
+  return {
+    ...SKILLS[side].medium, ...POWER_PACING.medium, thinkEvery: AVERAGE.every, randomShare: AVERAGE.randomShare,
+    powerFirst: AVERAGE.powerFirst, sunflowers: Math.min(AVERAGE.sunflowers, SKILLS[side].medium.sunflowers),
+  };
 }
 
 const SALT: Readonly<Record<LevelStandIn, number>> = { beginner: 0x1e7e_0001, average: 0x1e7e_0002, expert: 0x1e7e_0003 };
@@ -327,7 +333,7 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number)
   const table = standInTable(kind, side);
   const card = createBasicBot(side, kind === 'expert' ? 'hard' : 'medium', seed ^ SALT[kind], table);
   const rng = rngFor(seed, kind, side);
-  const beltEvery = kind === 'expert' ? EXPERT_BELT_EVERY : AVERAGE_EVERY;
+  const beltEvery = kind === 'expert' ? EXPERT_BELT_EVERY : AVERAGE.every;
   const lane = { current: -1, sent: 0 };
   return {
     faction: side,
@@ -338,7 +344,9 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number)
         // No energy: the hero and spells as the computer would fire them, and the belt.
         const out: Command[] = card.think(match).filter((c) => c.type === 'hero' || c.type === 'spell');
         if (s.tick % beltEvery === 0) {
-          const cmd = sensibleBelt(match, side, rng, lane);
+          // The average player's mistakes: now and then a random belt card to a random sensible tile.
+          const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
+          const cmd = careless ? beginnerBelt(match, side, rng) : sensibleBelt(match, side, rng, lane);
           if (cmd !== null) out.push(cmd);
         }
         return out;
