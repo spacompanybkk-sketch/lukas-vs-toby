@@ -350,6 +350,21 @@ describe('Players', () => {
     await see('[data-skill="hard"][aria-pressed="true"]');
   });
 
+  it('while the door waits to push an unsent save, Home\'s buttons are disabled', async () => {
+    await makeLukas();
+    db.hang = true;
+    session.update((save) => ({ ...save, coins: 5 }));
+    tap('[data-action="logout"]');
+    expect(need('[data-screen="home"]').hasAttribute('data-leaving')).toBe(true);
+    for (const sel of ['[data-home="play"]', '[data-home="marketplace"]', '[data-action="logout"]']) {
+      expect((need(sel) as HTMLButtonElement).disabled, sel).toBe(true);
+    }
+    tap('[data-home="play"]');
+    expect(screen.value.name).toBe('home');
+    db.hang = false;
+    await see('[data-screen="players"]');
+  });
+
   it('Home buttons reach Marketplace, Almanac and Leaderboard, each with a way back', async () => {
     await makeLukas();
     for (const place of ['marketplace', 'almanac', 'leaderboard']) {
@@ -559,3 +574,38 @@ describe('after a battle', () => {
     expect(screen.value.name).toBe('title');
   });
 });
+
+describe('the fake-cloud test tube', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    history.replaceState(null, '', '/');
+  });
+
+  it('a production build on the fake cloud shows it on the Title and the Players screens', async () => {
+    vi.stubEnv('DEV', false);
+    history.replaceState(null, '', '/');
+    mount();
+    expect(q('[data-screen="title"] [data-fake-cloud]')).not.toBeNull();
+    tap('[data-action="play"]');
+    await see('[data-screen="players"] [data-fake-cloud]');
+  });
+
+  it('never in live mode, never with ?debug, never in development', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_CLOUD', 'live');
+    mount();
+    expect(q('[data-fake-cloud]')).toBeNull();
+    act(() => render(null, root));
+    vi.unstubAllEnvs();
+    vi.stubEnv('DEV', false);
+    history.replaceState(null, '', '/?debug');
+    mount();
+    expect(q('[data-fake-cloud]')).toBeNull();
+    act(() => render(null, root));
+    vi.unstubAllEnvs();
+    history.replaceState(null, '', '/');
+    mount();
+    expect(q('[data-fake-cloud]')).toBeNull();
+  });
+});
+

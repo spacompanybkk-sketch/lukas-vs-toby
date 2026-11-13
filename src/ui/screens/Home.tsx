@@ -42,6 +42,8 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
   const player = session.player.value;
   const sync: string = session.syncState.value;
   const mergedCue = useMergedCue(sync);
+  // The door is pushing an unsent save (up to 2 s): every button waits.
+  const [leaving, setLeaving] = useState(false);
   const loggedOut = player === null;
   // Logged out (the door, or a grown-up removed this player): back to the pictures, after render.
   useEffect(() => {
@@ -49,11 +51,12 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
   }, [loggedOut]);
   if (player === null) return null;
   const to = (s: Screen): void => {
+    if (leaving) return;
     uiSound('click');
     go(s);
   };
   return (
-    <div data-screen="home" class="layer layer--menu home">
+    <div data-screen="home" class={`layer layer--menu home${leaving ? ' is-leaving' : ''}`} data-leaving={leaving || undefined}>
       <div class={`home__me px pal-side side-${factionOf(player.picture)}`} data-me={player.slot}>
         <PlayerPicture picture={player.picture} portraits={portraits} class="home__pic" />
         <span class="home__name inked">{player.name}</span>
@@ -73,8 +76,10 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
         </span>
       </div>
       <button
-        type="button" data-action="logout" aria-label="Log out" class="btn btn--square pal-wood home__door"
+        type="button" data-action="logout" aria-label="Log out" class="btn btn--square pal-wood home__door" disabled={leaving}
         onClick={() => {
+          if (leaving) return;
+          setLeaving(true);
           uiSound('click');
           // An unsent save goes to the cloud first (at most a moment), then out regardless.
           void session.logoutAfterSaving().then(() => go({ name: 'players' }));
@@ -83,12 +88,12 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
         <PixelIcon art={DOOR} class="home__door-icon" />
       </button>
       <div class="home__menu">
-        <button type="button" data-home="play" aria-label="Play" class="btn btn--big pal-leaf home__play" onClick={() => to({ name: 'sidepick' })}>
+        <button type="button" data-home="play" aria-label="Play" class="btn btn--big pal-leaf home__play" disabled={leaving} onClick={() => to({ name: 'sidepick' })}>
           <span class="ico ico--play home__play-icon" aria-hidden="true" />
         </button>
         <div class="home__places">
           {PLACES.map((p) => (
-            <button key={p.name} type="button" data-home={p.name} aria-label={p.label} class={`btn home__place ${p.pal}`} onClick={() => to({ name: p.name })}>
+            <button key={p.name} type="button" data-home={p.name} aria-label={p.label} class={`btn home__place ${p.pal}`} disabled={leaving} onClick={() => to({ name: p.name })}>
               <PixelIcon art={p.art} class="home__place-icon" />
             </button>
           ))}
