@@ -9,6 +9,8 @@ import type { Settings } from '../app/settings';
 import { session as players } from '../app/session';
 import { go, screen } from '../app/store';
 import type { SfxName } from '../audio/sfx';
+import { board, rankChange } from '../app/board';
+import type { RankUp } from '../app/board';
 import { applyBattleResult, rewardFor } from '../progress/rewards';
 import { TICKS_PER_SECOND } from '../sim/types';
 import { SettingsPanel } from './SettingsPanel';
@@ -21,6 +23,7 @@ import type { BattleSessionLike, SessionFactory } from './screens/BattleScreen';
 import { CreatePlayer } from './screens/CreatePlayer';
 import { GrownUp } from './screens/GrownUp';
 import { Home, Soon } from './screens/Home';
+import { Leaderboard } from './screens/Leaderboard';
 import { Players } from './screens/Players';
 import { SidePick } from './screens/SidePick';
 import { Title } from './screens/Title';
@@ -181,6 +184,8 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       body = <Home portraits={portraits} />;
       break;
     case 'leaderboard':
+      body = <Leaderboard portraits={portraits} />;
+      break;
     case 'marketplace':
     case 'almanac':
       body = <Soon place={s.name} />;
@@ -254,7 +259,7 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
     };
   }, [options, createSession]);
 
-  const coins = useBattleCoins(live, options);
+  const { coins, rankUp } = useBattleCoins(live, options);
 
   if (live === null) return null;
   const again = (): void => go({ name: 'battle', options: { ...options, seed: (Date.now() + live.id) >>> 0 } });
@@ -263,32 +268,51 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   return (
     <BattleScreen
       key={live.id} session={live.session} {...rest}
-      onRestart={again} onQuit={quit} coins={coins}
+      onRestart={again} onQuit={quit} coins={coins} rankUp={rankUp}
     />
   );
 }
 
 /**
  * When the battle is decided and a player is logged in: its coins and win go into the save
- * (`applyBattleResult` through `session.update`), once per battle. Returns the coins earned.
+ * (`applyBattleResult` through `session.update`), once per battle. Returns the coins earned and,
+ * once the board has been fetched (or the copy kept here read), the player's best move up a
+ * leaderboard table (null: no move, or nobody else on the board).
  */
-function useBattleCoins(live: { id: number; session: BattleSessionLike } | null, options: BattleOptions): number | null {
+function useBattleCoins(
+  live: { id: number; session: BattleSessionLike } | null, options: BattleOptions,
+): { coins: number | null; rankUp: RankUp | null } {
   const [coins, setCoins] = useState<number | null>(null);
+  const [rankUp, setRankUp] = useState<RankUp | null>(null);
   useEffect(() => {
     setCoins(null);
+    setRankUp(null);
     if (live === null) return undefined;
     const ctl = live.session.controller;
     let done = false;
-    return ctl.hud.result.subscribe((result) => {
-      if (result === null || done || players.player.peek() === null) return;
+    let alive = true;
+    const stop = ctl.hud.result.subscribe((result) => {
+      const before = players.player.peek();
+      if (result === null || done || before === null) return;
       done = true;
       const base = ctl.hud.base.peek()[ctl.playerFaction];
       const r = { won: result.playerWon, skill: options.skill, baseHpShare: base.max > 0 ? base.hp / base.max : 0 };
       players.update((save) => applyBattleResult(save, { ...r, versus: false }, players.now()));
       setCoins(rewardFor(r));
+      const after = players.player.peek();
+      if (after === null) return;
+      // The others' rows from the board just fetched; the player's own, before and after, from the save.
+      void board.fetch().then(
+        (v) => { if (alive) setRankUp(rankChange(v.rows, before, after)); },
+        (e: unknown) => console.error('board failed', e),
+      );
     });
+    return () => {
+      alive = false;
+      stop();
+    };
   }, [live, options]);
-  return coins;
+  return { coins, rankUp };
 }
 
 /**

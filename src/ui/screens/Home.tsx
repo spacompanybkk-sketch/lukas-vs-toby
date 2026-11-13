@@ -42,11 +42,12 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
   const player = session.player.value;
   const sync: string = session.syncState.value;
   const mergedCue = useMergedCue(sync);
-  if (player === null) {
-    // Logged out (the door, or a grown-up removed this player): back to the pictures.
-    queueMicrotask(() => go({ name: 'players' }));
-    return null;
-  }
+  const loggedOut = player === null;
+  // Logged out (the door, or a grown-up removed this player): back to the pictures, after render.
+  useEffect(() => {
+    if (loggedOut) go({ name: 'players' });
+  }, [loggedOut]);
+  if (player === null) return null;
   const to = (s: Screen): void => {
     uiSound('click');
     go(s);

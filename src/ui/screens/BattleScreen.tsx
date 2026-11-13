@@ -1,3 +1,4 @@
+import type { RankUp } from '../../app/board';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Ref } from 'preact';
 import { batch, useComputed, useSignal } from '@preact/signals';
@@ -70,6 +71,8 @@ export interface BattleScreenProps {
   powers?: BattlePowers;
   /** Coins the logged-in player earned from this battle, shown falling on the result (none: no player). */
   coins?: number | null;
+  /** The logged-in player's best move up a leaderboard table after this battle (none: no move). */
+  rankUp?: RankUp | null;
 }
 
 /**
@@ -99,7 +102,7 @@ const SHAKE_MS = 300;
  * when a second passes, a card when its recharge steps), never the whole screen.
  */
 export function BattleScreen(props: BattleScreenProps) {
-  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null } = props;
+  const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null, rankUp = null } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
@@ -138,7 +141,7 @@ export function BattleScreen(props: BattleScreenProps) {
       <IntroBanner session={session} />
       <Overlays
         ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
-        onRestart={onRestart} onQuit={onQuit} coins={coins}
+        onRestart={onRestart} onQuit={onQuit} coins={coins} rankUp={rankUp}
       />
     </div>
   );
@@ -353,10 +356,11 @@ interface OverlaysProps {
   onRestart(): void;
   onQuit(): void;
   coins: number | null;
+  rankUp: RankUp | null;
 }
 
 /** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
-function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins }: OverlaysProps) {
+function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp }: OverlaysProps) {
   const hud = ctl.hud;
   const paused = hud.paused.value;
   const result = hud.result.value;
@@ -368,7 +372,7 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
     return (
       <ResultOverlay
         result={result} playerFaction={ctl.playerFaction} seconds={hud.seconds.value} portraits={boys}
-        onPlayAgain={onRestart} onMenu={onQuit} coins={coins}
+        onPlayAgain={onRestart} onMenu={onQuit} coins={coins} rankUp={rankUp}
       />
     );
   }

@@ -415,6 +415,8 @@ const SCENARIOS = [
   cheer('result-cheer-zombies', 'plants', 'plants'),
   // ---- Players: log-in, number pad, new player, Home, grown-up (phase 4a Task 3) ----
   ...playerShots(),
+  // Phase 4a: the leaderboard (and later the Almanac) at the iPad and laptop sizes.
+  ...progressShots(),
   // The phase-2 HUD pieces (?scene=hud-gallery) at the iPad, iPad Air and laptop sizes.
   ...hudGallery(),
   // ---- Hero powers and spells, wired (wiring B) ----
@@ -1077,3 +1079,93 @@ process.exitCode = await main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   return 1;
 });
+
+/**
+ * Players with wins against the computer, as other devices would have made them, then Lukas
+ * logged in (with `lukasWins`). Leaves Lukas logged in and on Home.
+ */
+async function boardPlayers(page, lukasWins) {
+  await page.evaluate(async (mine) => {
+    const s = window.__lvt.players;
+    const others = [['Mia', 'hotTopic', 9], ['Ben', 'sunflower', 7], ['Ella', 'necromancer', 7], ['Max', 'kernelPult', 4], ['Sofia', 'cowboyZombie', 2], ['Jakub', 'torchwood', 1], ['Nina', 'mangoPult', 0]];
+    for (const [name, pic, wins] of others) {
+      const r = await s.create(name, pic, '123');
+      if (typeof r !== 'object') throw new Error(`create ${name}: ${r}`);
+      if (wins > 0) s.update((v) => ({ ...v, computerWins: wins, versusWins: Math.floor(wins / 3) }));
+      await s.flush();
+      s.logout();
+    }
+    for (const [slot, name, pic, wins] of [['p02', 'Toby', 'brainEater', 3], ['p01', 'Lukas', 'peashooter', mine]]) {
+      const r = await s.create(name, pic, '123', slot);
+      if (typeof r !== 'object') throw new Error(`create ${name}: ${r}`);
+      if (wins > 0) s.update((v) => ({ ...v, computerWins: wins }));
+      await s.flush();
+      if (slot === 'p02') s.logout();
+    }
+    const rows = await window.__lvt.board.fetch();
+    if (!rows.rows.some((r) => r.slot === 'p01' && r.computerWins === mine)) throw new Error(`board: ${JSON.stringify(rows)}`);
+    window.__lvt.go({ name: 'home' });
+  }, lukasWins);
+}
+
+/** The leaderboard and the Almanac at the iPad (1024x704) and laptop (1440x900) sizes. */
+function progressShots() {
+  const sizes = [['ipad', { width: 1024, height: 704 }], ['laptop', { width: 1440, height: 900 }]];
+  const base = [
+    ['board', async (page) => {
+      await boardPlayers(page, 5);
+      await page.click('[data-home="leaderboard"]');
+      await page.waitForSelector('[data-row="p01"]', { state: 'attached' });
+      await settleUi(page);
+    }],
+    ['board-versus', async (page) => {
+      await boardPlayers(page, 5);
+      await page.click('[data-home="leaderboard"]');
+      await page.waitForSelector('[data-row="p01"]', { state: 'attached' });
+      await page.click('[data-tab="versus"]');
+      await settleUi(page);
+    }],
+    ['board-empty', async (page) => {
+      await boardPlayers(page, 5);
+      await page.click('[data-home="leaderboard"]');
+      await page.waitForSelector('[data-row="p01"]', { state: 'attached' });
+      await page.click('[data-tab="stars"]');
+      await settleUi(page);
+    }],
+    ['board-offline', async (page) => {
+      await boardPlayers(page, 5);
+      await page.click('[data-home="leaderboard"]');
+      await page.waitForSelector('[data-row="p01"]', { state: 'attached' });
+      await page.click('[data-action="back"]');
+      await page.evaluate(() => {
+        window.__lvt.board.configure({ cloud: new Proxy({}, { get: (_t, k) => (k === 'then' ? undefined : async () => 'offline') }) });
+      });
+      await page.click('[data-home="leaderboard"]');
+      await page.waitForSelector('[data-offline]');
+      await settleUi(page);
+    }],
+    ['result-rankup', async (page) => {
+      await boardPlayers(page, 6);
+      await page.click('[data-home="play"]');
+      await page.click('[data-action="start"]');
+      await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
+      await battleAt(page, 30);
+      await page.evaluate(() => {
+        window.__lvt.damageBase('zombies', 1e9);
+        window.__lvt.fastForward(1);
+      });
+      await page.waitForFunction(() => window.__lvt.session?.resultReady.value === true, null, { timeout: 15_000 });
+      await page.waitForSelector('[data-rank-up]');
+      await page.waitForTimeout(1800);
+    }],
+  ];
+  return sizes.flatMap(([size, viewport]) => base.map(([name, steps]) => ({
+    name: `${name}-${size}`,
+    url: '/',
+    viewport,
+    steps: async (page) => {
+      await page.evaluate(() => window.__lvt.portraits);
+      await steps(page);
+    },
+  })));
+}

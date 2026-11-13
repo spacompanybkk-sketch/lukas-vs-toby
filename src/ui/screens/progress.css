@@ -1,0 +1,104 @@
+/* Leaderboard and Almanac. Tokens live in ../theme.css. */
+
+.board svg.pixel-icon, .almanac svg.pixel-icon, .rank-up svg.pixel-icon { display: block; width: 100%; height: 100%; }
+
+/* ---- A place: gold, iron, bronze, then wood ---- */
+.rank {
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--fs-btn);
+  color: var(--white);
+  line-height: 1;
+}
+.rank--gold { --fill: var(--c-sun); --hi: #fff4b0; --lo: var(--c-sun-lo); }
+.rank--iron { --fill: var(--c-stone-hi); --hi: var(--white); --lo: var(--c-stone); }
+.rank--bronze { --fill: #d08a4a; --hi: #eab07a; --lo: #9a5a26; }
+.rank--wood { --fill: var(--c-wood-lo); --hi: var(--c-wood); --lo: #5a3418; }
+
+/* ---- Leaderboard ---- */
+.board {
+  grid-template-rows: auto 1fr;
+  align-items: stretch;
+  justify-items: center;
+  gap: clamp(10px, 2vh, 20px);
+  padding-top: var(--gutter-top);
+}
+.board__tabs { display: flex; gap: clamp(10px, 1.6vw, 22px); padding-top: 2px; }
+.board__tab { width: calc(var(--btn-h) * 1.25); padding: 0 0 var(--px-bev); }
+.board__tab-icon { width: 78% !important; height: 78% !important; }
+.board__tab:not(.is-on) .board__tab-icon { filter: saturate(0.6) brightness(0.92); }
+.board__tab.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: calc(var(--px-line) * 2); }
+.board__offline {
+  position: absolute;
+  top: var(--gutter-top);
+  right: var(--gutter-x);
+  width: var(--btn-h);
+  height: var(--btn-h);
+  padding: 6px;
+}
+.board__panel {
+  width: min(100%, 760px);
+  min-height: 0;
+  margin-bottom: calc(var(--px-line) + 4px);
+  padding: clamp(10px, 1.8vh, 18px);
+  display: flex;
+  flex-direction: column;
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.board__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.6vh, 16px);
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.board__list::-webkit-scrollbar { display: none; }
+.board__row {
+  --row-h: clamp(56px, 9.5vh, 84px);
+  display: grid;
+  grid-template-columns: var(--row-h) var(--row-h) 1fr auto;
+  align-items: center;
+  gap: clamp(10px, 1.6vw, 18px);
+  min-height: var(--row-h);
+  padding: 6px 14px 6px 6px;
+  flex: none;
+}
+.board__row.is-me {
+  outline: calc(var(--px-line) + 1px) solid var(--c-sun);
+  outline-offset: calc(var(--px-line) + 1px);
+  --fill: var(--side-hi);
+}
+.board__rank { width: calc(var(--row-h) - 12px); height: calc(var(--row-h) - 12px); justify-self: center; }
+.board__pic { width: calc(var(--row-h) - 8px); }
+.board__name { font-size: var(--fs-btn); color: var(--white); overflow: hidden; white-space: nowrap; }
+.board__score { display: inline-flex; align-items: center; gap: 10px; font-size: calc(var(--fs-btn) * 1.25); color: var(--c-sun); }
+.board__score-icon { width: calc(var(--fs-btn) * 1.15) !important; height: calc(var(--fs-btn) * 1.15) !important; }
+.board__empty {
+  align-self: center;
+  margin: auto;
+  width: clamp(180px, 38vh, 320px);
+  height: clamp(180px, 38vh, 320px);
+}
+
+/* ---- On the result: moved up ---- */
+.rank-up {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--hud-h);
+  padding: 0 8px;
+  animation: px-pop var(--t-pop) steps(4, end) 900ms both;
+}
+.rank-up__table { width: calc(var(--hud-h) * 0.74) !important; height: calc(var(--hud-h) * 0.74) !important; }
+.rank-up__arrow {
+  width: calc(var(--hud-h) * 0.62) !important;
+  height: calc(var(--hud-h) * 0.62) !important;
+  animation: rank-hop 600ms steps(3, end) 1100ms 3 both;
+}
+.rank-up__rank { width: calc(var(--hud-h) * 0.72); height: calc(var(--hud-h) * 0.72); font-size: var(--hud-fs); }
+@keyframes rank-hop { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
+

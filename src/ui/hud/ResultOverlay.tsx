@@ -1,6 +1,9 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect } from 'preact/hooks';
 import type { BattleResult } from '../../app/BattleController';
+import type { RankUp } from '../../app/board';
 import { COIN } from '../screens/pictures';
+import { RankUpBadge } from '../screens/RankBlock';
 import { uiSound } from '../uiSound';
 import { PixelIcon } from './PixelIcon';
 import type { Faction } from '../../sim/types';
@@ -18,6 +21,8 @@ export interface ResultOverlayProps {
   onMenu(): void;
   /** Coins earned (a logged-in player): they fall as coin blocks under the word. */
   coins?: number | null;
+  /** The player moved up a leaderboard table: its picture, an up arrow and the new place, by the coins. */
+  rankUp?: RankUp | null;
 }
 
 /** At most this many coin blocks fall, one per 5 coins. */
@@ -26,7 +31,7 @@ const MAX_BLOCKS = 14;
 export const COIN_STAGGER_MS = 90;
 
 /** The coins earned, falling as blocks one after another into a row, with their sum and a blip each. */
-export function CoinRain({ coins }: { coins: number }) {
+export function CoinRain({ coins, children }: { coins: number; children?: ComponentChildren }) {
   const blocks = Math.max(1, Math.min(MAX_BLOCKS, Math.round(coins / 5)));
   useEffect(() => {
     const ids = Array.from({ length: blocks }, (_, i) => setTimeout(() => uiSound('bounty'), 300 + i * COIN_STAGGER_MS));
@@ -45,6 +50,7 @@ export function CoinRain({ coins }: { coins: number }) {
         <PixelIcon art={COIN} class="coin-rain__icon" />
         <span class="inked">+{coins}</span>
       </span>
+      {children}
     </div>
   );
 }
@@ -55,7 +61,7 @@ export function resultWord(result: NonNullable<BattleResult>): 'VICTORY!' | 'DEF
 }
 
 /** VICTORY! / DEFEAT / DRAW, the winner's portrait, the match time, Play again and Menu. */
-export function ResultOverlay({ result, playerFaction, seconds, portraits = {}, onPlayAgain, onMenu, coins = null }: ResultOverlayProps) {
+export function ResultOverlay({ result, playerFaction, seconds, portraits = {}, onPlayAgain, onMenu, coins = null, rankUp = null }: ResultOverlayProps) {
   const word = resultWord(result);
   const tone = word === 'VICTORY!' ? 'win' : word === 'DEFEAT' ? 'lose' : 'draw';
   const winners: Faction[] = result.winner === 'draw' ? ['plants', 'zombies'] : [result.winner];
@@ -78,7 +84,9 @@ export function ResultOverlay({ result, playerFaction, seconds, portraits = {}, 
           <span class="hud-top__face" aria-hidden="true" />
           <span class="inked">{formatClock(seconds)}</span>
         </div>
-        {coins !== null && coins > 0 && <CoinRain coins={coins} />}
+        {coins !== null && coins > 0
+          ? <CoinRain coins={coins}>{rankUp !== null && <RankUpBadge up={rankUp} />}</CoinRain>
+          : rankUp !== null && <div class="coin-rain"><RankUpBadge up={rankUp} /></div>}
         <div class="row">
           <button type="button" data-action="play-again" class="btn btn--big pal-leaf" onClick={onPlayAgain}>
             <span class="ico ico--restart" aria-hidden="true" /><span class="btn__label inked">Play again</span>

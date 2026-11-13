@@ -14,6 +14,7 @@ import { BattleSession } from './BattleSession';
 import { installDebug, markReady } from './debug';
 import { loadSettings } from './settings';
 import type { Settings } from './settings';
+import { board } from './board';
 import { session } from './session';
 import { Stage } from './Stage';
 import { defaultCloud } from '../cloud/restClient';
@@ -58,7 +59,11 @@ export function mountGame(
   // The players' session on this page's cloud (the fake unless the build says live). Its clock can
   // be moved on by tests (`__lvt.skipClock(ms)`), so a 30 s lock-out need not be waited out.
   let skew = 0;
-  session.configure({ cloud: defaultCloud(), now: () => Date.now() + skew });
+  // The leaderboard reads the same cloud (one fake database for the page).
+  const cloud = defaultCloud();
+  session.configure({ cloud, now: () => Date.now() + skew });
+  board.configure({ cloud });
+  lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };
   lvt.players = session;
   lvt.go = go;
