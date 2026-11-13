@@ -1,4 +1,4 @@
-import { Group, Mesh, type BufferGeometry, type Material } from 'three';
+import { Group, InstancedMesh, Mesh, type BufferGeometry, type Material } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { HAZARD_FADE, Hazards } from '../../src/render/battle/Hazards';
 import { allocationsIn } from './allocations';
@@ -7,8 +7,9 @@ function run(h: Hazards, seconds: number): void {
   for (let t = 0; t < seconds - 1e-9; t += 1 / 60) h.update(1 / 60);
 }
 
+/** The puddles showing (each a group named `hazard`; the group also holds the bubble batch). */
 function shown(h: Hazards) {
-  return h.group.children.filter((o) => o.visible);
+  return h.group.children.filter((o) => o.visible && o.name === 'hazard');
 }
 
 describe('Hazards', () => {
@@ -81,6 +82,28 @@ describe('Hazards', () => {
     expect(bubbles.some((b, i) => Math.abs(b.position.y - (before[i] as number)) > 0.01)).toBe(true);
     const m = bubbles[0]!.material as Material & { emissiveIntensity: number };
     expect(m.emissiveIntensity).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('draws every puddle's bubbles in one call, each shown bubble once, none on its own', () => {
+    const h = new Hazards();
+    for (let id = 0; id < 6; id++) h.add(id, id % 5, 1 + id, 0.75, 4);
+    run(h, 0.2);
+    expect(h.bubbleDrawCalls).toBe(1);
+    const batch = h.group.children.find((o): o is InstancedMesh => o instanceof InstancedMesh)!;
+    let bubbles = 0;
+    for (const puddle of shown(h)) {
+      for (const o of puddle.children) {
+        if (o.name !== 'hazard-bubble') continue;
+        expect(o.layers.mask, 'a bubble is on no layer').toBe(0);
+        if (o.visible) bubbles++;
+      }
+    }
+    expect(bubbles).toBeGreaterThanOrEqual(6 * 3);
+    expect(batch.count).toBe(bubbles);
+    expect(batch.castShadow).toBe(false);
+    h.clear();
+    expect(h.bubbleDrawCalls).toBe(0);
+    expect(batch.visible).toBe(false);
   });
 
   it('allocates nothing observable in update, fading puddles included', () => {

@@ -1,4 +1,5 @@
 import { Color, Group, Mesh, MeshStandardMaterial, type BufferGeometry } from 'three';
+import { InstanceBatch } from '../fx/InstanceBatch';
 import { glowMaterial } from '../fx/glow';
 import { MATTE_PLASTIC } from '../look';
 import { BoxBatch, hash2 } from '../world/boxes';
@@ -84,12 +85,16 @@ export class Hazards {
   private readonly bubble = bubbleGeometry();
   private readonly glow = glowMaterial(BUBBLE_GLOW);
   private readonly puddles: Puddle[] = [];
+  /** Every puddle's bubbles in one draw call (the bubble meshes are layer-less stand-ins it copies). */
+  private readonly bubbles: InstanceBatch;
   private born = 0;
   private count = 0;
 
   /** Room for `capacity` puddles at once (Brain Rots rarely leave more than a handful). */
   constructor(capacity = 12) {
     this.group.name = 'hazards';
+    this.bubbles = new InstanceBatch(this.bubble, this.glow, capacity * BUBBLES, 'hazard-bubbles');
+    this.group.add(this.bubbles.mesh);
     for (let i = 0; i < capacity; i++) {
       const root = new Group();
       root.name = 'hazard';
@@ -112,6 +117,7 @@ export class Hazards {
       for (let j = 0; j < BUBBLES; j++) {
         const mesh = new Mesh(this.bubble, this.glow);
         mesh.name = 'hazard-bubble';
+        mesh.layers.disableAll(); // posed here, drawn by the bubble batch
         root.add(mesh);
         bubbles.push(mesh);
       }
@@ -179,15 +185,39 @@ export class Hazards {
       }
       this.pose(p);
     }
+    this.draw();
   }
 
   clear(): void {
     for (let i = 0; i < this.puddles.length; i++) if ((this.puddles[i] as Puddle).active) this.drop(this.puddles[i] as Puddle);
+    this.draw();
+  }
+
+  /** How many draw calls the bubbles take now (all puddles share one). */
+  get bubbleDrawCalls(): number {
+    return this.bubbles.count > 0 ? 1 : 0;
+  }
+
+  /** Copies every live puddle's shown bubbles into the batch. */
+  private draw(): void {
+    const batch = this.bubbles;
+    batch.begin();
+    for (let i = 0; i < this.puddles.length; i++) {
+      const p = this.puddles[i] as Puddle;
+      if (!p.active) continue;
+      p.root.updateMatrixWorld(true);
+      for (let j = 0; j < p.bubbles.length; j++) {
+        const bubble = p.bubbles[j] as Mesh;
+        if (bubble.visible) batch.add(bubble);
+      }
+    }
+    batch.end();
   }
 
   /** Takes every puddle away, takes `group` out of the scene, and frees the shapes and materials. */
   dispose(): void {
     this.clear();
+    this.bubbles.dispose();
     this.group.removeFromParent();
     this.group.clear();
     this.puddle.dispose();
