@@ -301,6 +301,7 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
         <LevelCard
           def={open.def} save={me} portraits={portraits} onClose={close}
           onPlay={() => { uiSound('click'); startLevel(open.def, me); }}
+          onTutorial={() => { uiSound('click'); startLevel(open.def, me, undefined, undefined, undefined, { replayTutorial: true }); }}
           onSkill={(skill) => { uiSound('click'); session.update((s) => ({ ...s, difficulty: { ...s.difficulty, [side]: skill } })); }}
         />
       )}

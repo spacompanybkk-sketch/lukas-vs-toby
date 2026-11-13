@@ -9,6 +9,8 @@ import type { Settings } from '../app/settings';
 import { session as players } from '../app/session';
 import { go, screen, startLevel } from '../app/store';
 import { settleLevel } from '../app/levelSession';
+import { rememberTaught } from '../app/tutorial';
+import type { Tutorial } from '../app/tutorial';
 import type { LevelOutcome, LevelRecord } from '../app/levelSession';
 import type { Turntable } from './hud/ResultOverlay';
 import type { SfxName } from '../audio/sfx';
@@ -292,6 +294,7 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
 
   const { coins, rankUp } = useBattleCoins(live, options);
   const { outcome, rankUp: levelRankUp } = useLevelResult(live, options);
+  useTeached(live, options);
 
   if (live === null) return null;
   const play = options.play;
@@ -364,6 +367,25 @@ function useLevelResult(
     };
   }, [live, options]);
   return { outcome, rankUp };
+}
+
+/**
+ * The tutorial steps done in this battle go into the save (`teached`) as they are done, so a step
+ * is shown once per player; nothing is kept for anyone but the level's own player.
+ */
+function useTeached(live: { id: number; session: BattleSessionLike } | null, options: BattleOptions): void {
+  useEffect(() => {
+    const play = options.play;
+    const tutorial = (live?.session.controller as { tutorial?: Tutorial | null } | undefined)?.tutorial ?? null;
+    if (play === undefined || tutorial === null) return undefined;
+    let kept = 0;
+    return tutorial.taught.subscribe((ids) => {
+      const fresh = ids.slice(kept);
+      kept = ids.length;
+      if (fresh.length === 0 || players.player.peek()?.slot !== play.slot) return;
+      players.update((save) => fresh.reduce(rememberTaught, save));
+    });
+  }, [live, options]);
 }
 
 /**

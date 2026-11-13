@@ -28,6 +28,9 @@ import { WaveBar } from '../hud/WaveBar';
 import { ALERT } from '../hud/levelPictures';
 import { PixelIcon } from '../hud/PixelIcon';
 import { TopBar } from '../hud/TopBar';
+import { PointingHand } from '../hud/PointingHand';
+import type { GloveHost } from '../hud/PointingHand';
+import type { GloveVM } from '../../app/tutorial';
 import '../hud/hud.css';
 
 /** What the battle screen needs from a session; the real `BattleSession` satisfies it, tests pass a fake. */
@@ -48,9 +51,13 @@ export interface BattleSessionLike {
     levelHud?: LevelSignals;
     /** A belt card tapped (its slot), or null: put down. */
     selectBelt?(slot: number | null): void;
+    /** The level's tutorial: where its glove points (none or null: no tutorial). */
+    tutorial?: { glove: ReadonlySignal<GloveVM | null> } | null;
   };
   /** Client pixels of a tile's middle (the big-wave cue stands at a lane's end); none: no cue. */
   tileToClient?(lane: number, col: number): { x: number; y: number } | null;
+  /** Client pixels of one of the units (the tutorial's glove points at it); null when it is gone. */
+  unitToClient?(id: number): { x: number; y: number } | null;
   begin(): void;
   dispose(): void;
   /**
@@ -185,6 +192,7 @@ export function BattleScreen(props: BattleScreenProps) {
       {ctl.levelHud !== undefined && session.tileToClient !== undefined && (
         <IncomingCues incoming={ctl.levelHud.incoming} at={(lane, side) => session.tileToClient?.(lane, side === 'zombies' ? 9 : 0) ?? null} />
       )}
+      {ctl.tutorial != null && <LiveGlove hud={hud} glove={ctl.tutorial.glove} host={session} />}
       {session.heroBanner !== undefined && <HeroBanner banner={session.heroBanner} boys={boys} />}
       <IntroBanner session={session} />
       <Overlays
@@ -225,6 +233,11 @@ function LiveLevel({ hud, info }: { hud: HudSignals; info: LevelHudInfo }) {
       {!clock && waves && <WaveBar seconds={seconds} last={info.lastWave} flags={info.flags} enemy={info.enemy} />}
     </div>
   );
+}
+
+/** The tutorial's glove; hidden under the pause menu and the result. */
+function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySignal<GloveVM | null>; host: GloveHost }) {
+  return <PointingHand glove={glove} host={host} hidden={hud.paused.value || hud.result.value !== null} />;
 }
 
 /** How long a big wave's cue stays at its lane's end. */

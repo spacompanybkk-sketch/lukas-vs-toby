@@ -194,6 +194,9 @@
 .lcard__face { width: clamp(52px, 8.6vh, 80px); height: clamp(52px, 8.6vh, 80px); padding: 6px; }
 .lcard__face:not(.is-on) svg { filter: grayscale(0.6) brightness(0.85); }
 .lcard__face.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: calc(var(--px-line) * 2); }
+/* The small glove button: plays the level with its tutorial again. */
+.lcard__teach { flex: none; padding: 6px; }
+.lcard__teach svg { display: block; width: clamp(30px, 4.6vh, 44px); height: auto; }
 .lcard__play { min-width: clamp(160px, 22vw, 260px); animation: px-breathe 1200ms steps(2, jump-none) infinite; }
 
 /* A closed level: its picture behind a padlock, and an arrow to the level to play now. */

@@ -1,3 +1,4 @@
+import { LEVELS } from '../adventure/levels';
 import { effect, signal } from '@preact/signals';
 import { createRef, render } from 'preact';
 import type { Skill } from '../ai/bot';
@@ -84,6 +85,7 @@ export function mountGame(
   // first, at start and at every log-in.
   const stopPending = watchPending(session);
   lvt.go = go;
+  lvt.levels = LEVELS;
   let stage: Stage | null = null;
   try {
     stage = new Stage(canvas, loadSettings().quality);

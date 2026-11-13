@@ -9,6 +9,7 @@ import type { BattleOptions } from './BattleController';
 import { applyPending, levelOptions, levelProblem, prepareLevel } from './levelSession';
 import type { LevelHost } from './levelSession';
 import { session } from './session';
+import { stepsToTeach } from './tutorial';
 
 export type Screen =
   | { name: 'title' }
@@ -48,9 +49,13 @@ export function go(s: Screen): void {
  * not open for `save` (or not a known level) is refused: nothing happens and the answer is false.
  * A level that cannot be played (`levelProblem`: a computer with no energy) throws in development
  * and is refused, with a console error, in a build.
+ *
+ * The level's tutorial comes with it: the steps of `def.teaches` this player has not done yet, or
+ * all of them with `replayTutorial` (the glove button on the level card).
  */
 export function startLevel(
   def: LevelDef, save: Save, seed: number = Date.now(), levels: readonly LevelDef[] = LEVELS, host: LevelHost = session,
+  opts: { replayTutorial?: boolean } = {},
 ): boolean {
   if (!isOpen(save, def, levels)) return false;
   const problem = levelProblem(def);
@@ -61,6 +66,7 @@ export function startLevel(
   }
   // The save as it is once any pending result is in (it may unlock a card this level deals).
   const me = host.player.peek()?.slot === save.slot ? (applyPending(host, levels), host.player.peek() ?? save) : save;
-  go({ name: 'battle', options: levelOptions(prepareLevel(def, me, seed, me.slot)) });
+  const play = { ...prepareLevel(def, me, seed, me.slot), teach: stepsToTeach(def.teaches, me, opts.replayTutorial === true) };
+  go({ name: 'battle', options: levelOptions(play) });
   return true;
 }

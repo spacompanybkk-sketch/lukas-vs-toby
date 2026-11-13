@@ -1281,10 +1281,16 @@ function starsUpTo(side, list) {
   return Object.fromEntries(list.map((n, i) => [`${letter}1-${i + 1}`, n]));
 }
 
-/** Lukas with Adventure progress, on the map of `side` (and the card of `card`, if given). */
-async function onMap(page, side, stars, unlocked, card) {
+/**
+ * Lukas with Adventure progress, on the map of `side` (and the card of `card`, if given). Every
+ * tutorial step is marked done except those in `teach` (ids), so a level shows only those.
+ */
+async function onMap(page, side, stars, unlocked, card, teach = []) {
   await asPlayer(page, 'Lukas', 'peashooter', 'p01');
-  await page.evaluate(([sd, st, un]) => window.__lvt.players.update((v) => ({ ...v, [sd]: { stars: st, unlocked: un } })), [side, stars, unlocked]);
+  await page.evaluate(([sd, st, un, keep]) => window.__lvt.players.update((v) => ({
+    ...v, [sd]: { stars: st, unlocked: un },
+    teached: window.__lvt.levels.flatMap((l) => (l.teaches ?? []).map((t) => t.id)).filter((id) => !keep.includes(id)),
+  })), [side, stars, unlocked, teach]);
   await page.click('[data-home="play"]');
   await page.click('[data-play="adventure"]');
   await page.click(`[data-side="${side}"]`);
@@ -1294,11 +1300,22 @@ async function onMap(page, side, stars, unlocked, card) {
 }
 
 /** From the map, `id` started by its card's play button; waits for the fight. */
-async function inLevel(page, side, stars, unlocked, id) {
-  await onMap(page, side, stars, unlocked, id);
+async function inLevel(page, side, stars, unlocked, id, teach = []) {
+  await onMap(page, side, stars, unlocked, id, teach);
   await page.click('[data-action="start-level"]');
   await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 30_000 });
   await page.waitForSelector('[data-banner]', { state: 'detached' });
+}
+
+/** Waits for the tutorial's glove to stand at its target, holding, at the bottom of its tap. */
+async function gloveStill(page) {
+  await page.waitForSelector('[data-tutorial] [data-glove][data-glove-x][data-holding="true"]', { state: 'attached', timeout: 15_000 });
+  await nextFrames(page, 6);
+  await page.evaluate(() => {
+    // Every glove on the same frame of its tap: the press (the bottom of the hop) is the clearest still.
+    for (const a of document.getAnimations()) if (a.animationName === 'tut-tap') { a.pause(); a.currentTime = 450; }
+  });
+  await nextFrames(page, 2);
 }
 
 /** The running level fast-forwarded to `seconds`. */
@@ -1380,6 +1397,45 @@ function adventureShots() {
         window.__lvt.damageBase('plants', Math.round(s.baseMaxHp.plants * 0.4));
       });
       await levelEnd(page, 'zombies', 5200);
+    }],
+    // Task 6: the tutorial's glove. p1-1 at its start: the glove on the Peashooter card, the rest dimmed.
+    ['tutorial-card', async (page) => {
+      await inLevel(page, 'plants', {}, [], 'p1-1', ['p1-1.card', 'p1-1.tile']);
+      await gloveStill(page);
+    }],
+    // p1-1, the card picked: the glove on the marked tile.
+    ['tutorial-tile', async (page) => {
+      await inLevel(page, 'plants', {}, [], 'p1-1', ['p1-1.card', 'p1-1.tile']);
+      await page.evaluate(() => window.__lvt.session.controller.select('peashooter'));
+      await gloveStill(page);
+    }],
+    // p1-3: a Peashooter on the lawn, its card picked again: the glove on the Peashooter with the level-up arrow.
+    ['tutorial-merge', async (page) => {
+      await inLevel(page, 'plants', starsUpTo('plants', [3, 3]), [], 'p1-3', ['p1-3.card', 'p1-3.tile', 'p1-3.merge-card', 'p1-3.merge']);
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        const c = lvt.session.controller;
+        c.select('peashooter');
+        c.click({ lane: 2, col: 1 }, null);
+        lvt.fastForward(30 * 20);
+        c.select('peashooter');
+      });
+      await gloveStill(page);
+    }],
+    // p1-2 at 45 s: the hero is ready, the glove on Lukas's button.
+    ['tutorial-hero', async (page) => {
+      await inLevel(page, 'plants', starsUpTo('plants', [3]), [], 'p1-2', ['p1-2.hero']);
+      await page.evaluate(() => {
+        const lvt = window.__lvt;
+        const c = lvt.session.controller;
+        c.select('sunflower');
+        c.click({ lane: 1, col: 0 }, null);
+        lvt.fastForward(30 * 6);
+        c.select('peashooter');
+        c.click({ lane: 1, col: 1 }, null);
+        lvt.fastForward(30 * 46);
+      });
+      await gloveStill(page);
     }],
     // A loss: grey stars, the consolation coins, replay and map.
     ['level-result-lost', async (page) => {

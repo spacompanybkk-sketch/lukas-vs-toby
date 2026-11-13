@@ -148,3 +148,48 @@ describe('a level through the app', () => {
     expect(q('[data-hud="topbar"]')).not.toBeNull(); // a Quick Battle's result keeps the HUD
   });
 });
+
+describe('the tutorial through the app (Task 6)', () => {
+  it('a first p1-1 shows the glove on the card; each step done goes into the save once; the next start has none', () => {
+    act(() => { expect(startLevel(levelById('p1-1')!, me(), 5)).toBe(true); });
+    const { c } = made[made.length - 1]!;
+    expect(need('[data-tutorial] [data-glove]').dataset.glove).toBe('card');
+    expect(need('[data-glove]').dataset.gloveStep).toBe('p1-1.card');
+    act(() => { c.step(); c.step(); });
+    expect(c.match.state.tick).toBe(1); // held
+    tap('[data-hud="tray"] [data-card="peashooter"]');
+    expect(me().teached).toEqual(['p1-1.card']);
+    expect(need('[data-glove]').dataset.glove).toBe('tile');
+    expect(need('[data-tutorial]').classList.contains('is-holding')).toBe(true);
+    act(() => { c.click({ lane: 2, col: 1 }, null); c.step(); });
+    expect(me().teached).toEqual(['p1-1.card', 'p1-1.tile']);
+    expect(q('[data-tutorial]')).toBeNull();
+    // Quit and start again: nothing left to teach.
+    act(() => { expect(startLevel(levelById('p1-1')!, me(), 6)).toBe(true); });
+    expect(made[made.length - 1]!.c.tutorial).toBeNull();
+    expect(q('[data-tutorial]')).toBeNull();
+  });
+
+  it('the glove hides under the pause menu', () => {
+    act(() => { startLevel(levelById('z1-1')!, me(), 5); });
+    expect(need('[data-tutorial]').classList.contains('is-hidden')).toBe(false);
+    tap('[data-hud="pause"]');
+    expect(need('[data-tutorial]').classList.contains('is-hidden')).toBe(true);
+  });
+
+  it('the level card\'s glove button plays the whole tutorial again; a level with none has no button', () => {
+    session.update((s) => ({ ...s, teached: ['p1-1.card', 'p1-1.tile'] }));
+    act(() => go({ name: 'map', side: 'plants', card: 'p1-1' }));
+    tap('[data-action="replay-tutorial"]');
+    const { c } = made[made.length - 1]!;
+    expect(c.tutorial?.current?.id).toBe('p1-1.card');
+    act(() => go({ name: 'map', side: 'plants', card: 'p1-1' }));
+    tap('[data-action="start-level"]');
+    expect(made[made.length - 1]!.c.tutorial).toBeNull();
+    const stars = Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`p1-${i + 1}`, 1 as const]));
+    session.update((s) => ({ ...s, plants: { stars, unlocked: ['potatoMine'] } }));
+    act(() => go({ name: 'map', side: 'plants', card: 'p1-5' }));
+    expect(q('[data-screen="level-card"]')).not.toBeNull();
+    expect(q('[data-action="replay-tutorial"]')).toBeNull();
+  });
+});

@@ -15,6 +15,8 @@ import type { BossKey, CardKey, Command, CommandRejection, Faction, SimEvent, Si
 import type { PlacementPreview } from '../render/battle/types';
 import { bigWaveRuns, levelProblem, levelRecord } from './levelSession';
 import type { LevelPlay, LevelRecord } from './levelSession';
+import { Tutorial } from './tutorial';
+import type { TutorialAction } from './tutorial';
 
 /**
  * `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). `upgrades`: the
@@ -188,6 +190,8 @@ export class BattleController {
   /** A level's extra HUD (clock, waves, belt), or null. */
   readonly level: LevelHudInfo | null;
   readonly levelHud: LevelSignals;
+  /** The level's tutorial (`play.teach`), or null: none, or every step already done. */
+  readonly tutorial: Tutorial | null;
   private readonly bot: Bot;
   /** The ids of the cards on the belt, in belt order (see `BeltCardVM`). */
   private readonly beltIds: number[] = [];
@@ -265,14 +269,39 @@ export class BattleController {
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
-    // A first tap on the lawn should do something: start with the first card the player can pay for.
+    const teach = this.play?.teach ?? [];
+    this.tutorial = teach.length === 0 ? null : new Tutorial(teach, {
+      match: this.match, playerFaction: this.playerFaction,
+      selected: () => this.hud.selected.peek() as CardKey | null,
+      heroPicked: () => this.hud.heroSelected.peek(),
+      spellPicked: () => this.hud.spellSelected.peek(),
+    });
+    // A first tap on the lawn should do something: start with the first card the player can pay
+    // for. Not when the tutorial's first step is to pick a card: the glove points at it instead.
     const first = this.hud.cards.peek().find((c) => c.affordable);
-    if (first !== undefined) this.hud.selected.value = first.unit;
+    if (first !== undefined && this.tutorial?.startsWithCard !== true) this.hud.selected.value = first.unit;
+  }
+
+  /** A tutorial step waits: anything but its own action is ignored (no denial, no buzz). */
+  private refused(action: TutorialAction): boolean {
+    return this.tutorial !== null && !this.tutorial.allows(action);
+  }
+
+  /** Queues the player's command for the next tick (and tells the tutorial, whose step it may end). */
+  private queue(cmd: Command): void {
+    this.queued = cmd;
+    this.tutorial?.queued(cmd);
   }
 
   /** One tick: the computer's commands and the player's queued one go to the match together. */
   step(): SimEvent[] {
     if (this.hud.paused.peek() || this.over()) return [];
+    const tutorial = this.tutorial;
+    if (tutorial !== null) {
+      tutorial.tick();
+      // Held: the match waits for the step's action; the tick that carries it goes through.
+      if (tutorial.holding && this.queued === null) return [];
+    }
     const mine: Command[] = this.queued === null ? [] : [this.queued];
     this.queued = null;
     const theirs = this.bot.think(this.match);
@@ -289,6 +318,7 @@ export class BattleController {
       if (e.type === 'waveSpawned') this.cueWave(e.index, e.lane);
     }
     this.refresh();
+    tutorial?.events(events);
     const winner = this.match.state.winner;
     if (winner !== null && this.hud.result.peek() === null) {
       this.hud.result.value = { winner, playerWon: winner === this.playerFaction };
@@ -304,12 +334,14 @@ export class BattleController {
   select(unit: UnitKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
+    if (this.refused(unit === null ? { kind: 'other' } : { kind: 'select', card: unit as CardKey })) return;
     this.levelHud.beltSlot.value = null;
     this.hud.selected.value = unit;
     if (unit !== null) {
       this.hud.shovel.value = false;
       this.clearPowers();
       this.cardBeforePower = null;
+      this.tutorial?.selected(unit as CardKey);
     }
   }
 
@@ -320,6 +352,7 @@ export class BattleController {
   selectBelt(slot: number | null): void {
     if (this.hud.paused.peek() || this.over() || this.level?.belt !== true) return;
     const card = slot === null ? undefined : this.match.state.belt[slot];
+    if (this.refused(card === undefined ? { kind: 'other' } : { kind: 'select', card })) return;
     if (slot === null || card === undefined) {
       if (this.levelHud.beltSlot.peek() !== null) {
         this.levelHud.beltSlot.value = null;
@@ -334,11 +367,12 @@ export class BattleController {
       this.levelHud.beltSlot.value = slot;
       this.hud.selected.value = card;
     });
+    this.tutorial?.selected(card);
   }
 
   toggleShovel(): void {
     if (this.hud.paused.peek() || this.over()) return;
-    if (this.playerFaction !== 'plants') return;
+    if (this.playerFaction !== 'plants' || this.refused({ kind: 'other' })) return;
     const on = !this.hud.shovel.peek();
     this.hud.shovel.value = on;
     if (on) {
@@ -356,6 +390,7 @@ export class BattleController {
    */
   selectHero(on: boolean): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.refused(on ? { kind: 'hero' } : { kind: 'other' })) return;
     if (!on) {
       if (this.hud.heroSelected.peek()) this.powerDone();
       return;
@@ -368,6 +403,7 @@ export class BattleController {
     this.pickPower();
     this.hud.spellSelected.value = null;
     this.hud.heroSelected.value = true;
+    this.tutorial?.refresh();
   }
 
   /** The hero button (or key H): picks the hero power, or puts it down when it is picked. */
@@ -384,6 +420,7 @@ export class BattleController {
    */
   selectSpell(key: SpellKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.refused(key === null || key === this.hud.spellSelected.peek() ? { kind: 'other' } : { kind: 'spell', key })) return;
     if (key === null || key === this.hud.spellSelected.peek()) {
       if (this.hud.spellSelected.peek() !== null) this.powerDone();
       return;
@@ -399,6 +436,7 @@ export class BattleController {
       this.pickPower();
       this.hud.heroSelected.value = false;
       this.hud.spellSelected.value = key;
+      this.tutorial?.refresh();
       return;
     }
     if (this.queued !== null) return;
@@ -408,7 +446,7 @@ export class BattleController {
       this.deny(reason);
       return;
     }
-    this.queued = cmd;
+    this.queue(cmd);
     // Cast: nothing is waiting to be aimed any more (and a card put aside for it comes back).
     if (this.hud.heroSelected.peek() || this.hud.spellSelected.peek() !== null) this.powerDone();
   }
@@ -460,6 +498,7 @@ export class BattleController {
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.tutorial?.holding === true && !this.tutorialTap(tile, unitId)) return 'ignored';
     if (this.hud.heroSelected.peek()) return tile === null ? this.deny('bad-lane') : this.heroLane(tile.lane);
     const spell = this.hud.spellSelected.peek();
     if (spell !== null) return this.castAt(spell, tile);
@@ -470,7 +509,7 @@ export class BattleController {
       const play = this.beltCommand(slot, target.tile);
       const refused = this.match.check(play);
       if (refused !== null) return this.deny(refused);
-      this.queued = play;
+      this.queue(play);
       return null;
     }
     const cmd = this.buildClickCommand(target);
@@ -479,8 +518,32 @@ export class BattleController {
     if (cmd === 'no-target') return this.deny('no-target');
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queued = cmd;
+    this.queue(cmd);
     return null;
+  }
+
+  /**
+   * While a tutorial step holds the match: whether this lawn tap is the step's own action (the
+   * command it would make, allowed by the step and by the match). Anything else is ignored.
+   */
+  private tutorialTap(tile: Tile | null, unitId: number | null): boolean {
+    const me = this.playerFaction;
+    let cmd: Command | null = null;
+    const spell = this.hud.spellSelected.peek();
+    const slot = this.levelHud.beltSlot.peek();
+    if (this.hud.heroSelected.peek()) {
+      if (tile !== null) cmd = { type: 'hero', faction: me, lane: tile.lane };
+    } else if (spell !== null) {
+      if (tile !== null) cmd = { type: 'spell', faction: me, spell, lane: tile.lane, col: tile.col };
+    } else if (!this.hud.shovel.peek()) {
+      const target = this.resolveTile(tile, unitId, this.hud.selected.peek());
+      if (target !== null && slot !== null) cmd = this.beltCommand(slot, target.tile);
+      else {
+        const built = this.buildClickCommand(target);
+        if (typeof built !== 'string') cmd = built;
+      }
+    }
+    return cmd !== null && this.tutorial!.allows({ kind: 'command', cmd }) && this.match.check(cmd) === null;
   }
 
   /**
@@ -527,9 +590,10 @@ export class BattleController {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
     const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
+    if (this.refused({ kind: 'command', cmd })) return 'ignored';
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queued = cmd;
+    this.queue(cmd);
     this.powerDone();
     return null;
   }
@@ -541,6 +605,7 @@ export class BattleController {
     }
     if (this.hud.paused.peek() || this.over()) return;
     if (key === 'Escape') {
+      if (this.refused({ kind: 'other' })) return;
       this.levelHud.beltSlot.value = null;
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
@@ -577,7 +642,7 @@ export class BattleController {
     const cmd: Command = { type: 'spell', faction: this.playerFaction, spell, lane: tile.lane, col: tile.col };
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queued = cmd;
+    this.queue(cmd);
     this.powerDone();
     return null;
   }

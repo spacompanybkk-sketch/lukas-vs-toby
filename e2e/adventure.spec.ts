@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures';
 import type { Locator } from '@playwright/test';
 import type { Page } from './fixtures';
-import { boxHitsPolygon, forceResult, frames, glContexts, lawnCorners, logIn, openTitle, tilePoint, waitLive } from './helpers';
+import { boxHitsPolygon, deniedCount, forceResult, frames, glContexts, lawnCorners, logIn, openTitle, tilePoint, waitLive } from './helpers';
 
 // Phase 3 Task 4: the way into Adventure: the Play menu, the map on the shared stage, the level card.
 
@@ -157,6 +157,15 @@ test('a guest reaches Quick Battle only; the map side tabs switch between Lukas\
 const coins = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).players.player.value.coins as number);
 const pending = (page: Page): Promise<string | null> => page.evaluate(() => localStorage.getItem('lvt2f_pending_p01'));
 
+/** Marks every tutorial step done for the logged-in player, so a level starts with no glove. */
+async function skipTutorials(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const lvt = window.__lvt as any;
+    const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((l) => (l.teaches ?? []).map((t) => t.id));
+    lvt.players.update((s: any) => ({ ...s, teached: ids }));
+  });
+}
+
 /** From the map, open `id`'s card and start it; waits for the fight. */
 async function startFromMap(page: Page, id: string): Promise<void> {
   await press(page.locator(`[data-stone="${id}"]`));
@@ -175,6 +184,7 @@ test('win p1-1: three stars and 90 coins, the map shows them and p1-2 open; a re
   test.setTimeout(150_000);
   await openTitle(page);
   await logIn(page);
+  await skipTutorials(page);
   const before = await coins(page);
   await toMap(page);
   await startFromMap(page, 'p1-1');
@@ -203,6 +213,7 @@ test('a reload on the result screen neither loses nor doubles the reward; a resu
   test.setTimeout(150_000);
   await openTitle(page);
   await logIn(page);
+  await skipTutorials(page);
   const before = await coins(page);
   await toMap(page);
   await startFromMap(page, 'p1-1');
@@ -272,3 +283,87 @@ test('a conveyor level: the belt replaces the tray, a belt card goes on a tile f
   expect(await pending(page)).toBeNull();
 });
 
+
+// Phase 3 Task 6: the tutorial, by following the glove with taps only.
+
+const tick = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.match.state.tick as number);
+
+/** Taps at a client point: a touch tap on the iPad project, a mouse click on the desktop. */
+async function tapAt(page: Page, at: { x: number; y: number }): Promise<void> {
+  if (test.info().project.name === 'ipad') await page.touchscreen.tap(at.x, at.y);
+  else await page.mouse.click(at.x, at.y);
+}
+
+/** The glove's step and the point it taps (read off its data attributes), once it stands still. */
+async function glove(page: Page): Promise<{ step: string; kind: string; x: number; y: number }> {
+  const hand = page.locator('[data-tutorial] [data-glove]');
+  await expect(hand).toHaveAttribute('data-glove-x', /\d/);
+  await expect(hand).toHaveAttribute('data-holding', 'true');
+  await frames(page, 3);
+  return hand.evaluate((e: HTMLElement) => ({
+    step: e.dataset.gloveStep!, kind: e.dataset.glove!, x: Number(e.dataset.gloveX), y: Number(e.dataset.gloveY),
+  }));
+}
+
+/**
+ * Follows the glove until it is gone, by taps only, checking at each step that the match is held
+ * (the tick does not move) and that a tap somewhere else does nothing (no move, no buzz).
+ */
+async function followGlove(page: Page, steps: string[], wrong: { x: number; y: number }): Promise<void> {
+  for (const id of steps) {
+    const g = await glove(page);
+    expect(g.step).toBe(id);
+    const t = await tick(page);
+    await page.waitForTimeout(400);
+    expect(await tick(page)).toBe(t);
+    const denied = await deniedCount(page);
+    await tapAt(page, wrong);
+    await frames(page, 3);
+    expect(await deniedCount(page)).toBe(denied);
+    expect(await tick(page)).toBe(t);
+    await expect(page.locator('[data-tutorial] [data-glove]')).toHaveAttribute('data-glove-step', id);
+    await tapAt(page, g);
+    await expect.poll(async () => page.locator(`[data-tutorial] [data-glove][data-glove-step="${id}"]`).count()).toBe(0);
+  }
+  await expect(page.locator('[data-tutorial]')).toHaveCount(0);
+  await expect.poll(() => tick(page)).toBeGreaterThan(30);
+}
+
+test('the tutorial of p1-1 by the glove: card, then tile, by taps; held while it waits; wrong taps do nothing; remembered', async ({ page }) => {
+  test.setTimeout(150_000);
+  await openTitle(page);
+  await logIn(page);
+  await toMap(page);
+  await startFromMap(page, 'p1-1');
+  const wrong = await tilePoint(page, 0, 5);
+  await followGlove(page, ['p1-1.card', 'p1-1.tile'], wrong);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
+    .filter((u: any) => u.faction === 'plants').map((u: any) => `${u.key} ${u.lane} ${Math.floor(u.x)}`))).toEqual(['peashooter 2 1']);
+  expect(await page.evaluate(() => (window.__lvt as any).players.player.value.teached)).toEqual(['p1-1.card', 'p1-1.tile']);
+  // Started again: no glove. The level card's glove button brings it back.
+  await press(page.locator('[data-hud="pause"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await startFromMap(page, 'p1-1');
+  await frames(page, 5);
+  await expect(page.locator('[data-tutorial]')).toHaveCount(0);
+  await press(page.locator('[data-hud="pause"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await press(page.locator('[data-stone="p1-1"]'));
+  await press(page.locator('[data-action="replay-tutorial"]'));
+  await waitLive(page);
+  expect((await glove(page)).step).toBe('p1-1.card');
+});
+
+test('the tutorial of z1-1 by the glove: the Brain Eater, then its lane', async ({ page }) => {
+  test.setTimeout(150_000);
+  await openTitle(page);
+  await logIn(page);
+  await toMap(page, 'zombies');
+  await startFromMap(page, 'z1-1');
+  const wrong = await tilePoint(page, 4, 6);
+  await followGlove(page, ['z1-1.card', 'z1-1.lane'], wrong);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
+    .filter((u: any) => u.faction === 'zombies').map((u: any) => `${u.key} ${u.lane}`))).toEqual(['brainEater 2']);
+});

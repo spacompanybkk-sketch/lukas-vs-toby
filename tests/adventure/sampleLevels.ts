@@ -9,7 +9,7 @@ export const SAMPLE_BATTLE: LevelDef = {
   opponent: { skill: 'easy', cards: ['brainEater', 'veryFastWalker'], incomeScale: 0.8 },
   waves: [], prepared: [], seconds: null, belt: null, boss: null, startEnergy: null,
   spells: false, unlocks: null,
-  teaches: [{ show: 'card', target: 'peashooter', until: 'selected' }],
+  teaches: [{ id: 'p1-1.card', show: 'card', card: 'peashooter', until: 'selected' }],
 };
 
 /** A plant Survive with scripted waves (out of order), a prepared Peashooter, a clock and an unlock. */

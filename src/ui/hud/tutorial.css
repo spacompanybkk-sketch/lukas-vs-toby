@@ -1,0 +1,57 @@
+/* The tutorial's glove and the outline round its target (PointingHand). Hard edges, stepped motion. */
+
+.tut { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+.tut.is-hidden { display: none; }
+
+/* The target's box: a white boxy frame with an ink edge, pulsing in steps. While the match is held
+   the rest of the screen dims a little (the frame's huge shadow), the target stays bright. */
+.tut-mark {
+  position: fixed;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 4px solid #fff;
+  outline: 3px solid var(--ink, #2A1B0E);
+  box-shadow: inset 0 0 0 3px var(--ink, #2A1B0E);
+  animation: tut-pulse 900ms steps(1, end) infinite;
+}
+.tut.is-holding .tut-mark {
+  box-shadow: inset 0 0 0 3px var(--ink, #2A1B0E), 0 0 0 3px var(--ink, #2A1B0E), 0 0 0 200vmax rgba(14, 10, 6, 0.45);
+}
+@keyframes tut-pulse {
+  0% { border-color: #fff; outline-offset: 0; }
+  50% { border-color: #FFD54A; outline-offset: 3px; }
+}
+
+/* The glove: its fingertip sits on the target's middle; it hops up and taps down, in steps. */
+.tut-hand {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.tut-hand__pic {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: clamp(72px, 11vh, 104px);
+  height: clamp(72px, 11vh, 104px);
+  transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1));
+  animation: tut-tap 900ms steps(1, end) infinite;
+  filter: drop-shadow(4px 4px 0 rgba(14, 10, 6, 0.45));
+}
+.tut-hand__pic svg { display: block; width: 100%; height: 100%; }
+@keyframes tut-tap {
+  0% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 - 34px)); }
+  20% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 - 24px)); }
+  35% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 - 12px)); }
+  50% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 + 2px)) scale(0.94, 0.9); }
+  65% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 - 6px)); }
+  80% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 - 20px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tut-mark, .tut-hand__pic { animation: none; }
+}

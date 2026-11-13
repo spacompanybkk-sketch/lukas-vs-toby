@@ -3,14 +3,27 @@ import type { BossKey, CardKey, Faction, UnitKey } from '../sim/types';
 
 
 /**
- * One step of a level's tutorial: what the glove points at, and the player's own action that ends
- * the step. Task 6 gives it its behaviour.
+ * One step of a level's tutorial (Task 6): what the glove points at, and the player's own action
+ * that ends the step. `id` is remembered in the save (`teached`) once the step is done.
+ *
+ * - `card` … `selected`: the card in the tray (or on the belt) is tapped.
+ * - `tile` … `placed`: `card` is put on the tile (`lane`, `col`; zombies go by lane only). While
+ *   `card` is not picked, the glove points at the card first.
+ * - `unit` … `merged`: `card` is merged into the player's first standing unit of its type (the one
+ *   with the level-up arrow). While `card` is not picked, the glove points at the card first.
+ * - `hero` … `fired`: the hero button, then a lane.
+ * - `spell` … `fired`: the spell button `index` (deal order), then a tile for an aimed spell.
+ *
+ * `after`: the step waits (no glove, nothing held) until the hero, or the spell it points at, is
+ * first ready. Steps run in order.
  */
-export type TutorialStep = {
-  show: 'card' | 'tile' | 'unit' | 'hero' | 'spell';
-  target: string;
-  until: 'selected' | 'placed' | 'merged' | 'fired';
-};
+export type TutorialStep = { id: string; after?: 'hero' | 'spell' } & (
+  | { show: 'card'; card: CardKey; until: 'selected' }
+  | { show: 'tile'; card: CardKey; lane: number; col: number; until: 'placed' }
+  | { show: 'unit'; card: CardKey; until: 'merged' }
+  | { show: 'hero'; until: 'fired' }
+  | { show: 'spell'; index: number; until: 'fired' }
+);
 
 export type LevelKind = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';
 

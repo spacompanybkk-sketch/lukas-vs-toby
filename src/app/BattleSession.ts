@@ -5,7 +5,7 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { SoundGate, battleIntensity, playEventSounds } from '../audio/bindings';
 import { BattleView } from '../render/battle/BattleView';
 import type { AimPreview } from '../render/battle/types';
-import { LAWN_COLS, LAWN_LANES, tileCenter, worldToClient } from '../render/coords';
+import { LAWN_COLS, LAWN_LANES, simToWorld, tileCenter, worldToClient } from '../render/coords';
 import type { CommandRejection, Faction, SimEvent } from '../sim/types';
 import { BattleController } from './BattleController';
 import type { BattleOptions } from './BattleController';
@@ -205,6 +205,15 @@ export class BattleSession implements Director, InputTarget {
   tileToClient(lane: number, col: number): { x: number; y: number } {
     const rect = this.canvasRect();
     const at = worldToClient(tileCenter(lane, col, point), this.stage.camera, rect);
+    return { x: rect.left + at.x, y: rect.top + at.y };
+  }
+
+  /** Client pixel position of a unit's body (half a tile above its feet), or null when it is gone. */
+  unitToClient(id: number): { x: number; y: number } | null {
+    const u = this.controller.match.state.units.find((x) => x.id === id);
+    if (u === undefined) return null;
+    const rect = this.canvasRect();
+    const at = worldToClient(simToWorld(u.lane, u.x, point).setY(0.5), this.stage.camera, rect);
     return { x: rect.left + at.x, y: rect.top + at.y };
   }
 

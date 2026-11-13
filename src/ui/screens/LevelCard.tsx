@@ -5,6 +5,7 @@ import { factionOf, isCard } from '../../data/units';
 import type { Save } from '../../progress/save';
 import type { UnitKey } from '../../sim/types';
 import { SILHOUETTES } from '../hud/CardTray';
+import { GLOVE } from '../hud/PointingHand';
 import { PixelIcon } from '../hud/PixelIcon';
 import type { PixelArt } from '../hud/PixelIcon';
 import { BOW, CLOCK, FACE_EASY, FACE_HARD, FACE_MEDIUM, FLAG, KIND_ART, SKULL_CROWN, TOWER } from './adventurePictures';
@@ -76,6 +77,8 @@ export interface LevelCardProps {
   save: Save;
   portraits: Record<string, string>;
   onPlay(): void;
+  /** Plays the level with its whole tutorial again (the small glove button; only when it has one). */
+  onTutorial?(): void;
   onSkill(skill: Skill): void;
   onClose(): void;
 }
@@ -86,7 +89,7 @@ export interface LevelCardProps {
  * silhouette when the level unlocks a unit, a big play button and three faces for the difficulty
  * (the player's saved one ringed). No words needed.
  */
-export function LevelCard({ def, save, portraits, onPlay, onSkill, onClose }: LevelCardProps) {
+export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, onClose }: LevelCardProps) {
   const stars = save[def.side].stars[def.id] ?? 0;
   const goals = starGoals(def, { base: ADVENTURE.baseStars, clock: ADVENTURE.clockStars });
   const cards = dealtCards(save, def);
@@ -150,6 +153,11 @@ export function LevelCard({ def, save, portraits, onPlay, onSkill, onClose }: Le
               </button>
             ))}
           </div>
+          {onTutorial !== undefined && def.teaches !== null && def.teaches.length > 0 && (
+            <button type="button" data-action="replay-tutorial" aria-label="Show me how" class="btn btn--square pal-cream lcard__teach" onClick={onTutorial}>
+              <PixelIcon art={GLOVE} />
+            </button>
+          )}
           <button type="button" data-action="start-level" aria-label="Play" class="btn btn--big pal-leaf lcard__play" onClick={onPlay}>
             <span class="ico ico--play" aria-hidden="true" />
           </button>

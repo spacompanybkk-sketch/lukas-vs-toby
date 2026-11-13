@@ -4,7 +4,7 @@ import { isOpen, levelConfig } from '../adventure/campaign';
 import { LEVELS, levelById } from '../adventure/levels';
 import { applyLevelResult, starsFor } from '../adventure/rewards';
 import type { Stars } from '../adventure/rewards';
-import type { LevelDef } from '../adventure/types';
+import type { LevelDef, TutorialStep } from '../adventure/types';
 import { seconds } from '../data/balance';
 import type { Save, Slot } from '../progress/save';
 import type { Match } from '../sim/match';
@@ -29,7 +29,11 @@ import type { BattleOptions } from './BattleController';
  */
 
 /** A level as it is played: its definition, the match, the battle's id and whose battle it is. */
-export interface LevelPlay { def: LevelDef; config: MatchConfig; battleId: string; slot: Slot }
+export interface LevelPlay {
+  def: LevelDef; config: MatchConfig; battleId: string; slot: Slot;
+  /** The tutorial steps to show in this battle (`stepsToTeach`); none or empty: no tutorial. */
+  teach?: TutorialStep[];
+}
 
 /** The result of one played level, kept on the device until applied. */
 export interface LevelRecord { battleId: string; levelId: string; side: Faction; stars: Stars; won: boolean }
