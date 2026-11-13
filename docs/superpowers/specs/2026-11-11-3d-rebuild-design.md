@@ -249,7 +249,11 @@ both computers see.
 
 - One save per player (section 20; originally one per boy in the browser): coins, stars, unlocks, Marketplace upgrades,
   settings, best Free Play wave, and wins against his brother.
-- Marketplace as today: ten upgrade steps per unit, each adding health and damage.
+- Marketplace as today: ten upgrade steps per unit, each making it stronger. The steps
+  are small and differ per side (measured 2026-11-13: plants +5% damage and +0.5% health
+  a step, zombies +3% damage), so that every unit at step 10 makes Hard about as hard as
+  Medium is without upgrades. The first try, +5% health and damage for all, made two
+  steps enough to walk over Medium.
   Applies in Adventure, Quick Battle and Free Play. Never in Versus.
 - Almanac: every unlocked unit on a 3D turntable with its role, stat bars and five looks.
 - Old saves (`lpvtz_save_lukas`, `lpvtz_save_toby`) are read once. Coins carry over.
