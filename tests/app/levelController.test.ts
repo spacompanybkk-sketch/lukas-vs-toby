@@ -18,8 +18,8 @@ const units = (c: BattleController, side: Faction) => c.match.state.units.filter
 
 describe('a level\'s HUD info', () => {
   it('a battle has no clock, no waves, no belt', () => {
-    // p1-2: a battle against a computer and nothing scripted (p1-1's Brain Eaters are scripted).
-    expect(level('p1-2').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false });
+    // p1-4: a battle against a computer and nothing scripted (p1-1's and p1-2's Brain Eaters are scripted).
+    expect(level('p1-4').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false });
   });
   it('survive: the clock and the waves with the big wave flagged', () => {
     const info = level('p1-6').level!;

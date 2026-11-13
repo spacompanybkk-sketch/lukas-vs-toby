@@ -173,8 +173,8 @@ describe('the battle screen in a level', () => {
   });
 
   it('a battle level has neither (and a Quick Battle shows nothing new)', () => {
-    // p1-2: a battle with nothing scripted (p1-1's scripted Brain Eaters get the wave bar).
-    const { s } = levelSession('p1-2');
+    // p1-4: a battle with nothing scripted (p1-1's and p1-2's scripted Brain Eaters get the wave bar).
+    const { s } = levelSession('p1-4');
     screen(s);
     expect(q('[data-hud="level"]')).toBeNull();
     const quick = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });

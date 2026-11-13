@@ -114,7 +114,7 @@ describe('Level card', () => {
     const s = screen.value;
     expect(s.name).toBe('battle');
     if (s.name !== 'battle') return;
-    expect(s.options).toMatchObject({ playerFaction: 'plants', level: 'p1-2', cards: ['peashooter', 'sunflower'], skill: levelById('p1-2')!.opponent!.skill });
+    expect(s.options).toMatchObject({ playerFaction: 'plants', level: 'p1-2', cards: ['peashooter', 'sunflower'], skill: levelById('p1-2')!.opponent?.skill ?? 'easy' });
   });
 
   it('startLevel itself refuses a closed level (not only the map), and starts an open one', async () => {

@@ -41,11 +41,11 @@ const PLANTS: LevelDef[] = [
     waves: trickle('brainEater', 20, 14, 14, [2]),
   },
   {
-    // Teaches: Sunflowers pay for more Peashooters; the hero's button lights up. An Easy computer
-    // with Brain Eaters only, in the middle three lanes' worth of income.
+    // Teaches: Sunflowers pay for more Peashooters; the hero's button lights up. Brain Eaters in
+    // two lanes (1 and 3), the first after 20 s, a pair now and then.
     ...base('p1-2', 2), side: 'plants', kind: 'battle', cards: ['peashooter', 'sunflower'],
     baseHp: { zombies: 2500 },
-    opponent: { skill: 'easy', cards: ['brainEater'], incomeScale: 0.4 },
+    waves: [...trickle('brainEater', 20, 9, 16, [1, 3]), ...flag('brainEater', 75, [1, 3]), ...flag('brainEater', 130, [1, 3])],
   },
   {
     // Teaches: the Walnut Bomb holds a lane while the Peashooters work. 90 s of waves in lanes
@@ -111,17 +111,18 @@ const ZOMBIES: LevelDef[] = [
   },
   {
     // Teaches: the Very Fast Walker runs past where nothing shoots; the hero's button lights up.
-    // An Easy computer with Peashooters and Sunflowers on a slow income.
+    // Peashooters guard lanes 1 and 3 and more grow there now and then; the other lanes are open.
     ...base('z1-2', 2), side: 'zombies', kind: 'battle', cards: ['brainEater', 'veryFastWalker'],
     baseHp: { plants: 3500 },
-    opponent: { skill: 'easy', cards: ['peashooter', 'sunflower'], incomeScale: 0.5 },
+    prepared: garden('peashooter', [[1, 3], [3, 3], [2, 1]]),
+    waves: regrow('peashooter', [[30, 1, 2], [30, 3, 2], [60, 0, 2], [60, 4, 2], [90, 2, 3], [120, 1, 1], [120, 3, 1]]),
   },
   {
-    // Teaches: a Skeleton Warrior walks in front and takes the peas. Crack a small garden in two
-    // minutes. Unlocks the Desert Zombie.
+    // Teaches: a Skeleton Warrior walks in front and takes the peas. Crack a small garden (lanes
+    // 1 and 3) in two minutes. Unlocks the Desert Zombie.
     ...base('z1-3', 3), side: 'zombies', kind: 'breakthrough', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior'],
-    seconds: 120, baseHp: { plants: 1000 },
-    prepared: garden('peashooter', [[0, 2], [2, 3], [4, 2]]).concat(garden('walnutBomb', [[1, 5], [3, 5]])),
+    seconds: 120, baseHp: { plants: 1250 },
+    prepared: garden('peashooter', [[1, 2], [1, 3], [3, 2], [3, 3]]).concat(garden('walnutBomb', [[1, 5], [3, 5]])),
     unlocks: 'desertZombie',
   },
   {
