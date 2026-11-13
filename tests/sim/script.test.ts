@@ -144,10 +144,11 @@ describe('the script', () => {
   });
 
   it('stops when the match is over', () => {
-    const m = level([], [{ tick: 2, unit: 'brainEater', faction: 'zombies', lane: 0, level: 1 }], { goalTicks: 2 });
+    const m = level([], [{ tick: 2, unit: 'brainEater', faction: 'zombies', lane: 0, level: 1 }], { goalTicks: 10 });
     m.step();
+    m.state.baseHp.plants = 0; // the base falls on the step before the wave is due
     m.step();
-    expect(m.state.winner).toBe('plants');
+    expect(m.state.winner).toBe('zombies');
     expect(m.step()).toEqual([]);
     expect(m.state.scriptIndex).toBe(0);
   });

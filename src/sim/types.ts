@@ -119,13 +119,13 @@ export interface MatchConfig {
   script: ScriptEntry[];
   /** Units on the lawn from the start (spawned in list order on the step of tick 0); a plant's `x` is a tile's middle. */
   prepared: PreparedUnit[];
-  /** The tick count at which the plants win (survive, breakthrough, conveyor); null in battle and boss, and for an endless survive. */
+  /** The tick count at which the plants win (survive, breakthrough, conveyor); null in battle and boss. */
   goalTicks: number | null;
   /** The card belt of a conveyor level: who plays it, how often a card arrives, from which cards, how many may wait. */
   belt: BeltConfig | null;
   /** No trickle, no Sun, no bounty, no energy spell; energy stays 0, `place` and `merge` are refused `'no-energy'`. */
   noEnergy: boolean;
-  /** The side whose base cannot be hurt (no `baseDamaged`, no health lost), or null. */
+  /** The side whose base cannot be hurt (no `baseDamaged`, no health lost), or null; only `'zombies'` is allowed (`checkLevel`). */
   invulnerableBase: Faction | null;
 }
 

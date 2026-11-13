@@ -25,16 +25,16 @@ const NON_CARDS: ReadonlySet<UnitKey> = new Set<UnitKey>(['boneMinion', 'rock'])
 /**
  * Refuses a level setup that makes no sense (a programming error in level data, never a game
  * situation), with a `RangeError` naming what is wrong:
- * - `mode` one of the five; `goalTicks` a whole number above 0, required in breakthrough and
- *   conveyor, allowed in survive (null there: an endless survive, for Free Play), not allowed in
- *   battle and boss (they end by sudden death);
+ * - `mode` one of the five; `goalTicks` a whole number above 0, required in survive, breakthrough
+ *   and conveyor, not allowed in battle and boss (they end by sudden death);
+ * - `noEnergy` true or false;
  * - `belt` exactly in conveyor, and sound (see `checkBeltConfig`);
- * - `invulnerableBase` null or a side;
+ * - `invulnerableBase` null or `'zombies'` (a safe plant base would make the clock unwinnable for zombies);
  * - every prepared unit and script entry: a unit the balance table has numbers for (a card or a
  *   Bone Minion or rock), its own side, a lane 0..4, a level 1..`MAX_LEVEL`; a plant's `x` the
  *   middle of a plant tile (col + 0.5, col 0..7), a zombie's (optional in the script) a number
  *   0..`ZOMBIE_SPAWN_X`; no two prepared plants on one tile;
- * - script ticks whole, not below 0, in order (ties keep list order).
+ * - script ticks whole, not below 0, in order (ties keep list order), and before `goalTicks`.
  */
 export function checkLevel(c: MatchConfig, b: Balance): void {
   if (!MODES.includes(c.mode)) throw new RangeError(`mode "${String(c.mode)}" is none of ${MODES.join(', ')}`);
@@ -42,7 +42,7 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
     throw new RangeError(`goalTicks ${String(c.goalTicks)} is not a whole number above 0`);
   }
   if (hasClock(c.mode)) {
-    if (c.goalTicks === null && c.mode !== 'survive') throw new RangeError(`a ${c.mode} level needs goalTicks`);
+    if (c.goalTicks === null) throw new RangeError(`a ${c.mode} level needs goalTicks`);
   } else if (c.goalTicks !== null) {
     throw new RangeError(`a ${c.mode} level has no clock, but goalTicks is ${c.goalTicks}`);
   }
@@ -50,8 +50,11 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
     throw new RangeError(c.mode === 'conveyor' ? 'a conveyor level needs a belt' : `a ${c.mode} level has no belt`);
   }
   if (c.belt !== null) checkBeltConfig(c.belt, b);
-  if (c.invulnerableBase !== null && c.invulnerableBase !== 'plants' && c.invulnerableBase !== 'zombies') {
-    throw new RangeError(`invulnerableBase "${String(c.invulnerableBase)}" is no side`);
+  if (typeof c.noEnergy !== 'boolean') throw new RangeError(`noEnergy ${String(c.noEnergy)} is not true or false`);
+  if (c.invulnerableBase !== null && c.invulnerableBase !== 'zombies') {
+    // The clock's winner is always the plants, so a plant base that cannot be hurt would make a
+    // level a zombie player can never win; only the zombie base may be made safe.
+    throw new RangeError(`invulnerableBase "${String(c.invulnerableBase)}" is not allowed: only the zombie base (or none)`);
   }
   const tiles = new Set<number>();
   c.prepared.forEach((p, i) => {
@@ -67,6 +70,9 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
     if (!(Number.isInteger(e.tick) && e.tick >= 0)) throw new RangeError(`script entry ${i}: tick ${e.tick} is not a whole number from 0`);
     if (e.tick < lastTick) throw new RangeError(`script entry ${i}: the script is not sorted by tick`);
     lastTick = e.tick;
+    if (c.goalTicks !== null && e.tick >= c.goalTicks) {
+      throw new RangeError(`script entry ${i}: tick ${e.tick} is at or after goalTicks ${c.goalTicks}, a wave that never comes`);
+    }
     checkPlacement(`script entry ${i}`, e.unit, e.faction, e.lane, e.x, e.level, b);
   });
 }

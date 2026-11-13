@@ -90,9 +90,9 @@ export function playBelt(s: SimState, b: Balance, cmd: BeltCommand, events: SimE
   spawnUnit(s, b, card, cmd.lane, cmd.faction === 'plants' ? cmd.col + 0.5 : ZOMBIE_SPAWN_X, events);
 }
 
-/** The plant on the tile, if any (the same test as placing a card). */
+/** The standing plant on the tile, if any (a plant already down counts as gone, as for a hand merge). */
 export function plantAt(s: SimState, lane: number, col: number): Unit | undefined {
-  return s.units.find((u) => u.faction === 'plants' && u.lane === lane && Math.floor(u.x) === col);
+  return s.units.find((u) => u.faction === 'plants' && isStanding(u) && u.lane === lane && Math.floor(u.x) === col);
 }
 
 function zombieNear(s: SimState, lane: number, col: number, key: Unit['key']): Unit | undefined {
