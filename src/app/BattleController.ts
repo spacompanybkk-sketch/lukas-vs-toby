@@ -13,7 +13,7 @@ import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
 import type { CardKey, Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
-import { bigWaves, levelRecord } from './levelSession';
+import { bigWaveRuns, levelProblem, levelRecord } from './levelSession';
 import type { LevelPlay, LevelRecord } from './levelSession';
 
 /**
@@ -94,8 +94,8 @@ export interface LevelHudInfo {
   /** Breakthrough: the stars are counted on the clock left, at these shares of it. */
   clockStars: boolean;
   /**
-   * The scripted waves: where the wave bar ends (seconds: the clock, or the last unit's arrival
-   * without one; 0 when there is no script) and the big waves' flags (seconds).
+   * The scripted waves: when the last unit comes (seconds; 0 when there is no script) and the big
+   * waves' flags (seconds). With a clock the waves ride on the clock bar; without one, on their own bar.
    */
   lastWave: number; flags: number[];
   /** Whose units the script brings. */
@@ -165,8 +165,8 @@ export class BattleController {
   /** The ids of the cards on the belt, in belt order (see `BeltCardVM`). */
   private readonly beltIds: number[] = [];
   private nextBeltId = 1;
-  /** Script ticks that start a big wave, and the units of a big wave cued so far. */
-  private readonly flagTicks: number[] = [];
+  /** The big waves (first and last arrival tick), and the units of a big wave cued so far. */
+  private readonly bigRuns: { from: number; to: number }[] = [];
   private incomingN = 0;
   private readonly opponent: Faction;
   /** The one player command accepted for the coming tick, if any. */
@@ -192,19 +192,20 @@ export class BattleController {
       const { def, config } = this.play;
       if (def.side !== opts.playerFaction) throw new Error(`level ${def.id} is played on the ${def.side} side`);
       this.match = new Match(config, balance);
-      if (def.opponent !== null && config.noEnergy) throw new Error(`level ${def.id}: an opponent in a level without energy`);
+      const problem = levelProblem(def);
+      if (problem !== null) throw new Error(problem);
       this.bot = def.opponent === null
         ? { faction: this.opponent, think: () => [] }
         : createBasicBot(this.opponent, def.opponent.skill, botSeed);
-      const flags = bigWaves(config.script);
-      this.flagTicks.push(...flags);
+      const runs = bigWaveRuns(config.script);
+      this.bigRuns.push(...runs);
+      const flags = runs.map((r) => r.from);
       const last = config.script[config.script.length - 1];
       this.level = {
         mode: config.mode,
         goalSeconds: config.goalTicks === null ? null : config.goalTicks / TICKS_PER_SECOND,
         clockStars: config.mode === 'breakthrough',
-        // The wave bar spans the whole clock when there is one (its flags then sit where they come in the level).
-        lastWave: last === undefined ? 0 : Math.max(last.tick, config.goalTicks ?? 0) / TICKS_PER_SECOND,
+        lastWave: last === undefined ? 0 : last.tick / TICKS_PER_SECOND,
         flags: flags.map((t) => t / TICKS_PER_SECOND),
         enemy: this.opponent,
         belt: config.belt !== null && config.belt.side === this.playerFaction,
@@ -603,8 +604,7 @@ export class BattleController {
     const play = this.play;
     const entry = play?.config.script[index];
     if (entry === undefined) return;
-    const window = seconds(3);
-    if (!this.flagTicks.some((t) => entry.tick >= t && entry.tick < t + window)) return;
+    if (!this.bigRuns.some((r) => entry.tick >= r.from && entry.tick <= r.to)) return;
     this.incomingN += 1;
     this.levelHud.incoming.value = { lane, side: entry.faction, n: this.incomingN };
   }
@@ -737,7 +737,8 @@ export class BattleController {
     if (this.level?.belt === true) {
       const old = this.levelHud.belt.peek();
       const now = s.belt;
-      const sameBelt = old.length === now.length && old.every((c, i) => c.card === now[i] && c.id === this.beltIds[i]);
+      let sameBelt = old.length === now.length;
+      for (let i = 0; sameBelt && i < now.length; i++) sameBelt = old[i]!.card === now[i] && old[i]!.id === this.beltIds[i];
       if (!sameBelt) this.levelHud.belt.value = now.map((card, i) => ({ card, id: this.beltIds[i] ?? 0 }));
     }
   }

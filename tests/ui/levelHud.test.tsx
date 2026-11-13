@@ -11,7 +11,6 @@ import type { LevelOutcome } from '../../src/app/levelSession';
 import { newSave } from '../../src/progress/save';
 import { Belt } from '../../src/ui/hud/Belt';
 import { CLOCK_STEPS, ClockGoal, clockLeft } from '../../src/ui/hud/ClockGoal';
-import { PauseMenu } from '../../src/ui/hud/PauseMenu';
 import { ResultOverlay, STAR_FIRST_MS, STAR_PITCH, STAR_STAGGER_MS } from '../../src/ui/hud/ResultOverlay';
 import { WaveBar, waveProgress } from '../../src/ui/hud/WaveBar';
 import { BattleScreen } from '../../src/ui/screens/BattleScreen';
@@ -72,6 +71,11 @@ describe('ClockGoal', () => {
     expect(all('[data-mark]').map((m) => `${m.dataset.mark} ${m.style.left} ${m.dataset.kept !== undefined}`))
       .toEqual([`2 ${ADVENTURE.clockStars.two * 100}% true`, `3 ${ADVENTURE.clockStars.three * 100}% true`]);
     show(<ClockGoal seconds={70} goal={120} stars />);
+    expect(all('[data-mark]').map((m) => m.dataset.kept !== undefined)).toEqual([true, false]);
+    // Exactly at the threshold: kept; a moment after: lost (not rounded up to the bar's steps).
+    show(<ClockGoal seconds={60} goal={120} stars />);
+    expect(all('[data-mark]').map((m) => m.dataset.kept !== undefined)).toEqual([true, true]);
+    show(<ClockGoal seconds={61} goal={120} stars />);
     expect(all('[data-mark]').map((m) => m.dataset.kept !== undefined)).toEqual([true, false]);
     show(<ClockGoal seconds={100} goal={120} stars />);
     expect(all('[data-mark]').map((m) => m.dataset.kept !== undefined)).toEqual([false, false]);
@@ -141,15 +145,25 @@ function screen(s: BattleSessionLike, extra: Partial<Parameters<typeof BattleScr
 }
 
 describe('the battle screen in a level', () => {
-  it('Survive: the clock goal and the wave bar under the clock; the tray as usual', () => {
+  it('Survive: ONE bar, the clock, carrying the waves (head on the draining edge, the big wave\'s flag); the tray as usual', () => {
     const { s } = levelSession('p1-6');
     screen(s);
     expect(need('[data-hud="level"]').dataset.mode).toBe('survive');
     expect(need('[data-hud="clock-goal"]').dataset.left).toBe('150');
-    expect(all('[data-flag]').map((f) => f.dataset.flag)).toEqual(['110']);
+    expect(q('[data-hud="wave-bar"]')).toBeNull();
+    expect(all('[data-hud="clock-goal"] [data-flag]').map((f) => `${f.dataset.flag} ${f.style.left}`)).toEqual([`110 ${(40 / 150) * 100}%`]);
+    expect(need('[data-hud="clock-goal"] [data-head]').dataset.head).toBe('zombies');
+    expect(need('[data-hud="clock-goal"] [data-head]').style.left).toBe('100%');
     expect(q('[data-hud="tray"]')).not.toBeNull();
     expect(q('[data-hud="belt"]')).toBeNull();
     expect(q('[data-hud="energy"]')).not.toBeNull();
+  });
+
+  it('a script with no clock (the boss level): the wave bar alone', () => {
+    const { s } = levelSession('p1-8');
+    screen(s);
+    expect(q('[data-hud="clock-goal"]')).toBeNull();
+    expect(need('[data-hud="wave-bar"] [data-head]')).toBeDefined();
   });
 
   it('Breakthrough: the clock with its two star marks; no wave bar without a script', () => {
@@ -200,16 +214,12 @@ describe('the battle screen in a level', () => {
     expect(need('[data-hud-slot="boss"] [data-test-boss]')).toBeDefined();
   });
 
-  it('pause in a level offers the map, which takes two taps', () => {
-    const onMap = vi.fn();
-    show(<PauseMenu onResume={() => {}} onRestart={() => {}} onSettings={() => {}} onQuit={() => {}} onMap={onMap} />);
-    act(() => { need('[data-action="map"]').click(); });
-    expect(onMap).not.toHaveBeenCalled();
-    expect(need('[data-action="map"]').classList.contains('is-armed')).toBe(true);
-    act(() => { need('[data-action="map"]').click(); });
-    expect(onMap).toHaveBeenCalledTimes(1);
-    show(<PauseMenu onResume={() => {}} onRestart={() => {}} onSettings={() => {}} onQuit={() => {}} />);
-    expect(q('[data-action="map"]')).toBeNull();
+  it('the pause menu has one way out (Quit), in a level as in a Quick Battle: no separate map button', () => {
+    const { s: sess } = levelSession('p1-1');
+    screen(sess);
+    act(() => { sess.controller.setPaused(true); });
+    expect(q('[data-screen="pause"] [data-action="quit"]')).not.toBeNull();
+    expect(q('[data-screen="pause"] [data-action="map"]')).toBeNull();
   });
 });
 
@@ -234,7 +244,7 @@ describe('the level result', () => {
     act(() => { vi.advanceTimersByTime(1300); });
     expect(need('[data-unlock]').dataset.unlock).toBe('potatoMine');
     expect(need('.lresult__burst')).toBeDefined();
-    expect(turntable.open).toHaveBeenCalledWith('potatoMine', 1);
+    expect(turntable.open).toHaveBeenCalledWith('potatoMine', 1, 'reveal');
     expect(need('[data-screen="result"]').classList.contains('has-turntable')).toBe(true);
     act(() => render(null, root));
     expect(turntable.close).toHaveBeenCalled();

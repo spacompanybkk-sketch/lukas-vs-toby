@@ -45,7 +45,7 @@ export interface ResultOverlayProps {
 }
 
 /** The Almanac's turntable, as the result uses it. */
-export interface Turntable { open(key: UnitKey, level: number): void; close(): void }
+export interface Turntable { open(key: UnitKey, level: number, framing?: 'almanac' | 'reveal'): void; close(): void }
 
 /** The first star pops this long after the panel shows, the next ones `STAR_STAGGER_MS` apart. */
 export const STAR_FIRST_MS = 650;
@@ -169,7 +169,7 @@ function LevelResultOverlay(props: ResultOverlayProps & { level: LevelOutcome })
   const unlocked = step === 'unlock' ? level.unlocked : null;
   useEffect(() => {
     if (unlocked === null || turntable === undefined) return undefined;
-    turntable.open(unlocked, 1);
+    turntable.open(unlocked, 1, 'reveal');
     uiSound('win');
     return () => turntable.close();
   }, [unlocked, turntable]);

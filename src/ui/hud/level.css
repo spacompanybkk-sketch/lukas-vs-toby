@@ -216,14 +216,10 @@
 .lresult__unlock--stage {
   grid-area: auto; /* not the panel's 'unlock' area: placed on the whole layer */
   position: absolute;
-  left: 30vw;
-  top: 16vh;
+  left: 27vw;
+  top: 27vh;
   z-index: 2;
   pointer-events: none;
 }
 .has-turntable .lresult__burst { width: clamp(80px, 16vh, 140px); height: clamp(80px, 16vh, 140px); }
 .lresult__next { display: inline-flex; align-items: center; gap: 6px; }
-
-/* ---- Pause in a level: a fourth button, the map ---- */
-.pause__grid:has(.pause__map) { grid-template-columns: repeat(2, auto); }
-.pause__map-icon { width: var(--ico-size, 32px); height: var(--ico-size, 32px); flex: none; display: block; }

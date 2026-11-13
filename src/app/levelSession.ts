@@ -78,9 +78,7 @@ export function prepareLevel(
 ): LevelPlay {
   const problem = levelProblem(def);
   if (problem !== null) throw new Error(problem);
-  const config = levelConfig(def, save, seed >>> 0);
-  if (config.noEnergy && def.opponent !== null) throw new Error(`level ${def.id}: an opponent in a level without energy`);
-  return { def, config, battleId: newBattleId(random), slot };
+  return { def, config: levelConfig(def, save, seed >>> 0), battleId: newBattleId(random), slot };
 }
 
 /** The battle options of a prepared level (the controller plays `play.config`). */
@@ -179,16 +177,17 @@ function apply(host: LevelHost, rec: LevelRecord, levels: readonly LevelDef[]): 
 }
 
 /**
- * The match is decided: the record goes onto the device, then into the save, then off the device.
- * Null when nobody is logged in (a guest plays no level) or the record names no known level.
+ * The match of `slot`'s battle is decided: the record goes onto the device, then into the save,
+ * then off the device. When `slot` is not the player logged in now (nobody, or another player:
+ * a guest plays no level), the record stays on the device for `slot`'s next log-in and the answer
+ * is null. Null too when the record names no known level.
  */
-export function settleLevel(host: LevelHost, rec: LevelRecord, levels: readonly LevelDef[] = LEVELS): LevelOutcome | null {
-  const me = host.player.peek();
-  if (me === null) return null;
+export function settleLevel(host: LevelHost, rec: LevelRecord, slot: Slot, levels: readonly LevelDef[] = LEVELS): LevelOutcome | null {
   const storage = host.deviceStorage();
-  writeKey(storage, pendingKey(me.slot), JSON.stringify(rec));
+  writeKey(storage, pendingKey(slot), JSON.stringify(rec));
+  if (host.player.peek()?.slot !== slot) return null;
   const out = apply(host, rec, levels);
-  writeKey(storage, pendingKey(me.slot), null);
+  writeKey(storage, pendingKey(slot), null);
   return out;
 }
 
@@ -217,19 +216,22 @@ export function watchPending(host: LevelHost, levels: readonly LevelDef[] = LEVE
 }
 
 /**
- * The script ticks that get a flag on the wave bar: any tick where at least 4 units arrive within
- * 3 s, one flag per such crowd (the next flag at least 3 s later).
+ * The big waves of a script: each run of arrivals where every one comes within 3 s of the one
+ * before, with at least 4 units in it, from its first arrival's tick to its last's.
  */
-export function bigWaves(script: readonly { tick: number }[]): number[] {
-  const window = seconds(3);
-  const flags: number[] = [];
-  for (let i = 0; i < script.length; i++) {
-    const t = script[i]!.tick;
-    const last = flags[flags.length - 1];
-    if (last !== undefined && t < last + window) continue;
-    let n = 0;
-    for (let j = i; j < script.length && script[j]!.tick < t + window; j++) n += 1;
-    if (n >= 4) flags.push(t);
+export function bigWaveRuns(script: readonly { tick: number }[]): { from: number; to: number }[] {
+  const gap = seconds(3);
+  const runs: { from: number; to: number }[] = [];
+  let start = 0;
+  for (let i = 1; i <= script.length; i++) {
+    if (i < script.length && script[i]!.tick - script[i - 1]!.tick <= gap) continue;
+    if (i - start >= 4) runs.push({ from: script[start]!.tick, to: script[i - 1]!.tick });
+    start = i;
   }
-  return flags;
+  return runs;
+}
+
+/** The script ticks that get a flag on the wave bar: where each big wave (`bigWaveRuns`) begins. */
+export function bigWaves(script: readonly { tick: number }[]): number[] {
+  return bigWaveRuns(script).map((r) => r.from);
 }

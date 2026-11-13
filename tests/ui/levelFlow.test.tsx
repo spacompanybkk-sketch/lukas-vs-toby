@@ -74,6 +74,9 @@ describe('a level through the app', () => {
     const wins = me().computerWins;
     playLevel('p1-1');
     expect(need('[data-level-result="p1-1"]').dataset.stars).toBe('3');
+    // The battle HUD's top is cleared while the level's result is up.
+    expect(q('[data-hud="energy"]')).toBeNull();
+    expect(q('[data-hud="topbar"]')).toBeNull();
     expect(me().coins).toBe(coins + 3 * ADVENTURE.perNewStar);
     expect(me().computerWins).toBe(wins);
     expect(me().plants.stars['p1-1']).toBe(3);
@@ -108,18 +111,27 @@ describe('a level through the app', () => {
     expect(need('[data-coins-earned]').dataset.coinsEarned).toBe(String(ADVENTURE.loss));
   });
 
-  it('pause in a level: map (two taps) leaves with nothing stored or paid', () => {
+  it('pause in a level: Quit (two taps) goes to the map, with nothing stored or paid', () => {
     const coins = me().coins;
     act(() => { startLevel(levelById('p1-1')!, me(), 5); });
     const { c } = made[0]!;
     for (let i = 0; i < 50; i++) act(() => { c.step(); });
     tap('[data-hud="pause"]');
-    tap('[data-screen="pause"] [data-action="map"]');
+    expect(q('[data-screen="pause"] [data-action="map"]')).toBeNull();
+    tap('[data-screen="pause"] [data-action="quit"]');
     expect(screen.value.name).toBe('battle');
-    tap('[data-screen="pause"] [data-action="map"]');
+    tap('[data-screen="pause"] [data-action="quit"]');
     expect(screen.value).toEqual({ name: 'map', side: 'plants' });
     expect(me().coins).toBe(coins);
     expect(readPending(session, me().slot)).toBeNull();
+  });
+
+  it('a Quick Battle\'s Quit still goes Home', () => {
+    act(() => go({ name: 'battle', options: { playerFaction: 'plants', skill: 'easy', seed: 3 } }));
+    tap('[data-hud="pause"]');
+    tap('[data-screen="pause"] [data-action="quit"]');
+    tap('[data-screen="pause"] [data-action="quit"]');
+    expect(screen.value).toEqual({ name: 'home' });
   });
 
   it('a Quick Battle still pays its own reward and never touches Adventure', () => {
@@ -133,5 +145,6 @@ describe('a level through the app', () => {
     expect(me().plants.stars).toEqual({});
     expect(q('[data-level-result]')).toBeNull();
     expect(q('[data-action="play-again"]')).not.toBeNull();
+    expect(q('[data-hud="topbar"]')).not.toBeNull(); // a Quick Battle's result keeps the HUD
   });
 });

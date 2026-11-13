@@ -5,7 +5,7 @@ import { ADVENTURE } from '../../src/adventure/rewards';
 import type { LevelDef } from '../../src/adventure/types';
 import { BattleController } from '../../src/app/BattleController';
 import {
-  applyPending, bigWaves, levelOptions, levelProblem, levelRecord, newBattleId, pendingKey, prepareLevel, readPending,
+  applyPending, bigWaveRuns, bigWaves, levelOptions, levelProblem, levelRecord, newBattleId, pendingKey, prepareLevel, readPending,
   settleLevel, watchPending,
 } from '../../src/app/levelSession';
 import type { LevelRecord } from '../../src/app/levelSession';
@@ -133,7 +133,7 @@ describe('a result travels: start → end → pending on the device → applied 
   it('a first win of p1-1: 3 stars, 90 coins, p1-2 opens, and nothing is left pending', () => {
     const coins = me().coins;
     const rec = levelRecord(playToEnd(p11()))!;
-    const out = settleLevel(host, rec)!;
+    const out = settleLevel(host, rec, me().slot)!;
     expect(out).toMatchObject({ stars: 3, coins: 3 * ADVENTURE.perNewStar, newStars: 3, unlocked: null, won: true });
     expect(out.next?.id).toBe('p1-2');
     expect(me().coins).toBe(coins + 90);
@@ -149,7 +149,7 @@ describe('a result travels: start → end → pending on the device → applied 
       player: host.player, now: () => host.now(), deviceStorage: () => host.deviceStorage(),
       update: (fn: (s: Save) => Save) => { seen = readPending(host, me().slot); host.update(fn); },
     };
-    settleLevel(spy, rec);
+    settleLevel(spy, rec, me().slot);
     expect(seen).toEqual(rec);
     expect(storage.getItem(`lvt2f_pending_${me().slot}`)).toBeNull();
     expect(pendingKey(me().slot)).toBe(`lvt2_pending_${me().slot}`);
@@ -157,9 +157,9 @@ describe('a result travels: start → end → pending on the device → applied 
 
   it('settling the same battle twice pays once', () => {
     const rec = levelRecord(playToEnd(p11()))!;
-    settleLevel(host, rec);
+    settleLevel(host, rec, me().slot);
     const after = me().coins;
-    expect(settleLevel(host, rec)).toMatchObject({ coins: 0, newStars: 0 });
+    expect(settleLevel(host, rec, me().slot)).toMatchObject({ coins: 0, newStars: 0 });
     expect(me().coins).toBe(after);
   });
 
@@ -169,7 +169,7 @@ describe('a result travels: start → end → pending on the device → applied 
     const rec = levelRecord(playToEnd(p11()))!;
     // The record was written, then the page went away before the save changed.
     const dead = { player: host.player, now: () => NOW, deviceStorage: () => host.deviceStorage(), update: () => { throw new Error('page gone'); } };
-    expect(() => settleLevel(dead, rec)).toThrow('page gone');
+    expect(() => settleLevel(dead, rec, slot)).toThrow('page gone');
     expect(readPending(host, slot)).toEqual(rec);
     await host.flush();
     host.dispose();
@@ -192,7 +192,7 @@ describe('a result travels: start → end → pending on the device → applied 
     const slot = me().slot;
     const coins = me().coins;
     const rec = levelRecord(playToEnd(p11()))!;
-    settleLevel(host, rec);
+    settleLevel(host, rec, me().slot);
     // As if the clear had not happened: the record is back on the device.
     storage.setItem(`lvt2f_pending_${slot}`, JSON.stringify(rec));
     await host.flush();
@@ -204,6 +204,22 @@ describe('a result travels: start → end → pending on the device → applied 
     expect(me().coins).toBe(coins + 90);
     expect(me().plants.stars['p1-1']).toBe(3);
     expect(readPending(host, slot)).toBeNull();
+  });
+
+  it('a battle settled while another player is logged in stays pending for its own player', async () => {
+    const mia = me().slot;
+    const rec = levelRecord(playToEnd(p11()))!;
+    await host.flush();
+    host.logout();
+    const other = await host.create('Ben', 'brainEater', '456');
+    if (typeof other === 'string') throw new Error(other);
+    expect(settleLevel(host, rec, mia)).toBeNull();
+    expect(me().plants.stars['p1-1']).toBeUndefined();
+    expect(readPending(host, mia)).toEqual(rec);
+    await host.flush();
+    host.logout();
+    expect(settleLevel(host, rec, mia)).toBeNull(); // nobody logged in: kept too
+    expect(readPending(host, mia)).toEqual(rec);
   });
 
   it('a pending record is only ever applied to its own player', async () => {
@@ -245,11 +261,11 @@ describe('a result travels: start → end → pending on the device → applied 
 
   it('a loss pays the consolation coins and no star; an unlock comes with its level\'s first win', () => {
     const coins = me().coins;
-    const lost = settleLevel(host, levelRecord(playToEnd(p11(), { win: false }))!)!;
+    const lost = settleLevel(host, levelRecord(playToEnd(p11(), { win: false }))!, me().slot)!;
     expect(lost).toMatchObject({ won: false, stars: 0, coins: ADVENTURE.loss, next: null });
     expect(me().coins).toBe(coins + ADVENTURE.loss);
     host.update((s) => ({ ...s, plants: { stars: { 'p1-1': 1, 'p1-2': 1 }, unlocked: [] } }));
-    const won = settleLevel(host, levelRecord(playToEnd(levelById('p1-3')!))!)!;
+    const won = settleLevel(host, levelRecord(playToEnd(levelById('p1-3')!))!, me().slot)!;
     expect(won.unlocked).toBe('potatoMine');
     expect(me().plants.unlocked).toEqual(['potatoMine']);
     expect(won.next?.id).toBe('p1-4');
@@ -262,7 +278,11 @@ describe('bigWaves: the wave bar\'s flags', () => {
     expect(bigWaves(at(1, 5, 9, 13))).toEqual([]);
     expect(bigWaves(at(1, 10, 10.5, 11, 12))).toEqual([seconds(10)]);
     expect(bigWaves(at(10, 10, 10, 10, 10, 10, 10, 30, 30.5, 31, 32.9))).toEqual([seconds(10), seconds(30)]);
-    expect(bigWaves(at(10, 11, 12, 13.1))).toEqual([]);
+    // A run where each arrival follows the one before within 3 s is one wave, however long.
+    expect(bigWaves(at(10, 11, 12, 13.1))).toEqual([seconds(10)]);
+    expect(bigWaves(at(10, 12, 14, 16, 18, 20, 22))).toEqual([seconds(10)]);
+    expect(bigWaves(at(10, 14, 18, 22))).toEqual([]);
+    expect(bigWaveRuns(at(5, 10, 12, 14, 16, 18, 30))).toEqual([{ from: seconds(10), to: seconds(18) }]);
   });
   it('p1-6 has its Skeleton Warrior flag wave', () => {
     const c = levelConfig(levelById('p1-6')!, me(), 1);

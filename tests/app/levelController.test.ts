@@ -23,7 +23,7 @@ describe('a level\'s HUD info', () => {
   it('survive: the clock and the waves with the big wave flagged', () => {
     const info = level('p1-6').level!;
     expect(info).toMatchObject({ mode: 'survive', goalSeconds: 150, clockStars: false, belt: false, flags: [110] });
-    expect(info.lastWave).toBe(150); // the bar spans the clock
+    expect(info.lastWave).toBeCloseTo(112.5);
   });
   it('breakthrough: the stars are on the clock', () => {
     expect(level('z1-3').level).toMatchObject({ mode: 'breakthrough', goalSeconds: 120, clockStars: true, enemy: 'plants' });
@@ -164,5 +164,17 @@ describe('the big wave cue', () => {
     for (let i = 0; i < seconds(14); i++) c.step();
     expect(cues.map((q) => q.lane)).toEqual([0, 1, 2, 3, 4, 0]);
     expect(c.levelHud.incoming.peek()).toMatchObject({ side: 'zombies', n: 6 });
+  });
+
+  it('a big wave longer than 3 s is one flag, and every one of its units is cued', () => {
+    const base = levelById('p1-3')!;
+    const waves = Array.from({ length: 8 }, (_, i) => ({ at: 20 + i * 2, unit: 'brainEater' as const, lane: i % 5 }));
+    const def = { ...base, waves };
+    const c = new BattleController(levelOptions(prepareLevel(def, newSave('p01', 'Kid', 'peashooter', 0), 3)));
+    expect(c.level?.flags).toEqual([20]);
+    let n = 0;
+    c.levelHud.incoming.subscribe((v) => { if (v !== null) n = v.n; });
+    for (let i = 0; i < seconds(40); i++) c.step();
+    expect(n).toBe(8);
   });
 });

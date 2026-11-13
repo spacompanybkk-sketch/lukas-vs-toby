@@ -309,6 +309,7 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   if (play === undefined) {
     return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={again} onQuit={quit} coins={coins} rankUp={rankUp} />;
   }
+  // In a level the one way out (pause's Quit, the result's map) is the level's map.
   const toMap = (): void => go({ name: 'map', side: play.def.side });
   const next = (): void => {
     const me = players.player.peek();
@@ -318,7 +319,7 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   return (
     <BattleScreen
       key={live.id} session={live.session} {...rest}
-      onRestart={again} onQuit={quit} onMap={toMap} onNextLevel={next}
+      onRestart={again} onQuit={toMap} onMap={toMap} onNextLevel={next}
       level={outcome} rankUp={levelRankUp}
     />
   );
@@ -348,7 +349,7 @@ function useLevelResult(
       const record = ctl.levelResult?.() ?? null;
       if (record === null) return;
       done = true;
-      const out = settleLevel(players, record);
+      const out = settleLevel(players, record, options.play?.slot ?? before.slot);
       setOutcome(out);
       const after = players.player.peek();
       if (out === null || after === null) return;

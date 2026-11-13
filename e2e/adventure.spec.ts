@@ -231,7 +231,7 @@ test('a reload on the result screen neither loses nor doubles the reward; a resu
   await expect(page.locator('[data-stone="p1-2"]')).toHaveAttribute('data-stars', '2');
 });
 
-test('a conveyor level: the belt replaces the tray, a belt card goes on a tile for nothing; map from pause pays nothing', async ({ page }) => {
+test('a conveyor level: the belt replaces the tray, a belt card goes on a tile for nothing; Quit from pause goes to the map and pays nothing', async ({ page }) => {
   test.setTimeout(150_000);
   await openTitle(page);
   await logIn(page);
@@ -264,8 +264,9 @@ test('a conveyor level: the belt replaces the tray, a belt card goes on a tile f
   expect(await targetsBelow44(page, '[data-hud="belt"]')).toEqual([]);
 
   await press(page.locator('[data-hud="pause"]'));
-  await press(page.locator('[data-screen="pause"] [data-action="map"]'));
-  await press(page.locator('[data-screen="pause"] [data-action="map"]'));
+  await expect(page.locator('[data-screen="pause"] [data-action="map"]')).toHaveCount(0);
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
   await expect(page.locator('[data-screen="map"]')).toBeVisible();
   expect(await coins(page)).toBe(before);
   expect(await pending(page)).toBeNull();

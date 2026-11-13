@@ -91,7 +91,7 @@ export interface BattleScreenProps {
   rankUp?: RankUp | null;
   /** An Adventure level's applied result: the result shows its stars, coins and unlock. */
   level?: LevelOutcome | null;
-  /** In a level: the next level (result), and the map (result and pause). */
+  /** In a level: the next level and the map (result buttons). In a level `onQuit` is the map too. */
   onNextLevel?(): void;
   onMap?(): void;
   /** The turntable an unlocked unit is shown on. */
@@ -152,6 +152,7 @@ export function BattleScreen(props: BattleScreenProps) {
 
   return (
     <div data-screen="battle" class={`battle side-${side}`}>
+      <ResultClears hud={hud} resultReady={session.resultReady} clear={level !== null}>
       <div class="battle__top">
         <div class="battle__left">
           {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} />}
@@ -165,6 +166,7 @@ export function BattleScreen(props: BattleScreenProps) {
         <LiveBase hud={hud} faction="plants" playerFaction={side} portrait={boys.lukas} />
         <LiveBase hud={hud} faction="zombies" playerFaction={side} portrait={boys.toby} />
       </div>
+      </ResultClears>
       {ctl.level != null && <LiveLevel hud={hud} info={ctl.level} />}
       {/* BOSS BAR SLOT (Task 3): the bosses task's bar, nothing else. */}
       {bossBar !== undefined && <div class="battle__boss" data-hud-slot="boss">{bossBar}</div>}
@@ -183,6 +185,16 @@ export function BattleScreen(props: BattleScreenProps) {
   );
 }
 
+/**
+ * The battle HUD's top (energy, clock, pause, base bars), gone while a level's result is up, so its
+ * stars, coins and unlock show on a clear screen. A Quick Battle's result keeps it.
+ */
+function ResultClears({ hud, resultReady, clear, children }: { hud: HudSignals; resultReady: ReadonlySignal<boolean> | undefined; clear: boolean; children: ComponentChildren }) {
+  const up = hud.result.value !== null && (resultReady === undefined || resultReady.value);
+  if (clear && up) return null;
+  return <>{children}</>;
+}
+
 /** A level's goal: the clock bar (with the star marks for Breakthrough) and the wave bar; gone at the end. */
 function LiveLevel({ hud, info }: { hud: HudSignals; info: LevelHudInfo }) {
   if (hud.result.value !== null) return null;
@@ -192,8 +204,14 @@ function LiveLevel({ hud, info }: { hud: HudSignals; info: LevelHudInfo }) {
   if (!clock && !waves) return null;
   return (
     <div class="battle__level" data-hud="level" data-mode={info.mode}>
-      {clock && <ClockGoal seconds={seconds} goal={info.goalSeconds as number} stars={info.clockStars} />}
-      {waves && <WaveBar seconds={seconds} last={info.lastWave} flags={info.flags} enemy={info.enemy} />}
+      {/* One bar: with a clock, the waves ride on it; the wave bar alone only without a clock. */}
+      {clock && (
+        <ClockGoal
+          seconds={seconds} goal={info.goalSeconds as number} stars={info.clockStars}
+          waves={waves ? { flags: info.flags, enemy: info.enemy } : undefined}
+        />
+      )}
+      {!clock && waves && <WaveBar seconds={seconds} last={info.lastWave} flags={info.flags} enemy={info.enemy} />}
     </div>
   );
 }
@@ -487,7 +505,7 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
   return (
     <PauseMenu
       onResume={() => { setSettingsOpen(false); ctl.setPaused(false); }}
-      onRestart={onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit} onMap={onMap}
+      onRestart={onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
     />
   );
 }

@@ -187,3 +187,24 @@ describe('AlmanacStage', () => {
     almanac.close();
   });
 });
+
+describe('the reveal framing (a level result\'s unlocked unit)', () => {
+  it('frames the unit smaller than the Almanac does, the camera further back; the Almanac\'s own look is unchanged', () => {
+    const stage = fakeStage();
+    const t = new AlmanacStage(stage);
+    const spy = vi.spyOn(stage.rig, 'frameSubject');
+    t.open('potatoMine', 1);
+    const almanac = stage.camera.position.clone();
+    expect(spy.mock.calls.at(-1)?.[1]).toEqual({ pitchDeg: 14, side: 0.27, top: 0.1, bottom: 0.3 });
+    t.close();
+    t.open('potatoMine', 1, 'reveal');
+    expect(spy.mock.calls.at(-1)?.[1]).toMatchObject({ side: 0.38 });
+    expect(stage.camera.position.distanceTo({ x: 5, y: 0.36, z: 2.5 } as never))
+      .toBeGreaterThan(almanac.distanceTo({ x: 5, y: 0.36, z: 2.5 } as never));
+    expect(t.current?.def.key).toBe('potatoMine');
+    t.close();
+    t.open('potatoMine', 1);
+    expect(spy.mock.calls.at(-1)?.[1]).toEqual({ pitchDeg: 14, side: 0.27, top: 0.1, bottom: 0.3 });
+    t.close();
+  });
+});

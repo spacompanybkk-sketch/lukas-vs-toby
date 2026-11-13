@@ -20,6 +20,18 @@ const PEDESTAL_W = 1.3;
 export const TURN_SPEED = 0.45;
 /** The share of the screen width the picture is moved left by, clear of the panel on the right. */
 const SHIFT = 0.2;
+/**
+ * How the turntable is framed: the Almanac's close look (the panel on the right), or a level
+ * result's reveal of an unlocked unit, smaller (the pedestal about a third of the screen's width,
+ * room above for the burst).
+ */
+export type TurntableFraming = 'almanac' | 'reveal';
+const FRAMING: Readonly<Record<TurntableFraming, { pitchDeg: number; side: number; top: number; bottom: number }>> = {
+  almanac: { pitchDeg: 14, side: 0.27, top: 0.1, bottom: 0.3 },
+  reveal: { pitchDeg: 18, side: 0.38, top: 0.3, bottom: 0.22 },
+};
+/** The share of the screen width the picture is moved left by, per framing (the reveal's panel is wider). */
+const SHIFTS: Readonly<Record<TurntableFraming, number>> = { almanac: SHIFT, reveal: 0.25 };
 /** The camera's near plane while the Almanac shows: a small unit seen close. */
 const NEAR = 0.25;
 
@@ -64,6 +76,7 @@ export class AlmanacStage implements Director {
   private angle = -0.5;
   private near = 0;
   private offsetFor = '';
+  private framing: TurntableFraming = 'almanac';
 
   constructor(stage: StageLike) {
     this.stage = stage;
@@ -80,8 +93,14 @@ export class AlmanacStage implements Director {
     return this.model;
   }
 
-  /** Puts the turntable on stage, showing `key` at `level`. */
-  open(key: UnitKey = this.key, level = this.level): void {
+  /** Puts the turntable on stage, showing `key` at `level`, framed the Almanac's way or as a reveal. */
+  open(key: UnitKey = this.key, level = this.level, framing: TurntableFraming = 'almanac'): void {
+    if (framing !== this.framing) {
+      this.framing = framing;
+      this.model?.dispose();
+      this.model = null; // framed again below
+      this.offsetFor = '';
+    }
     if (!this.isOpen) {
       this.stage.show(this);
       this.pedestal = buildPedestal();
@@ -126,7 +145,7 @@ export class AlmanacStage implements Director {
     const half = Math.max(foot, PEDESTAL_W * scale) / 2;
     this.stage.rig.frameSubject(
       { x: [AT_X - half, AT_X + half], y: [0, PEDESTAL_H * scale + box.y[1]], z: [AT_Z - half, AT_Z + half] },
-      { pitchDeg: 14, side: 0.27, top: 0.1, bottom: 0.3 },
+      FRAMING[this.framing],
     );
     this.offsetFor = '';
   }
@@ -175,6 +194,6 @@ export class AlmanacStage implements Director {
     const want = `${w}x${h}`;
     if (this.offsetFor === want && camera.view?.enabled) return;
     this.offsetFor = want;
-    camera.setViewOffset(w, h, Math.round(w * SHIFT), 0, w, h);
+    camera.setViewOffset(w, h, Math.round(w * SHIFTS[this.framing]), 0, w, h);
   }
 }
