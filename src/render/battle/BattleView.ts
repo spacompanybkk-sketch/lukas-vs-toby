@@ -256,8 +256,11 @@ export class BattleView {
   private readonly ropes: Rope[] = [];
   private readonly ropeGeometry = ropeSegment();
   private readonly ropeMaterial = new MeshStandardMaterial(MATTE_PLASTIC);
-  /** Every rope's segments in one draw call, casting no shadow (the segments themselves are layer-less stand-ins). */
-  private readonly ropeBatch = new InstanceBatch(this.ropeGeometry, this.ropeMaterial, MAX_ROPES * ROPE_SEGMENTS, 'lasso-ropes');
+  /**
+   * Every rope's segments in one draw call, and its shadow on the lawn in one more (the shadow
+   * line under the rope is part of how it reads). The segments themselves are layer-less stand-ins.
+   */
+  private readonly ropeBatch = new InstanceBatch(this.ropeGeometry, this.ropeMaterial, MAX_ROPES * ROPE_SEGMENTS, 'lasso-ropes', { cast: true });
   private readonly tokens: TokenView[] = [];
   private readonly graves: GraveView[] = [];
   private readonly blasts: PendingBlast[] = [];

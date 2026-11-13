@@ -372,7 +372,7 @@ describe('BattleView abilities', () => {
     });
     expect(lo).toBeLessThan(4.2);
     expect(hi).toBeGreaterThan(6.8);
-    // Drawn in one call by the rope batch, every shown segment once; no segment drawn or shadowed on its own.
+    // Drawn in one call by the rope batch (and one shadow draw), every shown segment once; no segment drawn or shadowed on its own.
     expect(ctx.view.ropeDrawCalls).toBe(1);
     const batch = named(ctx.scene, 'lasso-ropes')[0] as InstancedMesh;
     let shown = 0;
@@ -382,7 +382,7 @@ describe('BattleView abilities', () => {
       if (o.visible) shown++;
     });
     expect(batch.count).toBe(shown);
-    expect(batch.castShadow).toBe(false);
+    expect(batch.castShadow, 'the rope still throws its shadow line').toBe(true);
     plant.tied = 0;
     ctx.apply({ type: 'statusEnded', unitId: plant.id, status: 'tied' });
     ctx.run(DT);

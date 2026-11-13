@@ -1,27 +1,31 @@
 import { DynamicDrawUsage, InstancedMesh, type BufferGeometry, type Material, type Object3D } from 'three';
 
+/** What a batch's copies do with the sun's shadow (default: neither cast nor receive). */
+export interface BatchShadows { cast?: boolean; receive?: boolean }
+
 /**
  * Many copies of one shape in one draw call. The pieces it draws stay ordinary objects in the
  * scene graph, posed as before (and kept hidden, so the renderer skips them); each frame the
  * owner hands the batch every piece that should show, between `begin()` and `end()`, and the
  * batch copies their world matrices into one InstancedMesh. Nothing is allocated per frame.
  *
- * Casts and receives no shadow, and is never frustum-culled (its pieces are spread over the
- * whole lawn; one bounding sphere for them all would be stale as soon as they move).
+ * Casts and receives no shadow unless asked (`shadows`: then one shadow draw for all the
+ * copies). Never frustum-culled: its pieces are spread over the whole lawn, and one bounding
+ * sphere for them all would be stale as soon as they move.
  */
 export class InstanceBatch {
   readonly mesh: InstancedMesh;
   private n = 0;
 
-  constructor(geometry: BufferGeometry, material: Material, readonly capacity: number, name: string) {
+  constructor(geometry: BufferGeometry, material: Material, readonly capacity: number, name: string, shadows: BatchShadows = {}) {
     this.mesh = new InstancedMesh(geometry, material, capacity);
     this.mesh.name = name;
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.count = 0;
     this.mesh.visible = false;
     this.mesh.frustumCulled = false;
-    this.mesh.castShadow = false;
-    this.mesh.receiveShadow = false;
+    this.mesh.castShadow = shadows.cast === true;
+    this.mesh.receiveShadow = shadows.receive === true;
   }
 
   /** How many copies the last `end()` drew. */
