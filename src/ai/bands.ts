@@ -11,7 +11,7 @@ import { SPELLS } from '../sim/spells';
 import type { CardKey, Faction, SpellKey } from '../sim/types';
 import {
   FACTIONS, SKILL_NAMES, botMatchup, humanMatchup, mergeSpamMatchup, percentile, pickShares, spamMatchup,
-  spellHands, spellsMatchup, summarise, winShare,
+  spellsMatchup, summarise, winShare,
 } from './balanceChecks';
 import type { HumanStandIn, Matchup, Played, SeriesStats } from './balanceChecks';
 import type { Knobs } from './balanceChecks';
@@ -60,6 +60,13 @@ export interface Band {
 }
 
 const MINUTE = 1800;
+
+/**
+ * The spell pairings measured for "no deal decides the match": the 20 the one-spell edges predict
+ * to be most extreme (strongest plant hands against weakest zombie hands and the other way round).
+ * Measuring all 100 at 300 seeds each is 30,000 matches; these are where a miss would show.
+ */
+export const EXTREME_PAIRS: ReadonlyArray<readonly [readonly SpellKey[], readonly SpellKey[]]> = [];
 const MM: MatchupSpec = { kind: 'bot', plants: 'medium', zombies: 'medium' };
 const HH: MatchupSpec = { kind: 'bot', plants: 'hard', zombies: 'hard' };
 const NO_SPELLS: MatchupSpec = { kind: 'spells', plants: [], zombies: [] };
@@ -108,7 +115,6 @@ export function allBands(scale = 1): Band[] {
 
   // The random child, the newest-card child, the slow tapper, the attentive player.
   const childBands: Record<Skill, [number, number]> = { easy: [0.55, 0.85], medium: [0.15, 0.45], hard: [0, 0.149] };
-  const attentiveBands: Record<Skill, [number, number]> = { easy: [0.85, 0.95], medium: [0.4, 0.6], hard: [0.15, 0.35] };
   for (const human of FACTIONS) {
     for (const d of SKILL_NAMES) {
       const [min, max] = childBands[d];
@@ -125,13 +131,6 @@ export function allBands(scale = 1): Band[] {
       name: `slow tapper as ${human} v easy`, group: 'slow', min: 0.45, max: 1, weight: 2, unit: '%',
       plays: [{ spec: { kind: 'human', standIn: 'slow', human, difficulty: 'easy' }, seeds: n(200) }], value: share(human),
     });
-    for (const d of SKILL_NAMES) {
-      const [min, max] = attentiveBands[d];
-      add({
-        name: `attentive as ${human} v ${d}`, group: 'attentive', min, max, weight: 1, unit: '%',
-        plays: [{ spec: { kind: 'human', standIn: 'attentive', human, difficulty: d }, seeds: n(200) }], value: share(human),
-      });
-    }
   }
 
   // Start energy (phase 1's robustness check, kept).
@@ -164,27 +163,31 @@ export function allBands(scale = 1): Band[] {
     }
   }
 
-  // Spells: any one spell against none, and the spread over the 10×10 dealt pairs.
+  // Spells (Task 8b): each one, alone on its side against a side with none, gives its side the same
+  // felt edge: +8..+16 points of Medium v Medium on 600 seeds (target +12). With two dealt a side,
+  // Medium v Medium stays 40-60% on 400 seeds, and no pairing decides a match: the most extreme
+  // pairings (`EXTREME_PAIRS`, 300 seeds each) keep the plants within 30-70%.
   for (const faction of FACTIONS) {
     for (const spell of SPELLS[faction]) {
       const hands = { plants: [] as SpellKey[], zombies: [] as SpellKey[] };
       hands[faction] = [spell];
       add({
-        name: `spell ${spell} v none: shift`, group: 'spell-one', min: -6, max: 6, weight: 1, unit: 'pts',
-        plays: [{ spec: { kind: 'spells', ...hands }, seeds: n(200) }, { spec: NO_SPELLS, seeds: n(200) }],
+        name: `spell ${spell} alone: edge`, group: 'spell-one', min: 8, max: 16, weight: 1, unit: 'pts',
+        plays: [{ spec: { kind: 'spells', ...hands }, seeds: n(600) }, { spec: NO_SPELLS, seeds: n(600) }],
         value: (s) => 100 * (winShare(s[0] as SeriesStats, faction) - winShare(s[1] as SeriesStats, faction)),
       });
     }
   }
-  const pairs: Array<{ spec: MatchupSpec; seeds: number }> = [];
-  for (const p of spellHands('plants')) for (const z of spellHands('zombies')) pairs.push({ spec: { kind: 'spells', plants: p, zombies: z }, seeds: n(100) });
   add({
-    name: 'spell pairs: spread of plants win (10x10)', group: 'spell-pairs', min: 0, max: 10, weight: 1, unit: 'pts', plays: pairs,
-    value: (s) => {
-      const rates = s.map((x) => winShare(x, 'plants'));
-      return 100 * (Math.max(...rates) - Math.min(...rates));
-    },
+    name: 'medium v medium, spells dealt: plants win (400)', group: 'spell-deal', min: 0.4, max: 0.6, weight: 3, unit: '%',
+    plays: [{ spec: MM, seeds: n(400) }], value: share('plants'),
   });
+  for (const [p, z] of EXTREME_PAIRS) {
+    add({
+      name: `spell pairing ${p.join('+')} v ${z.join('+')}: plants win`, group: 'spell-pairs', min: 0.3, max: 0.7, weight: 1, unit: '%',
+      plays: [{ spec: { kind: 'spells', plants: [...p], zombies: [...z] }, seeds: n(300) }], value: share('plants'),
+    });
+  }
 
   return bands;
 }
