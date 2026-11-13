@@ -588,7 +588,9 @@ Calls made by the builder (Michal can reverse any):
 each spell, given alone to its side's Medium computer, lifts that side's win rate by
 about the same amount (12 points, within 8–16); with both sides dealt two, Medium v
 Medium stays at 40–60% for plants overall and within 30–70% for any single deal. Spells
-may be rare (waits up to 90 s) but never tiny. The tuner owns the numbers; the kinds
+may be rare (waits up to 90 s; up to 180 s for the two blasts, Thunderbolt and Meteor,
+which must kill ordinary level-1 units in their area) but never tiny. The table above
+shows the starting values; the shipped numbers are in `src/data/balance.ts`. The tuner owns the numbers; the kinds
 stay. (Rewritten 2026-11-12: the first version capped a spell at 6 points, which tuned
 Thunderbolt down to 20 damage; that was the builder's mistake, not Michal's wish.)
 
