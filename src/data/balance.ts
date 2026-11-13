@@ -276,7 +276,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       melee: { damage: 20, interval: 0.8, reach: 0.6 },
     },
     // Rock Wall's rock: never a card. Its health is set here and nowhere else; it only stands.
-    rock: { recharge: 1, hp: 1500, armor: 0, speed: 0 },
+    rock: { recharge: 1, hp: 2500, armor: 0, speed: 0 },
   },
   trickle: { plants: 2.5, zombies: 14.5 },
   bountyShare: { plants: 0.5, zombies: 0.5 },
@@ -300,14 +300,14 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   spells: {
     // Task 8b: felt and equal. Each one, alone against a side with none, gives its side about +12
     // points of Medium v Medium (band 8-16, 600 seeds); rarer and big rather than frequent and tiny.
-    thunderbolt: { cooldown: 90, firstReady: 45, size: 2, damage: 300 },
+    thunderbolt: { cooldown: 120, firstReady: 45, size: 2, damage: 200 },
     vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 8 },
-    sunShower: { cooldown: 120, firstReady: 45, size: 0, amount: 50 },
-    healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 125 },
-    rockWall: { cooldown: 90, firstReady: 45, size: 1, seconds: 12 }, // the rock's health: units.rock
-    meteor: { cooldown: 90, firstReady: 45, size: 2, damage: 200 },
-    fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 6 },
-    brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
+    sunShower: { cooldown: 90, firstReady: 45, size: 0, amount: 50 },
+    healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 150 },
+    rockWall: { cooldown: 60, firstReady: 45, size: 1, seconds: 15 }, // the rock's health: units.rock
+    meteor: { cooldown: 120, firstReady: 45, size: 2, damage: 60 },
+    fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 8 },
+    brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 100 },
     frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
     graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
   },
