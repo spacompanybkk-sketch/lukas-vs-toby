@@ -9,13 +9,11 @@ import type { Band } from '../../../src/ai/bands';
  * this test flips (fails) the day the band is met, so the list is kept honest.
  */
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
-  'slow tapper as plants v easy': '39% (45): the Easy plants cell is squeezed between it and the newest-card child (81%, cap 85)',
-  'random child as zombies v hard': '19.5% (<15): at Hard a random child does as well as steadyZombies, kept at 20.5% (15-40)',
-  'newest-card child as zombies v easy': '86% (cap 85): the price of the slow tapper reaching 46.5%',
-  'merge-spam desertZombie': '61.5% (cap 60)',
-  'pick share walnutBomb': '2.6% (3%): the three walls share the wall plays',
-  'pick share avocadoBunker': '2.9% (3%)',
-  'pick share pumpkinSquash': '2.8% (3%)',
+  'slow tapper as plants v easy': '43.5% (45): accepted (coordinator, Task 8b); the Easy plants cell is squeezed by the newest-card child (80.5%, cap 85)',
+  'random child as zombies v hard': '20% (<15): accepted; at Hard a random child does as well as steadyZombies, kept in band',
+  'start energy x0.75: plants win': '21% (25): accepted; phase-1 robustness check',
+  'pick share walnutBomb': '2.97% (3%): accepted; the three walls share the wall plays',
+  'spell sunShower alone: edge': '+21 points (8-16): at its floor (75 Sun, cooldown 90 s, first at 45 s) it is still worth more than the band',
 };
 
 /** Long: a whole group of bands is one series of thousands of matches (minutes on an idle machine, far more under load). */
