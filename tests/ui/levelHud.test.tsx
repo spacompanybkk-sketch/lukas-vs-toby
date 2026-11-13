@@ -146,7 +146,7 @@ describe('the battle screen in a level', () => {
     screen(s);
     expect(need('[data-hud="level"]').dataset.mode).toBe('survive');
     expect(need('[data-hud="clock-goal"]').dataset.left).toBe('150');
-    expect(all('[data-flag]').map((f) => f.dataset.flag)).toEqual(['110']);
+    expect(all('[data-flag]').map((f) => f.dataset.flag)).toEqual(['120']);
     expect(q('[data-hud="tray"]')).not.toBeNull();
     expect(q('[data-hud="belt"]')).toBeNull();
     expect(q('[data-hud="energy"]')).not.toBeNull();
@@ -173,7 +173,8 @@ describe('the battle screen in a level', () => {
   });
 
   it('a battle level has neither (and a Quick Battle shows nothing new)', () => {
-    const { s } = levelSession('p1-1');
+    // p1-2: a battle with nothing scripted (p1-1's scripted Brain Eaters get the wave bar).
+    const { s } = levelSession('p1-2');
     screen(s);
     expect(q('[data-hud="level"]')).toBeNull();
     const quick = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });

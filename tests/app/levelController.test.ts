@@ -18,11 +18,12 @@ const units = (c: BattleController, side: Faction) => c.match.state.units.filter
 
 describe('a level\'s HUD info', () => {
   it('a battle has no clock, no waves, no belt', () => {
-    expect(level('p1-1').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false });
+    // p1-2: a battle against a computer and nothing scripted (p1-1's Brain Eaters are scripted).
+    expect(level('p1-2').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false });
   });
   it('survive: the clock and the waves with the big wave flagged', () => {
     const info = level('p1-6').level!;
-    expect(info).toMatchObject({ mode: 'survive', goalSeconds: 150, clockStars: false, belt: false, flags: [110] });
+    expect(info).toMatchObject({ mode: 'survive', goalSeconds: 150, clockStars: false, belt: false, flags: [120] });
     expect(info.lastWave).toBe(150); // the bar spans the clock
   });
   it('breakthrough: the stars are on the clock', () => {
@@ -118,7 +119,7 @@ describe('the belt', () => {
   });
 
   it('the merge cue shows for a belt card whose plant stands on the lawn (no energy needed)', () => {
-    const c = level('p1-5', 11);
+    const c = level('p1-5', 15);
     c.step();
     const card = c.match.state.belt[0]!;
     c.selectBelt(0);
@@ -159,10 +160,10 @@ describe('the big wave cue', () => {
     const c = level('p1-6');
     const cues: { lane: number; n: number }[] = [];
     c.levelHud.incoming.subscribe((v) => { if (v !== null) cues.push({ lane: v.lane, n: v.n }); });
-    for (let i = 0; i < seconds(100); i++) c.step();
+    for (let i = 0; i < seconds(115); i++) c.step();
     expect(cues).toEqual([]);
-    for (let i = 0; i < seconds(14); i++) c.step();
-    expect(cues.map((q) => q.lane)).toEqual([0, 1, 2, 3, 4, 0]);
-    expect(c.levelHud.incoming.peek()).toMatchObject({ side: 'zombies', n: 6 });
+    for (let i = 0; i < seconds(10); i++) c.step();
+    expect(cues.map((q) => q.lane)).toEqual([0, 1, 2, 3, 4]);
+    expect(c.levelHud.incoming.peek()).toMatchObject({ side: 'zombies', n: 5 });
   });
 });

@@ -266,6 +266,6 @@ describe('bigWaves: the wave bar\'s flags', () => {
   });
   it('p1-6 has its Skeleton Warrior flag wave', () => {
     const c = levelConfig(levelById('p1-6')!, me(), 1);
-    expect(bigWaves(c.script)).toContain(seconds(110));
+    expect(bigWaves(c.script)).toContain(seconds(120));
   });
 });

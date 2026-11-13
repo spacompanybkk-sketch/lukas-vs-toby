@@ -49,12 +49,15 @@ describe('a default battle', () => {
    * the same; only the bytes hashed changed. Re-pinned again in Task 7a (Free Play), when the setup
    * gained `endless` and the state `wave` .. `incoming`: a scratch replay of these three battles at
    * a92eff8 and with Free Play gave equal events on every step and equal snapshots at tick 1000 and
-   * at the end once the new fields (all 0 / null / empty) were taken out.
+   * at the end once the new fields (all 0 / null / empty) were taken out. Re-pinned in Task 8
+   * (levels), when every unit gained `stunFatigue` (a boss's stun resistance): a scratch replay at
+   * 4726149 and with it gave equal events on every step and equal snapshots at tick 1000 and at the
+   * end once `stunFatigue` (always 0 outside a boss) was taken out.
    */
   const BEFORE: Array<[number, number, number]> = [ // seed, checksum at tick 1000, checksum at the end (tick 6880)
-    [1, 2439271321, 2358703669],
-    [2, 127525445, 119427525],
-    [3, 761161350, 4099339858],
+    [1, 228950009, 4019655029],
+    [2, 3745210085, 497565829],
+    [3, 3742689830, 3612142098],
   ];
   function commandsAt(tick: number): Command[] {
     const out: Command[] = [];
