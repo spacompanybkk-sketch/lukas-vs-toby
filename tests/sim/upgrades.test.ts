@@ -15,14 +15,15 @@ import { classicBalance, classicConfig, eventsOf, merge, place } from './helpers
  * mechanics (where a multiplier goes, rounding, merges) whatever step the game is tuned to; the
  * shipped step is checked on its own below.
  */
-const RULES_STEP = Object.freeze({ hp: 0.05, damage: 0.05 });
+const RULES_SIDE = Object.freeze({ hp: 0.05, damage: 0.05 });
+const RULES_STEP = (): Balance['upgradeStep'] => ({ plants: { ...RULES_SIDE }, zombies: { ...RULES_SIDE } });
 /** The rules numbers (see `classicBalance`): linear level curves, Peashooter 300 hp / 20 a pea. */
 const B = classicBalance();
-B.upgradeStep = { ...RULES_STEP };
+B.upgradeStep = RULES_STEP();
 /** The shipped step, chosen by measurement (Task 5 follow-up, see the report). */
 const SHIPPED = BALANCE.upgradeStep;
 /** The rules multiplier at Marketplace `level`, written out from the rules step. */
-const up = (level: number, what: 'hp' | 'damage'): number => 1 + RULES_STEP[what] * level;
+const up = (level: number, what: 'hp' | 'damage'): number => 1 + RULES_SIDE[what] * level;
 
 /** A quiet match on the classic numbers: no income, plenty of energy, these upgrades. */
 function fresh(upgrades: MatchConfig['upgrades'] = { plants: {}, zombies: {} }, balance: Balance = B): Match {
@@ -50,24 +51,31 @@ function firstHit(m: Match, targetId: number, limit = 600): number {
 }
 
 describe('Balance.upgradeStep', () => {
-  it('is small and round (chosen by measurement, see the Task 5 report); the classic helper keeps it', () => {
+  it('is per side, as measured (see the Task 5 report); the classic helper keeps it', () => {
+    expect(BALANCE.upgradeStep).toEqual({ plants: { hp: 0.005, damage: 0.05 }, zombies: { hp: 0, damage: 0.03 } });
     expect(classicBalance().upgradeStep).toEqual(BALANCE.upgradeStep);
-    for (const v of [SHIPPED.hp, SHIPPED.damage]) {
-      expect(v).toBeGreaterThanOrEqual(0);
-      expect(v).toBeLessThan(0.05);
-      expect(Math.round(v * 1000)).toBeCloseTo(v * 1000, 9); // whole tenths of a percent
-    }
-    expect(SHIPPED.hp + SHIPPED.damage).toBeGreaterThan(0);
   });
 
-  it('the shipped step: exactly 1, 1 + step and 1 + 10 × step at levels 0, 1 and 10', () => {
+  it('the shipped step: plants 1 / 1.005 / 1.05 health and 1 / 1.05 / 1.5 damage at levels 0 / 1 / 10', () => {
     const c = defaultConfig(1);
-    for (const level of [0, 1, 10]) {
+    const pea = { key: 'peashooter', faction: 'plants' } as const;
+    const at = (level: number, what: 'hp' | 'damage'): number => {
       c.upgrades = { plants: { peashooter: level }, zombies: {} };
-      for (const what of ['hp', 'damage'] as const) {
-        expect(upgradeScale(BALANCE, c, { key: 'peashooter', faction: 'plants' }, what)).toBe(level === 0 ? 1 : 1 + SHIPPED[what] * level);
-      }
-    }
+      return upgradeScale(BALANCE, c, pea, what);
+    };
+    expect([at(0, 'hp'), at(1, 'hp'), at(10, 'hp')].map((v) => +v.toFixed(12))).toEqual([1, 1.005, 1.05]);
+    expect([at(0, 'damage'), at(1, 'damage'), at(10, 'damage')].map((v) => +v.toFixed(12))).toEqual([1, 1.05, 1.5]);
+  });
+
+  it('the shipped step: zombies 1 health at every level and 1 / 1.03 / 1.3 damage at levels 0 / 1 / 10', () => {
+    const c = defaultConfig(1);
+    const eater = { key: 'brainEater', faction: 'zombies' } as const;
+    const at = (level: number, what: 'hp' | 'damage'): number => {
+      c.upgrades = { plants: {}, zombies: { brainEater: level } };
+      return upgradeScale(BALANCE, c, eater, what);
+    };
+    expect([at(0, 'hp'), at(1, 'hp'), at(10, 'hp')]).toEqual([1, 1, 1]);
+    expect([at(0, 'damage'), at(1, 'damage'), at(10, 'damage')].map((v) => +v.toFixed(12))).toEqual([1, 1.03, 1.3]);
   });
 
   it('the simulation and the save agree on the top level (10)', () => {
@@ -89,8 +97,8 @@ describe('upgradeScale', () => {
     for (const unit of [pea, eater]) {
       for (const what of ['hp', 'damage'] as const) {
         expect(upgradeScale(B, config(0), unit, what)).toBe(1);
-        expect(upgradeScale(B, config(1), unit, what)).toBe(1 + RULES_STEP[what]);
-        expect(upgradeScale(B, config(10), unit, what)).toBe(1 + RULES_STEP[what] * 10);
+        expect(upgradeScale(B, config(1), unit, what)).toBe(1 + RULES_SIDE[what]);
+        expect(upgradeScale(B, config(10), unit, what)).toBe(1 + RULES_SIDE[what] * 10);
       }
     }
   });
@@ -103,11 +111,13 @@ describe('upgradeScale', () => {
     expect(upgradeScale(B, c, { key: 'rock', faction: 'plants' }, 'hp')).toBe(1);
   });
 
-  it('reads the step from the balance table it is given', () => {
+  it('reads its own side\'s step from the balance table it is given', () => {
     const b = cloneBalance(B);
-    b.upgradeStep = { hp: 0.1, damage: 0.02 };
+    b.upgradeStep = { plants: { hp: 0.1, damage: 0.02 }, zombies: { hp: 0, damage: 0.2 } };
     expect(upgradeScale(b, config(10), pea, 'hp')).toBe(2);
     expect(upgradeScale(b, config(10), pea, 'damage')).toBe(1.2);
+    expect(upgradeScale(b, config(10), eater, 'hp')).toBe(1);
+    expect(upgradeScale(b, config(10), eater, 'damage')).toBe(3);
   });
 });
 
@@ -217,7 +227,7 @@ describe('a unit with upgrades', () => {
   });
 
   it('a Necromancer at upgrade 10 raises plain Bone Minions (they take no upgrade)', () => {
-    const m = fresh({ plants: {}, zombies: { necromancer: 10 } }, Object.assign(cloneBalance(BALANCE), { upgradeStep: { ...RULES_STEP } }));
+    const m = fresh({ plants: {}, zombies: { necromancer: 10 } }, Object.assign(cloneBalance(BALANCE), { upgradeStep: RULES_STEP() }));
     const necro = spawnUnit(m.state, m.balance, 'necromancer', 2, 8);
     const minion = spawnMinion(m.state, m.balance, 2, 8, 1, necro.id, []);
     expect(necro.maxHp).toBe(Math.round(BALANCE.units.necromancer!.hp * up(10, 'hp')));
@@ -309,13 +319,13 @@ describe('determinism with upgrades', () => {
 });
 
 describe('every card scales', () => {
-  it.each([...ALL_CARDS.plants, ...ALL_CARDS.zombies] as CardKey[])('%s at upgrade 10 has (1 + 10 × the shipped hp step) × its health', (key) => {
+  it.each([...ALL_CARDS.plants, ...ALL_CARDS.zombies] as CardKey[])('%s at upgrade 10 has (1 + 10 × its side\'s shipped hp step) × its health', (key) => {
     const faction: Faction = (ALL_CARDS.plants as readonly CardKey[]).includes(key) ? 'plants' : 'zombies';
     const config = defaultConfig(1);
     config.upgrades = { plants: {}, zombies: {} };
     config.upgrades[faction][key] = 10;
     const m = new Match(config);
     const u = spawnUnit(m.state, m.balance, key, 1, faction === 'plants' ? 2.5 : ZOMBIE_SPAWN_X);
-    expect(u.maxHp).toBe(Math.round(BALANCE.units[key]!.hp * (1 + 10 * SHIPPED.hp)));
+    expect(u.maxHp).toBe(Math.round(BALANCE.units[key]!.hp * (1 + 10 * SHIPPED[faction].hp)));
   });
 });

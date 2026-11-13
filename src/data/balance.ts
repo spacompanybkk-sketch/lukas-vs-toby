@@ -136,10 +136,10 @@ export interface Balance {
   hero: Record<Faction, { damage: number; chargeSeconds: number; firstChargeSeconds: number }>;
   spells: Record<SpellKey, SpellStats>;
   /**
-   * What one Marketplace level adds (spec 9): a unit at upgrade level n has `1 + hp × n` times
-   * its health and `1 + damage × n` times its bite and shot damage (see `upgradeScale`).
+   * What one Marketplace level adds (spec 9), per side: a unit at upgrade level n has `1 + hp × n`
+   * times its health and `1 + damage × n` times its bite and shot damage (see `upgradeScale`).
    */
-  upgradeStep: { hp: number; damage: number };
+  upgradeStep: Record<Faction, { hp: number; damage: number }>;
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -316,11 +316,16 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
     graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
   },
-  // Task 5 follow-up, measured (200 seeds, every unit at the level, stand-ins v Hard): damage only.
-  // Any health step at all adds a whole extra hit to units whose health the attacks divide exactly
-  // (400 / 25 a pea), a cliff at level 1 (+0.5% health: steady zombies v Hard 29% → 60%).
-  // +3% damage a level: steady zombies v Hard 40 / 46 / 60% at levels 2 / 5 / 10.
-  upgradeStep: { hp: 0, damage: 0.03 },
+  // Task 5 follow-up, measured (200 seeds, every unit at the level, the adult stand-ins v Hard; at
+  // level 0 they win 22% / 29%). A step per side, because the sides answer differently. Any health
+  // step adds a whole extra hit to units whose health the attacks divide exactly (400 / 25 a pea),
+  // a cliff at level 1, so the zombies (which it helps most) get none.
+  //   plants  +0.5% health, +5% damage: fortress plants v Hard 49.5% / 70.5% at levels 5 / 10
+  //   zombies +3% damage:                steady zombies v Hard 45.5% / 60%   at levels 5 / 10
+  upgradeStep: {
+    plants: { hp: 0.005, damage: 0.05 },
+    zombies: { hp: 0, damage: 0.03 },
+  },
 });
 
 /** Seconds to whole ticks. */

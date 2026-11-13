@@ -23,8 +23,9 @@ export function rawStats(key: UnitKey, level = 1, upgrade = 0): RawStats {
   const side = factionOf(key);
   const lv = Math.min(Math.max(1, Math.floor(level)), MAX_LEVEL);
   const up = isCard(key) ? Math.min(Math.max(0, upgrade), MAX_UPGRADE) : 0;
-  const hpScale = (BALANCE.levelCurves.hp[side][lv] ?? 1) * (1 + BALANCE.upgradeStep.hp * up);
-  const dmgScale = (BALANCE.levelCurves.damage[side][lv] ?? 1) * (1 + BALANCE.upgradeStep.damage * up);
+  const step = BALANCE.upgradeStep[side];
+  const hpScale = (BALANCE.levelCurves.hp[side][lv] ?? 1) * (1 + step.hp * up);
+  const dmgScale = (BALANCE.levelCurves.damage[side][lv] ?? 1) * (1 + step.damage * up);
   // A bite or a shot, whichever hurts more each second; abilities are shown by their role icon.
   const bite = u.melee ? u.melee.damage / u.melee.interval : 0;
   const shot = u.shot ? u.shot.damage / u.shot.interval : 0;

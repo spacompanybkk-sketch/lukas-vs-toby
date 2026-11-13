@@ -10,6 +10,7 @@ import { createFakeCloud } from '../../src/cloud/restClient';
 import { setUiSound } from '../../src/ui/uiSound';
 import { MemoryStorage } from '../progress/memoryStorage';
 import { BALANCE } from '../../src/data/balance';
+import { factionOf } from '../../src/data/units';
 import type { UnitKey } from '../../src/sim/types';
 import { Almanac } from '../../src/ui/screens/Almanac';
 import type { AlmanacHost } from '../../src/ui/screens/Almanac';
@@ -80,8 +81,8 @@ describe('stat bars from the balance table', () => {
   });
 
   it('an upgrade makes them longer as far as the shipped step adds; the plain part stays what it was without it', () => {
-    const step = BALANCE.upgradeStep;
     for (const k of ['peashooter', 'brainEater'] as const) {
+      const step = BALANCE.upgradeStep[factionOf(k)];
       const plain = statBars(k, 2, 0);
       const up = statBars(k, 2, 6);
       // Square-root bars: the share grows by sqrt(1 + 6 × step).
@@ -219,10 +220,22 @@ describe('Almanac screen', () => {
       expect(Number(q('[data-bar="hp"]')?.dataset.share)).toBeCloseTo(statBars('brainEater', 1, 10).hp, 3);
       expect(q('[data-bar-up="dps"]')).not.toBeNull();
       // Health gains only what the shipped step gives it (none at a step of 0).
-      expect(q('[data-bar-up="hp"]') !== null).toBe(BALANCE.upgradeStep.hp > 0);
+      expect(q('[data-bar-up="hp"]')).toBeNull(); // zombies: damage only
       // Another unit's upgrade does not touch this one.
       tap('[data-unit="cowboyZombie"]');
       expect(q('[data-bar-up="dps"]')).toBeNull();
+    });
+
+    it("a plant's heart bar grows a little with its upgrade (the plants' step has some health)", () => {
+      mount();
+      tap('[data-unit="peashooter"]');
+      const plain = Number(q('[data-bar="hp"]')?.dataset.share);
+      act(() => session.update((save) => ({ ...save, upgrades: { peashooter: 10 } })));
+      const up = Number(q('[data-bar="hp"]')?.dataset.share);
+      expect(up).toBeGreaterThan(plain);
+      expect(up).toBeCloseTo(statBars('peashooter', 1, 10).hp, 3);
+      expect(q('[data-bar-up="hp"]')).not.toBeNull();
+      expect(q('[data-bar-up="dps"]')).not.toBeNull();
     });
   });
 

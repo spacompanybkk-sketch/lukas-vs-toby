@@ -911,7 +911,7 @@ describe('BattleController Marketplace upgrades', () => {
     });
     expect(c.match.state.config.upgrades).toEqual({ plants: { peashooter: 10, kernelPult: 3 }, zombies: {} });
     const pea = spawnUnit(c.match.state, c.match.balance, 'peashooter', 2, 1.5);
-    expect(pea.maxHp).toBe(Math.round(BALANCE.units.peashooter!.hp * (1 + 10 * BALANCE.upgradeStep.hp)));
+    expect(pea.maxHp).toBe(Math.round(BALANCE.units.peashooter!.hp * (1 + 10 * BALANCE.upgradeStep.plants.hp)));
   });
 
   it('as zombies, keeps only the zombie cards of what it is given (a save holds both sides)', () => {

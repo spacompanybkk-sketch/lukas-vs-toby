@@ -29,7 +29,7 @@ export type UpgradeCurve = 'hp' | 'damage';
 
 /**
  * What a unit's health (`hp`) or its bite and shot damage (`damage`) is multiplied by for its
- * side's Marketplace level of its type: `1 + step × level` (`Balance.upgradeStep`; exactly 1 at level 0).
+ * side's Marketplace level of its type: `1 + step × level`, with its side's step (`Balance.upgradeStep`); exactly 1 at level 0.
  * The one place an upgrade enters the rules. A unit that is no card (a Bone
  * Minion, a rock) has no level, so 1. What takes it (see the callers):
  * - `hp`: the health a card is placed with (`spawnUnit`), its max on a merge, a Hot Topic's growth,
@@ -42,7 +42,7 @@ export function upgradeScale(
   b: Balance, config: MatchConfig, unit: Pick<Unit, 'key' | 'faction'>, what: UpgradeCurve,
 ): number {
   const level = config.upgrades[unit.faction][unit.key as CardKey] ?? 0;
-  return level === 0 ? 1 : 1 + b.upgradeStep[what] * level;
+  return level === 0 ? 1 : 1 + b.upgradeStep[unit.faction][what] * level;
 }
 
 /**
