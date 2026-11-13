@@ -37,7 +37,9 @@ export function BossBar({ boss, onSkip, intro: withIntro = true }: BossBarProps)
     seen.current = true;
     if (!withIntro) return;
     setIntro(true);
-    const timer = setTimeout(() => setIntro(false), BOSS_INTRO_MS);
+    const timer = setTimeout(() => {
+      if (!window.__lvt?.holdBossIntro) setIntro(false); // the hook (`?debug` only) lets a test measure the card
+    }, BOSS_INTRO_MS);
     return () => clearTimeout(timer);
   }, [boss !== null]);
 

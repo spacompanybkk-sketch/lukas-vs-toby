@@ -123,6 +123,8 @@ test('survive, conveyor and breakthrough levels: the clock bar, the belt and the
 test('both boss levels: the boss bar (and the wave bar) clear of the top bar and the lanes; the entrance card too, and a tap skips it', async ({ page }) => {
   test.setTimeout(180_000);
   await setUp(page);
+  // The card's own 1.5 s timer would race the checks: hold it until the tap below.
+  await page.evaluate(() => { (window.__lvt as any).holdBossIntro = true; });
   for (const id of ['p1-8', 'z1-8']) {
     await level(page, id);
     // Until the boss is on: its entrance card shows for a moment; measured at each size at once.
@@ -144,21 +146,19 @@ test('both boss levels: the boss bar (and the wave bar) clear of the top bar and
           return { x: r.x, y: r.y, w: r.width, h: r.height };
         });
       });
-      if (cards === null) break; // already gone (a slow machine): the bar checks below still run
+      expect(cards, `${size.width}x${size.height}: the entrance card is up to measure`).not.toBeNull();
       const lawn = await lawnCorners(page);
-      for (const card of cards) {
+      for (const card of cards!) {
         expect(boxHitsPolygon(card, lawn), `${size.width}x${size.height}: the entrance card covers lanes 0–4`).toBe(false);
         expect(card.y, `${size.width}x${size.height}: the entrance card on screen`).toBeGreaterThanOrEqual(0);
       }
-      expect(cards[1]!.w, 'entrance card tap target').toBeGreaterThanOrEqual(44);
-      expect(cards[1]!.h, 'entrance card tap target').toBeGreaterThanOrEqual(44);
+      expect(cards![1]!.w, 'entrance card tap target').toBeGreaterThanOrEqual(44);
+      expect(cards![1]!.h, 'entrance card tap target').toBeGreaterThanOrEqual(44);
     }
-    if (await page.locator('[data-hud="boss-intro"]').count() > 0) {
-      const intro = page.locator('[data-hud="boss-intro"]');
-      if (test.info().project.name === 'ipad') await intro.tap();
-      else await intro.click();
-      await expect(intro).toHaveCount(0);
-    }
+    const intro = page.locator('[data-hud="boss-intro"]');
+    if (test.info().project.name === 'ipad') await intro.tap();
+    else await intro.click();
+    await expect(intro).toHaveCount(0);
     await checkSizes(page, id === 'p1-8' ? ['boss', 'wave-bar', 'topbar'] : ['boss', 'topbar'], '[data-hud="tray"]');
     await page.locator('[data-hud="pause"]').click();
     await page.locator('[data-screen="pause"] [data-action="quit"]').click();
