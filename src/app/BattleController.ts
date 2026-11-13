@@ -11,7 +11,7 @@ import { spellArea } from '../sim/spells';
 import type { SpellTile } from '../sim/spells';
 import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
-import type { CardKey, Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
+import type { BossKey, CardKey, Command, CommandRejection, Faction, SimEvent, SimState, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 
 /**
@@ -56,6 +56,23 @@ export interface HudSignals {
   heroSelected: Signal<boolean>; // the hero power is picked and waits for a lane
   spells: Signal<SpellVM[]>; // the player's dealt spells, in deal order
   spellSelected: Signal<SpellKey | null>; // the aimed spell picked and waiting for a tile
+  boss: Signal<BossVM | null>; // the level's boss while it stands (the HUD's boss bar), else null
+}
+
+/** The boss of a boss level: which, its health (never below 0) and max, and whether its shield is up. */
+export interface BossVM { key: BossKey; hp: number; max: number; shield: boolean }
+
+/**
+ * The boss as the HUD shows it: null in a level with no boss (or before it has come on); once it
+ * has fallen, 0 health (of 1). Health is rounded up to whole points so the signal changes only
+ * when the bar could.
+ */
+export function bossOf(s: Readonly<SimState>): BossVM | null {
+  const key = s.config.boss?.key;
+  if (key === undefined || s.tick === 0) return null;
+  const u = s.units.find((x) => x.key === key);
+  if (u === undefined) return { key, hp: 0, max: 1, shield: false };
+  return { key, hp: Math.max(0, Math.ceil(u.hp)), max: u.maxHp, shield: u.shieldLeft > 0 };
 }
 
 /** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
@@ -144,6 +161,7 @@ export class BattleController {
       hero: signal<HeroVM>({ ready: false, fraction: 0 }),
       heroSelected: signal(false),
       spells: signal<SpellVM[]>([]), spellSelected: signal<SpellKey | null>(null),
+      boss: signal<BossVM | null>(null),
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
@@ -555,5 +573,11 @@ export class BattleController {
       return n !== undefined && o.key === n.key && o.ready === n.ready && o.fraction === n.fraction;
     });
     if (!same) this.hud.spells.value = spells;
+
+    const boss = bossOf(s);
+    const oldBoss = this.hud.boss.peek();
+    const sameBoss = boss === null ? oldBoss === null
+      : oldBoss !== null && oldBoss.key === boss.key && oldBoss.hp === boss.hp && oldBoss.max === boss.max && oldBoss.shield === boss.shield;
+    if (!sameBoss) this.hud.boss.value = boss;
   }
 }

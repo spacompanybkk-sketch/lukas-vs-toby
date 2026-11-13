@@ -228,7 +228,7 @@ describe('after a battle', () => {
         selected: signal<UnitKey | null>(null), shovel: signal(false),
         result: signal<null | { winner: Faction | 'draw'; playerWon: boolean }>(null), denied: signal(0),
         hero: signal({ ready: false, fraction: 0 }), heroSelected: signal(false),
-        spells: signal<HudSignals['spells']['value']>([]), spellSelected: signal<HudSignals['spellSelected']['value']>(null),
+        spells: signal<HudSignals['spells']['value']>([]), spellSelected: signal<HudSignals['spellSelected']['value']>(null), boss: signal<HudSignals['boss']['value']>(null),
       };
       last = hud;
       return {

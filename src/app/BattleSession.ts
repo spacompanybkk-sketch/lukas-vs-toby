@@ -61,6 +61,11 @@ export class BattleSession implements Director, InputTarget {
   /** The last hero power used, by either side: the HUD shows its boy's banner. */
   readonly heroBanner = signal<HeroBanner | null>(null);
 
+  /** A tap on the boss's entrance card ends the lawn's entrance show. */
+  skipBossEntrance(): void {
+    this.view.bossFx.skipEntrance();
+  }
+
   private readonly stage: StageLike;
   private readonly audio: AudioEngine;
   private readonly input: BattleInput;

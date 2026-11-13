@@ -47,7 +47,7 @@ function fakeSession(): BattleSessionLike & { begin: Mock<() => void>; dispose: 
     result: signal<null | { winner: Faction | 'draw'; playerWon: boolean }>(null), denied: signal(0),
     hero: signal({ ready: false, fraction: 0 }),
     heroSelected: signal(false), spells: signal<HudSignals['spells']['value']>([]),
-    spellSelected: signal<HudSignals['spellSelected']['value']>(null),
+    spellSelected: signal<HudSignals['spellSelected']['value']>(null), boss: signal<HudSignals['boss']['value']>(null),
   };
   return {
     controller: {
