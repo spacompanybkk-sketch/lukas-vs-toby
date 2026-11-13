@@ -1,5 +1,6 @@
 import { Box3, Group, Mesh, MeshStandardMaterial, Vector3, type BufferGeometry, type Object3D } from 'three';
 import { glowMaterial } from '../fx/glow';
+import { InstanceBatch } from '../fx/InstanceBatch';
 import { MATTE_PLASTIC } from '../look';
 import { PALETTE } from '../palette';
 import type { StatusKind } from '../types';
@@ -16,7 +17,10 @@ import { BoxBatch } from '../world/boxes';
 //   haste   short red streaks trailing from its back (towards +X: only zombies are hasted)
 //
 // Every mark is built once, up front, `capacity` of each kind, and handed out and taken
-// back; nothing is made or dropped while a battle runs. All of them stay below the top of
+// back; nothing is made or dropped while a battle runs. A mark's pieces are posed as meshes in
+// the scene graph but kept hidden: each piece shape is drawn for every mark at once by one
+// InstanceBatch (ten draw calls in all, however many units carry a status), and no mark casts
+// a shadow. All of them stay below the top of
 // the unit plus 0.1 tile, under the health bar (which sits 0.14 above the top).
 
 /** Emissive intensity of the glowing marks: past the bloom threshold. */
@@ -53,8 +57,10 @@ const CLUMPS = 4;
 interface Mark {
   status: StatusKind;
   root: Group;
-  /** The moving pieces, in a fixed order per status. */
+  /** The moving pieces, in a fixed order per status (hidden: the batches draw them). */
   pieces: Mesh[];
+  /** The batch that draws each piece. */
+  batches: InstanceBatch[];
   unitId: number;
   anchor: Object3D | null;
   height: number;
@@ -181,6 +187,9 @@ export class StatusMarks {
   private readonly geometries: BufferGeometry[] = [];
   private readonly pools = new Map<StatusKind, Mark[]>();
   private readonly live: Mark[] = [];
+  /** One batch per piece shape, drawing that shape for every live mark. */
+  private readonly batches: InstanceBatch[] = [];
+  private readonly batchGroup = new Group();
 
   /** `capacity` marks of each status: as many units as can carry one status at once. */
   constructor(capacity = 48) {
@@ -208,20 +217,41 @@ export class StatusMarks {
       burn: Array.from({ length: FLAMES }, (_, i): [BufferGeometry, boolean] => [i % 2 ? g.flameLight : g.flame, true]),
       haste: Array.from({ length: STREAKS }, (): [BufferGeometry, boolean] => [g.streak, true]),
     };
+    // A batch per shape, big enough for every piece of that shape on every mark of the pools.
+    const byShape = new Map<BufferGeometry, InstanceBatch>();
+    const uses = new Map<BufferGeometry, { glows: boolean; n: number }>();
+    for (const status of STATUSES) {
+      for (const [geometry, glows] of parts[status]) {
+        const use = uses.get(geometry) ?? { glows, n: 0 };
+        use.n += capacity;
+        uses.set(geometry, use);
+      }
+    }
+    this.batchGroup.name = 'mark-batches';
+    this.group.add(this.batchGroup);
+    for (const [geometry, use] of uses) {
+      const batch = new InstanceBatch(geometry, use.glows ? this.glow : this.plastic, use.n, 'mark-batch');
+      byShape.set(geometry, batch);
+      this.batches.push(batch);
+      this.batchGroup.add(batch.mesh);
+    }
     for (const status of STATUSES) {
       const pool: Mark[] = [];
       for (let i = 0; i < capacity; i++) {
         const root = new Group();
         root.name = `status-${status}`;
         root.visible = false;
+        const batches: InstanceBatch[] = [];
         const pieces = parts[status].map(([geometry, glows]) => {
           const mesh = new Mesh(geometry, glows ? this.glow : this.plastic);
           mesh.name = `${status}-piece`;
+          mesh.visible = false; // drawn by its batch
           root.add(mesh);
+          batches.push(byShape.get(geometry) as InstanceBatch);
           return mesh;
         });
         this.group.add(root);
-        pool.push({ status, root, pieces, unitId: -1, anchor: null, height: 1, time: 0, slot: -1, size: 1 });
+        pool.push({ status, root, pieces, batches, unitId: -1, anchor: null, height: 1, time: 0, slot: -1, size: 1 });
       }
       this.pools.set(status, pool);
     }
@@ -285,7 +315,7 @@ export class StatusMarks {
     }
   }
 
-  /** Moves every mark to its unit and on by `dtSeconds` of game time. */
+  /** Moves every mark to its unit and on by `dtSeconds` of game time, and redraws the batches. */
   update(dtSeconds: number): void {
     const dt = Math.max(0, dtSeconds);
     for (let i = 0; i < this.live.length; i++) {
@@ -293,16 +323,37 @@ export class StatusMarks {
       mark.time += dt;
       this.place(mark);
     }
+    this.draw();
+  }
+
+  /** How many draw calls the marks take now (one per piece shape that is showing). */
+  get drawCalls(): number {
+    let n = 0;
+    for (let i = 0; i < this.batches.length; i++) if ((this.batches[i] as InstanceBatch).count > 0) n++;
+    return n;
+  }
+
+  /** Copies every live mark's pieces into their batches. */
+  private draw(): void {
+    for (let i = 0; i < this.batches.length; i++) (this.batches[i] as InstanceBatch).begin();
+    for (let i = 0; i < this.live.length; i++) {
+      const mark = this.live[i] as Mark;
+      mark.root.updateMatrixWorld(true);
+      for (let j = 0; j < mark.pieces.length; j++) (mark.batches[j] as InstanceBatch).add(mark.pieces[j] as Mesh);
+    }
+    for (let i = 0; i < this.batches.length; i++) (this.batches[i] as InstanceBatch).end();
   }
 
   /** Takes every mark off every unit. */
   clear(): void {
     for (let i = this.live.length - 1; i >= 0; i--) this.release(this.live[i] as Mark);
+    this.draw();
   }
 
   /** Takes every mark away, takes `group` out of the scene, and frees the shapes and materials. */
   dispose(): void {
     this.clear();
+    for (const batch of this.batches) batch.dispose();
     this.group.removeFromParent();
     this.group.clear();
     for (const geometry of this.geometries) geometry.dispose();
