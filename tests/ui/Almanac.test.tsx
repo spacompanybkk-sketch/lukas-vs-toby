@@ -79,11 +79,14 @@ describe('stat bars from the balance table', () => {
     }
   });
 
-  it('an upgrade makes them longer too; the plain part stays what it was without it', () => {
+  it('an upgrade makes them longer as far as the shipped step adds; the plain part stays what it was without it', () => {
+    const step = BALANCE.upgradeStep;
     for (const k of ['peashooter', 'brainEater'] as const) {
       const plain = statBars(k, 2, 0);
       const up = statBars(k, 2, 6);
-      expect(up.hp).toBeGreaterThan(plain.hp);
+      // Square-root bars: the share grows by sqrt(1 + 6 × step).
+      expect(up.hp).toBeCloseTo(Math.min(1, plain.hp * Math.sqrt(1 + 6 * step.hp)), 10);
+      expect(up.dps ?? 0).toBeCloseTo(Math.min(1, (plain.dps ?? 0) * Math.sqrt(1 + 6 * step.damage)), 10);
       expect(up.dps ?? 0).toBeGreaterThan(plain.dps ?? 0);
       expect(up.hpPlain).toBeCloseTo(plain.hp, 10);
       expect(up.dpsPlain ?? 0).toBeCloseTo(plain.dps ?? 0, 10);
@@ -204,20 +207,22 @@ describe('Almanac screen', () => {
     });
     afterEach(() => session.dispose());
 
-    it("the bars grow with the player's upgrade of that unit, the gain in gold", () => {
+    it("the bars grow with the player's upgrade of that unit as the shipped step says, the gain in gold", () => {
       mount();
       tap('[data-unit="brainEater"]');
-      const plain = Number(q('[data-bar="hp"]')?.dataset.share);
-      expect(q('[data-bar-up="hp"]')).toBeNull();
+      const plain = Number(q('[data-bar="dps"]')?.dataset.share);
+      expect(q('[data-bar-up="dps"]')).toBeNull();
       act(() => session.update((save) => ({ ...save, upgrades: { brainEater: 10 } })));
-      const up = Number(q('[data-bar="hp"]')?.dataset.share);
+      const up = Number(q('[data-bar="dps"]')?.dataset.share);
       expect(up).toBeGreaterThan(plain);
-      expect(up).toBeCloseTo(statBars('brainEater', 1, 10).hp, 3);
-      expect(q('[data-bar-up="hp"]')).not.toBeNull();
+      expect(up).toBeCloseTo(statBars('brainEater', 1, 10).dps ?? 0, 3);
+      expect(Number(q('[data-bar="hp"]')?.dataset.share)).toBeCloseTo(statBars('brainEater', 1, 10).hp, 3);
       expect(q('[data-bar-up="dps"]')).not.toBeNull();
+      // Health gains only what the shipped step gives it (none at a step of 0).
+      expect(q('[data-bar-up="hp"]') !== null).toBe(BALANCE.upgradeStep.hp > 0);
       // Another unit's upgrade does not touch this one.
       tap('[data-unit="cowboyZombie"]');
-      expect(q('[data-bar-up="hp"]')).toBeNull();
+      expect(q('[data-bar-up="dps"]')).toBeNull();
     });
   });
 

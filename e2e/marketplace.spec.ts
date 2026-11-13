@@ -39,7 +39,7 @@ test('Lukas buys upgrades by taps; they are kept and reach his side in battle', 
   await expect(page.locator('[data-card="peashooter"]')).toHaveAttribute('data-level', '2');
   await page.locator('[data-action="back"]').click();
 
-  // In battle, on his side only: a Peashooter has 10% more health; the computer has no upgrades.
+  // In battle, on his side only; the computer has no upgrades.
   await pickAndStart(page, 'plants', 'easy');
   await waitLive(page);
   const ups = await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.upgrades);

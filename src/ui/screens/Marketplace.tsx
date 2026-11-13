@@ -75,7 +75,7 @@ function UnitCard({ unit, level, coins, fx, portraits, onBuy }: {
 
 /**
  * The Marketplace: the logged-in player's coins at the top, two picture tabs (plants, zombies),
- * and the ten units of the side, each with ten upgrade steps. Every step adds health and damage in
+ * and the ten units of the side, each with ten upgrade steps. Every step adds what `Balance.upgradeStep` says (damage, and health if its step is above 0) in
  * Adventure, Quick Battle and Free Play (never Versus). Buying goes through `session.buy`, so it
  * is kept on the device and synced. Nothing needs reading: pictures, pips, colours and sounds.
  */

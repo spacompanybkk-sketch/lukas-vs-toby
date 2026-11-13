@@ -316,7 +316,11 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
     graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
   },
-  upgradeStep: { hp: 0.05, damage: 0.05 },
+  // Task 5 follow-up, measured (200 seeds, every unit at the level, stand-ins v Hard): damage only.
+  // Any health step at all adds a whole extra hit to units whose health the attacks divide exactly
+  // (400 / 25 a pea), a cliff at level 1 (+0.5% health: steady zombies v Hard 29% → 60%).
+  // +3% damage a level: steady zombies v Hard 40 / 46 / 60% at levels 2 / 5 / 10.
+  upgradeStep: { hp: 0, damage: 0.03 },
 });
 
 /** Seconds to whole ticks. */

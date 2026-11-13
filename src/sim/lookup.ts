@@ -29,8 +29,8 @@ export type UpgradeCurve = 'hp' | 'damage';
 
 /**
  * What a unit's health (`hp`) or its bite and shot damage (`damage`) is multiplied by for its
- * side's Marketplace level of its type: `1 + step × level` (level 0 → 1, 1 → 1.05, 10 → 1.5 with
- * the shipped step). The one place an upgrade enters the rules. A unit that is no card (a Bone
+ * side's Marketplace level of its type: `1 + step × level` (`Balance.upgradeStep`; exactly 1 at level 0).
+ * The one place an upgrade enters the rules. A unit that is no card (a Bone
  * Minion, a rock) has no level, so 1. What takes it (see the callers):
  * - `hp`: the health a card is placed with (`spawnUnit`), its max on a merge, a Hot Topic's growth,
  *   and the plant base's strike on a zombie (so an upgraded zombie takes as many strikes as a plain one);
