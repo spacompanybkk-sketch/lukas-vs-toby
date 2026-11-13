@@ -75,9 +75,19 @@ describe('the score and the reward', () => {
     expect(a.save.updatedAt).toBe(10);
     const again = applyFreePlayResult(a.save, { kind: 'free', battleId: 'b1', side: 'plants', wave: 3, cleared: 2 }, 11);
     expect(again).toEqual({ save: a.save, coins: 0, best: false });
-    const b = applyFreePlayResult(a.save, { kind: 'free', battleId: 'b2', side: 'zombies', wave: 6, cleared: 6 }, 12);
-    expect(b).toMatchObject({ coins: 30, best: true });
+    const b = applyFreePlayResult(a.save, { kind: 'free', battleId: 'b2', side: 'plants', wave: 6, cleared: 5 }, 12);
+    expect(b).toMatchObject({ coins: 25, best: true });
     expect(b.save.bestWave).toBe(6);
     expect(FREE_PLAY.coinsPerWave).toBe(5);
+  });
+
+  it('a breakthrough run counts towards bestGarden, not bestWave; the crown compares against its own best', () => {
+    const save = { ...fresh(), bestWave: 9, bestGarden: 2 };
+    const g = applyFreePlayResult(save, { kind: 'free', battleId: 'g1', side: 'zombies', wave: 3, cleared: 3 }, 10);
+    expect(g).toMatchObject({ coins: 15, best: true });
+    expect(g.save).toMatchObject({ bestGarden: 3, bestWave: 9 });
+    const w = applyFreePlayResult(g.save, { kind: 'free', battleId: 'w1', side: 'plants', wave: 5, cleared: 4 }, 11);
+    expect(w.best).toBe(false); // 5 waves do not beat survive's 9, whatever the gardens say
+    expect(w.save).toMatchObject({ bestGarden: 3, bestWave: 9 });
   });
 });

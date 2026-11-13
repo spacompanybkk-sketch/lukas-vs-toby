@@ -120,15 +120,48 @@ describe('a Free Play run through the app', () => {
     expect(screen.value).toEqual({ name: 'home' });
   });
 
-  it('Quit from pause stores nothing and pays nothing', () => {
+  it('Quit from pause ends the run and banks it like losing: the armed Quit shows the flag and coins first', () => {
     const coins = me().coins;
     const c = start('plants');
-    steps(c, seconds(FREE_PLAY.firstWaveSeconds + 2));
+    steps(c, seconds(FREE_PLAY.firstWaveSeconds + BALANCE.endless.gapSeconds * 2) + 1);
     act(() => { need('[data-hud="pause"]').click(); });
+    expect(q('[data-bank]')).toBeNull();
     act(() => { need('[data-screen="pause"] [data-action="quit"]').click(); });
+    expect(need('[data-bank] [data-bank-wave]').dataset.bankWave).toBe('3');
+    expect(need('[data-bank] [data-bank-wave]').dataset.bankCoins).toBe('10');
     act(() => { need('[data-screen="pause"] [data-action="quit"]').click(); });
+    const result = need('[data-free-result="plants"]');
+    expect(result.dataset.wave).toBe('3');
+    expect(result.dataset.best).toBe('');
+    expect(me().coins).toBe(coins + 10);
+    expect(me().bestWave).toBe(3);
+    expect(readPending(session, me().slot)).toBeNull();
+    act(() => { need('[data-action="menu"]').click(); });
     expect(screen.value).toEqual({ name: 'home' });
-    expect(me().coins).toBe(coins);
-    expect(me().bestWave).toBe(0);
+  });
+
+  it('survive has no zombie base bar; breakthrough keeps both bars and announces gardens with the garden picture', () => {
+    start('plants');
+    expect(q('[data-hud="base-zombies"]')).toBeNull();
+    expect(q('[data-hud="base-plants"]')).not.toBeNull();
+    const c = start('zombies');
+    steps(c, 1);
+    expect(q('[data-hud="base-zombies"]')).not.toBeNull();
+    expect(need('[data-hud="free-wave"]').dataset.wave).toBe('0'); // gardens broken
+    expect(need('[data-banner="wave"]').dataset.kind).toBe('garden');
+    expect(need('[data-banner="wave"]').dataset.wave).toBe('1'); // garden 1
+  });
+
+  it('a run whose player is no longer the one logged in stays pending; the result shows the run\'s own numbers', () => {
+    const c = start('plants');
+    const slot = me().slot;
+    steps(c, seconds(FREE_PLAY.firstWaveSeconds + BALANCE.endless.gapSeconds) + 1);
+    act(() => { session.logout(); });
+    act(() => { c.match.state.baseHp.plants = 0; });
+    steps(c, 1);
+    const result = need('[data-free-result="plants"]');
+    expect(result.dataset.wave).toBe('2');
+    expect(need('[data-coins-earned]').dataset.coinsEarned).toBe('5');
+    expect(readPending(session, slot)).toMatchObject({ kind: 'free', wave: 2, cleared: 1 });
   });
 });

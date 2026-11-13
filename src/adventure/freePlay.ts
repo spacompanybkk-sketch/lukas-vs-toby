@@ -81,15 +81,19 @@ export function freePlayConfig(save: Save, side: Faction, seed: number, levels: 
   };
 }
 
+/** Which best a run counts towards: survive's waves (`bestWave`) or breakthrough's gardens (`bestGarden`). */
+export const bestKey = (side: Faction): 'bestWave' | 'bestGarden' => (side === 'plants' ? 'bestWave' : 'bestGarden');
+
 /**
- * A run's result into `save`: `coinsPerWave` for each wave cleared and `bestWave` raised to the
- * wave reached, once per battle id (a battle id the save holds as `lastBattle` changes nothing).
- * `best`: the wave beat the save's best.
+ * A run's result into `save`: `coinsPerWave` for each wave cleared, and its mode's best raised to
+ * the score reached (`bestWave` for survive, `bestGarden` for breakthrough), once per battle id
+ * (a battle id the save holds as `lastBattle` changes nothing). `best`: the score beat that best.
  */
 export function applyFreePlayResult(save: Save, rec: FreePlayRecord, now: number): { save: Save; coins: number; best: boolean } {
   if (save.lastBattle === rec.battleId) return { save, coins: 0, best: false };
   const coins = Math.max(0, Math.floor(rec.cleared)) * FREE_PLAY.coinsPerWave;
-  const best = rec.wave > save.bestWave;
-  const next: Save = { ...save, coins: save.coins + coins, bestWave: Math.max(save.bestWave, rec.wave), lastBattle: rec.battleId };
+  const key = bestKey(rec.side);
+  const best = rec.wave > save[key];
+  const next: Save = { ...save, coins: save.coins + coins, [key]: Math.max(save[key], rec.wave), lastBattle: rec.battleId };
   return { save: touch(next, now), coins, best };
 }

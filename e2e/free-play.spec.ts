@@ -59,7 +59,7 @@ test('survive to wave 3 by fast-forward: the flag counter, then the result pays 
   })).toBe(3);
 });
 
-test('breakthrough: straight into a garden with the clock; pause and Home pay nothing', async ({ page }) => {
+test('breakthrough: straight into a garden with the clock; Quit from pause banks the gardens broken (bestGarden)', async ({ page }) => {
   test.setTimeout(150_000);
   await openTitle(page);
   await logIn(page);
@@ -75,7 +75,14 @@ test('breakthrough: straight into a garden with the clock; pause and Home pay no
   await expect(page.locator('[data-hud="free-wave"]')).toHaveAttribute('data-wave', '1');
   await press(page.locator('[data-hud="pause"]'));
   await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await expect(page.locator('[data-bank] [data-bank-coins="5"]')).toBeVisible();
   await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  const result = page.locator('[data-free-result="zombies"]');
+  await expect(result).toBeVisible({ timeout: 30_000 });
+  await expect(result).toHaveAttribute('data-wave', '1');
+  await expect(result).toHaveAttribute('data-best', '');
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).players.player.value.bestGarden)).toBe(1);
+  expect(await save(page)).toEqual({ coins: before.coins + 5, bestWave: 0 });
+  await press(page.locator('[data-screen="result"] [data-action="menu"]'));
   await expect(page.locator('[data-screen="home"]')).toBeVisible();
-  expect(await save(page)).toEqual(before);
 });

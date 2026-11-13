@@ -34,7 +34,8 @@ import type { GloveVM } from '../../app/tutorial';
 import type { EndlessSignals } from '../../app/BattleController';
 import type { FreePlayOutcome } from '../../app/levelSession';
 import { BALANCE } from '../../data/balance';
-import { FreePlayResult, FreePlayTop, WaveBanner, bigOne } from './FreePlay';
+import { FreePlayResult, FreePlayTop, RunBank, WaveBanner, bigOne } from './FreePlay';
+import { FREE_PLAY, wavesCleared } from '../../adventure/freePlay';
 
 /** The seconds a broken garden adds to Free Play's clock (the "+30"). */
 const FREE_BONUS_SECONDS = BALANCE.endless.clockBonusSeconds;
@@ -122,6 +123,8 @@ export interface BattleScreenProps {
   bossBar?: ComponentChildren;
   /** A Free Play run's applied result: the wave reached, best, coins. */
   freePlay?: FreePlayOutcome | null;
+  /** Free Play: the result's Home (the pause menu's Quit, `onQuit`, ends the run instead). */
+  onHome?(): void;
 }
 
 /**
@@ -152,7 +155,7 @@ const SHAKE_MS = 300;
  */
 export function BattleScreen(props: BattleScreenProps) {
   const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null, rankUp = null } = props;
-  const { level = null, onNextLevel, onMap, turntable, bossBar, freePlay = null } = props;
+  const { level = null, onNextLevel, onMap, turntable, bossBar, freePlay = null, onHome } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
@@ -185,7 +188,8 @@ export function BattleScreen(props: BattleScreenProps) {
       </div>
       <div class="battle__bases">
         <LiveBase hud={hud} faction="plants" playerFaction={side} portrait={boys.lukas} />
-        <LiveBase hud={hud} faction="zombies" playerFaction={side} portrait={boys.toby} />
+        {/* Free Play survive: the zombie base cannot fall, so it has no bar. */}
+        {ctl.endless?.mode !== 'survive' && <LiveBase hud={hud} faction="zombies" playerFaction={side} portrait={boys.toby} />}
       </div>
       </ResultClears>
       {ctl.level != null && <LiveLevel hud={hud} info={ctl.level} />}
@@ -205,14 +209,14 @@ export function BattleScreen(props: BattleScreenProps) {
       )}
       {ctl.tutorial != null && <LiveGlove hud={hud} glove={ctl.tutorial.glove} host={session} />}
       {ctl.endless != null && (
-        <WaveBanner banner={ctl.endless.banner} side={ctl.endless.mode === 'survive' ? 'zombies' : 'plants'} big={bigOne(ctl.endless.cards)} portraits={portraits} />
+        <WaveBanner banner={ctl.endless.banner} side={ctl.endless.mode === 'survive' ? 'zombies' : 'plants'} mode={ctl.endless.mode} big={bigOne(ctl.endless.cards)} portraits={portraits} />
       )}
       {session.heroBanner !== undefined && <HeroBanner banner={session.heroBanner} boys={boys} />}
       <IntroBanner session={session} />
       <Overlays
         ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
         onRestart={onRestart} onQuit={onQuit} coins={coins} rankUp={rankUp}
-        level={level} onNextLevel={onNextLevel} onMap={onMap} turntable={turntable} cards={portraits} freePlay={freePlay}
+        level={level} onNextLevel={onNextLevel} onMap={onMap} turntable={turntable} cards={portraits} freePlay={freePlay} onHome={onHome}
       />
     </div>
   );
@@ -252,6 +256,12 @@ function LiveLevel({ hud, info }: { hud: HudSignals; info: LevelHudInfo }) {
 /** The tutorial's glove; hidden under the pause menu and the result. */
 function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySignal<GloveVM | null>; host: GloveHost }) {
   return <PointingHand glove={glove} host={host} hidden={hud.paused.value || hud.result.value !== null} />;
+}
+
+/** A Free Play run's bank on the armed Quit: its score and the coins ending now would pay. */
+function LiveBank({ endless }: { endless: EndlessSignals }) {
+  const wave = endless.wave.value;
+  return <RunBank wave={wave} coins={wavesCleared(endless.mode, wave) * FREE_PLAY.coinsPerWave} />;
 }
 
 /** How long a big wave's cue stays at its lane's end. */
@@ -522,10 +532,11 @@ interface OverlaysProps {
   turntable: Turntable | undefined;
   cards: Record<string, string>;
   freePlay: FreePlayOutcome | null;
+  onHome: (() => void) | undefined;
 }
 
 /** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
-function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp, level, onNextLevel, onMap, turntable, cards, freePlay }: OverlaysProps) {
+function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp, level, onNextLevel, onMap, turntable, cards, freePlay, onHome }: OverlaysProps) {
   const hud = ctl.hud;
   const paused = hud.paused.value;
   const result = hud.result.value;
@@ -535,7 +546,7 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
   if (result !== null) {
     if (!ready) return null; // the base is still falling
     if (ctl.endless != null) {
-      return <FreePlayResult outcome={freePlay} side={ctl.playerFaction} rankUp={rankUp} onAgain={onRestart} onHome={onQuit} />;
+      return <FreePlayResult outcome={freePlay} side={ctl.playerFaction} rankUp={rankUp} onAgain={onRestart} onHome={onHome ?? onQuit} />;
     }
     return (
       <ResultOverlay
@@ -553,6 +564,7 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
     <PauseMenu
       onResume={() => { setSettingsOpen(false); ctl.setPaused(false); }}
       onRestart={onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
+      bank={ctl.endless != null ? <LiveBank endless={ctl.endless} /> : undefined}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
 import { PixelIcon } from './PixelIcon';
 import type { PixelArt } from './PixelIcon';
 import './hud.css';
@@ -8,6 +9,8 @@ export interface PauseMenuProps {
   onRestart(): void;
   onSettings(): void;
   onQuit(): void;
+  /** Shown once Quit is armed: what quitting banks (a Free Play run's flag and coins). */
+  bank?: ComponentChildren;
 }
 
 /** How long an armed Quit waits for its second tap before it goes back to normal. */
@@ -36,7 +39,7 @@ const TICK: PixelArt = {
  * Dimmed overlay with four big picture buttons; Resume is the biggest. Quit takes two taps (the
  * first shows a tick on it), so a stray finger never throws a match away.
  */
-export function PauseMenu({ onResume, onRestart, onSettings, onQuit }: PauseMenuProps) {
+export function PauseMenu({ onResume, onRestart, onSettings, onQuit, bank }: PauseMenuProps) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return undefined;
@@ -68,6 +71,7 @@ export function PauseMenu({ onResume, onRestart, onSettings, onQuit }: PauseMenu
             <span class="btn__label inked">Quit</span>
           </button>
         </div>
+        {armed && bank !== undefined && <div class="pause__bank" data-bank>{bank}</div>}
       </div>
     </div>
   );

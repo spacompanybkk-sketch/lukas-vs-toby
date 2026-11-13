@@ -119,6 +119,29 @@ describe('a breakthrough run (zombies)', () => {
   });
 });
 
+describe('ending a run from the pause menu', () => {
+  it('quitRun ends it like losing: the record pays for the waves cleared so far; the match stops', () => {
+    const c = run('plants');
+    steps(c, seconds(FREE_PLAY.firstWaveSeconds + BALANCE.endless.gapSeconds) + 1);
+    c.setPaused(true);
+    expect(c.freeResult()).toBeNull();
+    c.quitRun();
+    expect(c.endless!.quit.peek()).toBe(true);
+    expect(c.hud.paused.peek()).toBe(false);
+    expect(c.hud.result.peek()).toMatchObject({ playerWon: false });
+    expect(c.freeResult()).toMatchObject({ kind: 'free', side: 'plants', wave: 2, cleared: 1 });
+    const tick = c.match.state.tick;
+    steps(c, 30);
+    expect(c.match.state.tick).toBe(tick);
+  });
+
+  it('quitRun does nothing outside a run', () => {
+    const c = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });
+    c.quitRun();
+    expect(c.hud.result.peek()).toBeNull();
+  });
+});
+
 describe('the result, exactly once', () => {
   it('settled: 5 coins a wave cleared and bestWave, through the device; twice pays once', () => {
     const coins = me().coins;
@@ -138,7 +161,8 @@ describe('the result, exactly once', () => {
     expect(readPending(host, slot)).toMatchObject({ kind: 'free', wave: 4 });
     applyPending(host);
     expect(me().coins).toBe(coins + 20);
-    expect(me().bestWave).toBe(4);
+    expect(me().bestGarden).toBe(4); // a breakthrough run: its best is the gardens
+    expect(me().bestWave).toBe(0);
     expect(readPending(host, slot)).toBeNull();
     for (const bad of [{ kind: 'free', battleId: 'b', side: 'plants', wave: 2, cleared: 3 }, { kind: 'free', battleId: 'b', side: 'plants', wave: -1, cleared: 0 }, { kind: 'odd', battleId: 'b' }]) {
       storage.setItem(`lvt2f_${pendingKey(slot).slice(5)}`, JSON.stringify(bad));

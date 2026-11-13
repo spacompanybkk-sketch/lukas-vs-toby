@@ -123,6 +123,8 @@ export interface EndlessSignals {
   banner: Signal<{ wave: number; big: boolean; n: number } | null>;
   /** Gardens broken this run, for the clock's "+30" pop (breakthrough). */
   bonus: Signal<number>;
+  /** The player ended the run from the pause menu (`quitRun`): it is over, and pays like a loss. */
+  quit: Signal<boolean>;
 }
 
 /** The survive countdown ring is drawn in this many steps. */
@@ -310,7 +312,7 @@ export class BattleController {
     const mode = this.match.state.config.mode;
     this.endless = this.free === null || (mode !== 'survive' && mode !== 'breakthrough') ? null : {
       mode, cards: [...(this.match.state.config.endless?.cards ?? [])], wave: signal(0), nextWave: signal(RING_STEPS), clock: signal(0),
-      banner: signal<{ wave: number; big: boolean; n: number } | null>(null), bonus: signal(0),
+      banner: signal<{ wave: number; big: boolean; n: number } | null>(null), bonus: signal(0), quit: signal(false),
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
@@ -685,6 +687,21 @@ export class BattleController {
     }
     const card = index < 0 ? undefined : this.match.state.config.cards[this.playerFaction][index];
     if (card !== undefined) this.select(card);
+  }
+
+  /**
+   * Ends a Free Play run from the pause menu: the run is over (as if the base had fallen; the
+   * player has not won) and its record pays for the waves cleared so far (`freeResult`). Does
+   * nothing outside a running Free Play run.
+   */
+  quitRun(): void {
+    const endless = this.endless;
+    if (endless === null || this.over()) return;
+    batch(() => {
+      endless.quit.value = true;
+      this.hud.paused.value = false;
+      this.hud.result.value = { winner: this.opponent, playerWon: false };
+    });
   }
 
   setPaused(paused: boolean): void {

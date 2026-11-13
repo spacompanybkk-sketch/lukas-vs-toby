@@ -294,6 +294,13 @@ export class BattleSession implements Director, InputTarget {
     const result = this.controller.hud.result.peek();
     if (this.ended || result === null) return;
     this.ended = true;
+    if (this.controller.endless?.quit.peek() === true) {
+      // A Free Play run ended from the pause menu: nothing fell; its result shows at once.
+      this.view.setPreview(null);
+      if (withSound) this.audio.stopMusic(0.8);
+      this.ready.value = true;
+      return;
+    }
     this.endSounds = withSound;
     this.view.setPreview(null);
     if (withSound) {

@@ -491,6 +491,8 @@
 .pause__badge { --ico-size: calc(var(--btn-h) * 0.9); }
 .pause__resume { min-width: 70%; }
 .pause__tick { width: var(--ico-size); height: var(--ico-size); flex: none; }
+/* Free Play: what ending the run now banks, under the armed Quit. */
+.pause__bank { display: flex; justify-content: center; padding-top: 4px; }
 .pause__quit.is-armed { animation: quit-armed 500ms steps(1, end) infinite; }
 @keyframes quit-armed { 0% { filter: none; } 50% { filter: brightness(1.2); } }
 .pause__grid {

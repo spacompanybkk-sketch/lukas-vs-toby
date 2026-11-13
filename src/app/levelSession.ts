@@ -263,10 +263,13 @@ export function freePlayOptions(free: FreePlayPlay): BattleOptions {
 }
 
 /** The record of a finished run (null while it runs, and for a battle that is no run). */
-export function freePlayRecord(ctl: { readonly free: FreePlayPlay | null; readonly match: Match }): FreePlayRecord | null {
+export function freePlayRecord(
+  ctl: { readonly free: FreePlayPlay | null; readonly match: Match; readonly endless?: { quit: ReadonlySignal<boolean> } | null },
+): FreePlayRecord | null {
   const free = ctl.free;
   const s = ctl.match.state;
-  if (free === null || s.winner === null) return null;
+  // Over: the base fell (or the clock ran out), or the player ended the run from the pause menu.
+  if (free === null || (s.winner === null && ctl.endless?.quit.peek() !== true)) return null;
   return { kind: 'free', battleId: free.battleId, side: free.side, wave: s.wave, cleared: wavesCleared(s.config.mode, s.wave) };
 }
 

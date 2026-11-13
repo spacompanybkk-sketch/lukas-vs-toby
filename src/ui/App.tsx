@@ -12,6 +12,7 @@ import { settleFreePlay, settleLevel } from '../app/levelSession';
 import { rememberTaught } from '../app/tutorial';
 import type { Tutorial } from '../app/tutorial';
 import type { FreePlayOutcome, LevelOutcome, LevelRecord } from '../app/levelSession';
+import { FREE_PLAY } from '../adventure/freePlay';
 import type { FreePlayRecord } from '../adventure/freePlay';
 import type { Turntable } from './hud/ResultOverlay';
 import type { SfxName } from '../audio/sfx';
@@ -316,7 +317,13 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
       if (me === null) quit();
       else startFreePlay(free.side, me, (Date.now() + live.id) >>> 0);
     };
-    return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={runAgain} onQuit={quit} freePlay={freeOutcome} rankUp={freeRankUp} />;
+    // The pause menu's Quit ends the run and banks it (like losing); the result's Home goes Home.
+    const endRun = (): void => {
+      const ctl = live.session.controller as BattleSessionLike['controller'] & { quitRun?(): void };
+      if (ctl.quitRun !== undefined) ctl.quitRun();
+      else quit();
+    };
+    return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={runAgain} onQuit={endRun} onHome={quit} freePlay={freeOutcome} rankUp={freeRankUp} />;
   }
   if (play === undefined) {
     return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={again} onQuit={quit} coins={coins} rankUp={rankUp} />;
@@ -398,14 +405,19 @@ function useFreePlayResult(
     let alive = true;
     const stop = ctl.hud.result.subscribe((result) => {
       const before = players.player.peek();
-      if (result === null || done || before === null) return;
+      if (result === null || done) return;
       const record = ctl.freeResult?.() ?? null;
       if (record === null) return;
       done = true;
+      // Kept on the device first; applied now only for the run's own player (else at their log-in).
       const out = settleFreePlay(players, record, free.slot);
-      setOutcome(out);
+      // Not applied here (the run's player is not the one logged in): the run's own numbers, paid later.
+      setOutcome(out ?? {
+        side: record.side, wave: record.wave, cleared: record.cleared,
+        coins: record.cleared * FREE_PLAY.coinsPerWave, best: false,
+      });
       const after = players.player.peek();
-      if (out === null || after === null) return;
+      if (out === null || after === null || before === null) return;
       void board.fetch().then(
         (v) => { if (alive) setRankUp(rankChange(v.rows, before, after)); },
         (e: unknown) => console.error('board failed', e),

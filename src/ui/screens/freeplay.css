@@ -1,4 +1,4 @@
-/* Free Play: the flag counter, the next-wave ring, the clock and its +30, the wave banner, the result. */
+/* Free Play: the flag counter, the next-wave hourglass, the quit bank, the clock and its +30, the wave banner, the result. */
 
 .fp-top {
   display: flex;
@@ -18,17 +18,19 @@
 .fp-flags__n { height: calc(var(--hud-h) * 0.8); }
 .fp-flags__n svg { height: 100%; width: auto; aspect-ratio: 7 / 9; display: block; }
 
-/* The next wave's countdown ring: 12 boxy cells round a 4 × 4 square, lit for the time still to go. */
-.fp-ring-box { display: inline-grid; place-items: center; width: calc(var(--hud-h) * 1.15); height: calc(var(--hud-h) * 1.15); padding: 8px; }
-.fp-ring {
-  display: grid;
-  grid-template: repeat(4, 1fr) / repeat(4, 1fr);
-  gap: 2px;
-  width: 100%;
-  height: 100%;
-}
-.fp-ring__cell { background: #3a3f47; }
-.fp-ring__cell.is-on { background: var(--c-sun, #FFD54A); box-shadow: inset 0 -3px 0 var(--c-sun-lo, #F59F0B); }
+
+/* The next wave's countdown: an hourglass that drains. */
+.fp-glass-box { display: inline-grid; place-items: center; width: calc(var(--hud-h) * 1.15); height: calc(var(--hud-h) * 1.15); padding: 6px; }
+.fp-glass { display: block; height: 100%; }
+.fp-glass svg { display: block; height: 100%; width: auto; }
+
+/* The armed Quit's bank: the flag and number, and the coins the run pays if it ends now. */
+.fp-bank { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.fp-bank__flag { display: inline-flex; align-items: flex-end; gap: 4px; }
+.fp-bank__flag svg { height: clamp(36px, 6vh, 56px); width: auto; display: block; }
+.fp-bank__n { height: clamp(30px, 5vh, 48px); }
+.fp-bank__coins { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: var(--fs-big, 32px); }
+.fp-bank__coin { width: clamp(28px, 4.6vh, 44px); height: clamp(28px, 4.6vh, 44px); display: block; }
 
 /* Breakthrough's clock, with "+30" popping over it when a garden is broken. */
 .fp-clock {

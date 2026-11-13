@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ReadonlySignal } from '@preact/signals';
 import type { EndlessSignals } from '../../app/BattleController';
+import { RING_STEPS } from '../../app/BattleController';
 import type { RankUp } from '../../app/board';
 import type { FreePlayOutcome } from '../../app/levelSession';
 import { UNIT_INFO } from '../../data/units';
@@ -12,7 +13,7 @@ import { CoinRain } from '../hud/ResultOverlay';
 import { RankUpBadge } from './RankBlock';
 import { CLOCK, FLAG } from './adventurePictures';
 import { art } from './boardPictures';
-import { outlined } from './pictures';
+import { COIN, outlined } from './pictures';
 import { Digits, UnitPic } from './LevelCard';
 import './freeplay.css';
 
@@ -38,21 +39,90 @@ export const CROWN: PixelArt = art(outlined([
   '................',
 ]));
 
-/** The 12 cells of the ring, clockwise from the top left, as [row, col] on a 4 × 4 grid. */
-const RING_CELLS: readonly (readonly [number, number])[] = [
-  [0, 0], [0, 1], [0, 2], [0, 3], [1, 3], [2, 3], [3, 3], [3, 2], [3, 1], [3, 0], [2, 0], [1, 0],
+/** The hourglass's frame; '.' inside the glass is filled by `hourglass` (sand or empty glass). */
+const GLASS = [
+  'oooooooooooooo',
+  'obbbbbbbbbbbbo',
+  'oooooooooooooo',
+  '.o..........o.',
+  '.o..........o.',
+  '..o........o..',
+  '...o......o...',
+  '....o....o....',
+  '.....o..o.....',
+  '.....o..o.....',
+  '....o....o....',
+  '...o......o...',
+  '..o........o..',
+  '.o..........o.',
+  '.o..........o.',
+  'oooooooooooooo',
+  'obbbbbbbbbbbbo',
+  'oooooooooooooo',
 ];
 
-/** The next wave's countdown: a ring of `RING_STEPS` boxy cells, lit for the gap still to go. */
-export function WaveRing({ left }: { left: number }) {
+/** The inside cells of a glass row (between its two walls), as column indexes. */
+function inside(row: string): number[] {
+  const first = row.indexOf('o');
+  const last = row.lastIndexOf('o');
+  const out: number[] = [];
+  for (let x = first + 1; x < last; x++) out.push(x);
+  return out;
+}
+
+/**
+ * The hourglass with `left` of `RING_STEPS` still to run: the top bulb holds that share of the sand
+ * (settled at its bottom), the bottom bulb the rest (piled from its floor), and a thin stream runs
+ * through the neck while it drains.
+ */
+function hourglass(left: number, steps: number): PixelArt {
+  const rows = GLASS.map((r) => [...r]);
+  const topRows = [7, 6, 5, 4, 3]; // the top bulb, bottom row first
+  const bottomRows = [14, 13, 12, 11, 10]; // the bottom bulb, floor first
+  const topCells = topRows.flatMap((y) => inside(GLASS[y]!).map((x) => [y, x] as const));
+  const bottomCells = bottomRows.flatMap((y) => inside(GLASS[y]!).map((x) => [y, x] as const));
+  const total = topCells.length;
+  const sandTop = Math.round((total * Math.max(0, Math.min(steps, left))) / steps);
+  for (const [y, x] of [...topCells, ...bottomCells]) rows[y]![x] = 'c';
+  topCells.slice(0, sandTop).forEach(([y, x]) => { rows[y]![x] = 'y'; });
+  bottomCells.slice(0, total - sandTop).forEach(([y, x]) => { rows[y]![x] = 'y'; });
+  for (const y of [8, 9]) for (const x of inside(GLASS[y]!)) rows[y]![x] = 'c';
+  if (left > 0 && left < steps) { rows[8]![6] = 'Y'; rows[9]![6] = 'Y'; }
+  return art(rows.map((r) => r.join('')));
+}
+
+/** The hourglass at each of its steps, drawn once. */
+const HOURGLASSES: readonly PixelArt[] = Array.from({ length: RING_STEPS + 1 }, (_, k) => hourglass(k, RING_STEPS));
+
+/** The next wave's countdown: an hourglass that drains, `left` of `RING_STEPS` still to go. */
+export function WaveTimer({ left }: { left: number }) {
+  const k = Math.max(0, Math.min(RING_STEPS, left));
   return (
-    <span class="fp-ring" data-hud="next-wave" data-left={left} aria-hidden="true">
-      {RING_CELLS.map(([r, c], i) => (
-        <span key={i} class={`fp-ring__cell${i < left ? ' is-on' : ''}`} style={{ gridRow: r + 1, gridColumn: c + 1 }} />
-      ))}
+    <span class="fp-glass" data-hud="next-wave" data-left={k} aria-hidden="true">
+      <PixelIcon art={HOURGLASSES[k]!} />
     </span>
   );
 }
+
+/** A garden: a picket fence on grass, with a flower. Breakthrough's banner shows it ("garden N"). */
+export const GARDEN: PixelArt = art(outlined([
+  '................',
+  '.............n..',
+  '............nyn.',
+  '..h....h.....nG.',
+  '.hhh..hhh..hhhG.',
+  '.hBh..hBh..hBhG.',
+  'hhhhhhhhhhhhhhhh',
+  'BBBBBBBBBBBBBBBB',
+  '.hBh..hBh..hBh..',
+  '.hBh..hBh..hBh..',
+  'hhhhhhhhhhhhhhhh',
+  'BBBBBBBBBBBBBBBB',
+  '.hBh..hBh..hBh..',
+  'gggggggggggggggg',
+  'GGGGGGGGGGGGGGGG',
+  '................',
+]));
 
 /** How long the "+30" stays over the clock after a garden is broken. */
 export const BONUS_MS = 1200;
@@ -62,7 +132,7 @@ export function FreePlayTop({ endless, bonusSeconds }: { endless: EndlessSignals
   return (
     <div class="fp-top" data-hud="free-top" data-mode={endless.mode}>
       <FlagCounter wave={endless.wave} />
-      {endless.mode === 'survive' ? <LiveRing next={endless.nextWave} /> : <LiveClock clock={endless.clock} bonus={endless.bonus} bonusSeconds={bonusSeconds} />}
+      {endless.mode === 'survive' ? <LiveTimer next={endless.nextWave} /> : <LiveClock clock={endless.clock} bonus={endless.bonus} bonusSeconds={bonusSeconds} />}
     </div>
   );
 }
@@ -77,8 +147,8 @@ function FlagCounter({ wave }: { wave: ReadonlySignal<number> }) {
   );
 }
 
-function LiveRing({ next }: { next: ReadonlySignal<number> }) {
-  return <span class="fp-ring-box px pal-stone"><WaveRing left={next.value} /></span>;
+function LiveTimer({ next }: { next: ReadonlySignal<number> }) {
+  return <span class="fp-glass-box px pal-stone"><WaveTimer left={next.value} /></span>;
 }
 
 function LiveClock({ clock, bonus, bonusSeconds }: { clock: ReadonlySignal<number>; bonus: ReadonlySignal<number>; bonusSeconds: number }) {
@@ -111,11 +181,14 @@ export function bigOne(cards: readonly CardKey[]): CardKey | null {
 }
 
 /**
- * A wave (or garden) has started: a band across the sky with the flag and its number; on every
- * tenth the big one's black silhouette stands beside it. It takes no taps.
+ * A wave or a garden has started: a plaque with its picture and number — survive: the flag and
+ * the wave (the counter's own picture and number); breakthrough: a garden and "garden N" (the
+ * counter there counts gardens broken, with the flag). On every tenth the big one's black
+ * silhouette stands beside it. It takes no taps.
  */
-export function WaveBanner({ banner, side, big, portraits }: {
-  banner: ReadonlySignal<{ wave: number; big: boolean; n: number } | null>; side: Faction; big: CardKey | null; portraits: Record<string, string>;
+export function WaveBanner({ banner, side, mode, big, portraits }: {
+  banner: ReadonlySignal<{ wave: number; big: boolean; n: number } | null>; side: Faction; mode: 'survive' | 'breakthrough';
+  big: CardKey | null; portraits: Record<string, string>;
 }) {
   const now = banner.value;
   const [gone, setGone] = useState(0);
@@ -126,11 +199,21 @@ export function WaveBanner({ banner, side, big, portraits }: {
   }, [now]);
   if (now === null || gone === now.n) return null;
   return (
-    <div key={now.n} class={`fp-banner px pal-stone side-${side}${now.big ? ' is-big' : ''}`} data-banner="wave" data-wave={now.wave} data-big={now.big ? '' : undefined}>
-      <PixelIcon art={FLAG} class="fp-banner__flag" />
+    <div key={now.n} class={`fp-banner px pal-stone side-${side}${now.big ? ' is-big' : ''}`} data-banner="wave" data-kind={mode === 'breakthrough' ? 'garden' : 'wave'} data-wave={now.wave} data-big={now.big ? '' : undefined}>
+      <PixelIcon art={mode === 'breakthrough' ? GARDEN : FLAG} class="fp-banner__flag" />
       <Digits n={now.wave} class="fp-banner__n" />
       {now.big && big !== null && <UnitPic unit={big} portraits={portraits} class="fp-banner__big" />}
     </div>
+  );
+}
+
+/** What ending a run now would bank, shown on the pause menu's armed Quit: the flag and number, and the coins. */
+export function RunBank({ wave, coins }: { wave: number; coins: number }) {
+  return (
+    <span class="fp-bank" data-bank-wave={wave} data-bank-coins={coins} aria-label={`${coins} coins`}>
+      <span class="fp-bank__flag"><PixelIcon art={FLAG} /><Digits n={wave} class="fp-bank__n" /></span>
+      <span class="fp-bank__coins px pal-wood"><PixelIcon art={COIN} class="fp-bank__coin" /><span class="inked">+{coins}</span></span>
+    </span>
   );
 }
 
