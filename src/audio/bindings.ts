@@ -201,6 +201,11 @@ export function playEventSounds(
       case 'statusEnded':
       case 'hazardSpawned': // the rot's landing splat is the shot's own sound
       case 'hazardEnded':
+      case 'waveSpawned': // level events: no sound of their own yet (the level HUD task gives them one)
+      case 'waveSkipped':
+      case 'beltCard':
+      case 'beltUsed':
+      case 'goalReached':
         break;
       default: {
         const unhandled: never = e;

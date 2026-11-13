@@ -2,15 +2,18 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { PHASE1_CARDS, UNIT_INFO } from '../data/units';
 import type { UnitInfo } from '../data/units';
-import { grownHealth, tickAbilities } from './abilities';
+import { tickAbilities } from './abilities';
+import { checkBelt, playBelt, tickBelt } from './belt';
 import { resolveDeaths, tickAttacks, tickBaseDefense, tickHazards, tickProjectiles } from './combat';
 import { tickEconomy } from './economy';
 import { tickEndgame } from './endgame';
 import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
-import { isStanding, levelScale, statsFor, upgradeScale } from './lookup';
+import { levelUp } from './levelUp';
+import { isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
+import { checkLevel, tickScript } from './script';
 import { spawnUnit } from './spawn';
 import { tickStatuses } from './status';
 import { LANES, MAX_LEVEL, MAX_UPGRADE, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
@@ -24,7 +27,11 @@ type PlaceCommand = Extract<Command, { type: 'place' }>;
 type MergeCommand = Extract<Command, { type: 'merge' }>;
 type RemoveCommand = Extract<Command, { type: 'remove' }>;
 
-/** A fresh match setup: both sides alike, the Phase 1 cards, sudden death on, both hero powers on, two spells a side. */
+/**
+ * A fresh match setup: both sides alike, the Phase 1 cards, sudden death on, both hero powers on,
+ * two spells a side; a plain battle (no script, nothing prepared, no clock, no belt, energy on, both
+ * bases can be hurt).
+ */
 export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchConfig {
   return {
     seed,
@@ -36,6 +43,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     heroes: { plants: true, zombies: true },
     spells: { plants: 2, zombies: 2 },
     upgrades: { plants: {}, zombies: {} },
+    mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null,
   };
 }
 
@@ -50,6 +58,13 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     heroes: { ...c.heroes },
     spells: { ...c.spells },
     upgrades: { plants: { ...c.upgrades.plants }, zombies: { ...c.upgrades.zombies } },
+    mode: c.mode,
+    script: c.script.map((e) => ({ ...e })),
+    prepared: c.prepared.map((p) => ({ ...p })),
+    goalTicks: c.goalTicks,
+    belt: c.belt === null ? null : { ...c.belt, cards: [...c.belt.cards] },
+    noEnergy: c.noEnergy,
+    invulnerableBase: c.invulnerableBase,
   };
 }
 
@@ -77,19 +92,22 @@ export class Match {
   constructor(config: MatchConfig, balance: Balance = BALANCE) {
     const own = cloneConfig(config); // the match never shares objects with the caller's config
     checkUpgrades(own);
+    checkLevel(own, balance);
     this.balance = balance;
     const heroTimer = (f: Faction): number => seconds(balance.hero[f].firstChargeSeconds);
+    const energy = (f: Faction): number => (own.noEnergy ? 0 : own.startEnergy[f]); // no energy: none to start with either
     this.state = {
       tick: 0, rng: own.seed >>> 0, nextId: 1,
       units: [], projectiles: [], hazards: [],
       players: {
-        plants: { energy: own.startEnergy.plants, carry: 0, recharge: {}, heroTimer: heroTimer('plants'), spells: [] },
-        zombies: { energy: own.startEnergy.zombies, carry: 0, recharge: {}, heroTimer: heroTimer('zombies'), spells: [] },
+        plants: { energy: energy('plants'), carry: 0, recharge: {}, heroTimer: heroTimer('plants'), spells: [] },
+        zombies: { energy: energy('zombies'), carry: 0, recharge: {}, heroTimer: heroTimer('zombies'), spells: [] },
       },
       baseHp: { ...own.baseHp }, baseMaxHp: { ...own.baseHp },
       baseDefenseTimers: new Array<number>(LANES).fill(0),
       suddenDeath: false, winner: null,
       config: own,
+      scriptIndex: 0, belt: [], // prepared units and tick-0 waves come on in the first step (`tickScript`)
     };
     dealSpells(this.state, balance); // the deal is the first thing the state rng draws
   }
@@ -115,6 +133,9 @@ export class Match {
    * - hero: `hero-off`, `bad-lane`, `hero-charging` (see `checkHero`).
    * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `occupied`, `spell-charging`
    *   (see `checkSpell`).
+   * - belt: `no-belt`, `bad-slot`, `bad-lane`, `bad-column`, `occupied`, `max-level` (see `checkBelt`).
+   * With the level's `noEnergy`, place and merge are refused `no-energy` once the card, lane and
+   * tile (place) or target (merge) checks have passed.
    */
   check(cmd: Command): CommandRejection | null {
     if (this.state.winner !== null) return 'match-over';
@@ -129,6 +150,8 @@ export class Match {
         return checkHero(this.state, cmd);
       case 'spell':
         return checkSpell(this.state, this.balance, cmd);
+      case 'belt':
+        return checkBelt(this.state, cmd);
       default: {
         const unhandled: never = cmd;
         throw new Error(`Unhandled command ${JSON.stringify(unhandled)}`);
@@ -138,7 +161,8 @@ export class Match {
 
   /**
    * Advances the match by one tick and returns what happened, in this fixed order:
-   * commands, economy, movement, attacks, the plant base's defence, abilities, projectiles, hazards, statuses, deaths,
+   * the level's script (prepared units on tick 0, then waves; `tickScript`), the belt's arrival
+   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, projectiles, hazards, statuses, deaths,
    * endgame, then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
@@ -148,6 +172,8 @@ export class Match {
     if (s.winner !== null) return [];
     const events: SimEvent[] = [];
 
+    tickScript(s, b, events);
+    tickBelt(s, events);
     for (const cmd of commands) {
       const reason = this.check(cmd);
       if (reason !== null) {
@@ -169,6 +195,9 @@ export class Match {
           break;
         case 'spell':
           castSpell(s, b, cmd, events);
+          break;
+        case 'belt':
+          playBelt(s, b, cmd, events);
           break;
         default: {
           const unhandled: never = cmd;
@@ -243,8 +272,9 @@ export class Match {
     return inHand ? null : 'not-in-hand';
   }
 
-  /** `recharging` and `no-energy`: can this side pay for this card now? */
+  /** `no-energy` (a level with none), `recharging` and `no-energy`: can this side pay for this card now? */
   private checkPayment(faction: Faction, unit: CardKey): CommandRejection | null {
+    if (this.state.config.noEnergy) return 'no-energy';
     const player = this.state.players[faction];
     if ((player.recharge[unit] ?? 0) > 0) return 'recharging';
     if (player.energy < UNIT_INFO[unit].price) return 'no-energy';
@@ -272,27 +302,14 @@ export class Match {
 
   /**
    * Carries out a merge that `check` has passed: pays and starts the card's recharge, then the
-   * target goes up one level. Its max health becomes `hp` times the balance table's `hp` level
-   * curve times its Marketplace multiplier (`upgradeScale`) (times `grownHealth`, so a Hot Topic keeps its stacks and what they give), rounded, and its health keeps its share of the max, rounded, at least 1 and never above
-   * the max: both stay whole even when a tuned table has fractional level multipliers. `spent`
-   * grows by the price (bounties pay a share of it). Position, timers and everything else stay.
+   * target goes up one level (see `levelUp`: max health by the level curve and Marketplace level,
+   * health keeps its share, `spent` grows by the price).
    */
   private merge(cmd: MergeCommand, events: SimEvent[]): void {
     const target = this.livingUnit(cmd.targetId);
     if (target === undefined) throw new Error(`merge passed check but unit ${cmd.targetId} is gone`);
     this.payFor(cmd.faction, cmd.unit);
-    const oldHp = target.hp;
-    const oldMaxHp = target.maxHp;
-    target.level += 1;
-    const stats = statsFor(this.balance, target.key);
-    const maxHp = Math.round(
-      stats.hp * levelScale(this.balance, target.faction, target.level, 'hp')
-      * upgradeScale(this.balance, this.state.config, target, 'hp') * grownHealth(stats, target),
-    );
-    target.maxHp = maxHp;
-    target.hp = Math.min(maxHp, Math.max(1, Math.round(maxHp * oldHp / oldMaxHp)));
-    target.spent += UNIT_INFO[cmd.unit].price;
-    events.push({ type: 'unitMerged', unitId: target.id, level: target.level });
+    levelUp(this.state, this.balance, target, events);
   }
 
   /**

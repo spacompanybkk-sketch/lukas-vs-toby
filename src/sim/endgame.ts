@@ -1,6 +1,7 @@
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { damageBase } from './damage';
+import { hasClock } from './script';
 import { TICKS_PER_SECOND } from './types';
 import type { Faction, SimEvent, SimState } from './types';
 
@@ -16,19 +17,38 @@ import type { Faction, SimEvent, SimState } from './types';
  * emitted once, on the first step where it is active and the state flag was still false; that
  * step sets the flag. In a match counting up from tick 0 that first step is tick `startTick`.
  *
+ * Sudden death is off, whatever `config.suddenDeath` says, in the modes played against a clock
+ * (survive, breakthrough, conveyor; see `hasClock`).
+ *
  * Winner: a base at or below 0 has fallen and its side loses; both fallen on the same tick is a
  * `'draw'`. `matchEnded` is emitted on the step the winner is decided, as that step's last event.
+ * Then the clock: with `goalTicks` set and no base fallen, the step that completes tick number
+ * `goalTicks` (the step run at `tick = goalTicks − 1`, after which the tick count reads `goalTicks`)
+ * ends the match with the plants winning: they held out (survive, conveyor) or the zombies ran out
+ * of time (breakthrough). `goalReached` then `matchEnded`. A match with a clock therefore lasts at
+ * most `goalTicks` steps.
+ *
+ * Seam for bosses (Task 3): a boss level ends like a battle (a base falls, or sudden death); a
+ * "the boss is down" winner check belongs in `decideWinner`, before the clock.
  */
 export function tickEndgame(s: SimState, b: Balance, events: SimEvent[]): void {
   if (s.winner !== null) return;
   tickSuddenDeath(s, b, events);
   decideWinner(s, events);
+  if (s.winner === null) tickGoal(s, events);
+}
+
+function tickGoal(s: SimState, events: SimEvent[]): void {
+  const goal = s.config.goalTicks;
+  if (goal === null || !hasClock(s.config.mode) || s.tick + 1 < goal) return;
+  s.winner = 'plants';
+  events.push({ type: 'goalReached', winner: 'plants' }, { type: 'matchEnded', winner: 'plants' });
 }
 
 function tickSuddenDeath(s: SimState, b: Balance, events: SimEvent[]): void {
   const rule = b.suddenDeath;
   const startTick = seconds(rule.startSeconds);
-  if (!s.config.suddenDeath || s.tick < startTick) return;
+  if (!s.config.suddenDeath || hasClock(s.config.mode) || s.tick < startTick) return;
   if (!s.suddenDeath) {
     s.suddenDeath = true;
     events.push({ type: 'suddenDeath' });

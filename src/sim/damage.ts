@@ -27,8 +27,12 @@ export function damageUnit(
   if (pause > 0) u.hurt = Math.max(u.hurt, seconds(pause));
 }
 
-/** Takes `amount` off a base and reports it. The health may go below zero; the endgame reads it. */
+/**
+ * Takes `amount` off a base and reports it. The health may go below zero; the endgame reads it.
+ * The level's `invulnerableBase` takes nothing and nothing is reported (what hit it is spent as usual).
+ */
 export function damageBase(s: SimState, side: Faction, amount: number, lane: number | null, events: SimEvent[]): void {
+  if (s.config.invulnerableBase === side) return;
   s.baseHp[side] -= amount;
   events.push({ type: 'baseDamaged', faction: side, amount, hp: s.baseHp[side], lane });
 }

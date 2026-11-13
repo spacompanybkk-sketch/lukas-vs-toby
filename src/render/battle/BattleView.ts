@@ -1033,6 +1033,11 @@ export class BattleView {
       case 'commandRejected':
       case 'heroReady': // the HUD's button pulses; the call is a sound
       case 'spellReady':
+      case 'waveSpawned': // level events: the units come with their own unitSpawned; the HUD shows the rest
+      case 'waveSkipped':
+      case 'beltCard':
+      case 'beltUsed':
+      case 'goalReached':
         break;
       default: {
         const unhandled: never = e;
