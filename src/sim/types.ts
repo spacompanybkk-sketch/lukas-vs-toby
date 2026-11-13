@@ -5,6 +5,8 @@ export const PLANT_COLS = 8; // plants occupy columns 0..7
 export const ZOMBIE_SPAWN_X = 9.5;
 export const BASE_STOP_X = 0.3; // a zombie at or left of this attacks the plant base
 export const MAX_LEVEL = 5;
+/** The top Marketplace level of a unit type (spec 9): ten steps, each adding health and damage. */
+export const MAX_UPGRADE = 10;
 
 export type Faction = 'plants' | 'zombies';
 export type PlantKey =
@@ -96,6 +98,12 @@ export interface MatchConfig {
   suddenDeath: boolean;
   heroes: Record<Faction, boolean>; // whether each side has its hero power
   spells: Record<Faction, number>; // how many spells each side is dealt (0 = no spells)
+  /**
+   * Marketplace levels (0..`MAX_UPGRADE`, whole) per side, by card of that side; a card with no
+   * entry is at 0. A unit's health and its bite and shot damage are multiplied by
+   * `upgradeScale` (see `src/sim/lookup.ts`). Empty for the computer, and always in Versus.
+   */
+  upgrades: Record<Faction, Partial<Record<CardKey, number>>>;
 }
 
 export interface SimState {

@@ -17,7 +17,7 @@ import type { Balance, MeleeStats, ShotStats, UnitStats } from '../data/balance'
 import { burnOnHit, grow, grownBite, ignitePea } from './abilities';
 import { damageBase, damageUnit, explode } from './damage';
 import { payBounty } from './economy';
-import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
+import { isStanding, levelScale, nearestEnemyAhead, statsFor, upgradeScale } from './lookup';
 import { nextRandom } from './rng';
 import { applyStatus, canAct } from './status';
 import { BASE_STOP_X, COLS, LANES, TICKS_PER_SECOND } from './types';
@@ -53,7 +53,7 @@ export function tickAttacks(s: SimState, b: Balance, events: SimEvent[]): void {
 }
 
 function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeStats, events: SimEvent[]): void {
-  const amount = melee.damage * levelScale(b, z.faction, z.level, 'damage') * grownBite(stats, z);
+  const amount = melee.damage * levelScale(b, z.faction, z.level, 'damage') * upgradeScale(b, s.config, z, 'damage') * grownBite(stats, z);
   const plant = nearestEnemyAhead(s, z.faction, z.lane, z.x, melee.reach);
   if (!plant && z.x > BASE_STOP_X) return; // its plant fell earlier this tick; the bite stays ready for the next one
   z.meleeTimer = seconds(melee.interval);
@@ -62,7 +62,7 @@ function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeSt
   } else if (plant) {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: plant.id, targetBase: null });
     damageUnit(s, b, plant, amount, events);
-    if (stats.grow && !isStanding(plant)) grow(b, z, stats.grow, events); // only a standing plant is bitten
+    if (stats.grow && !isStanding(plant)) grow(s, b, z, stats.grow, events); // only a standing plant is bitten
   } else {
     events.push({ type: 'unitAttacked', unitId: z.id, attack: 'melee', targetId: null, targetBase: 'plants' });
     damageBase(s, 'plants', amount, z.lane, events);
@@ -94,7 +94,8 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
   const aimedAt = flight === 'lobbed' ? target : null;
   const p: Projectile = {
     id: s.nextId, kind, faction: u.faction, lane: u.lane, x: u.x,
-    speed: shot.speed / TICKS_PER_SECOND, damage: shot.damage * levelScale(b, u.faction, u.level, 'damage'),
+    speed: shot.speed / TICKS_PER_SECOND,
+    damage: shot.damage * levelScale(b, u.faction, u.level, 'damage') * upgradeScale(b, s.config, u, 'damage'),
     ownerId: u.id, spawnTick: s.tick,
     flight, sourceKey: u.key, level: u.level,
     targetId: aimedAt ? aimedAt.id : null, targetX: aimedAt ? aimedAt.x : null,
@@ -116,8 +117,9 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
  *
  * For lanes 0 to 4 in order: if the lane's timer is 0, the base strikes the zombie in that lane
  * with the lowest id that is standing, `blocked` and at the base (x <= BASE_STOP_X): `baseStruck`,
- * then `baseDefense.damage` times the zombie's `hp` level curve through `damageUnit` (armor applies
- * as for any hit; a merged zombie takes as many strikes as a fresh one, so merging never makes a
+ * then `baseDefense.damage` times the zombie's `hp` level curve and its Marketplace `hp` multiplier
+ * (`upgradeScale`) through `damageUnit` (armor applies
+ * as for any hit; a merged or upgraded zombie takes as many strikes as a fresh one, so merging never makes a
  * leak last longer, only bite harder while it lasts), and the lane's
  * timer is set to `seconds(baseDefense.interval)`. A lane with nobody to strike keeps its timer at
  * 0. So a zombie held up by a plant is never struck, nor is one still walking, not even on the
@@ -138,7 +140,7 @@ export function tickBaseDefense(s: SimState, b: Balance, events: SimEvent[]): Re
     const target = biterAtBase(s, lane);
     if (target === null) continue;
     events.push({ type: 'baseStruck', lane, targetId: target.id });
-    damageUnit(s, b, target, damage * levelScale(b, target.faction, target.level, 'hp'), events);
+    damageUnit(s, b, target, damage * levelScale(b, target.faction, target.level, 'hp') * upgradeScale(b, s.config, target, 'hp'), events);
     if (!paysBounty && !isStanding(target)) felled.add(target); // this strike was the killing blow
     s.baseDefenseTimers[lane] = seconds(interval);
   }

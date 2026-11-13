@@ -135,6 +135,11 @@ export interface Balance {
    */
   hero: Record<Faction, { damage: number; chargeSeconds: number; firstChargeSeconds: number }>;
   spells: Record<SpellKey, SpellStats>;
+  /**
+   * What one Marketplace level adds (spec 9): a unit at upgrade level n has `1 + hp × n` times
+   * its health and `1 + damage × n` times its bite and shot damage (see `upgradeScale`).
+   */
+  upgradeStep: { hp: number; damage: number };
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -311,6 +316,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
     graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
   },
+  upgradeStep: { hp: 0.05, damage: 0.05 },
 });
 
 /** Seconds to whole ticks. */

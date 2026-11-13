@@ -4,7 +4,9 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1420 bytes). Re-pinned in phase 2
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1484 bytes). Re-pinned in phase 4a
+ * when the setup gained its Marketplace `upgrades` (cross-checked by feeding the 64 new bytes on
+ * from the earlier checksum); before that it was 2247931455 over 1420 bytes, re-pinned in phase 2
  * for the owner's Sunflower rule, when units gained `hurt`; in Task 4b it was 1072679369 over 1404
  * bytes, when units gained `expires`, `haste` and `hasteCarry`, players their dealt spells and
  * the setup its `spells`; for the Task 3 review it was 3875909580 over 1232 bytes, when hazards
@@ -17,7 +19,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 2247931455;
+const GOLDEN_HASH = 1403206276;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -73,6 +75,7 @@ function makeState(): SimState {
       suddenDeath: true,
       heroes: { plants: true, zombies: false },
       spells: { plants: 2, zombies: 1 },
+      upgrades: { plants: { peashooter: 3, sunflower: 0 }, zombies: { brainEater: 10 } },
     },
   };
 }
@@ -215,6 +218,12 @@ describe('hashState', () => {
     ['the number of dealt spells', (s) => { s.players.zombies.spells.pop(); }],
     ['config spells.plants', (s) => { s.config.spells.plants = 1; }],
     ['config spells.zombies', (s) => { s.config.spells.zombies = 2; }],
+    // Marketplace upgrades.
+    ['config an upgrade level', (s) => { s.config.upgrades.plants.peashooter = 4; }],
+    ['config an upgrade of 0 versus absent', (s) => { delete s.config.upgrades.plants.sunflower; }],
+    ['config an upgrade on another card', (s) => { s.config.upgrades.plants.walnutBomb = 1; }],
+    ['config upgrades moved to the other side', (s) => { s.config.upgrades = { plants: { brainEater: 10 } as never, zombies: { peashooter: 3, sunflower: 0 } as never }; }],
+    ['config a zombie upgrade level', (s) => { s.config.upgrades.zombies.brainEater = 9; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -236,6 +245,7 @@ describe('hashState', () => {
     };
     b.baseHp = { zombies: 480, plants: 500 };
     b.config.incomeMultiplier = { zombies: 1.25, plants: 1 };
+    b.config.upgrades = { zombies: { brainEater: 10 }, plants: { sunflower: 0, peashooter: 3 } };
     expect(hashState(b)).toBe(hashState(a));
   });
 
@@ -299,6 +309,22 @@ describe('snapshotState / restoreState', () => {
     });
     expect(restored.hazards).toEqual(s.hazards);
     expect(restored.hazards).not.toBe(s.hazards);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
+  });
+
+  it('restores a snapshot made before the Marketplace with no upgrades on either side', () => {
+    const old = JSON.parse(snapshotState(makeState())) as { config: Record<string, unknown> };
+    delete old.config.upgrades;
+    const restored = restoreState(JSON.stringify(old));
+    const expected = makeState();
+    expected.config.upgrades = { plants: {}, zombies: {} };
+    expect(restored).toEqual(expected);
+    expect(hashState(restored)).toBe(hashState(expected));
+  });
+
+  it('round-trips the upgrades', () => {
+    const restored = restoreState(snapshotState(makeState()));
+    expect(restored.config.upgrades).toEqual({ plants: { peashooter: 3, sunflower: 0 }, zombies: { brainEater: 10 } });
     expect(hashState(restored)).toBe(GOLDEN_HASH);
   });
 

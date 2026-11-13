@@ -1,7 +1,7 @@
 /** Read-only lookups shared by the step stages. None of them changes the state. */
 
 import type { Balance, UnitStats } from '../data/balance';
-import type { Faction, SimState, Unit, UnitKey } from './types';
+import type { CardKey, Faction, MatchConfig, SimState, Unit, UnitKey } from './types';
 
 /** A unit type's numbers. A key the table has no numbers for is an error, never a silent zero. */
 export function statsFor(b: Balance, key: UnitKey): UnitStats {
@@ -22,6 +22,27 @@ export function levelScale(b: Balance, faction: Faction, level: number, curve: L
   const scale = table[level];
   if (scale === undefined) throw new RangeError(`No ${curve} level curve entry for level ${level}`);
   return scale;
+}
+
+/** Which Marketplace multiplier a number takes (see `Balance.upgradeStep`). */
+export type UpgradeCurve = 'hp' | 'damage';
+
+/**
+ * What a unit's health (`hp`) or its bite and shot damage (`damage`) is multiplied by for its
+ * side's Marketplace level of its type: `1 + step × level` (level 0 → 1, 1 → 1.05, 10 → 1.5 with
+ * the shipped step). The one place an upgrade enters the rules. A unit that is no card (a Bone
+ * Minion, a rock) has no level, so 1. What takes it (see the callers):
+ * - `hp`: the health a card is placed with (`spawnUnit`), its max on a merge, a Hot Topic's growth,
+ *   and the plant base's strike on a zombie (so an upgraded zombie takes as many strikes as a plain one);
+ * - `damage`: a bite and a shot (the projectile carries it; a Torchwood multiplies what it carries).
+ * Not: blasts (Walnut Bomb, Potato Mine, Cherry Bomber), the Pumpkin's leap, burn, poison and the
+ * rot puddle, Sun, heals, lasso and statuses, hero powers, spells.
+ */
+export function upgradeScale(
+  b: Balance, config: MatchConfig, unit: Pick<Unit, 'key' | 'faction'>, what: UpgradeCurve,
+): number {
+  const level = config.upgrades[unit.faction][unit.key as CardKey] ?? 0;
+  return level === 0 ? 1 : 1 + b.upgradeStep[what] * level;
 }
 
 /**

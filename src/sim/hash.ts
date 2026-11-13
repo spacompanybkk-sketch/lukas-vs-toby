@@ -124,20 +124,23 @@ const HAZARD: Fields<Hazard> = {
   id: num, kind: str, faction: str, lane: num, x: num, radius: num, ticksLeft: num, dps: num, poisonTicks: num,
 };
 
+/** A per-card table with gaps (recharge timers, upgrade levels): for every card in order, presence then value. */
+const perCard: Write<Partial<Record<CardKey, number>>> = (f, table) => {
+  for (const key of CARD_KEYS) {
+    const v = table[key];
+    if (v === undefined) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      f.num(v);
+    }
+  }
+};
+
 const PLAYER: Fields<PlayerState> = {
   energy: num,
   carry: num,
-  recharge: (f, recharge) => {
-    for (const key of CARD_KEYS) {
-      const left = recharge[key];
-      if (left === undefined) {
-        f.byte(0);
-      } else {
-        f.byte(1);
-        f.num(left);
-      }
-    }
-  },
+  recharge: perCard,
   heroTimer: num,
   spells: list<PlayerState['spells'][number]>({ key: str, timer: num }),
 };
@@ -154,6 +157,7 @@ const CONFIG: Fields<MatchConfig> = {
   suddenDeath: bool,
   heroes: perFaction(bool),
   spells: perFaction(num),
+  upgrades: perFaction(perCard), // a level of 0 and no entry play alike, but hash apart, as a recharge does
 };
 
 const STATE: Fields<SimState> = {
@@ -193,11 +197,13 @@ export function snapshotState(s: SimState): string {
  * Rebuilds a state from `snapshotState` output, as fresh objects sharing nothing with any other
  * state. A snapshot missing any top-level key of the state is refused with an error, with one
  * exception: a snapshot made before the plant base had a defence has no `baseDefenseTimers`; it
- * gets one timer per lane, all at 0, which is what the timers read whenever the defence is off.
+ * gets one timer per lane, all at 0, which is what the timers read whenever the defence is off;
+ * and one made before the Marketplace has no `config.upgrades`: it gets none on either side.
  */
 export function restoreState(json: string): SimState {
   const s = JSON.parse(json) as SimState;
   s.baseDefenseTimers ??= new Array<number>(LANES).fill(0);
+  if (typeof s.config === 'object' && s.config !== null) s.config.upgrades ??= { plants: {}, zombies: {} };
   const missing = Object.keys(STATE).filter((key) => !Object.hasOwn(s, key));
   if (missing.length > 0) throw new Error(`The snapshot has no ${missing.join(', ')}`);
   return s;

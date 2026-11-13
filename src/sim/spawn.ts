@@ -6,7 +6,7 @@
 import { seconds } from '../data/balance';
 import type { Balance, UnitStats } from '../data/balance';
 import { factionOf, priceOf } from '../data/units';
-import { levelScale, statsFor } from './lookup';
+import { levelScale, statsFor, upgradeScale } from './lookup';
 import type { AbilityName, SimEvent, SimState, Unit, UnitKey } from './types';
 
 /**
@@ -28,7 +28,8 @@ export function announceSpawn(u: Unit, stats: UnitStats, events: SimEvent[]): vo
 }
 
 /**
- * Creates a level-1 unit and adds it to the state. It checks no placement rule and charges
+ * Creates a level-1 unit and adds it to the state, with its health times its side's Marketplace
+ * level of it (`upgradeScale`, rounded; a Bone Minion and a rock have none). It checks no placement rule and charges
  * nobody: `Match.place` does both of those first, and tests use this to set a scene. A card's
  * `spent` is its price; a unit that is not a card (the Bone Minion) has spent nothing. It starts
  * with no status, no stacks and no owner.
@@ -38,9 +39,10 @@ export function spawnUnit(
 ): Unit {
   const stats = statsFor(b, key);
   const faction = factionOf(key);
+  const hp = Math.round(stats.hp * upgradeScale(b, s.config, { key, faction }, 'hp'));
   const unit: Unit = {
     id: s.nextId, key, faction, lane, x, level: 1,
-    hp: stats.hp, maxHp: stats.hp, spent: priceOf(key), armor: stats.armor,
+    hp, maxHp: hp, spent: priceOf(key), armor: stats.armor,
     meleeTimer: stats.melee ? seconds(stats.melee.interval) : 0,
     shotTimer: stats.shot ? seconds(stats.shot.interval) : 0,
     abilityTimer: abilityTimerAtSpawn(stats), auraTimer: 0,

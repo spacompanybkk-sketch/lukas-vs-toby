@@ -11,7 +11,7 @@
 import { seconds } from '../data/balance';
 import type { Balance, UnitStats } from '../data/balance';
 import { damageUnit, distance, explode } from './damage';
-import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
+import { isStanding, levelScale, nearestEnemyAhead, statsFor, upgradeScale } from './lookup';
 import { abilityUsed as used, spawnMinion } from './spawn';
 import { applyStatus, canAct } from './status';
 import type { Projectile, SimEvent, SimState, Unit } from './types';
@@ -170,12 +170,12 @@ function raise(s: SimState, b: Balance, u: Unit, rise: Raise, events: SimEvent[]
 /**
  * Hot Topic, called by its bite when the bite brought a plant to 0: below `maxStacks` it gains a
  * stack (`abilityUsed 'grow'`), and its health and max each rise by `hpShare` of its base health
- * times its `hp` level curve, rounded. Its bite grows through `grownBite`.
+ * times its `hp` level curve and its Marketplace `hp` multiplier, rounded. Its bite grows through `grownBite`.
  */
-export function grow(b: Balance, u: Unit, g: Grow, events: SimEvent[]): void {
+export function grow(s: SimState, b: Balance, u: Unit, g: Grow, events: SimEvent[]): void {
   if (u.stacks >= g.maxStacks) return;
   u.stacks += 1;
-  const gain = Math.round(g.hpShare * statsFor(b, u.key).hp * levelScale(b, u.faction, u.level, 'hp'));
+  const gain = Math.round(g.hpShare * statsFor(b, u.key).hp * levelScale(b, u.faction, u.level, 'hp') * upgradeScale(b, s.config, u, 'hp'));
   u.maxHp += gain;
   u.hp += gain;
   used(u, 'grow', null, events);

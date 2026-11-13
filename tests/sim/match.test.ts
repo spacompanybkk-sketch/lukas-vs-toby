@@ -21,6 +21,7 @@ describe('defaultConfig', () => {
       suddenDeath: true,
       heroes: { plants: true, zombies: true },
       spells: { plants: 2, zombies: 2 },
+      upgrades: { plants: {}, zombies: {} },
     });
   });
 

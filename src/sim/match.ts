@@ -9,11 +9,11 @@ import { tickEndgame } from './endgame';
 import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
-import { isStanding, levelScale, statsFor } from './lookup';
+import { isStanding, levelScale, statsFor, upgradeScale } from './lookup';
 import { tickMovement } from './movement';
 import { spawnUnit } from './spawn';
 import { tickStatuses } from './status';
-import { LANES, MAX_LEVEL, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
+import { LANES, MAX_LEVEL, MAX_UPGRADE, PLANT_COLS, ZOMBIE_SPAWN_X } from './types';
 import type {
   CardKey, Command, CommandRejection, Faction, MatchConfig, SimEvent, SimState, Unit,
 } from './types';
@@ -35,6 +35,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     suddenDeath: true,
     heroes: { plants: true, zombies: true },
     spells: { plants: 2, zombies: 2 },
+    upgrades: { plants: {}, zombies: {} },
   };
 }
 
@@ -48,7 +49,24 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     suddenDeath: c.suddenDeath,
     heroes: { ...c.heroes },
     spells: { ...c.spells },
+    upgrades: { plants: { ...c.upgrades.plants }, zombies: { ...c.upgrades.zombies } },
   };
+}
+
+/**
+ * Refuses a setup whose Marketplace levels are not whole numbers 0..`MAX_UPGRADE`, each on a card
+ * of its own side (a programming error, never a game situation).
+ */
+function checkUpgrades(c: MatchConfig): void {
+  for (const faction of ['plants', 'zombies'] as const) {
+    for (const [key, level] of Object.entries(c.upgrades[faction])) {
+      const info = UNIT_INFO[key as CardKey] as UnitInfo | undefined;
+      if (info === undefined || info.faction !== faction) throw new RangeError(`"${key}" is no ${faction} card to upgrade`);
+      if (!Number.isInteger(level) || (level as number) < 0 || (level as number) > MAX_UPGRADE) {
+        throw new RangeError(`upgrade level ${String(level)} of ${key} is not 0..${MAX_UPGRADE}`);
+      }
+    }
+  }
 }
 
 /** One match. All game rules run in `step`; everything else only reads `state`. */
@@ -58,6 +76,7 @@ export class Match {
 
   constructor(config: MatchConfig, balance: Balance = BALANCE) {
     const own = cloneConfig(config); // the match never shares objects with the caller's config
+    checkUpgrades(own);
     this.balance = balance;
     const heroTimer = (f: Faction): number => seconds(balance.hero[f].firstChargeSeconds);
     this.state = {
@@ -254,7 +273,7 @@ export class Match {
   /**
    * Carries out a merge that `check` has passed: pays and starts the card's recharge, then the
    * target goes up one level. Its max health becomes `hp` times the balance table's `hp` level
-   * curve (times `grownHealth`, so a Hot Topic keeps its stacks and what they give), rounded, and its health keeps its share of the max, rounded, at least 1 and never above
+   * curve times its Marketplace multiplier (`upgradeScale`) (times `grownHealth`, so a Hot Topic keeps its stacks and what they give), rounded, and its health keeps its share of the max, rounded, at least 1 and never above
    * the max: both stay whole even when a tuned table has fractional level multipliers. `spent`
    * grows by the price (bounties pay a share of it). Position, timers and everything else stay.
    */
@@ -266,7 +285,10 @@ export class Match {
     const oldMaxHp = target.maxHp;
     target.level += 1;
     const stats = statsFor(this.balance, target.key);
-    const maxHp = Math.round(stats.hp * levelScale(this.balance, target.faction, target.level, 'hp') * grownHealth(stats, target));
+    const maxHp = Math.round(
+      stats.hp * levelScale(this.balance, target.faction, target.level, 'hp')
+      * upgradeScale(this.balance, this.state.config, target, 'hp') * grownHealth(stats, target),
+    );
     target.maxHp = maxHp;
     target.hp = Math.min(maxHp, Math.max(1, Math.round(maxHp * oldHp / oldMaxHp)));
     target.spent += UNIT_INFO[cmd.unit].price;
