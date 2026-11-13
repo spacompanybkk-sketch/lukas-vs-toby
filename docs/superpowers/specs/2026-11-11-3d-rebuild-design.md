@@ -179,7 +179,7 @@ Plants (Lukas)
 | Avocado Bunker | 125 | Fortress | Very high health plus armour that shaves every hit. |
 | Torchwood | 100 | Support | Peas passing through it catch fire: double damage and a burn. |
 | Cherry Bomber | 150 | Removal | One-second fuse, then a large blast. Gone afterwards. |
-| Pumpkin Squash | 175 | Bruiser | Leaps on the nearest zombie within 2 tiles and crushes that tile, then recovers. |
+| Pumpkin Squash | 175 | Bruiser | Leaps on the nearest zombie within 3 tiles and crushes that tile, then recovers. |
 
 Zombies (Toby)
 
@@ -580,10 +580,13 @@ Calls made by the builder (Michal can reverse any):
 | Zombies | Frenzy | Zombies in a 3×3 area move and bite half as fast again for 6 s. |
 | Zombies | Grave Rise | Three Bone Minions claw up in one lane at the tapped column. |
 
-"Equal in power" is measured, not judged: for every pair of spells a side can be dealt,
-the computer playing itself over many seeds wins within 5 points of the same rate, and
-no single spell moves a Medium-v-Medium match by more than 6 points against having none.
-The tuner owns the numbers; the kinds stay.
+"Equal in power" is measured, not judged, and a spell must be an event a child sees:
+each spell, given alone to its side's Medium computer, lifts that side's win rate by
+about the same amount (12 points, within 8–16); with both sides dealt two, Medium v
+Medium stays at 40–60% for plants overall and within 30–70% for any single deal. Spells
+may be rare (waits up to 90 s) but never tiny. The tuner owns the numbers; the kinds
+stay. (Rewritten 2026-11-12: the first version capped a spell at 6 points, which tuned
+Thunderbolt down to 20 damage; that was the builder's mistake, not Michal's wish.)
 
 Delivery: rules, look, sound, buttons and computer play in phase 2, beside the hero
 powers. Adventure may later hand spells out as rewards (phase 4).
