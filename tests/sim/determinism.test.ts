@@ -194,10 +194,21 @@ function checkedStep(m: Match, commands: readonly Command[] = []): SimEvent[] {
   return events;
 }
 
+/**
+ * `defaultConfig` turns both heroes on and deals two spells a side; these scenes and the default
+ * sweep were written before either existed and never use them, so they say so (and the deal no
+ * longer draws on the state rng at creation).
+ */
+function withoutPowers(config: MatchConfig): MatchConfig {
+  config.heroes = { plants: false, zombies: false };
+  config.spells = { plants: 0, zombies: 0 };
+  return config;
+}
+
 describe('the invariant check', () => {
   /** A small live scene: plants, zombies on the move, peas and brains in flight. */
   function scene(): Match {
-    const m = new Match(defaultConfig(4));
+    const m = new Match(withoutPowers(defaultConfig(4)));
     spawnUnit(m.state, BALANCE, 'peashooter', 1, 0.5);
     spawnUnit(m.state, BALANCE, 'brainEater', 1, 3);
     spawnUnit(m.state, BALANCE, 'skeletonWarrior', 3, 9.5);
@@ -312,7 +323,7 @@ const PLAIN: Sweep = {
   checkpoints: [300, 500, 600, 900, 1000, 2000, 3000, LAST_POSSIBLE_TICK],
   snapshotAt: 600,
   liveAtSnapshot: () => true,
-  setup: (seed) => ({ config: defaultConfig(seed), balance: BALANCE }),
+  setup: (seed) => ({ config: withoutPowers(defaultConfig(seed)), balance: BALANCE }),
 };
 
 interface FuzzRun {
@@ -493,7 +504,7 @@ describe('fuzz coverage', () => {
 
 describe('crowded moments', () => {
   it('30 Very Fast Walkers in one lane against one Walnut Bomb, then a merge aimed at it the step after it died', () => {
-    const m = new Match(defaultConfig(9));
+    const m = new Match(withoutPowers(defaultConfig(9)));
     const nut = spawnUnit(m.state, BALANCE, 'walnutBomb', 2, 3.5);
     spawnUnit(m.state, BALANCE, 'peashooter', 2, 0.5); // peas in flight through the crowd
     const walkers = Array.from({ length: 30 }, (_, i) =>

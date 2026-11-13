@@ -34,6 +34,8 @@ function fresh(b: Balance = table(), seed = 1): Match {
   config.baseHp = { plants: 1_000_000, zombies: 1_000_000 };
   config.incomeMultiplier = { plants: 0, zombies: 0 };
   config.suddenDeath = false;
+  config.heroes = { plants: false, zombies: false }; // these rules tests use neither heroes nor spells
+  config.spells = { plants: 0, zombies: 0 };
   config.cards.plants = [...config.cards.plants, ...NEW_PLANTS];
   return new Match(config, b);
 }
