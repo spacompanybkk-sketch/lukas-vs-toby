@@ -11,7 +11,7 @@ import type { Balance } from '../data/balance';
 import { ALL_CARDS } from '../data/units';
 import { defaultConfig } from '../sim/match';
 import type { Faction, MatchConfig } from '../sim/types';
-import { SKILLS } from './basicBot';
+import { POWER_PACING, SKILLS } from './basicBot';
 import type { SkillTable, SkillTables } from './basicBot';
 import type { Skill } from './bot';
 
@@ -56,12 +56,17 @@ export const DIFFICULTY: DifficultyTable = {
   },
 };
 
-/** The skill table the computer plays with on `difficulty` against a human on `human`. */
+/**
+ * The skill table the computer plays with on `difficulty` against a human on `human`: the table
+ * of its skill, with the difficulty's random moves and the difficulty's pace with hero and spells.
+ */
 export function computerTable(
   human: Faction, difficulty: Skill, table: DifficultyTable = DIFFICULTY, skills: SkillTables = SKILLS,
 ): SkillTable {
   const setting = table[difficulty][human];
-  return { ...skills[opponentOf(human)][setting.skill], randomShare: setting.randomShare };
+  // The difficulty's own pace with hero and spells (Toby's Easy plays the Hard plant table, but is
+  // as slow and clumsy with its powers as any Easy computer).
+  return { ...skills[opponentOf(human)][setting.skill], randomShare: setting.randomShare, ...POWER_PACING[difficulty] };
 }
 
 export function opponentOf(faction: Faction): Faction {

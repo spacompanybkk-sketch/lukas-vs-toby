@@ -38,7 +38,7 @@ import type { Bot } from './bot';
 import { shotDps } from './laneModel';
 import { mergeCommand, placeCommand, readLawn, sendCommand } from './lawn';
 import type { BotRng } from './lawn';
-import { powerMove } from './powers';
+import { newPowerMemory, powerMove } from './powers';
 
 /** Keeps stand-ins of different kinds made with one seed from drawing the same numbers. */
 const SALT = {
@@ -183,6 +183,7 @@ const FORTRESS_EXTRA: readonly [number, CardKey] = [4, 'peashooter'];
 /** An adult who builds one lane at a time (see the note at the top). */
 export function createFortressPlants(seed: number, every = ADULT_EVERY): Bot {
   const rng = rngFor(seed, SALT.fortress, 'plants');
+  const powers = newPowerMemory();
   const first = randomInt(rng, LANES);
   // The first lane, then its neighbours outwards, alternating sides.
   const lanes: number[] = [first];
@@ -195,7 +196,7 @@ export function createFortressPlants(seed: number, every = ADULT_EVERY): Bot {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
       // A person does one thing at a time: a power takes this second's only action.
-      const power = powerMove(match, 'plants');
+      const power = powerMove(match, 'plants', undefined, powers);
       if (power !== null) return [power];
       const lawn = readLawn(s);
       const next = (): Command | null => {
@@ -235,6 +236,7 @@ const STEADY_WAVES: ReadonlyArray<readonly CardKey[]> = [
 /** An adult as zombies sending mixed waves at the weakest lane (see the note at the top). */
 export function createSteadyZombies(seed: number, every = ADULT_EVERY): Bot {
   const rng = rngFor(seed, SALT.steady, 'zombies');
+  const powers = newPowerMemory();
   let wave = randomInt(rng, STEADY_WAVES.length);
   let sent = 0;
   let lane = -1;
@@ -244,7 +246,7 @@ export function createSteadyZombies(seed: number, every = ADULT_EVERY): Bot {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
       // A person does one thing at a time: a power takes this second's only action.
-      const power = powerMove(match, 'zombies');
+      const power = powerMove(match, 'zombies', undefined, powers);
       if (power !== null) return [power];
       if (lane < 0) {
         // The lane whose plants shoot least, then hold least; ties in a random order.

@@ -16,7 +16,7 @@ import type { Bot, Skill } from './bot';
 import { randomLegal } from './lawn';
 import type { BotRng } from './lawn';
 import { plantMove } from './plantStrategy';
-import { powerMove } from './powers';
+import { newPowerMemory, powerMove } from './powers';
 import { newZombieMemory, zombieMove } from './zombieStrategy';
 
 export interface SkillTable {
@@ -41,6 +41,12 @@ export interface SkillTable {
   readonly mergeSpareSeconds: number;
   /** Zombies: Peashooter levels in the target lane from which it sends a Skeleton Warrior. */
   readonly tankAt: number;
+  /** Hero and spells: none before this many seconds into the match (gentle on Easy). */
+  readonly powerFirst: number;
+  /** Hero and spells: at least this many seconds between two of them. */
+  readonly powerGap: number;
+  /** Hero and spells: the share aimed at a random legal spot instead of the best one. */
+  readonly powerAimMiss: number;
 }
 
 /** Everything the skills change, and nothing else: per side, per skill. */
@@ -48,17 +54,26 @@ export type SkillTables = Readonly<Record<Faction, Readonly<Record<Skill, SkillT
 
 /** The fields a side does not use, filled in so every table has the same shape. */
 const UNUSED = { sunflowers: 0, sunflowerLevel: 1, sunflowerFloor: 1, defenceMargin: 1, reserve: 0, mergeSpareSeconds: 0, tankAt: 0 };
+/**
+ * How each skill paces its hero and spells: Easy is slow and clumsy with them (nothing before 1:30,
+ * then at most one every 45 s, half of them aimed anywhere), Medium a little, Hard not at all.
+ */
+export const POWER_PACING = {
+  easy: { powerFirst: 90, powerGap: 45, powerAimMiss: 0.5 },
+  medium: { powerFirst: 0, powerGap: 10, powerAimMiss: 0.1 },
+  hard: { powerFirst: 0, powerGap: 0, powerAimMiss: 0 },
+} as const;
 
 export const SKILLS: SkillTables = {
   plants: {
-    easy: { ...UNUSED, thinkEvery: 210, randomShare: 0.2, sunflowers: 1, sunflowerLevel: 1, defenceMargin: 1 },
-    medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 4, sunflowerLevel: 3, defenceMargin: 1 },
-    hard: { ...UNUSED, thinkEvery: 30, randomShare: 0, sunflowers: 5, sunflowerLevel: 4, sunflowerFloor: 2, defenceMargin: 2 },
+    easy: { ...UNUSED, ...POWER_PACING.easy, thinkEvery: 210, randomShare: 0.2, sunflowers: 1, sunflowerLevel: 1, defenceMargin: 1 },
+    medium: { ...UNUSED, ...POWER_PACING.medium, thinkEvery: 30, randomShare: 0, sunflowers: 4, sunflowerLevel: 3, defenceMargin: 1 },
+    hard: { ...UNUSED, ...POWER_PACING.hard, thinkEvery: 30, randomShare: 0, sunflowers: 5, sunflowerLevel: 4, sunflowerFloor: 2, defenceMargin: 2 },
   },
   zombies: {
-    easy: { ...UNUSED, thinkEvery: 120, randomShare: 0.85, mergeSpareSeconds: 0, tankAt: 2 },
-    medium: { ...UNUSED, thinkEvery: 30, randomShare: 0, mergeSpareSeconds: 0, tankAt: 2 },
-    hard: { ...UNUSED, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2 },
+    easy: { ...UNUSED, ...POWER_PACING.easy, thinkEvery: 120, randomShare: 0.85, mergeSpareSeconds: 0, tankAt: 2 },
+    medium: { ...UNUSED, ...POWER_PACING.medium, thinkEvery: 30, randomShare: 0, mergeSpareSeconds: 0, tankAt: 2 },
+    hard: { ...UNUSED, ...POWER_PACING.hard, thinkEvery: 15, randomShare: 0, mergeSpareSeconds: 15, tankAt: 2 },
   },
 };
 
@@ -74,6 +89,7 @@ export function createBasicBot(
 ): Bot {
   const rng: BotRng = { rng: (seed ^ SEED_SALT[faction]) >>> 0 };
   const memory = newZombieMemory();
+  const powers = newPowerMemory();
   // Which tick of each interval it acts on: a seeded phase, so two bots rarely move in lockstep.
   const phase = randomInt(rng, table.thinkEvery);
 
@@ -88,7 +104,7 @@ export function createBasicBot(
       return cmd === null ? [] : [cmd];
     }
     const out: Command[] = [];
-    const power = powerMove(match, faction);
+    const power = powerMove(match, faction, { firstSeconds: table.powerFirst, gapSeconds: table.powerGap, aimMiss: table.powerAimMiss }, powers, rng);
     if (power !== null) out.push(power);
     const card = faction === 'plants' ? plantMove(match, rng, table) : zombieMove(match, rng, table, memory);
     // A Rock Wall takes its tile at once, so a plant for that same tile would be refused.
