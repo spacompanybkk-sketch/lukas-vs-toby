@@ -83,6 +83,14 @@ export interface SoundContext {
 }
 
 /** x of unit `id` in the state, or NaN (centred) when it is not there. */
+/** Each boss's signature call: its entrance and its patterns. */
+const BOSS_CALL = { brainTitan: 'titanRoar', elderOak: 'oakCreak' } as const;
+
+/** The key of unit `id` in the state, if it is there. */
+function unitKey(state: SimState | undefined, id: number): UnitKey | undefined {
+  return state?.units.find((u) => u.id === id)?.key;
+}
+
 function unitX(state: SimState | undefined, id: number): number {
   if (state === undefined) return Number.NaN;
   const units = state.units;
@@ -123,6 +131,10 @@ export function playEventSounds(
     switch (e.type) {
       case 'unitSpawned':
         if (e.key === 'rock') break; // heard as its Rock Wall
+        if (e.key === 'brainTitan' || e.key === 'elderOak') { // a boss's entrance: its signature call
+          audio.play(BOSS_CALL[e.key], at(e.x));
+          break;
+        }
         audio.play(e.faction === 'plants' ? 'place' : 'spawnZombie', at(e.x));
         break;
       case 'projectileSpawned':
@@ -196,6 +208,16 @@ export function playEventSounds(
           if (sound !== null) audio.play(sound, at(e.x));
         }
         break;
+      case 'bossPattern': {
+        // The boss's call when it winds up, summons, throws or shields; the slam's blow is a thump.
+        const key = unitKey(state, e.unitId);
+        if (e.kind === 'slam' && !e.windup) audio.play('explode', at(unitX(state, e.unitId)));
+        else if (key === 'brainTitan' || key === 'elderOak') audio.play(BOSS_CALL[key], at(unitX(state, e.unitId)));
+        break;
+      }
+      case 'bossDefeated':
+        audio.play(e.key === 'brainTitan' ? 'titanDefeat' : 'oakDefeat');
+        break;
       case 'unitDamaged':
       case 'matchEnded': // the app plays win or lose
       case 'statusEnded':
@@ -206,9 +228,7 @@ export function playEventSounds(
       case 'beltCard':
       case 'beltUsed':
       case 'goalReached':
-      case 'bossPattern':
-      case 'bossPhase':
-      case 'bossDefeated':
+      case 'bossPhase': // its shield's bossPattern is the sound
         break;
       default: {
         const unhandled: never = e;
