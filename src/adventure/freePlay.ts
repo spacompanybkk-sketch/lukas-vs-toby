@@ -51,34 +51,58 @@ export function freePlayEnemyCards(save: Save, side: Faction, levels: readonly L
   return ALL_CARDS[enemy].filter((k) => met.has(k));
 }
 
+/** Who plays a Free Play run with what: the player's hand, the waves' cards, the player's income and upgrades. */
+export interface FreePlaySetup {
+  hand: readonly CardKey[];
+  waves: readonly CardKey[];
+  /** The player's income multiplier (their Adventure difficulty: Easy 1.25, Normal 1, Hard 0.75). */
+  income: number;
+  /** The player's Marketplace levels for `side`'s cards (none: level 0). */
+  upgrades?: Partial<Record<CardKey, number>>;
+}
+
 /**
- * The match of a Free Play run on `side` for the owner of `save`: the player's Adventure cards,
- * hero, two spells, Marketplace upgrades and difficulty income; the other side holds nothing (no
- * hand, hero, spells or upgrades: the waves are its whole play) and no computer plays it. Survive
- * has no clock and a zombie base that cannot fall; breakthrough's clock lives in the match state.
+ * THE Free Play match, the one the game ships and the one the level checks measure
+ * (`src/ai/levelChecks.ts`): survive (plants) or breakthrough (zombies) from `defaultConfig`, no
+ * clock goal and no sudden death; the player has `hand`, the hero, two spells, `upgrades` and
+ * `income`; the waves' side holds nothing (no hand, hero, spells or upgrades: the waves are its
+ * whole play) and no computer plays it. Survive's zombie base cannot fall; its first wave comes
+ * `firstWaveSeconds` in; breakthrough's garden is laid at once.
  */
-export function freePlayConfig(save: Save, side: Faction, seed: number, levels: readonly LevelDef[] = LEVELS, balance: Balance = BALANCE): MatchConfig {
+export function freePlayMatch(side: Faction, seed: number, setup: FreePlaySetup, balance: Balance = BALANCE): MatchConfig {
   const base = defaultConfig(seed >>> 0, balance);
   const enemy = other(side);
   const mode = freePlayMode(side);
-  const upgrades: Partial<Record<CardKey, number>> = {};
-  for (const key of ALL_CARDS[side]) {
-    const level = save.upgrades[key];
-    if (level !== undefined) upgrades[key] = level;
-  }
   return {
     ...base,
     mode,
     goalTicks: null,
     suddenDeath: false,
-    endless: { cards: freePlayEnemyCards(save, side, levels), firstWaveTicks: mode === 'survive' ? seconds(FREE_PLAY.firstWaveSeconds) : 0 },
-    cards: { [side]: unlockedCards(save, side), [enemy]: [] } as unknown as Record<Faction, CardKey[]>,
+    endless: { cards: [...setup.waves], firstWaveTicks: mode === 'survive' ? seconds(FREE_PLAY.firstWaveSeconds) : 0 },
+    cards: { [side]: [...setup.hand], [enemy]: [] } as unknown as Record<Faction, CardKey[]>,
     heroes: { [side]: true, [enemy]: false } as Record<Faction, boolean>,
     spells: { [side]: base.spells[side], [enemy]: 0 } as Record<Faction, number>,
-    upgrades: { [side]: upgrades, [enemy]: {} } as Record<Faction, Partial<Record<CardKey, number>>>,
-    incomeMultiplier: { [side]: ADVENTURE.income[save.difficulty[side]], [enemy]: 1 } as Record<Faction, number>,
+    upgrades: { [side]: { ...(setup.upgrades ?? {}) }, [enemy]: {} } as Record<Faction, Partial<Record<CardKey, number>>>,
+    incomeMultiplier: { [side]: setup.income, [enemy]: 1 } as Record<Faction, number>,
     invulnerableBase: mode === 'survive' ? 'zombies' : null,
   };
+}
+
+/**
+ * The Free Play run on `side` for the owner of `save` (`freePlayMatch`): the player's Adventure
+ * cards, the other side's cards he has met (`freePlayEnemyCards`), his Marketplace upgrades for
+ * that side, and that side's Adventure difficulty on his income.
+ */
+export function freePlayConfig(save: Save, side: Faction, seed: number, levels: readonly LevelDef[] = LEVELS, balance: Balance = BALANCE): MatchConfig {
+  const upgrades: Partial<Record<CardKey, number>> = {};
+  for (const key of ALL_CARDS[side]) {
+    const level = save.upgrades[key];
+    if (level !== undefined) upgrades[key] = level;
+  }
+  return freePlayMatch(side, seed, {
+    hand: unlockedCards(save, side), waves: freePlayEnemyCards(save, side, levels),
+    income: ADVENTURE.income[save.difficulty[side]], upgrades,
+  }, balance);
 }
 
 /** Which best a run counts towards: survive's waves (`bestWave`) or breakthrough's gardens (`bestGarden`). */

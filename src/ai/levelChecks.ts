@@ -7,16 +7,17 @@
  */
 
 import { levelConfig } from '../adventure/campaign';
+import { FREE_PLAY, freePlayMatch } from '../adventure/freePlay';
 import { BACKYARD } from '../adventure/levels/backyard';
 import { ADVENTURE, starsFor } from '../adventure/rewards';
 import type { Stars } from '../adventure/rewards';
 import type { LevelDef } from '../adventure/types';
-import { BALANCE } from '../data/balance';
+import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { ALL_CARDS } from '../data/units';
 import { newSave } from '../progress/save';
 import type { Save } from '../progress/save';
-import { Match, defaultConfig } from '../sim/match';
+import { Match } from '../sim/match';
 import type { CardKey, Command, Faction, MatchConfig } from '../sim/types';
 import { createBasicBot } from './basicBot';
 import type { Bot } from './bot';
@@ -156,7 +157,7 @@ export const FREE_PLAY_CARDS: Readonly<Record<Faction, readonly CardKey[]>> = {
   zombies: ALL_CARDS.zombies.slice(0, 5),
 };
 /** Free Play survive: the first wave comes this long after the start (ticks): time for a first plant. */
-export const FREE_PLAY_FIRST_WAVE = 300;
+export const FREE_PLAY_FIRST_WAVE = seconds(FREE_PLAY.firstWaveSeconds);
 
 /**
  * Free Play for a player on `side` at a difficulty: survive (the plants hold out against endless
@@ -164,20 +165,8 @@ export const FREE_PLAY_FIRST_WAVE = 300;
  * five cards, two spells and the hero; the waves' side has nothing but its waves.
  */
 export function freePlayConfig(side: Faction, seed: number, income: number, balance: Balance = BALANCE): MatchConfig {
-  const c = defaultConfig(seed, balance);
-  const waves = opponentOf(side);
-  return {
-    ...c,
-    mode: side === 'plants' ? 'survive' : 'breakthrough',
-    goalTicks: null,
-    invulnerableBase: side === 'plants' ? 'zombies' : null,
-    cards: { [side]: [...FREE_PLAY_CARDS[side]], [waves]: [] } as Record<Faction, CardKey[]>,
-    heroes: { [side]: true, [waves]: false } as Record<Faction, boolean>,
-    spells: { [side]: c.spells[side], [waves]: 0 } as Record<Faction, number>,
-    incomeMultiplier: { [side]: income, [waves]: 1 } as Record<Faction, number>,
-    suddenDeath: false,
-    endless: { cards: [...FREE_PLAY_CARDS[waves]], firstWaveTicks: side === 'plants' ? FREE_PLAY_FIRST_WAVE : 0 },
-  };
+  // The shipped Free Play match (`freePlayMatch`), for a player holding the Backyard's five cards.
+  return freePlayMatch(side, seed, { hand: FREE_PLAY_CARDS[side], waves: FREE_PLAY_CARDS[opponentOf(side)], income }, balance);
 }
 
 export interface FreePlayed {

@@ -6,6 +6,8 @@ import { ALL_CARDS } from '../../src/data/units';
 import { newSave } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
 import { Match } from '../../src/sim/match';
+import { freePlayConfig as checksFreePlayConfig } from '../../src/ai/levelChecks';
+import { prepareFreePlay } from '../../src/app/levelSession';
 
 // Task 7b: Free Play as the adventure layer sees it — the setup, the score, the reward.
 
@@ -89,5 +91,20 @@ describe('the score and the reward', () => {
     const w = applyFreePlayResult(g.save, { kind: 'free', battleId: 'w1', side: 'plants', wave: 5, cleared: 4 }, 11);
     expect(w.best).toBe(false); // 5 waves do not beat survive's 9, whatever the gardens say
     expect(w.save).toMatchObject({ bestGarden: 3, bestWave: 9 });
+  });
+});
+
+describe('the shipped Free Play is the measured one', () => {
+  it('the screen\'s match equals the level checks\' freePlayConfig for the same player (five cards a side, his difficulty\'s income)', () => {
+    const save: Save = {
+      ...fresh(), difficulty: { plants: 'easy', zombies: 'hard' },
+      plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
+      zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
+    };
+    for (const seed of [1, 7, 99]) {
+      expect(freePlayConfig(save, 'plants', seed)).toEqual(checksFreePlayConfig('plants', seed, 1.25));
+      expect(freePlayConfig(save, 'zombies', seed)).toEqual(checksFreePlayConfig('zombies', seed, 0.75));
+      expect(prepareFreePlay(save, 'plants', seed).config).toEqual(checksFreePlayConfig('plants', seed, 1.25));
+    }
   });
 });
