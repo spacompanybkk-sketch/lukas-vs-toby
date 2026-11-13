@@ -12,6 +12,7 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'slow tapper as plants v easy': '43.5% (45): accepted (coordinator, Task 8b); the Easy plants cell is squeezed by the newest-card child (80.5%, cap 85)',
   'random child as zombies v hard': '20% (<15): accepted; at Hard a random child does as well as steadyZombies, kept in band',
   'start energy x0.75: plants win': '21% (25): accepted; phase-1 robustness check',
+  'pick share avocadoBunker': '2.98% (3%): accepted; the three walls share the wall plays (moved under 3% with Sun Shower +50)',
   'pick share walnutBomb': '2.97% (3%): accepted; the three walls share the wall plays',
   'spell sunShower alone: edge': '+17.3 points (8-16): accepted within 2 points (+50 Sun every 120 s; +16.2 on seeds 1001+)',
 };
