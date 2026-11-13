@@ -85,6 +85,8 @@ export class BattleController {
   private heroPeriod: number;
   /** The spells the player has cast at least once: their charge is then the cooldown, not the first wait. */
   private readonly castOnce = new Set<SpellKey>();
+  /** The card selected when a power was picked: it comes back once the power is cast or put down. */
+  private cardBeforePower: UnitKey | null = null;
 
   constructor(opts: BattleOptions, balance: Balance = BALANCE) {
     this.playerFaction = opts.playerFaction;
@@ -148,6 +150,7 @@ export class BattleController {
     if (unit !== null) {
       this.hud.shovel.value = false;
       this.clearPowers();
+      this.cardBeforePower = null;
     }
   }
 
@@ -159,6 +162,7 @@ export class BattleController {
     if (on) {
       this.hud.selected.value = null;
       this.clearPowers();
+      this.cardBeforePower = null;
     }
   }
 
@@ -170,7 +174,7 @@ export class BattleController {
   selectHero(on: boolean): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (!on) {
-      this.hud.heroSelected.value = false;
+      if (this.hud.heroSelected.peek()) this.powerDone();
       return;
     }
     const reason = this.match.check({ type: 'hero', faction: this.playerFaction, lane: 0 });
@@ -178,8 +182,7 @@ export class BattleController {
       this.deny(reason);
       return;
     }
-    this.hud.selected.value = null;
-    this.hud.shovel.value = false;
+    this.pickPower();
     this.hud.spellSelected.value = null;
     this.hud.heroSelected.value = true;
   }
@@ -199,7 +202,7 @@ export class BattleController {
   selectSpell(key: SpellKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (key === null || key === this.hud.spellSelected.peek()) {
-      this.hud.spellSelected.value = null;
+      if (this.hud.spellSelected.peek() !== null) this.powerDone();
       return;
     }
     if (!this.match.state.players[this.playerFaction].spells.some((x) => x.key === key)) return;
@@ -210,8 +213,7 @@ export class BattleController {
         this.deny('spell-charging');
         return;
       }
-      this.hud.selected.value = null;
-      this.hud.shovel.value = false;
+      this.pickPower();
       this.hud.heroSelected.value = false;
       this.hud.spellSelected.value = key;
       return;
@@ -224,8 +226,8 @@ export class BattleController {
       return;
     }
     this.queued = cmd;
-    // Cast: nothing is waiting to be aimed any more.
-    this.clearPowers();
+    // Cast: nothing is waiting to be aimed any more (and a card put aside for it comes back).
+    if (this.hud.heroSelected.peek() || this.hud.spellSelected.peek() !== null) this.powerDone();
   }
 
   /**
@@ -327,7 +329,7 @@ export class BattleController {
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
-    this.clearPowers();
+    this.powerDone();
     return null;
   }
 
@@ -341,6 +343,7 @@ export class BattleController {
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
       this.clearPowers();
+      this.cardBeforePower = null;
       return;
     }
     const lower = key.toLowerCase();
@@ -369,8 +372,26 @@ export class BattleController {
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
-    this.hud.spellSelected.value = null;
+    this.powerDone();
     return null;
+  }
+
+  /**
+   * A power is being picked: the card selected now (if no power was already waiting) is put
+   * aside, to come back when the power is cast or put down; the card and the shovel go down.
+   */
+  private pickPower(): void {
+    if (!this.hud.heroSelected.peek() && this.hud.spellSelected.peek() === null) this.cardBeforePower = this.hud.selected.peek();
+    this.hud.selected.value = null;
+    this.hud.shovel.value = false;
+  }
+
+  /** The power was cast or put down: nothing waits to be aimed, and the card put aside comes back if still in hand. */
+  private powerDone(): void {
+    this.clearPowers();
+    const card = this.cardBeforePower;
+    this.cardBeforePower = null;
+    if (card !== null && isCard(card) && this.match.state.config.cards[this.playerFaction].includes(card)) this.hud.selected.value = card;
   }
 
   private clearPowers(): void {

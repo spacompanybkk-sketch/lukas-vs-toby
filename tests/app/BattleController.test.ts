@@ -903,3 +903,75 @@ describe('BattleController powers wiring (wiring B)', () => {
     expect(c.step()).toContainEqual(expect.objectContaining({ type: 'spellCast', spell: 'thunderbolt', lane: 1, col: 5 }));
   });
 });
+
+describe('BattleController gives the card back after a power (final fix round)', () => {
+  const ready = (): BattleController => {
+    const c = make('plants');
+    c.match.state.players.plants.heroTimer = 1;
+    c.match.state.players.plants.spells = [{ key: 'thunderbolt', timer: 1 }, { key: 'sunShower', timer: 1 }];
+    c.match.state.players.plants.energy = 900;
+    c.step();
+    return c;
+  };
+
+  it('the card picked before the hero comes back once the hero has fired, so the next lawn tap places it', () => {
+    const c = ready();
+    c.select('sunflower');
+    c.toggleHero();
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.click({ lane: 2, col: 3 }, null)).toBeNull();
+    expect(c.hud.selected.value).toBe('sunflower');
+    c.step();
+    expect(c.click({ lane: 1, col: 1 }, null)).toBeNull(); // a placement, not a buzz
+    expect(c.step().some((e) => e.type === 'unitSpawned' && e.key === 'sunflower')).toBe(true);
+  });
+
+  it('comes back after an aimed spell is cast, and after the hero or the spell is put down again', () => {
+    const c = ready();
+    c.select('peashooter');
+    c.selectSpell('thunderbolt');
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.click({ lane: 1, col: 6 }, null)).toBeNull();
+    expect(c.hud.selected.value).toBe('peashooter');
+    c.step();
+    c.toggleHero();
+    c.toggleHero(); // put down
+    expect(c.hud.selected.value).toBe('peashooter');
+    c.match.state.players.plants.spells[0]!.timer = 0;
+    c.selectSpell('thunderbolt');
+    c.selectSpell(null);
+    expect(c.hud.selected.value).toBe('peashooter');
+    // From the hero to the spell and then a cast: still the card from before the first power.
+    c.toggleHero();
+    c.selectSpell('thunderbolt');
+    c.selectSpell('thunderbolt');
+    expect(c.hud.selected.value).toBe('peashooter');
+  });
+
+  it('a card picked while a power waits wins; Escape and the shovel forget the card', () => {
+    const c = ready();
+    c.select('peashooter');
+    c.toggleHero();
+    c.select('walnutBomb');
+    expect(c.hud.heroSelected.value).toBe(false);
+    expect(c.hud.selected.value).toBe('walnutBomb');
+    c.toggleHero();
+    c.hotkey('Escape');
+    expect(c.hud.selected.value).toBeNull();
+    c.toggleHero();
+    c.toggleHero();
+    expect(c.hud.selected.value).toBeNull();
+    c.toggleShovel();
+    c.toggleHero();
+    c.toggleHero();
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.hud.shovel.value).toBe(false);
+  });
+
+  it('an un-aimed cast leaves the card as it was', () => {
+    const c = ready();
+    c.select('peashooter');
+    c.selectSpell('sunShower');
+    expect(c.hud.selected.value).toBe('peashooter');
+  });
+});
