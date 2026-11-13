@@ -236,7 +236,8 @@ export function watchPending(host: LevelHost, levels: readonly LevelDef[] = LEVE
 // A run's result travels like a level's: the record (`FreePlayRecord`, kind 'free') is written to
 // the same device key first, then applied (`applyFreePlayResult`: 5 coins a wave cleared, bestWave
 // raised, once per battle id), then removed; a record left on the device is applied at the next
-// log-in by `watchPending`. Quitting a run stores nothing.
+// log-in by `watchPending`. Quitting a run (the pause menu's Quit, its one way out) ends it and banks it
+// exactly like losing; quitting a level (Quit to the map) pays and stores nothing.
 
 /** A Free Play run as it is played: the match, the battle's id and whose run it is. */
 export interface FreePlayPlay { side: Faction; config: MatchConfig; battleId: string; slot: Slot }
