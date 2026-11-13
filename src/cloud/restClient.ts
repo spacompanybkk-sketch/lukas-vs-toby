@@ -32,6 +32,17 @@ export interface RestCloudOptions {
   timeoutMs?: number;
   /** Version ids for writes that do not name one (default `randomVer`). */
   newVer?: () => string;
+  /** Whether a browser test or tool drives this page (default: `navigator.webdriver`). */
+  automated?: () => boolean;
+}
+
+/** True when the page is driven by automation (Playwright, WebDriver). */
+export function isAutomated(): boolean {
+  try {
+    return typeof navigator !== 'undefined' && navigator.webdriver === true;
+  } catch {
+    return false;
+  }
 }
 
 type Answer = { kind: 'ok'; data: unknown } | { kind: 'offline' } | { kind: 'denied' } | { kind: 'bad' };
@@ -104,11 +115,19 @@ export class RestCloud implements Cloud {
   constructor(opts: RestCloudOptions = {}) {
     this.newVer = opts.newVer ?? randomVer;
     this.base = `${opts.baseUrl ?? DATABASE_URL}/${opts.root ?? 'v2'}`;
+    // Browser tests and tools never touch the children's real data: under automation only the
+    // fake and the v2test root answer.
+    const real = (opts.baseUrl ?? DATABASE_URL) !== FAKE_DATABASE_URL;
+    this.blocked = real && (opts.root ?? 'v2') !== 'v2test' && (opts.automated ?? isAutomated)();
+    if (this.blocked) console.warn('RestCloud: automation may not use the live database; every call is refused.');
     this.fetch = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
   }
 
+  private readonly blocked: boolean;
+
   private async request(method: 'GET' | 'PUT' | 'PATCH', path: string, body?: unknown): Promise<Answer> {
+    if (this.blocked) return { kind: 'bad' };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -246,13 +265,22 @@ export type CloudMode = 'live' | 'test' | 'fake';
 
 /**
  * Which cloud to use. Until the rules are deployed (build flag `VITE_CLOUD` is not `live`, the
- * default) it is always the fake. After that: `?cloud=fake` the fake, `?cloud=test` the
- * `v2test` root, otherwise the live `v2` root.
+ * default) it is always the fake. After that the live `v2` root, unless the page has `?debug`
+ * and `?cloud=fake` (the fake) or `?cloud=test` (the `v2test` root).
  */
 export function cloudMode(search: string, flag: string | undefined): CloudMode {
   if (flag !== 'live') return 'fake';
-  const asked = new URLSearchParams(search).get('cloud');
+  const params = new URLSearchParams(search);
+  // In a live build the other clouds need ?debug too: a stray ?cloud= link never moves a child off v2.
+  if (!params.has('debug')) return 'live';
+  const asked = params.get('cloud');
   return asked === 'fake' ? 'fake' : asked === 'test' ? 'test' : 'live';
+}
+
+/** The cloud mode of this page. */
+export function pageCloudMode(): CloudMode {
+  const search = typeof location === 'undefined' ? '' : location.search;
+  return cloudMode(search, import.meta.env.VITE_CLOUD as string | undefined);
 }
 
 /** A cloud over a fake database, with the real client on top. */
@@ -301,13 +329,11 @@ export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cl
 
 /** The cloud this page should use. */
 export function defaultCloud(): Cloud {
-  const search = typeof location === 'undefined' ? '' : location.search;
-  const flag = import.meta.env.VITE_CLOUD as string | undefined;
   let storage: Storage | undefined;
   try {
     storage = typeof localStorage === 'undefined' ? undefined : localStorage;
   } catch {
     storage = undefined;
   }
-  return createCloud(cloudMode(search, flag), storage ? { storage } : {});
+  return createCloud(pageCloudMode(), storage ? { storage } : {});
 }

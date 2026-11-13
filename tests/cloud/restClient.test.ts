@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, createCloud, lazyCloud, randomVer, saveFromWire, saveToWire } from '../../src/cloud/restClient';
+import { DATABASE_URL, FAKE_DATABASE_URL, RestCloud, TIMEOUT_MS, boardRowFor, cloudMode, createCloud, lazyCloud, randomVer, saveFromWire, saveToWire } from '../../src/cloud/restClient';
 import type { Cloud } from '../../src/cloud/types';
 import type { Save } from '../../src/progress/save';
 import { T0, hex, saveFor } from './helpers';
@@ -292,10 +292,45 @@ describe('cloudMode', () => {
     expect(cloudMode('', 'fake')).toBe('fake');
   });
 
-  it('with the flag live: v2 by default, v2test with ?cloud=test, the fake with ?cloud=fake', () => {
+  it('with the flag live: v2 by default; v2test or the fake only with ?debug as well', () => {
     expect(cloudMode('', 'live')).toBe('live');
-    expect(cloudMode('?cloud=test', 'live')).toBe('test');
-    expect(cloudMode('?x=1&cloud=fake', 'live')).toBe('fake');
-    expect(cloudMode('?cloud=other', 'live')).toBe('live');
+    expect(cloudMode('?cloud=test&debug', 'live')).toBe('test');
+    expect(cloudMode('?x=1&cloud=fake&debug=1', 'live')).toBe('fake');
+    expect(cloudMode('?cloud=other&debug', 'live')).toBe('live');
+  });
+
+  it('with the flag live, ?cloud=fake or ?cloud=test without ?debug is ignored (a stray link never moves a child off v2)', () => {
+    expect(cloudMode('?cloud=test', 'live')).toBe('live');
+    expect(cloudMode('?cloud=fake', 'live')).toBe('live');
+  });
+});
+
+describe('under automation (navigator.webdriver)', () => {
+  const okFetch = vi.fn(async () => new Response('null', { status: 200 }));
+
+  it('refuses every call to the live v2 root without making a request', async () => {
+    okFetch.mockClear();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const c = new RestCloud({ root: 'v2', fetch: okFetch as unknown as typeof fetch, automated: () => true });
+    expect(await c.listPlayers()).toBe('refused');
+    expect(await c.board()).toBe('refused');
+    expect(okFetch).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('runs against v2test, and against the fake, as usual', async () => {
+    okFetch.mockClear();
+    const test = new RestCloud({ root: 'v2test', fetch: okFetch as unknown as typeof fetch, automated: () => true });
+    expect(await test.listPlayers()).toEqual([]);
+    const fake = new RestCloud({ baseUrl: FAKE_DATABASE_URL, root: 'v2', fetch: okFetch as unknown as typeof fetch, automated: () => true });
+    expect(await fake.listPlayers()).toEqual([]);
+    expect(okFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('a person (not automation) reaches v2', async () => {
+    okFetch.mockClear();
+    const c = new RestCloud({ root: 'v2', fetch: okFetch as unknown as typeof fetch, automated: () => false });
+    expect(await c.listPlayers()).toEqual([]);
+    expect(okFetch).toHaveBeenCalledTimes(1);
   });
 });
