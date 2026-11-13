@@ -5,6 +5,7 @@ import { Match, defaultConfig } from '../sim/match';
 import type { Command } from '../sim/types';
 import { FeelClock } from './Stage';
 import type { Director, StageLike } from './Stage';
+import { modelsFor } from './prewarm';
 
 /** Seconds the finished demo match stays on screen before the next one starts. */
 const REPLAY_AFTER = 4;
@@ -85,7 +86,8 @@ export class TitleDemo implements Director {
     this.match = match;
     this.bots = [createBasicBot('plants', 'medium', this.seed), createBasicBot('zombies', 'medium', this.seed + 1)];
     const view = new BattleView(this.stage.scene, this.stage.camera, this.stage.lawn, this.stage.fx, 'plants', {
-      units: [...match.state.config.cards.plants, ...match.state.config.cards.zombies],
+      // Its cards, and the Bone Minion when Grave Rise is dealt: built now, not mid-demo.
+      units: modelsFor(match.state),
     });
     // A demo shakes and slows like the real thing, but flies no tokens.
     view.onFeel = (f) => this.clock.feel(f, this.stage.rig);
