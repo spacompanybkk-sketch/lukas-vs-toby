@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
+import { PATH_FLAG } from '../screens/adventurePictures';
+import './level.css';
 import { PixelIcon } from './PixelIcon';
 import type { PixelArt } from './PixelIcon';
 import './hud.css';
@@ -8,6 +10,8 @@ export interface PauseMenuProps {
   onRestart(): void;
   onSettings(): void;
   onQuit(): void;
+  /** In an Adventure level: back to the map (two taps, like Quit). */
+  onMap?(): void;
 }
 
 /** How long an armed Quit waits for its second tap before it goes back to normal. */
@@ -36,14 +40,16 @@ const TICK: PixelArt = {
  * Dimmed overlay with four big picture buttons; Resume is the biggest. Quit takes two taps (the
  * first shows a tick on it), so a stray finger never throws a match away.
  */
-export function PauseMenu({ onResume, onRestart, onSettings, onQuit }: PauseMenuProps) {
-  const [armed, setArmed] = useState(false);
+export function PauseMenu({ onResume, onRestart, onSettings, onQuit, onMap }: PauseMenuProps) {
+  // Which leaving button waits for its second tap: Quit or the map.
+  const [armedFor, setArmed] = useState<'quit' | 'map' | null>(null);
+  const armed = armedFor === 'quit';
   useEffect(() => {
-    if (!armed) return undefined;
-    const t = setTimeout(() => setArmed(false), QUIT_CONFIRM_MS);
+    if (armedFor === null) return undefined;
+    const t = setTimeout(() => setArmed(null), QUIT_CONFIRM_MS);
     return () => clearTimeout(t);
-  }, [armed]);
-  const other = (f: () => void) => () => { setArmed(false); f(); };
+  }, [armedFor]);
+  const other = (f: () => void) => () => { setArmed(null); f(); };
   return (
     <div data-screen="pause" class="layer layer--dim" role="dialog" aria-label="Paused">
       <div class="pause panel px pal-wood stack">
@@ -61,12 +67,23 @@ export function PauseMenu({ onResume, onRestart, onSettings, onQuit }: PauseMenu
           <button
             type="button" data-action="quit" class={`btn pal-red pause__quit${armed ? ' is-armed' : ''}`}
             aria-label={armed ? 'Quit: tap again' : 'Quit'}
-            onClick={() => { if (armed) onQuit(); else setArmed(true); }}
+            onClick={() => { if (armed) onQuit(); else setArmed('quit'); }}
           >
             <span class="ico ico--home" aria-hidden="true" />
             {armed && <PixelIcon art={TICK} class="pause__tick" />}
             <span class="btn__label inked">Quit</span>
           </button>
+          {onMap !== undefined && (
+            <button
+              type="button" data-action="map" class={`btn pal-cream pause__quit pause__map${armedFor === 'map' ? ' is-armed' : ''}`}
+              aria-label={armedFor === 'map' ? 'Map: tap again' : 'Map'}
+              onClick={() => { if (armedFor === 'map') onMap(); else setArmed('map'); }}
+            >
+              <PixelIcon art={PATH_FLAG} class="pause__map-icon" />
+              {armedFor === 'map' && <PixelIcon art={TICK} class="pause__tick" />}
+              <span class="btn__label">Map</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

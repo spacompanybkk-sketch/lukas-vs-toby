@@ -7,7 +7,10 @@ import type { BattleOptions } from '../app/BattleController';
 import { loadSettings, saveSettings } from '../app/settings';
 import type { Settings } from '../app/settings';
 import { session as players } from '../app/session';
-import { go, screen } from '../app/store';
+import { go, screen, startLevel } from '../app/store';
+import { settleLevel } from '../app/levelSession';
+import type { LevelOutcome, LevelRecord } from '../app/levelSession';
+import type { Turntable } from './hud/ResultOverlay';
 import type { SfxName } from '../audio/sfx';
 import { board, rankChange } from '../app/board';
 import type { RankUp } from '../app/board';
@@ -34,6 +37,7 @@ import { MapScreen } from './screens/Map';
 import type { MapHost } from './screens/Map';
 import { Title } from './screens/Title';
 import { setUiSound } from './uiSound';
+import type { UiSoundOptions } from './uiSound';
 import './screens/screens.css';
 
 export interface AppProps {
@@ -59,7 +63,7 @@ export interface AppProps {
   /** With `?fps`: where the corner readout reads fps, render scale and draw calls. */
   fpsSource?: () => FpsStats;
   /** Plays a menu sound (a key, a refusal, a coin). */
-  onSound?(name: SfxName): void;
+  onSound?(name: SfxName, opts?: UiSoundOptions): void;
   /** The Almanac's turntable on the shared stage (none: the Almanac shows its panels only). */
   almanac?: AlmanacHost;
   /** The Adventure map's 3D board on the shared stage (none: the stones are laid out flat). */
@@ -225,6 +229,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
         <BattleHost
           options={s.options} createSession={createSession} portraits={portraits} boys={boys}
           portrait={portrait} settings={settings} onSettingsChange={changeSettings} energyRef={energyRef}
+          turntable={almanac}
         />
       );
       break;
@@ -256,6 +261,8 @@ interface BattleHostProps {
   settings: Settings;
   onSettingsChange(s: Settings): void;
   energyRef: Ref<HTMLDivElement> | undefined;
+  /** The Almanac's turntable, where a level's unlocked unit is shown. */
+  turntable: Turntable | undefined;
 }
 
 let sessionCount = 0;
@@ -284,21 +291,78 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   }, [options, createSession]);
 
   const { coins, rankUp } = useBattleCoins(live, options);
+  const { outcome, rankUp: levelRankUp } = useLevelResult(live, options);
 
   if (live === null) return null;
-  const again = (): void => go({ name: 'battle', options: { ...options, seed: (Date.now() + live.id) >>> 0 } });
-  // An Adventure level goes back to its map; otherwise a logged-in player goes back to their Home,
-  // a battle opened without one, to the title.
-  const quit = (): void => {
-    if (options.level !== undefined && players.player.peek() !== null) go({ name: 'map', side: options.playerFaction });
-    else go({ name: players.player.peek() !== null ? 'home' : 'title' });
+  const play = options.play;
+  // A level is started again through `startLevel` (a fresh battle id, the save as it is now).
+  const again = (): void => {
+    const me = players.player.peek();
+    if (play !== undefined && me !== null) {
+      if (!startLevel(play.def, me, (Date.now() + live.id) >>> 0)) go({ name: 'map', side: play.def.side });
+      return;
+    }
+    go({ name: 'battle', options: { ...options, seed: (Date.now() + live.id) >>> 0 } });
+  };
+  // A logged-in player goes back to their Home, a battle opened without one, to the title.
+  const quit = (): void => go({ name: players.player.peek() !== null ? 'home' : 'title' });
+  if (play === undefined) {
+    return <BattleScreen key={live.id} session={live.session} {...rest} onRestart={again} onQuit={quit} coins={coins} rankUp={rankUp} />;
+  }
+  const toMap = (): void => go({ name: 'map', side: play.def.side });
+  const next = (): void => {
+    const me = players.player.peek();
+    const to = outcome?.next ?? null;
+    if (me === null || to === null || !startLevel(to, me)) toMap();
   };
   return (
     <BattleScreen
       key={live.id} session={live.session} {...rest}
-      onRestart={again} onQuit={quit} coins={coins} rankUp={rankUp}
+      onRestart={again} onQuit={quit} onMap={toMap} onNextLevel={next}
+      level={outcome} rankUp={levelRankUp}
     />
   );
+}
+
+/**
+ * An Adventure level's result, the moment the match is decided: its record is kept on the device,
+ * applied to the save (`settleLevel`: stars, coins, unlock, once per battle id) and taken off the
+ * device. Returns what the result shows, and the player's best move up a leaderboard table.
+ * Quick Battle never comes here (and a level never pays through `useBattleCoins`).
+ */
+function useLevelResult(
+  live: { id: number; session: BattleSessionLike } | null, options: BattleOptions,
+): { outcome: LevelOutcome | null; rankUp: RankUp | null } {
+  const [outcome, setOutcome] = useState<LevelOutcome | null>(null);
+  const [rankUp, setRankUp] = useState<RankUp | null>(null);
+  useEffect(() => {
+    setOutcome(null);
+    setRankUp(null);
+    if (live === null || options.play === undefined) return undefined;
+    const ctl = live.session.controller as BattleSessionLike['controller'] & { levelResult?(): LevelRecord | null };
+    let done = false;
+    let alive = true;
+    const stop = ctl.hud.result.subscribe((result) => {
+      const before = players.player.peek();
+      if (result === null || done || before === null) return;
+      const record = ctl.levelResult?.() ?? null;
+      if (record === null) return;
+      done = true;
+      const out = settleLevel(players, record);
+      setOutcome(out);
+      const after = players.player.peek();
+      if (out === null || after === null) return;
+      void board.fetch().then(
+        (v) => { if (alive) setRankUp(rankChange(v.rows, before, after)); },
+        (e: unknown) => console.error('board failed', e),
+      );
+    });
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [live, options]);
+  return { outcome, rankUp };
 }
 
 /**
@@ -321,9 +385,8 @@ function useBattleCoins(
     let alive = true;
     const stop = ctl.hud.result.subscribe((result) => {
       const before = players.player.peek();
-      // TODO(Task 5): an Adventure level's result goes through `applyLevelResult` (stars, coins,
-      // unlocks, once per battle id), not the Quick Battle reward.
-      if (result === null || done || before === null || options.level !== undefined) return;
+      // An Adventure level pays only through `applyLevelResult` (useLevelResult), never here.
+      if (result === null || done || before === null || options.level !== undefined || options.play !== undefined) return;
       done = true;
       const base = ctl.hud.base.peek()[ctl.playerFaction];
       const r = { won: result.playerWon, skill: options.skill, baseHpShare: base.max > 0 ? base.hp / base.max : 0 };
