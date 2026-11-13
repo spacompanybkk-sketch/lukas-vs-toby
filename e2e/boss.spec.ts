@@ -7,7 +7,7 @@ import { frames } from './helpers';
 for (const boss of ['brainTitan', 'elderOak'] as const) {
   test(`the ${boss} demo plays 30 s with its boss bar showing and no error`, async ({ page }) => {
     test.setTimeout(120_000);
-    await page.goto(`/?scene=boss-demo&boss=${boss}&seed=1&debug`);
+    await page.goto(`/?scene=boss-demo&boss=${boss}&seed=1&debug&cloud=fake`);
     await page.evaluate(() => window.__lvt.ready);
     for (let second = 0; second < 30; second++) {
       await page.evaluate(() => (window.__lvt as any).battle.advance(1));
