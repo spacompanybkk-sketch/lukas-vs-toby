@@ -322,6 +322,7 @@ export class BattleController {
       selected: () => this.hud.selected.peek() as CardKey | null,
       heroPicked: () => this.hud.heroSelected.peek(),
       spellPicked: () => this.hud.spellSelected.peek(),
+      putDownPower: () => this.powerDone(),
     });
     // A first tap on the lawn should do something: start with the first card the player can pay
     // for. Not when the tutorial's first step is to pick a card: the glove points at it instead.

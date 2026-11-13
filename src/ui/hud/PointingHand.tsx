@@ -53,7 +53,7 @@ export interface GloveHost {
 }
 
 /** The target's middle (`x`, `y`: where a tap goes), its size, and where the fingertip rests (`ty`). */
-interface Box { x: number; y: number; w: number; h: number; ty: number }
+interface Box { x: number; y: number; w: number; h: number; ty: number; tx?: number }
 
 /** The target's box on screen (client pixels), or null when it is not there. */
 function targetBox(aim: GloveAim, host: GloveHost, root: ParentNode): Box | null {
@@ -81,7 +81,8 @@ function targetBox(aim: GloveAim, host: GloveHost, root: ParentNode): Box | null
       const u = host.tileToClient?.(0, 1) ?? null;
       if (p === null) return null;
       const w = t === null || u === null ? 64 : Math.max(40, Math.abs(u.x - t.x));
-      return { x: p.x, y: p.y, w, h: w * 1.1, ty: p.y - w * 0.2 };
+      // From the side, at the body: the level-up arrow over the unit's head stays in sight.
+      return { x: p.x, y: p.y, w, h: w * 1.1, ty: p.y, tx: p.x - w * 0.38 };
     }
   }
 }
@@ -108,7 +109,7 @@ export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<Gl
       if (hand === null || mark === null) return;
       const root = hand.closest('[data-screen="battle"]') ?? document;
       const box = targetBox(aim, host, root);
-      const key = box === null ? 'none' : `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.w)},${Math.round(box.h)},${Math.round(box.ty)}`;
+      const key = box === null ? 'none' : `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.w)},${Math.round(box.h)},${Math.round(box.ty)},${Math.round(box.tx ?? box.x)}`;
       if (key === last) return;
       last = key;
       if (box === null) {
@@ -120,7 +121,7 @@ export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<Gl
       }
       hand.style.visibility = '';
       mark.style.visibility = '';
-      hand.style.transform = `translate3d(${Math.round(box.x)}px, ${Math.round(box.ty)}px, 0)`;
+      hand.style.transform = `translate3d(${Math.round(box.tx ?? box.x)}px, ${Math.round(box.ty)}px, 0)`;
       mark.style.transform = `translate3d(${Math.round(box.x - box.w / 2)}px, ${Math.round(box.y - box.h / 2)}px, 0)`;
       mark.style.width = `${Math.round(box.w)}px`;
       mark.style.height = `${Math.round(box.h)}px`;
@@ -140,8 +141,10 @@ export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<Gl
         ref={handRef} class="tut-hand" style={{ visibility: 'hidden' }}
         data-glove={vm.aim.kind} data-glove-step={vm.step} data-holding={vm.holding ? 'true' : 'false'}
       >
-        <span class="tut-hand__pic" style={{ '--tip-x': `${TIP.x * 100}%`, '--tip-y': `${TIP.y * 100}%` }}>
-          <PixelIcon art={GLOVE} />
+        <span class={`tut-hand__turn${vm.aim.kind === 'unit' ? ' is-side' : ''}`}>
+          <span class="tut-hand__pic" style={{ '--tip-x': `${TIP.x * 100}%`, '--tip-y': `${TIP.y * 100}%` }}>
+            <PixelIcon art={GLOVE} />
+          </span>
         </span>
       </div>
     </div>

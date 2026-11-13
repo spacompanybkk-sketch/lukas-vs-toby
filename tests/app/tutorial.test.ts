@@ -6,6 +6,7 @@ import { levelOptions, prepareLevel } from '../../src/app/levelSession';
 import { MISSING_HOLD_SECONDS, rememberTaught, stepsToTeach } from '../../src/app/tutorial';
 import { seconds } from '../../src/data/balance';
 import { MAX_TEACHED, newSave } from '../../src/progress/save';
+import { spawnUnit } from '../../src/sim/spawn';
 import type { Save } from '../../src/progress/save';
 import type { Faction } from '../../src/sim/types';
 
@@ -141,7 +142,7 @@ describe('p1-1 by the glove', () => {
     expect(tick(c)).toBe(32);
   });
 
-  it('a card the hold cannot wait for: released after MISSING_HOLD_SECONDS, held again once it is there', () => {
+  it('a card not usable yet (recharging, too dear): no glove, no hold - the match runs; armed the moment it is usable', () => {
     const c = taught('p1-3');
     run(c, 2);
     c.select('peashooter');
@@ -149,18 +150,64 @@ describe('p1-1 by the glove', () => {
     c.step();
     // 90 energy left and the card recharging: the merge card is not usable.
     expect(c.tutorial!.current?.id).toBe('p1-3.merge-card');
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
     const at = tick(c);
-    run(c, seconds(MISSING_HOLD_SECONDS) - 2);
-    expect(tick(c)).toBe(at);
     run(c, 3);
-    expect(tick(c)).toBeGreaterThan(at);
-    expect(c.tutorial!.glove.peek()?.holding).toBe(false);
-    // Taps go through again while released (the child may play on).
-    run(c, seconds(15));
-    expect(c.tutorial!.holding).toBe(true);
+    expect(tick(c)).toBe(at + 3);
+    while (!c.tutorial!.holding) {
+      expect(c.tutorial!.glove.peek()).toBeNull();
+      c.step();
+      expect(tick(c)).toBeLessThan(at + seconds(30));
+    }
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: 'peashooter' }, holding: true });
     const held = tick(c);
     run(c, 20);
     expect(tick(c)).toBe(held);
+  });
+
+  it('an armed step whose action stops being possible lets go after MISSING_HOLD_SECONDS, then arms again', () => {
+    const c = taught('p1-1');
+    c.step();
+    expect(c.tutorial!.holding).toBe(true);
+    const energy = c.match.state.players.plants.energy;
+    c.match.state.players.plants.energy = 0; // the card is too dear now (a test's hand: nothing in play does this while held)
+    const at = tick(c);
+    run(c, seconds(MISSING_HOLD_SECONDS) - 1);
+    expect(tick(c)).toBe(at);
+    run(c, 2);
+    expect(c.tutorial!.holding).toBe(false);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    run(c, 3);
+    expect(tick(c)).toBeGreaterThan(at);
+    c.match.state.players.plants.energy = energy;
+    c.step();
+    expect(c.tutorial!.holding).toBe(true);
+  });
+
+  it('the tile step wants the marked tile: a plant elsewhere does not end it; a taken marked tile re-points in its lane', () => {
+    const c = taught('p1-1');
+    c.step();
+    c.select('peashooter');
+    // Not held for a moment (a test's hand): the child plants elsewhere.
+    c.match.state.players.plants.energy = 0;
+    run(c, seconds(MISSING_HOLD_SECONDS) + 1);
+    c.match.state.players.plants.energy = 500;
+    expect(c.tutorial!.holding).toBe(false);
+    expect(c.click({ lane: 4, col: 3 }, null)).toBeNull();
+    c.step();
+    expect(plantAt(c, 4, 3)?.key).toBe('peashooter');
+    expect(c.tutorial!.current?.id).toBe('p1-1.tile');
+    // The marked tile (2, 1) taken: the glove points at the nearest free tile of lane 2.
+    while ((c.match.state.players.plants.recharge.peashooter ?? 0) > 0) c.step();
+    c.match.state.players.plants.energy = 500;
+    spawnUnit(c.match.state, c.match.balance, 'walnutBomb', 2, 1.5);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', lane: 2, col: 0 }, holding: true });
+    expect(c.click({ lane: 2, col: 1 }, null)).toBe('ignored');
+    expect(c.click({ lane: 2, col: 0 }, null)).toBeNull();
+    c.step();
+    expect(c.tutorial!.current).toBeNull();
   });
 
   it('merging: the card, then the unit with the level-up arrow; done on the merge', () => {
@@ -181,6 +228,27 @@ describe('p1-1 by the glove', () => {
     expect(pea.level).toBe(2);
     expect(c.tutorial!.current).toBeNull();
     expect(c.tutorial!.taught.peek()).toEqual(['p1-3.card', 'p1-3.tile', 'p1-3.merge-card', 'p1-3.merge']);
+  });
+});
+
+describe('p1-2: the Sunflower pays', () => {
+  it('the first Sunflower payout after its step pulses the energy counter once (sunPulse 0 -> 1)', () => {
+    const c = taught('p1-2');
+    c.step();
+    c.select('sunflower');
+    c.click({ lane: 1, col: 0 }, null);
+    c.step();
+    expect(c.tutorial!.sunPulse.peek()).toBe(0);
+    c.select('peashooter');
+    c.click({ lane: 1, col: 1 }, null);
+    c.step();
+    let paidAt = -1;
+    for (let i = 0; i < seconds(40) && paidAt < 0; i++) {
+      const ev = c.step();
+      if (ev.some((e) => e.type === 'energyGained' && e.source === 'sunflower' && e.faction === 'plants')) paidAt = i;
+    }
+    expect(paidAt).toBeGreaterThanOrEqual(0);
+    expect(c.tutorial!.sunPulse.peek()).toBe(1);
   });
 });
 

@@ -8,10 +8,12 @@ export interface EnergyCounterProps {
   side: Faction;
   /** The battle session reads this element's rect to fly energy tokens into it. */
   anchorRef?: Ref<HTMLDivElement>;
+  /** The tutorial's cue (p1-2): when it turns 1, the counter pulses big, once ("the Sunflower pays"). */
+  teach?: number;
 }
 
 /** Sun (plants) or brains (zombies) and a big number; it bumps whenever the value goes up. */
-export function EnergyCounter({ value, side, anchorRef }: EnergyCounterProps) {
+export function EnergyCounter({ value, side, anchorRef, teach = 0 }: EnergyCounterProps) {
   const last = useRef(value);
   const [bump, setBump] = useState(0);
   useEffect(() => {
@@ -22,7 +24,7 @@ export function EnergyCounter({ value, side, anchorRef }: EnergyCounterProps) {
   return (
     <div
       data-hud="energy" ref={anchorRef}
-      class={`hud-energy px pal-side side-${side}${bumpClass}`}
+      class={`hud-energy px pal-side side-${side}${bumpClass}${teach > 0 ? ' is-teach' : ''}`} data-teach={teach > 0 ? '' : undefined}
       aria-label={`${side === 'plants' ? 'Sun' : 'Brains'} ${value}`}
     >
       <span class={`hud-energy__icon ico ico--${side === 'plants' ? 'sun' : 'brain'}`} aria-hidden="true" />

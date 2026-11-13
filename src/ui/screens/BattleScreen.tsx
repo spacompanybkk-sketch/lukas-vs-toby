@@ -62,7 +62,7 @@ export interface BattleSessionLike {
     /** A Free Play run's HUD signals (none or null: no run). */
     endless?: EndlessSignals | null;
     /** The level's tutorial: where its glove points (none or null: no tutorial). */
-    tutorial?: { glove: ReadonlySignal<GloveVM | null> } | null;
+    tutorial?: { glove: ReadonlySignal<GloveVM | null>; sunPulse?: ReadonlySignal<number> } | null;
   };
   /** Client pixels of a tile's middle (the big-wave cue stands at a lane's end); none: no cue. */
   tileToClient?(lane: number, col: number): { x: number; y: number } | null;
@@ -179,7 +179,7 @@ export function BattleScreen(props: BattleScreenProps) {
       <ResultClears hud={hud} resultReady={session.resultReady} clear={level !== null || ctl.endless != null}>
       <div class="battle__top">
         <div class="battle__left">
-          {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} />}
+          {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} teach={ctl.tutorial?.sunPulse} />}
         </div>
         {ctl.endless != null ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} /> : <LiveClock hud={hud} />}
         <div class="battle__right">
@@ -295,8 +295,8 @@ function IncomingCues({ incoming, at }: { incoming: ReadonlySignal<IncomingVM | 
   );
 }
 
-function LiveEnergy({ hud, side, anchorRef }: { hud: HudSignals; side: Faction; anchorRef: Ref<HTMLDivElement> | undefined }) {
-  return <EnergyCounter value={hud.energy.value} side={side} anchorRef={anchorRef} />;
+function LiveEnergy({ hud, side, anchorRef, teach }: { hud: HudSignals; side: Faction; anchorRef: Ref<HTMLDivElement> | undefined; teach?: ReadonlySignal<number> }) {
+  return <EnergyCounter value={hud.energy.value} side={side} anchorRef={anchorRef} teach={teach?.value ?? 0} />;
 }
 
 function LiveClock({ hud }: { hud: HudSignals }) {
