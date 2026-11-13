@@ -61,21 +61,20 @@ function Bar({ kind, icon, share, plain, instead }: {
   kind: string; icon: PixelArt; share: number | null; plain: number | null; instead: PixelArt;
 }) {
   // The part an upgrade adds is drawn in gold after the plain part.
-  const gain = share !== null && plain !== null && share - plain > 0.0005 ? share - plain : 0;
+  const gain = share !== null && plain !== null && share - plain > 1e-9 ? share - plain : 0;
   return (
     <div class="almanac__stat" data-stat={kind}>
       <span class="almanac__stat-icon"><PixelIcon art={icon} /></span>
       {share === null ? (
         <span class="almanac__instead" data-instead={kind}><PixelIcon art={instead} /></span>
       ) : (
-        <span class="almanac__track px pal-stone">
-          <span
-            class={`almanac__fill almanac__fill--${kind}`} data-bar={kind} data-share={share.toFixed(3)}
-            style={{ width: `${(share - gain) * 100}%` }}
-          />
-          {gain > 0 && (
-            <span class="almanac__fill almanac__fill--up" data-bar-up={kind} style={{ width: `${gain * 100}%` }} />
-          )}
+        <span
+          class={`almanac__track px pal-stone${gain > 0 ? ' has-gain' : ''}`}
+          style={{ '--share': `${share * 100}%`, '--gain': `${gain * 100}%` }}
+        >
+          {/* The whole bar is `share` long; a gain is drawn at least 4 px wide, taken out of the plain part (CSS). */}
+          <span class={`almanac__fill almanac__fill--${kind}`} data-bar={kind} data-share={share.toFixed(3)} />
+          {gain > 0 && <span class="almanac__fill almanac__fill--up" data-bar-up={kind} data-gain={gain.toFixed(4)} />}
         </span>
       )}
     </div>

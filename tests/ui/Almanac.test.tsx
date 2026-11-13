@@ -237,6 +237,24 @@ describe('Almanac screen', () => {
       expect(q('[data-bar-up="hp"]')).not.toBeNull();
       expect(q('[data-bar-up="dps"]')).not.toBeNull();
     });
+
+    it('the gold part is at least 4 px, taken out of the plain part, so the bar keeps its true length', () => {
+      mount();
+      tap('[data-unit="peashooter"]');
+      expect(q('[data-bar-up="hp"]')).toBeNull(); // no gain, no gold
+      act(() => session.update((save) => ({ ...save, upgrades: { peashooter: 1 } })));
+      const bars = statBars('peashooter', 1, 1);
+      const gain = bars.hp - bars.hpPlain;
+      expect(gain).toBeGreaterThan(0);
+      expect(q('[data-bar-up="hp"]')).not.toBeNull();
+      const track = q('[data-stat="hp"] .almanac__track') as HTMLElement;
+      expect(track.className).toContain('has-gain');
+      expect(track.style.getPropertyValue('--share')).toBe(`${bars.hp * 100}%`);
+      expect(track.style.getPropertyValue('--gain')).toBe(`${gain * 100}%`);
+      // A zombie gains no health: no gold, no minimum taken.
+      tap('[data-unit="brainEater"]');
+      expect((q('[data-stat="hp"] .almanac__track') as HTMLElement).className).not.toContain('has-gain');
+    });
   });
 
   it('every role has a picture, every picture is square and in the palette', () => {

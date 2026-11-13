@@ -72,7 +72,38 @@ test('the Marketplace fits 1024x650: every card and "+" on screen, every target 
       }
     }
   }
+  // Every portrait (with its ink outline) sits inside its card, on both tabs, at each size.
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(size);
+    for (const side of ['plants', 'zombies'] as const) {
+      await page.locator(`[data-tab="${side}"]`).click();
+      await page.waitForTimeout(500);
+      const out = await page.evaluate(() => [...document.querySelectorAll('[data-card]')].flatMap((card) => {
+        const c = card.getBoundingClientRect();
+        const p = (card.querySelector('.market__pic') as HTMLElement).getBoundingClientRect();
+        const ink = 3;
+        return p.top - ink < c.top || p.left - ink < c.left || p.right + ink > c.right || p.bottom > c.bottom
+          ? [`${card.getAttribute('data-card')}: pic ${p.top.toFixed(0)}..${p.bottom.toFixed(0)} card ${c.top.toFixed(0)}..${c.bottom.toFixed(0)}`]
+          : [];
+      }));
+      expect(out, `${size.width}x${size.height} ${side}`).toEqual([]);
+    }
+  }
+  // A portrait at the top of its hop still sits inside its card (1024x650, second row).
+  await page.setViewportSize({ width: 1024, height: 650 });
+  await page.locator('[data-tab="plants"]').click();
+  await page.waitForTimeout(500);
+  await page.locator('[data-buy="mangoPult"]').click();
+  const hop = await page.evaluate(() => {
+    const card = document.querySelector('[data-card="mangoPult"]') as HTMLElement;
+    const pic = card.querySelector('.market__pic') as HTMLElement;
+    for (const a of pic.getAnimations()) { a.pause(); a.currentTime = 105; }
+    return { pic: pic.getBoundingClientRect().top, card: card.getBoundingClientRect().top, hopping: pic.getAnimations().length };
+  });
+  expect(hop.hopping).toBeGreaterThan(0);
+  expect(hop.pic - 3).toBeGreaterThanOrEqual(hop.card);
   // The Brain Eater at level 10: a gold frame and nothing to buy.
+  await page.locator('[data-tab="zombies"]').click();
   await expect(page.locator('[data-card="brainEater"]')).toHaveClass(/is-max/);
   await expect(page.locator('[data-buy="brainEater"]')).toHaveCount(0);
 });

@@ -23,6 +23,7 @@ const beat = (n: number, name: string): string => (n === 0 ? '' : ` is-${name}-$
 
 /** What the last tap on a card did, counted, so its hop or shake plays again on every tap. */
 interface Fx { hops: number; denies: number; fresh: number }
+const NO_FX: Fx = Object.freeze({ hops: 0, denies: 0, fresh: 0 });
 
 /**
  * One unit: its portrait (it hops when bought), ten pips (filled up to its level, the newest one
@@ -90,16 +91,18 @@ export function Marketplace({ portraits = {} }: { portraits?: Record<string, str
   }, [loggedOut]);
   if (me === null) return null;
 
-  const fxOf = (unit: CardKey): Fx => fx[unit] ?? { hops: 0, denies: 0, fresh: 0 };
+  const fxOf = (unit: CardKey): Fx => fx[unit] ?? NO_FX;
   const buy = (unit: CardKey): void => {
     const r = session.buy(unit);
-    const was = fxOf(unit);
+    // The function form: two fast taps (on one card or two) each build on the latest effects.
+    const bump = (change: (was: Fx) => Fx): void => setFx((all) => ({ ...all, [unit]: change(all[unit] ?? NO_FX) }));
     if (r === 'ok') {
       uiSound('merge');
-      setFx({ ...fx, [unit]: { ...was, hops: was.hops + 1, fresh: (me.upgrades[unit] ?? 0) + 1 } });
+      const level = session.player.peek()?.upgrades[unit] ?? 0; // after the buy
+      bump((was) => ({ ...was, hops: was.hops + 1, fresh: level }));
     } else {
       uiSound('deny');
-      setFx({ ...fx, [unit]: { ...was, denies: was.denies + 1 } });
+      bump((was) => ({ ...was, denies: was.denies + 1 }));
     }
   };
   const pick = (s: Faction): void => {

@@ -96,11 +96,38 @@ describe('Marketplace', () => {
     expect(need('[data-card="peashooter"] [data-pip="2"]').className).toContain('is-new');
     expect(session.player.value?.upgrades.peashooter).toBe(2);
     expect(loadLocal('p03', storage)).toMatchObject({ coins: 250, upgrades: { peashooter: 2 } });
-    // A second buy restarts the hop (the other of the two animation classes).
+    // A refused buy (300 needed, 250 left) leaves the hop alone and shakes instead.
     const first = need('[data-card="peashooter"] .market__pic').className;
     tap('[data-buy="peashooter"]');
-    expect(filled('peashooter')).toBe(2); // 300 needed, 250 left
+    expect(filled('peashooter')).toBe(2);
     expect(need('[data-card="peashooter"] .market__pic').className).toBe(first);
+    expect(need('[data-card="peashooter"]').className).toMatch(/is-deny-/);
+  });
+
+  it('two buys in a row restart the hop (the other of the two animation classes), the newest pip pops', async () => {
+    await player('sunflower', 1000);
+    mount();
+    tap('[data-buy="sunflower"]');
+    const hop1 = need('[data-card="sunflower"] .market__pic').className.match(/is-hop-[ab]/)?.[0];
+    tap('[data-buy="sunflower"]');
+    const hop2 = need('[data-card="sunflower"] .market__pic').className.match(/is-hop-[ab]/)?.[0];
+    expect(hop1).toBeDefined();
+    expect(hop2).toBeDefined();
+    expect(hop2).not.toBe(hop1);
+    expect(need('[data-card="sunflower"] [data-pip="2"]').className).toContain('is-new');
+    expect(need('[data-card="sunflower"] [data-pip="1"]').className).not.toContain('is-new');
+  });
+
+  it('two fast taps on different cards (one render) both animate', async () => {
+    await player('sunflower', 1000);
+    mount();
+    act(() => {
+      need('[data-buy="sunflower"]').click();
+      need('[data-buy="walnutBomb"]').click();
+    });
+    expect(need('[data-card="sunflower"] .market__pic').className).toMatch(/is-hop-/);
+    expect(need('[data-card="walnutBomb"] .market__pic').className).toMatch(/is-hop-/);
+    expect(session.player.value?.upgrades).toEqual({ sunflower: 1, walnutBomb: 1 });
   });
 
   it('too few coins: the card shakes and the deny sound plays; nothing changes', async () => {

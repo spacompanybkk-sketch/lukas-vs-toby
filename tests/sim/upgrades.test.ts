@@ -20,6 +20,8 @@ const RULES_STEP = (): Balance['upgradeStep'] => ({ plants: { ...RULES_SIDE }, z
 /** The rules numbers (see `classicBalance`): linear level curves, Peashooter 300 hp / 20 a pea. */
 const B = classicBalance();
 B.upgradeStep = RULES_STEP();
+/** The shipped unit table (for units the classic one lacks) with the rules step. */
+const FULL = Object.assign(cloneBalance(BALANCE), { upgradeStep: RULES_STEP() });
 /** The shipped step, chosen by measurement (Task 5 follow-up, see the report). */
 const SHIPPED = BALANCE.upgradeStep;
 /** The rules multiplier at Marketplace `level`, written out from the rules step. */
@@ -224,6 +226,56 @@ describe('a unit with upgrades', () => {
     z.hp = 5000;
     z.maxHp = 5000;
     expect(firstHit(m, z.id)).toBe(350);
+  });
+
+  it('a Cherry Bomber blast is not unit damage: the same blast at upgrade 10', () => {
+    const m = fresh({ plants: { cherryBomber: 10 }, zombies: {} }, FULL);
+    spawnUnit(m.state, FULL, 'cherryBomber', 2, 3.5);
+    const z = spawnUnit(m.state, FULL, 'skeletonWarrior', 2, 4.2);
+    z.hp = 99_999;
+    z.maxHp = 99_999;
+    expect(firstHit(m, z.id)).toBe(FULL.units.cherryBomber!.fuse!.damage);
+  });
+
+  it('a Walnut Bomb death blast is not upgraded either', () => {
+    const m = fresh({ plants: { walnutBomb: 10 }, zombies: {} }, FULL);
+    const nut = spawnUnit(m.state, FULL, 'walnutBomb', 2, 3.5);
+    nut.hp = 1;
+    const z = spawnUnit(m.state, FULL, 'skeletonWarrior', 2, 4.0);
+    z.hp = 99_999;
+    z.maxHp = 99_999;
+    let blast: number | undefined;
+    for (let i = 0; i < 300 && blast === undefined; i++) {
+      const events = m.step();
+      if (eventsOf(events, 'explosion').length > 0) blast = eventsOf(events, 'unitDamaged').find((e) => e.unitId === z.id)?.amount;
+    }
+    expect(blast).toBe(FULL.units.walnutBomb!.deathBlast!.damage);
+  });
+
+  it('a Torchwood\'s burn is not upgraded: the burn a Torchwood at upgrade 10 sets is its plain burn', () => {
+    const m = fresh({ plants: { torchwood: 10 }, zombies: {} }, FULL);
+    spawnUnit(m.state, FULL, 'peashooter', 2, 1.5);
+    spawnUnit(m.state, FULL, 'torchwood', 2, 2.5);
+    const z = spawnUnit(m.state, FULL, 'skeletonWarrior', 2, 6);
+    z.hp = 99_999;
+    z.maxHp = 99_999;
+    for (let i = 0; i < 600 && z.burn === 0; i++) m.step();
+    expect(z.burn).toBeGreaterThan(0);
+    expect(z.burnDps).toBe(FULL.units.torchwood!.ignite!.burnDps);
+  });
+
+  it('a Brain Rot\'s poison puddle is not upgraded (its shot is)', () => {
+    const m = fresh({ plants: {}, zombies: { brainRot: 10 } }, FULL);
+    const plant = spawnUnit(m.state, FULL, 'avocadoBunker', 2, 2.5);
+    plant.hp = 99_999;
+    plant.maxHp = 99_999;
+    spawnUnit(m.state, FULL, 'brainRot', 2, 7.5);
+    for (let i = 0; i < 900 && m.state.hazards.length === 0; i++) m.step();
+    const puddle = FULL.units.brainRot!.shot!.puddle!;
+    expect(m.state.hazards[0]?.dps).toBe(puddle.dps);
+    for (let i = 0; i < 120 && plant.poison === 0; i++) m.step();
+    expect(plant.poison).toBeGreaterThan(0);
+    expect(plant.poisonDps).toBe(puddle.dps);
   });
 
   it('a Necromancer at upgrade 10 raises plain Bone Minions (they take no upgrade)', () => {
