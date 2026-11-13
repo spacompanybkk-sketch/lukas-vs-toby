@@ -8,7 +8,7 @@ import { BALANCE } from '../../src/data/balance';
 import { Match } from '../../src/sim/match';
 import { checkLevel } from '../../src/sim/script';
 
-/** The plan's Task 8 table, in kind, cards, unlocks and spells (the numbers are placeholders). */
+/** The plan's Task 8 table, in kind, cards, unlocks and spells. */
 const TABLE = {
   plants: [
     ['battle', 1, null, false], ['battle', 2, null, false], ['survive', 3, 'potatoMine', false],
@@ -22,7 +22,7 @@ const TABLE = {
   ],
 } as const;
 
-describe('the Backyard (placeholder data)', () => {
+describe('the Backyard', () => {
   it('has eight levels a side, ids p1-1 … p1-8 and z1-1 … z1-8', () => {
     expect(BACKYARD).toHaveLength(16);
     expect(levelsFor('plants', 1).map((l) => l.id)).toEqual(['p1-1', 'p1-2', 'p1-3', 'p1-4', 'p1-5', 'p1-6', 'p1-7', 'p1-8']);

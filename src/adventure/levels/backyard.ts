@@ -114,8 +114,8 @@ const ZOMBIES: LevelDef[] = [
     // Peashooters guard lanes 1 and 3 and more grow there now and then; the other lanes are open.
     ...base('z1-2', 2), side: 'zombies', kind: 'battle', cards: ['brainEater', 'veryFastWalker'],
     baseHp: { plants: 3500 },
-    prepared: garden('peashooter', [[1, 3], [3, 3], [2, 1]]),
-    waves: regrow('peashooter', [[30, 1, 2], [30, 3, 2], [60, 0, 2], [60, 4, 2], [90, 2, 3], [120, 1, 1], [120, 3, 1]]),
+    prepared: garden('peashooter', [[1, 3], [3, 3]]),
+    waves: regrow('peashooter', [[30, 1, 2], [30, 3, 2], [60, 1, 1], [60, 3, 1], [90, 1, 4], [90, 3, 4], [120, 1, 0], [120, 3, 0]]),
   },
   {
     // Teaches: a Skeleton Warrior walks in front and takes the peas. Crack a small garden (lanes
