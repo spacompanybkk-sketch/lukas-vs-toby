@@ -93,11 +93,11 @@ const PLANTS: LevelDef[] = [
   },
   {
     // Boss: the Brain Titan walks the middle lane - its shield bounces peas, pults still hurt it.
-    // A few Brain Eaters keep the other lanes busy. A 4700 base: left alone, the base's own strikes
+    // A few Brain Eaters keep the other lanes busy. A 4850 base: left alone, the base's own strikes
     // must not fell the Titan before it falls (an idle player loses).
     ...base('p1-8', 8), side: 'plants', kind: 'boss',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
-    boss: { key: 'brainTitan', lane: 2 }, baseHp: { plants: 4700 },
+    boss: { key: 'brainTitan', lane: 2 }, baseHp: { plants: 4850 },
     waves: trickle('brainEater', 30, 20, 6, [0, 4, 1, 3]),
     spells: true,
   },

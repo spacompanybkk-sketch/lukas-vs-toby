@@ -25,7 +25,7 @@ const LONG_MS = 3_600_000;
 
 const SHORT_BREAKTHROUGH = 'three stars need the garden broken within the first half of the clock (60 / 75 s), which the 3-star bands ask of most seeds: under 1.5 min by construction';
 const SHORT_CONVEYOR = 'the sensible players break the regrowing garden in about 1.25 min; a bigger plant base drops the beginner below the smooth curve (5500: 75%, 7000: 38%)';
-const FLAT_GARDENS = 'every stand-in breaks about 3 gardens: the sensible zombie players crack a garden no faster than the beginner with +25% income (four rule tries in the report: a bigger clock bonus, steeper gardens, a longer clock - all flat)';
+const NOT_RANKED = 'the stand-ins are not ranked by skill in this mode (coordinator, final round: do not tune further): the sensible zombie players crack a garden no faster than the beginner with +25% income';
 
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-3 median length, beginner': `about 1.05 min: ${SHORT_BREAKTHROUGH}`,
@@ -36,8 +36,8 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-6 median length, expert': `about 1.21 min: ${SHORT_BREAKTHROUGH}`,
   'z1-5 median length, average': `about 1.25 min: ${SHORT_CONVEYOR}`,
   'z1-5 median length, expert': `about 1.12 min: ${SHORT_CONVEYOR}`,
-  'free play breakthrough average': `median 2 gardens (4-8): ${FLAT_GARDENS}`,
-  'free play breakthrough expert': `median 3 gardens (6-12): ${FLAT_GARDENS}`,
+  'free play breakthrough: the average player breaks more gardens than the beginner': `median 4 against the beginner's 6 on every block: ${NOT_RANKED}`,
+  'free play breakthrough: the expert breaks more gardens than the average player and the beginner': `median 6, the beginner's 6 and the average's 4: ${NOT_RANKED}`,
 };
 
 /** One test, or `it.fails` when the band is a known miss. */
@@ -125,12 +125,20 @@ export function levelBandTests(first: number): void {
     band('free play survive: the average player rarely plays over 20 minutes', async () => {
       within((await freeStats('plants', 'average')).over20, 0, 5, 'share over 20 min');
     });
+    // The coordinator's fair reading after the clock bonus went to 45 s: the beginner breaks 3-6
+    // gardens (at least one on 70% of seeds); a ranking by skill is recorded, not tuned for.
     band('free play breakthrough beginner', async () => {
       const s = await freeStats('zombies', 'beginner');
       within(s.atLeastOne, 70, 100, 'share with a garden');
-      within(s.medianScore, 2, 4, 'gardens', 0);
+      within(s.medianScore, 3, 6, 'gardens', 0);
     });
-    band('free play breakthrough average', async () => within((await freeStats('zombies', 'average')).medianScore, 4, 8, 'gardens', 0));
-    band('free play breakthrough expert', async () => within((await freeStats('zombies', 'expert')).medianScore, 6, 12, 'gardens', 0));
+    band('free play breakthrough: the average player breaks more gardens than the beginner', async () => {
+      expect((await freeStats('zombies', 'average')).medianScore).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);
+    });
+    band('free play breakthrough: the expert breaks more gardens than the average player and the beginner', async () => {
+      const e = (await freeStats('zombies', 'expert')).medianScore;
+      expect(e).toBeGreaterThan((await freeStats('zombies', 'average')).medianScore);
+      expect(e).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);
+    });
   });
 }
