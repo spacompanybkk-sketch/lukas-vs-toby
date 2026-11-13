@@ -126,6 +126,11 @@ export class PlayerSession {
     return this.d.now();
   }
 
+  /** This device's storage as this cloud mode sees it (its `lvt2_…` keys under the mode's prefix). */
+  deviceStorage(): Storage | undefined {
+    return this.d.storage;
+  }
+
   /** The player last logged in on this device. */
   lastUsed(): Slot | null {
     return lastSlot(this.d.storage);

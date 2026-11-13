@@ -1,11 +1,14 @@
 import { signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
-import { isOpen, unlockedCards } from '../adventure/campaign';
+import { isOpen } from '../adventure/campaign';
 import { LEVELS } from '../adventure/levels';
 import type { LevelDef } from '../adventure/types';
 import type { Save, Slot } from '../progress/save';
 import type { Faction } from '../sim/types';
 import type { BattleOptions } from './BattleController';
+import { applyPending, levelOptions, levelProblem, prepareLevel } from './levelSession';
+import type { LevelHost } from './levelSession';
+import { session } from './session';
 
 export type Screen =
   | { name: 'title' }
@@ -39,24 +42,25 @@ export function go(s: Screen): void {
 }
 
 /**
- * Starts Adventure level `def` for the owner of `save`: the battle on the level's side with the
- * level's cards the player holds and their Marketplace upgrades. The map is where its result
- * returns to. A level that is not open for `save` (or not a known level) is refused: nothing
- * happens and the answer is false.
+ * Starts Adventure level `def` for the owner of `save`: the level's own match (`levelConfig`:
+ * scripted waves, the clock, the belt, its computer or none, the save's difficulty and unlocks)
+ * with a fresh battle id. A result still waiting on the device is applied first. A level that is
+ * not open for `save` (or not a known level) is refused: nothing happens and the answer is false.
+ * A level that cannot be played (`levelProblem`: a computer with no energy) throws in development
+ * and is refused, with a console error, in a build.
  */
-export function startLevel(def: LevelDef, save: Save, seed: number = Date.now(), levels: readonly LevelDef[] = LEVELS): boolean {
+export function startLevel(
+  def: LevelDef, save: Save, seed: number = Date.now(), levels: readonly LevelDef[] = LEVELS, host: LevelHost = session,
+): boolean {
   if (!isOpen(save, def, levels)) return false;
-  // TODO(Task 5): level modes. This is an ordinary battle against the level's computer (or an Easy
-  // one for a scripted level); Task 5 builds the match from `levelConfig(def, save, seed)` instead
-  // (scripted waves, the clock, the belt, the boss) and applies the result with `applyLevelResult`.
-  const options: BattleOptions = {
-    playerFaction: def.side,
-    skill: def.opponent?.skill ?? 'easy',
-    seed: seed >>> 0,
-    upgrades: { ...save.upgrades },
-    cards: def.cards.filter((k) => unlockedCards(save, def.side).includes(k)),
-    level: def.id,
-  };
-  go({ name: 'battle', options });
+  const problem = levelProblem(def);
+  if (problem !== null) {
+    if (import.meta.env.DEV) throw new Error(problem);
+    console.error(problem);
+    return false;
+  }
+  // The save as it is once any pending result is in (it may unlock a card this level deals).
+  const me = host.player.peek()?.slot === save.slot ? (applyPending(host, levels), host.player.peek() ?? save) : save;
+  go({ name: 'battle', options: levelOptions(prepareLevel(def, me, seed, me.slot)) });
   return true;
 }

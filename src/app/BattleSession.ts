@@ -162,6 +162,9 @@ export class BattleSession implements Director, InputTarget {
     this.detached = true;
     this.input.dispose();
     this.view.dispose();
+    // The next director (a turntable after a level's result, the map) starts in normal time.
+    this.stage.paused = false;
+    this.stage.timeScale = 1;
   }
 
   /**

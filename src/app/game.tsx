@@ -17,6 +17,7 @@ import type { Settings } from './settings';
 import { board } from './board';
 import { announceCloudMode } from './cloudMode';
 import { session } from './session';
+import { watchPending } from './levelSession';
 import { Stage } from './Stage';
 import { defaultCloud, pageCloudMode } from '../cloud/restClient';
 import { modeStorage } from '../cloud/modeStorage';
@@ -79,6 +80,9 @@ export function mountGame(
   lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };
   lvt.players = session;
+  // A level result still on the device (the page went away before it reached the save) goes in
+  // first, at start and at every log-in.
+  const stopPending = watchPending(session);
   lvt.go = go;
   let stage: Stage | null = null;
   try {
@@ -194,7 +198,7 @@ export function mountGame(
   const onGesture = (): boolean | Promise<boolean> =>
     audio.needsGesture ? audio.unlock().then(() => !audio.needsGesture) : true;
 
-  const playUi = (name: Parameters<AudioEngine['play']>[0]): void => audio.play(name);
+  const playUi = (name: Parameters<AudioEngine['play']>[0], opts?: { pitch?: number }): void => audio.play(name, opts);
 
   const renderer = stage?.renderer;
   renderer?.countDrawCalls(fps);
@@ -211,6 +215,7 @@ export function mountGame(
 
   return () => {
     stopScreens();
+    stopPending();
     render(null, ui);
     session.dispose();
     current?.dispose();

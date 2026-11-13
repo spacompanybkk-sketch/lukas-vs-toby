@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { batch, signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { createBasicBot } from '../ai/basicBot';
 import type { Bot, Skill } from '../ai/bot';
@@ -13,6 +13,8 @@ import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
 import type { CardKey, Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
+import { bigWaves, levelRecord } from './levelSession';
+import type { LevelPlay, LevelRecord } from './levelSession';
 
 /**
  * `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). `upgrades`: the
@@ -28,6 +30,12 @@ export interface BattleOptions {
   cards?: CardKey[];
   /** The Adventure level this battle plays (its id), or none for a Quick Battle. */
   level?: string;
+  /**
+   * The prepared Adventure level (`prepareLevel`): the match is its config (scripted waves, the
+   * clock, the belt), the computer is the level's opponent or none. `skill`, `cards` and
+   * `upgrades` are then not used: the config already holds them.
+   */
+  play?: LevelPlay;
 }
 
 /** The player's upgrades for their own side: the cards of `side` in `upgrades`, none in Versus. */
@@ -60,6 +68,37 @@ export interface HudSignals {
   heroSelected: Signal<boolean>; // the hero power is picked and waits for a lane
   spells: Signal<SpellVM[]>; // the player's dealt spells, in deal order
   spellSelected: Signal<SpellKey | null>; // the aimed spell picked and waiting for a tile
+}
+
+/** A level's own HUD signals (all quiet in a Quick Battle). */
+export interface LevelSignals {
+  /** The player's conveyor belt (oldest first); empty when the level has none for the player. */
+  belt: Signal<BeltCardVM[]>;
+  /** The belt card picked (its slot), waiting for a tile; null when none. */
+  beltSlot: Signal<number | null>;
+  /** The last unit of a big wave to come on, numbered so each one cues: where it enters. */
+  incoming: Signal<IncomingVM | null>;
+}
+
+/** A card waiting on the belt; `id` stays with the card while it moves along (a new card, a new id). */
+export interface BeltCardVM { card: CardKey; id: number }
+
+/** A unit of a big wave entering `lane` from `side`'s end; `n` counts them. */
+export interface IncomingVM { lane: number; side: Faction; n: number }
+
+/** What a level's HUD shows beside the usual: fixed for the whole battle. */
+export interface LevelHudInfo {
+  mode: LevelPlay['config']['mode'];
+  /** The clock, in seconds (survive, breakthrough, conveyor), or null. */
+  goalSeconds: number | null;
+  /** Breakthrough: the stars are counted on the clock left, at these shares of it. */
+  clockStars: boolean;
+  /** The scripted waves: when the last unit comes (seconds; 0 when none) and the big waves' flags (seconds). */
+  lastWave: number; flags: number[];
+  /** Whose units the script brings. */
+  enemy: Faction;
+  /** The belt is the player's: it replaces the card tray. */
+  belt: boolean;
 }
 
 /** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
@@ -112,7 +151,18 @@ export class BattleController {
   readonly match: Match;
   readonly hud: HudSignals;
   readonly playerFaction: Faction;
+  /** The Adventure level being played, or null (Quick Battle). */
+  readonly play: LevelPlay | null;
+  /** A level's extra HUD (clock, waves, belt), or null. */
+  readonly level: LevelHudInfo | null;
+  readonly levelHud: LevelSignals;
   private readonly bot: Bot;
+  /** The ids of the cards on the belt, in belt order (see `BeltCardVM`). */
+  private readonly beltIds: number[] = [];
+  private nextBeltId = 1;
+  /** Script ticks that start a big wave, and the units of a big wave cued so far. */
+  private readonly flagTicks: number[] = [];
+  private incomingN = 0;
   private readonly opponent: Faction;
   /** The one player command accepted for the coming tick, if any. */
   private queued: Command | null = null;
@@ -130,16 +180,39 @@ export class BattleController {
     // checks measure for this side and difficulty.
     // Both sides are dealt all ten of their cards (ruling R52). The computer's strategy may know
     // only some of them; its random moves (`randomLegal`) play any card in its hand.
-    const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
-    config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
-    if (opts.cards !== undefined) config.cards[opts.playerFaction] = [...opts.cards];
-    config.upgrades = { plants: {}, zombies: {}, [opts.playerFaction]: sideUpgrades(opts) };
-    this.match = new Match(config, balance);
-    const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
-    this.bot = createBasicBot(
-      this.opponent, computerSkill, (Math.imul(opts.seed, 2654435761) + 1) >>> 0,
-      computerTable(opts.playerFaction, opts.skill),
-    );
+    this.play = opts.play ?? null;
+    const botSeed = (Math.imul(opts.seed, 2654435761) + 1) >>> 0;
+    if (this.play !== null) {
+      // An Adventure level: its own match, and its own computer (none for a scripted level).
+      const { def, config } = this.play;
+      if (def.side !== opts.playerFaction) throw new Error(`level ${def.id} is played on the ${def.side} side`);
+      this.match = new Match(config, balance);
+      if (def.opponent !== null && config.noEnergy) throw new Error(`level ${def.id}: an opponent in a level without energy`);
+      this.bot = def.opponent === null
+        ? { faction: this.opponent, think: () => [] }
+        : createBasicBot(this.opponent, def.opponent.skill, botSeed);
+      const flags = bigWaves(config.script);
+      this.flagTicks.push(...flags);
+      const last = config.script[config.script.length - 1];
+      this.level = {
+        mode: config.mode,
+        goalSeconds: config.goalTicks === null ? null : config.goalTicks / TICKS_PER_SECOND,
+        clockStars: config.mode === 'breakthrough',
+        lastWave: last === undefined ? 0 : last.tick / TICKS_PER_SECOND,
+        flags: flags.map((t) => t / TICKS_PER_SECOND),
+        enemy: this.opponent,
+        belt: config.belt !== null && config.belt.side === this.playerFaction,
+      };
+    } else {
+      const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
+      config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
+      if (opts.cards !== undefined) config.cards[opts.playerFaction] = [...opts.cards];
+      config.upgrades = { plants: {}, zombies: {}, [opts.playerFaction]: sideUpgrades(opts) };
+      this.match = new Match(config, balance);
+      const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
+      this.bot = createBasicBot(this.opponent, computerSkill, botSeed, computerTable(opts.playerFaction, opts.skill));
+      this.level = null;
+    }
     this.hud = {
       energy: signal(0), cards: signal<CardVM[]>([]),
       base: signal({ plants: { hp: 0, max: 0 }, zombies: { hp: 0, max: 0 } }),
@@ -149,6 +222,10 @@ export class BattleController {
       hero: signal<HeroVM>({ ready: false, fraction: 0 }),
       heroSelected: signal(false),
       spells: signal<SpellVM[]>([]), spellSelected: signal<SpellKey | null>(null),
+    };
+    this.levelHud = {
+      belt: signal<BeltCardVM[]>([]), beltSlot: signal<number | null>(null),
+      incoming: signal<IncomingVM | null>(null),
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
@@ -171,6 +248,9 @@ export class BattleController {
         this.heroPeriod = seconds(this.match.balance.hero[this.playerFaction].chargeSeconds);
       }
       if (e.type === 'spellCast' && e.faction === this.playerFaction) this.castOnce.add(e.spell);
+      if (e.type === 'beltCard') this.beltIds.push(this.nextBeltId++);
+      if (e.type === 'beltUsed') this.beltLeft(e.slot);
+      if (e.type === 'waveSpawned') this.cueWave(e.index, e.lane);
     }
     this.refresh();
     const winner = this.match.state.winner;
@@ -180,9 +260,15 @@ export class BattleController {
     return events;
   }
 
+  /** A decided level's record (`levelRecord`); null while it runs, and in a Quick Battle. */
+  levelResult(): LevelRecord | null {
+    return levelRecord(this);
+  }
+
   select(unit: UnitKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
+    this.levelHud.beltSlot.value = null;
     this.hud.selected.value = unit;
     if (unit !== null) {
       this.hud.shovel.value = false;
@@ -191,12 +277,36 @@ export class BattleController {
     }
   }
 
+  /**
+   * A tap on a belt card (its slot): it is picked and waits for a tile, like a card from the tray
+   * (and puts down the shovel and any power). Null, or a slot with no card, puts it down.
+   */
+  selectBelt(slot: number | null): void {
+    if (this.hud.paused.peek() || this.over() || this.level?.belt !== true) return;
+    const card = slot === null ? undefined : this.match.state.belt[slot];
+    if (slot === null || card === undefined) {
+      if (this.levelHud.beltSlot.peek() !== null) {
+        this.levelHud.beltSlot.value = null;
+        this.hud.selected.value = null;
+      }
+      return;
+    }
+    batch(() => {
+      this.hud.shovel.value = false;
+      this.clearPowers();
+      this.cardBeforePower = null;
+      this.levelHud.beltSlot.value = slot;
+      this.hud.selected.value = card;
+    });
+  }
+
   toggleShovel(): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (this.playerFaction !== 'plants') return;
     const on = !this.hud.shovel.peek();
     this.hud.shovel.value = on;
     if (on) {
+      this.levelHud.beltSlot.value = null;
       this.hud.selected.value = null;
       this.clearPowers();
       this.cardBeforePower = null;
@@ -291,6 +401,14 @@ export class BattleController {
     const target = this.resolveTile(tile, unitId, unit);
     if (target === null) return null;
     const cmd = this.commandFor(unit, target.tile, target.unit);
+    const slot = this.levelHud.beltSlot.peek();
+    if (slot !== null) {
+      return {
+        unit, lane: target.tile.lane, col: target.tile.col,
+        ok: this.match.check(this.beltCommand(slot, target.tile)) === null,
+        mergeTargetId: cmd.type === 'merge' ? cmd.targetId : null,
+      };
+    }
     return {
       unit, lane: target.tile.lane, col: target.tile.col,
       ok: this.match.check(cmd) === null,
@@ -310,6 +428,15 @@ export class BattleController {
     const spell = this.hud.spellSelected.peek();
     if (spell !== null) return this.castAt(spell, tile);
     const target = this.resolveTile(tile, unitId, this.hud.shovel.peek() ? null : this.hud.selected.peek());
+    const slot = this.levelHud.beltSlot.peek();
+    if (slot !== null && !this.hud.shovel.peek()) {
+      if (target === null) return this.deny('bad-lane');
+      const play = this.beltCommand(slot, target.tile);
+      const refused = this.match.check(play);
+      if (refused !== null) return this.deny(refused);
+      this.queued = play;
+      return null;
+    }
     const cmd = this.buildClickCommand(target);
     if (cmd === 'no-selection') return this.deny('not-in-hand');
     if (cmd === 'no-tile') return this.deny('bad-lane');
@@ -330,7 +457,8 @@ export class BattleController {
     const unit = this.hud.selected.peek();
     if (unit === null || !isCard(unit) || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
     const me = this.match.state.players[this.playerFaction];
-    if ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit)) return null;
+    // A belt card is free and never recharges.
+    if (this.levelHud.beltSlot.peek() === null && ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit))) return null;
     const units = this.match.state.units;
     for (let i = 0; i < units.length; i++) {
       const u = units[i] as Unit;
@@ -377,6 +505,7 @@ export class BattleController {
     }
     if (this.hud.paused.peek() || this.over()) return;
     if (key === 'Escape') {
+      this.levelHud.beltSlot.value = null;
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
       this.clearPowers();
@@ -394,6 +523,10 @@ export class BattleController {
       return;
     }
     const index = HOTKEYS.indexOf(key);
+    if (this.level?.belt === true) {
+      if (index >= 0) this.selectBelt(index);
+      return;
+    }
     const card = index < 0 ? undefined : this.match.state.config.cards[this.playerFaction][index];
     if (card !== undefined) this.select(card);
   }
@@ -418,7 +551,11 @@ export class BattleController {
    * aside, to come back when the power is cast or put down; the card and the shovel go down.
    */
   private pickPower(): void {
-    if (!this.hud.heroSelected.peek() && this.hud.spellSelected.peek() === null) this.cardBeforePower = this.hud.selected.peek();
+    if (!this.hud.heroSelected.peek() && this.hud.spellSelected.peek() === null) {
+      // A belt card is not put aside: the belt moves on while the power is aimed.
+      this.cardBeforePower = this.levelHud.beltSlot.peek() === null ? this.hud.selected.peek() : null;
+    }
+    this.levelHud.beltSlot.value = null;
     this.hud.selected.value = null;
     this.hud.shovel.value = false;
   }
@@ -434,6 +571,35 @@ export class BattleController {
   private clearPowers(): void {
     this.hud.heroSelected.value = false;
     this.hud.spellSelected.value = null;
+  }
+
+  /** The belt command for the card in `slot` on `tile`. */
+  private beltCommand(slot: number, tile: Tile): Command {
+    return { type: 'belt', faction: this.playerFaction, slot, lane: tile.lane, col: tile.col };
+  }
+
+  /** A belt card left `slot` (played): the later ones move down; a picked card follows its slot. */
+  private beltLeft(slot: number): void {
+    this.beltIds.splice(slot, 1);
+    const picked = this.levelHud.beltSlot.peek();
+    if (picked === null) return;
+    if (picked === slot) {
+      this.levelHud.beltSlot.value = null;
+      this.hud.selected.value = null;
+    } else if (picked > slot) {
+      this.levelHud.beltSlot.value = picked - 1;
+    }
+  }
+
+  /** A scripted unit came on: one of a big wave (its first 3 s from a flag tick) is cued at its lane. */
+  private cueWave(index: number, lane: number): void {
+    const play = this.play;
+    const entry = play?.config.script[index];
+    if (entry === undefined) return;
+    const window = seconds(3);
+    if (!this.flagTicks.some((t) => entry.tick >= t && entry.tick < t + window)) return;
+    this.incomingN += 1;
+    this.levelHud.incoming.value = { lane, side: entry.faction, n: this.incomingN };
   }
 
   private over(): boolean {
@@ -560,5 +726,12 @@ export class BattleController {
       return n !== undefined && o.key === n.key && o.ready === n.ready && o.fraction === n.fraction;
     });
     if (!same) this.hud.spells.value = spells;
+
+    if (this.level?.belt === true) {
+      const old = this.levelHud.belt.peek();
+      const now = s.belt;
+      const sameBelt = old.length === now.length && old.every((c, i) => c.card === now[i] && c.id === this.beltIds[i]);
+      if (!sameBelt) this.levelHud.belt.value = now.map((card, i) => ({ card, id: this.beltIds[i] ?? 0 }));
+    }
   }
 }

@@ -57,7 +57,7 @@ const PLANTS: LevelDef[] = [
     // Survive 150 s with a flag wave of Skeleton Warriors. Unlocks the Kernel-pult.
     ...base('p1-6', 6), side: 'plants', kind: 'survive', cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine'],
     seconds: 150, // placeholder: tuned in Task 8
-    waves: [...trickle('brainEater', 8, 6, 14, [0, 1, 2, 3, 4]), ...trickle('skeletonWarrior', 110, 1.5, 6, [0, 1, 2, 3, 4])], // placeholder
+    waves: [...trickle('brainEater', 8, 6, 14, [0, 1, 2, 3, 4]), ...trickle('skeletonWarrior', 110, 0.5, 6, [0, 1, 2, 3, 4])], // placeholder
     spells: true, unlocks: 'kernelPult',
   },
   {
