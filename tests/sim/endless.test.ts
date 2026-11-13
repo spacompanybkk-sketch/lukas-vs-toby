@@ -292,7 +292,7 @@ describe('Free Play as the plants (endless survive)', () => {
       }
       expect([starts, m.state.winner]).toEqual([50, null]);
     }
-  });
+  }, 120_000); // about 12 s alone; the whole suite on a loaded 8-core machine can take several times that
 });
 
 /** The player's plants: now and then a Peashooter or Walnut on a random tile (drawn from seed and tick, never the match's rng). */
