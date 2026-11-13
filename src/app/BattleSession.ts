@@ -10,6 +10,7 @@ import type { CommandRejection, Faction, SimEvent } from '../sim/types';
 import { BattleController } from './BattleController';
 import type { BattleOptions } from './BattleController';
 import { BattleInput } from './input';
+import { modelsFor } from './prewarm';
 import type { InputTarget, Picked, Tile } from './input';
 import { FeelClock } from './Stage';
 import type { Director, StageLike } from './Stage';
@@ -87,11 +88,10 @@ export class BattleSession implements Director, InputTarget {
     this.onToken = options.onToken;
     this.resultReady = this.ready;
     this.controller = new BattleController(opts);
-    const cards = this.controller.match.state.config.cards;
     stage.show(this);
-    // The Bone Minion is no card, but a Necromancer raises them: built ahead like the rest.
+    // The Bone Minion is no card, but a Necromancer or Grave Rise brings them: built ahead like the rest.
     this.view = new BattleView(stage.scene, stage.camera, stage.lawn, stage.fx, opts.playerFaction, {
-      units: [...cards.plants, ...cards.zombies, ...(cards.zombies.includes('necromancer') ? ['boneMinion'] : [])],
+      units: modelsFor(this.controller.match.state),
     });
     this.view.onFeel = (f) => this.clock.feel(f, stage.rig);
     this.view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);

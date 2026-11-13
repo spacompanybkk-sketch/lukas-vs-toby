@@ -1,4 +1,4 @@
-import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial, Object3D, Vector3, type BufferGeometry, type Material } from 'three';
+import { Box3, BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, Object3D, Vector3, type BufferGeometry, type Material } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { StatusMarks } from '../../src/render/battle/StatusMarks';
 import { allocationsIn } from './allocations';
@@ -17,8 +17,17 @@ function unit(x = 3, z = 2.5, height = 1): Object3D {
   return root;
 }
 
+/** The marks showing (each a group named `status-<kind>`; the group also holds the batches that draw them). */
 function visibleMarks(marks: StatusMarks): Object3D[] {
-  return marks.group.children.filter((o) => o.visible);
+  return marks.group.children.filter((o) => o.visible && o.name.startsWith('status-'));
+}
+
+function batches(marks: StatusMarks): InstancedMesh[] {
+  const out: InstancedMesh[] = [];
+  marks.group.traverse((o) => {
+    if (o instanceof InstancedMesh) out.push(o);
+  });
+  return out;
 }
 
 function maxGlow(root: Object3D): number {
@@ -164,6 +173,47 @@ describe('StatusMarks', () => {
     expect(allocationsIn(() => {
       for (let i = 0; i < 120; i++) marks.update(1 / 60);
     })).toEqual({});
+  });
+
+  it('draws every mark of every unit in one call per piece shape, at most ten, and casts no shadow', () => {
+    const marks = new StatusMarks();
+    for (let id = 0; id < 40; id++) marks.set(id, unit(id % 10, (id % 5) + 0.5), ALL[id % ALL.length] as StatusKind, true);
+    marks.update(1 / 60);
+    expect(marks.drawCalls).toBeLessThanOrEqual(10);
+    const drawn = batches(marks).filter((b) => b.visible);
+    expect(drawn.length).toBe(marks.drawCalls);
+    // Every piece of every live mark is drawn once, and nothing else is.
+    let pieces = 0;
+    for (const mark of visibleMarks(marks)) pieces += mark.children.length;
+    expect(drawn.reduce((n, b) => n + b.count, 0)).toBe(pieces);
+    // No mesh of a mark is drawn on its own, and nothing casts a shadow.
+    marks.group.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      expect(o.castShadow).toBe(false);
+      if (!(o instanceof InstancedMesh)) expect(o.visible).toBe(false);
+    });
+  });
+
+  it('draws each piece exactly where it is posed, and stops drawing a mark once it ends', () => {
+    const marks = new StatusMarks();
+    const a = unit(3);
+    marks.set(1, a, 'stun', true);
+    marks.update(0.3);
+    const mark = visibleMarks(marks)[0]!;
+    const star = mark.children[0]!;
+    const batch = batches(marks).find((b) => b.visible)!;
+    expect(batch.count).toBe(3);
+    const at = new Matrix4();
+    const found = [0, 1, 2].some((i) => {
+      batch.getMatrixAt(i, at);
+      // The instance buffer is 32-bit, the scene graph 64-bit.
+      return at.elements.every((v, k) => Math.abs(v - (star.matrixWorld.elements[k] as number)) < 1e-5);
+    });
+    expect(found).toBe(true);
+    marks.set(1, a, 'stun', false);
+    marks.update(1 / 60);
+    expect(batches(marks).every((b) => b.count === 0 && !b.visible)).toBe(true);
+    expect(marks.drawCalls).toBe(0);
   });
 
   it('frees its shapes and materials and leaves the scene on dispose', () => {

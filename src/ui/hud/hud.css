@@ -353,7 +353,7 @@
   display: block;
   padding: var(--px-bev);
   margin-bottom: var(--px-lip);
-  touch-action: manipulation;
+  touch-action: none; /* a drag that starts on a power, like one from a card, must not scroll or cancel */
   transition: transform 90ms steps(2, end), filter 90ms steps(2, end);
 }
 .power--hero { width: var(--hero-size, 120px); height: var(--hero-size, 120px); }

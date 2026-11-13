@@ -1,4 +1,4 @@
-import { Object3D, PerspectiveCamera, Scene } from 'three';
+import { InstancedMesh, Object3D, PerspectiveCamera, Scene } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { BALANCE } from '../../src/data/balance';
 import { ALL_CARDS } from '../../src/data/units';
@@ -372,10 +372,23 @@ describe('BattleView abilities', () => {
     });
     expect(lo).toBeLessThan(4.2);
     expect(hi).toBeGreaterThan(6.8);
+    // Drawn in one call by the rope batch (and one shadow draw), every shown segment once; no segment drawn or shadowed on its own.
+    expect(ctx.view.ropeDrawCalls).toBe(1);
+    const batch = named(ctx.scene, 'lasso-ropes')[0] as InstancedMesh;
+    let shown = 0;
+    rope.traverse((o) => {
+      if (o === rope) return;
+      expect(o.layers.mask, 'a segment is on no layer').toBe(0);
+      if (o.visible) shown++;
+    });
+    expect(batch.count).toBe(shown);
+    expect(batch.castShadow, 'the rope still throws its shadow line').toBe(true);
     plant.tied = 0;
     ctx.apply({ type: 'statusEnded', unitId: plant.id, status: 'tied' });
     ctx.run(DT);
     expect(ctx.view.ropesShown).toBe(0);
+    expect(ctx.view.ropeDrawCalls).toBe(0);
+    expect(batch.visible).toBe(false);
   });
 
   it('heal shows a ring at the Necromancer; raise bursts a gravestone where the minion claws up in its own model', () => {

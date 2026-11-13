@@ -1,8 +1,14 @@
 // Frame-rate measurement: `node tools/perf.mjs` (or `npm run perf`).
 //
-// Serves the production build (`dist/`, built first if missing) on port 5315 and opens the stress
-// scene (`?scene=stress&units=60` then `units=150`) in a headed Chromium at 1440x900 with the
-// real GPU, at device scale factor 1 and 2, in three modes:
+// Builds the game (skip with --reuse-build), serves the production build (`dist/`) on port 5315
+// (or LVT_PERF_PORT) and opens three stress scenes in a headed Chromium at 1440x900 with the real
+// GPU, at device scale factor 1 and 2:
+//   p1-60, p1-150  the phase-1 crowd (`?scene=stress&units=60`, `150`): the first three cards a side
+//   mix-150        the mixed roster (`?scene=stress&mix&units=150`, see src/scenes/stressMix.ts):
+//                  all 21 unit kinds at mixed levels, 40+ projectiles of all ten kinds (lobbed and
+//                  burning ones among them), 6 puddles, statuses (haste too) on a third, two rocks,
+//                  and a spell show and a hero show firing all through the measurement
+// in up to three modes:
 //   vsync          as a player gets it: the frame interval is pinned to the display's 16.7 ms
 //   novsync        --disable-gpu-vsync --disable-frame-rate-limit: the interval is the real cost of a frame
 //   novsync-cpu4x  the same with the CPU slowed 4x (CDP Emulation.setCPUThrottlingRate), a rough tablet proxy
@@ -10,20 +16,42 @@
 // 95th percentile and worst; the whole frame callback's time on the CPU (simulation + view +
 // render submit, measured by wrapping requestAnimationFrame); the renderer's draw call alone;
 // a draw call bounded by gl.finish() (CPU + GPU for one frame, from 120 extra frames); the final
-// render scale; and the draw calls and triangles per frame. Writes artifacts/perf.json.
+// render scale; and the draw calls and triangles per frame. It also times the card portraits'
+// warm-up (all twenty drawn on the title) at both scale factors. Writes artifacts/perf.json.
+//
+// The budget (unthrottled frame interval, novsync): DPR 1 <= 10 ms, DPR 2 <= 16.6 ms, on the
+// MacBook Air M3. It says nothing about an iPad: that is unmeasured (see the README's `?fps`).
+//
+//   --modes=novsync[,vsync,novsync-cpu4x]   only these modes (default: all three)
+//   --scenes=mix-150[,p1-60,p1-150]         only these scenes (default: all three)
+//   --no-portraits                          skip the portrait warm-up timing
+//   --reuse-build                           serve dist/ as it is (default: build first)
+//   --adaptive                              let the render scale adapt as in the game (default:
+//                                           held at 1, the resolution the budget is set for)
 // It reports; it never fails the build. It warns loudly if the GPU is software or the window is
 // hidden or unfocused, because then the numbers mean nothing.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { availableParallelism, loadavg } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
-const PORT = 5315;
+const PORT = Number(process.env.LVT_PERF_PORT) || 5315;
 const ORIGIN = `http://localhost:${PORT}`;
-const UNIT_COUNTS = [60, 150];
+const SCENES = [
+  { name: 'p1-60', query: 'scene=stress&units=60' },
+  { name: 'p1-150', query: 'scene=stress&units=150' },
+  { name: 'mix-150', query: 'scene=stress&mix&units=150' },
+];
+const BUDGET_MS = { 1: 10, 2: 16.6 };
+const PORTRAIT_RUNS = 2;
+const args = process.argv.slice(2);
+const listArg = (name) => args.find((a) => a.startsWith(`--${name}=`))?.split('=')[1].split(',');
+const IPAD_NOTE = 'iPad speed is UNPROVEN: nothing here ran on an iPad. These numbers are a MacBook Air M3 in Chromium. '
+  + 'Measure on the kids\' iPad in Safari with ?fps (see the README).';
 const SCALE_FACTORS = [1, 2];
 const MODES = [
   { name: 'vsync', args: [], throttle: 1 },
@@ -50,8 +78,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 async function startServer() {
-  if (!existsSync(path.join(ROOT, 'dist', 'index.html'))) {
-    console.log('No build found: running vite build');
+  if (!args.includes('--reuse-build') || !existsSync(path.join(ROOT, 'dist', 'index.html'))) {
+    console.log('Building: vite build');
     const built = spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], { cwd: ROOT, stdio: 'inherit' });
     if (built.status !== 0) throw new Error('build failed');
   }
@@ -92,10 +120,15 @@ const WRAP_RAF = () => {
 };
 
 /** Records frame intervals in the page; resolves with the stats. */
-function measure(page, warmUpMs, intervals, finishFrames) {
-  return page.evaluate(async ([warm, count, finishCount]) => {
+function measure(page, warmUpMs, intervals, finishFrames, pinScale) {
+  return page.evaluate(async ([warm, count, finishCount, pin]) => {
     const lvt = window.__lvt;
     await lvt.ready;
+    if (pin) {
+      // The budget is for full resolution: hold the adaptive render scale at 1 (otherwise a slow
+      // start drops it to 0.6 and the frame looks cheaper than it is at full size).
+      lvt.renderer.pinRenderScale(1);
+    }
     await new Promise((resolve) => setTimeout(resolve, warm));
     const gl = lvt.renderer.webgl;
     const visible = document.visibilityState === 'visible' && document.hasFocus();
@@ -116,11 +149,13 @@ function measure(page, warmUpMs, intervals, finishFrames) {
     window.__frameCpu = [];
     const times = [];
     let last = performance.now();
+    const began = last;
     await new Promise((resolve) => {
       const tick = (now) => {
         times.push(now - last);
         last = now;
-        if (times.length < count) requestAnimationFrame(tick);
+        // At most 10 s, so a slow machine cannot hold the browser lock for long.
+        if (times.length < count && now - began < 10_000) requestAnimationFrame(tick);
         else resolve();
       };
       tick.__perf = true;
@@ -128,6 +163,7 @@ function measure(page, warmUpMs, intervals, finishFrames) {
     });
     const frameCpu = window.__frameCpu;
     window.__frameCpu = null;
+    const contents = lvt.stress.contents ? lvt.stress.contents() : null;
     const info = gl.info.render;
     const calls = Math.round(info.calls / times.length);
     const triangles = Math.round(info.triangles / times.length);
@@ -143,7 +179,8 @@ function measure(page, warmUpMs, intervals, finishFrames) {
       bounded.push(performance.now() - t0);
     };
     await new Promise((resolve) => {
-      const tick = () => (bounded.length < finishCount ? requestAnimationFrame(tick) : resolve());
+      const until = performance.now() + 5000;
+      const tick = () => (bounded.length < finishCount && performance.now() < until ? requestAnimationFrame(tick) : resolve());
       tick.__perf = true;
       requestAnimationFrame(tick);
     });
@@ -163,19 +200,50 @@ function measure(page, warmUpMs, intervals, finishFrames) {
       drawCallsPerFrame: calls,
       trianglesPerFrame: triangles,
       unitsAlive: lvt.stress.count,
+      contents,
       windowVisible: visible,
     };
-  }, [warmUpMs, intervals, finishFrames]);
+  }, [warmUpMs, intervals, finishFrames, pinScale]);
+}
+
+/** Opens the title and times the twenty card portraits (lvt.portraitMs: total; portraitPaintMs: drawing alone). */
+async function portraitWarmUp() {
+  const out = [];
+  browser = await chromium.launch({ headless: false, args: GPU_ARGS, handleSIGINT: false, handleSIGTERM: false });
+  for (const deviceScaleFactor of SCALE_FACTORS) {
+    for (let run = 0; run < PORTRAIT_RUNS; run++) {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor });
+      const page = await context.newPage();
+      await page.goto(`${ORIGIN}/?debug`);
+      const t = await page.evaluate(async () => {
+        const lvt = window.__lvt;
+        await lvt.ready;
+        await lvt.portraits;
+        return { totalMs: lvt.portraitMs, paintMs: lvt.portraitPaintMs };
+      });
+      out.push({ deviceScaleFactor, run, ...t });
+      console.log(`portraits (20)  dpr ${deviceScaleFactor} run ${run + 1}: ${t.totalMs} ms to all twenty, ${t.paintMs} ms of that drawing`);
+      await context.close();
+    }
+  }
+  await browser.close();
+  browser = null;
+  return out;
 }
 
 async function main() {
+  console.log(`\n!!!!!! ${IPAD_NOTE} !!!!!!\n`);
   await startServer();
+  const wantModes = listArg('modes');
+  const wantScenes = listArg('scenes');
+  const scenes = SCENES.filter((s) => !wantScenes || wantScenes.includes(s.name));
+  const portraits = args.includes('--no-portraits') ? [] : await portraitWarmUp();
   const modes = [];
-  for (const mode of MODES) {
+  for (const mode of MODES.filter((m) => !wantModes || wantModes.includes(m.name))) {
     browser = await chromium.launch({ headless: false, args: [...GPU_ARGS, ...mode.args], handleSIGINT: false, handleSIGTERM: false });
     const results = [];
     for (const deviceScaleFactor of SCALE_FACTORS) {
-      for (const units of UNIT_COUNTS) {
+      for (const scene of scenes) {
         const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor });
         await context.addInitScript(WRAP_RAF);
         const page = await context.newPage();
@@ -186,8 +254,8 @@ async function main() {
           const cdp = await context.newCDPSession(page);
           await cdp.send('Emulation.setCPUThrottlingRate', { rate: mode.throttle });
         }
-        await page.goto(`${ORIGIN}/?scene=stress&units=${units}`);
-        const stats = await measure(page, WARM_UP_MS, INTERVALS, FINISH_FRAMES);
+        await page.goto(`${ORIGIN}/?debug&${scene.query}`);
+        const stats = await measure(page, WARM_UP_MS, INTERVALS, FINISH_FRAMES, !args.includes('--adaptive'));
         const renderer = await page.evaluate(() => {
           const gl = document.createElement('canvas').getContext('webgl2');
           const ext = gl?.getExtension('WEBGL_debug_renderer_info');
@@ -195,13 +263,15 @@ async function main() {
         });
         const warnings = [];
         if (/swiftshader|llvmpipe|software|basic render/i.test(renderer)) warnings.push(`SOFTWARE RENDERER (${renderer}): these numbers say nothing about a real GPU`);
+        const load = loadavg()[0];
+        if (load > availableParallelism()) warnings.push(`MACHINE BUSY (load average ${load.toFixed(0)} on ${availableParallelism()} cores): other work is competing for the CPU and GPU, so these times are too high`);
         if (!stats.windowVisible) warnings.push('WINDOW NOT VISIBLE OR NOT FOCUSED: the browser may be throttling frames');
-        const row = { mode: mode.name, cpuThrottle: mode.throttle, units, deviceScaleFactor, renderer, ...stats, warnings, errors };
+        const row = { mode: mode.name, cpuThrottle: mode.throttle, scene: scene.name, deviceScaleFactor, renderer, loadAverage: load, ...stats, warnings, errors };
         results.push(row);
         for (const w of warnings) console.log(`\n!!!!!! WARNING: ${w} !!!!!!\n`);
         const ms = (v) => v.toFixed(1).padStart(5);
         console.log(
-          `${mode.name.padEnd(13)} units ${String(units).padStart(3)} dpr ${deviceScaleFactor}  interval median ${ms(row.medianMs)} p95 ${ms(row.p95Ms)} worst ${ms(row.worstMs)} ms  `
+          `${mode.name.padEnd(13)} ${scene.name.padEnd(7)} dpr ${deviceScaleFactor}  interval median ${ms(row.medianMs)} p95 ${ms(row.p95Ms)} worst ${ms(row.worstMs)} ms  `
           + `frame cb ${ms(row.frameCallbackMedianMs)}  draw cpu ${ms(row.drawCpuMedianMs)}  draw+finish ${ms(row.drawFinishedMedianMs)} (p95 ${ms(row.drawFinishedP95Ms)})  `
           + `scale ${row.renderScale.toFixed(2)}  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}${errors.length ? `  ERRORS: ${errors.join(' | ')}` : ''}`,
         );
@@ -213,8 +283,33 @@ async function main() {
     browser = null;
   }
   await mkdir(path.join(ROOT, 'artifacts'), { recursive: true });
-  await writeFile(path.join(ROOT, 'artifacts', 'perf.json'), `${JSON.stringify({ at: new Date().toISOString(), viewport: '1440x900', modes }, null, 2)}\n`);
+  // The verdict: the unthrottled frame cost against the budget. It is only a verdict when the
+  // run can be trusted: the machine was not busy, and the frame was drawn at full resolution
+  // (the scale pinned at 1, unless --adaptive); otherwise the line says UNRELIABLE and why.
+  const verdict = [];
+  const pinned = !args.includes('--adaptive');
+  const novsync = modes.find((m) => m.mode === 'novsync');
+  if (novsync === undefined) console.log('BUDGET not judged: the budget is measured in the novsync mode, which was not among --modes');
+  for (const row of novsync?.results ?? []) {
+    const budget = BUDGET_MS[row.deviceScaleFactor];
+    const ok = row.medianMs <= budget;
+    const doubts = [];
+    if (row.warnings.some((w) => w.startsWith('MACHINE BUSY'))) doubts.push('machine busy');
+    if (row.warnings.some((w) => w.startsWith('SOFTWARE RENDERER'))) doubts.push('software renderer');
+    if (pinned && row.renderScale !== 1) doubts.push(`render scale ${row.renderScale.toFixed(2)}, not 1`);
+    const reliable = doubts.length === 0;
+    verdict.push({ scene: row.scene, deviceScaleFactor: row.deviceScaleFactor, medianMs: row.medianMs, budget, ok: reliable ? ok : null, doubts });
+    const word = !reliable ? 'UNRELIABLE' : ok ? 'OK' : 'MISS';
+    console.log(`BUDGET ${word.padEnd(10)} ${row.scene.padEnd(7)} dpr ${row.deviceScaleFactor}: ${row.medianMs.toFixed(1)} ms (budget ${budget} ms)`
+      + (reliable ? '' : `  (${doubts.join('; ')})`)
+      + `  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}  scale ${row.renderScale.toFixed(2)}`
+      + (row.contents ? `  [${Object.entries(row.contents).map(([k, v]) => `${k} ${v}`).join(', ')}]` : ''));
+  }
+  await writeFile(path.join(ROOT, 'artifacts', 'perf.json'), `${JSON.stringify({
+    at: new Date().toISOString(), viewport: '1440x900', ipad: IPAD_NOTE, budgetMs: BUDGET_MS, verdict, portraits, modes,
+  }, null, 2)}\n`);
   console.log('Wrote artifacts/perf.json');
+  console.log(`\n!!!!!! ${IPAD_NOTE} !!!!!!\n`);
 }
 
 main()

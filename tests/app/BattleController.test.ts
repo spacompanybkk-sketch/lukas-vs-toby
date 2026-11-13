@@ -649,7 +649,8 @@ describe('BattleController hero power', () => {
     expect(c.hud.hero.value).toEqual({ ready: true, fraction: 1 });
     c.heroLane(0);
     c.step();
-    expect(c.hud.hero.value.fraction).toBeCloseTo(1 / seconds(60), 9);
+    // In whole eighths (the button's steps): one tick into the new charge shows as none yet.
+    expect(c.hud.hero.value.fraction).toBe(0);
     for (let i = 0; i < seconds(30) - 1; i++) c.step();
     expect(c.hud.hero.value.fraction).toBeCloseTo(0.5, 9);
   });
@@ -680,7 +681,7 @@ describe('BattleController spells', () => {
     const c = make();
     const keys = c.match.state.players.plants.spells.map((x) => x.key);
     expect(c.hud.spells.value).toEqual(keys.map((key) => ({ key, ready: false, fraction: 0 })));
-    const half = seconds(BALANCE.spells[keys[0] as SpellKey].firstReady) / 2; // every spell has the same first wait
+    const half = seconds(BALANCE.spells[keys[0] as SpellKey].firstReady) / 2; // every plant spell has the same first wait (45 s)
     for (let i = 0; i < half; i++) c.step();
     expect(c.hud.spells.value[0]?.fraction).toBeCloseTo(0.5, 9);
     const before = c.hud.spells.value;
@@ -696,7 +697,7 @@ describe('BattleController spells', () => {
     d.click({ lane: 0, col: 5 }, null);
     d.step();
     expect(d.hud.spells.value[0]).toMatchObject({ key: 'thunderbolt', ready: false });
-    expect(d.hud.spells.value[0]?.fraction).toBeCloseTo(1 / seconds(BALANCE.spells.thunderbolt.cooldown), 12);
+    expect(d.hud.spells.value[0]?.fraction).toBe(0); // a tick into the cooldown: no eighth yet
   });
 
   it('picking an aimed spell clears the card, the shovel and the hero; a tap casts it and puts it down', () => {
@@ -938,5 +939,104 @@ describe('BattleController Marketplace upgrades', () => {
     const c = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 5, upgrades: ups });
     ups.peashooter = 9;
     expect(c.match.state.config.upgrades.plants.peashooter).toBe(2);
+  });
+});
+
+describe('BattleController gives the card back after a power (final fix round)', () => {
+  const ready = (): BattleController => {
+    const c = make('plants');
+    c.match.state.players.plants.heroTimer = 1;
+    c.match.state.players.plants.spells = [{ key: 'thunderbolt', timer: 1 }, { key: 'sunShower', timer: 1 }];
+    c.match.state.players.plants.energy = 900;
+    c.step();
+    return c;
+  };
+
+  it('the card picked before the hero comes back once the hero has fired, so the next lawn tap places it', () => {
+    const c = ready();
+    c.select('sunflower');
+    c.toggleHero();
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.click({ lane: 2, col: 3 }, null)).toBeNull();
+    expect(c.hud.selected.value).toBe('sunflower');
+    c.step();
+    expect(c.click({ lane: 1, col: 1 }, null)).toBeNull(); // a placement, not a buzz
+    expect(c.step().some((e) => e.type === 'unitSpawned' && e.key === 'sunflower')).toBe(true);
+  });
+
+  it('comes back after an aimed spell is cast, and after the hero or the spell is put down again', () => {
+    const c = ready();
+    c.select('peashooter');
+    c.selectSpell('thunderbolt');
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.click({ lane: 1, col: 6 }, null)).toBeNull();
+    expect(c.hud.selected.value).toBe('peashooter');
+    c.step();
+    c.toggleHero();
+    c.toggleHero(); // put down
+    expect(c.hud.selected.value).toBe('peashooter');
+    c.match.state.players.plants.spells[0]!.timer = 0;
+    c.selectSpell('thunderbolt');
+    c.selectSpell(null);
+    expect(c.hud.selected.value).toBe('peashooter');
+    // From the hero to the spell and then a cast: still the card from before the first power.
+    c.toggleHero();
+    c.selectSpell('thunderbolt');
+    c.selectSpell('thunderbolt');
+    expect(c.hud.selected.value).toBe('peashooter');
+  });
+
+  it('a card picked while a power waits wins; Escape and the shovel forget the card', () => {
+    const c = ready();
+    c.select('peashooter');
+    c.toggleHero();
+    c.select('walnutBomb');
+    expect(c.hud.heroSelected.value).toBe(false);
+    expect(c.hud.selected.value).toBe('walnutBomb');
+    c.toggleHero();
+    c.hotkey('Escape');
+    expect(c.hud.selected.value).toBeNull();
+    c.toggleHero();
+    c.toggleHero();
+    expect(c.hud.selected.value).toBeNull();
+    c.toggleShovel();
+    c.toggleHero();
+    c.toggleHero();
+    expect(c.hud.selected.value).toBeNull();
+    expect(c.hud.shovel.value).toBe(false);
+  });
+
+  it('an un-aimed cast leaves the card as it was', () => {
+    const c = ready();
+    c.select('peashooter');
+    c.selectSpell('sunShower');
+    expect(c.hud.selected.value).toBe('peashooter');
+  });
+});
+
+describe('BattleController HUD charge in whole steps (final fix round)', () => {
+  it('hero, spells and cards change their signals only when a picture step changes, not every tick', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 2 }, null); // the Peashooter card starts recharging
+    c.step();
+    const writes = { hero: 0, spells: 0, cards: 0 };
+    const offs = [
+      c.hud.hero.subscribe(() => { writes.hero++; }),
+      c.hud.spells.subscribe(() => { writes.spells++; }),
+      c.hud.cards.subscribe(() => { writes.cards++; }),
+    ];
+    writes.hero = writes.spells = writes.cards = 0; // subscribe calls once at once
+    const ticks = seconds(4);
+    for (let i = 0; i < ticks; i++) c.step();
+    for (const off of offs) off();
+    // 4 s of a 45 s hero charge, a 20 s first spell wait and a card recharge: a handful of eighths each, never one write per tick.
+    expect(writes.hero).toBeLessThanOrEqual(2);
+    expect(writes.spells).toBeLessThanOrEqual(3);
+    expect(writes.cards).toBeLessThan(ticks / 4);
+    for (const s of c.hud.spells.value) expect(s.fraction * 8).toBe(Math.round(s.fraction * 8));
+    expect(c.hud.hero.value.fraction * 8).toBe(Math.round(c.hud.hero.value.fraction * 8));
+    for (const card of c.hud.cards.value) expect(card.rechargeFraction * 8).toBe(Math.round(card.rechargeFraction * 8));
   });
 });

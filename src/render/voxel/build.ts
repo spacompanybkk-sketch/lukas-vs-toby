@@ -102,6 +102,20 @@ function ordered(def: ModelDef): PartDef[] {
     );
   }
   def.trim.forEach((ref) => toHex(def, ref, 'trim'));
+  if (def.singleLevel) {
+    if (def.trim.length > 0) {
+      throw new Error(`Model "${def.key}" is singleLevel (one look at every level), so it cannot list trim, which changes with the level`);
+    }
+    for (const part of def.parts) {
+      part.boxes.forEach((box, i) => {
+        if (box.minLevel !== undefined || box.maxLevel !== undefined) {
+          throw new Error(
+            `Model "${def.key}" is singleLevel (one look at every level), but part "${part.name}" box ${i} has a minLevel or maxLevel`,
+          );
+        }
+      });
+    }
+  }
   const wholeLevel = (value: number | undefined): boolean =>
     value === undefined || (Number.isInteger(value) && value >= 1 && value <= MAX_LEVEL);
   for (const part of def.parts) {
@@ -220,10 +234,20 @@ function build(def: ModelDef, level: number): Built {
   return { parts: builtParts, colors, meshes, triangles };
 }
 
-function builtFor(def: ModelDef, level: number): Built {
+/**
+ * The level whose look a model shows when asked for `level`: `level` itself, or 1 for a model
+ * flagged `singleLevel` (the Bone Minion), which has one look at every level. Throws a RangeError
+ * for anything but a whole level from 1 to 5, singleLevel or not.
+ */
+export function lookLevel(def: ModelDef, level: number): number {
   if (!Number.isInteger(level) || level < 1 || level > MAX_LEVEL) {
     throw new RangeError(`Model "${def.key}": level must be a whole number from 1 to ${MAX_LEVEL}, not ${level}`);
   }
+  return def.singleLevel ? 1 : level;
+}
+
+function builtFor(def: ModelDef, asked: number): Built {
+  const level = lookLevel(def, asked);
   let levels = cache.get(def);
   if (!levels) cache.set(def, (levels = []));
   return (levels[level] ??= build(def, level));
@@ -234,9 +258,11 @@ function builtFor(def: ModelDef, level: number): Built {
  * holding one group per part (named after the part, nested under its parent, turning about
  * its pivot) with one mesh per material inside. Geometry and materials are shared between
  * all models built from the same definition and level; the groups are the caller's own.
- * Level 5 also carries an empty group named `aura` for effects to fill.
+ * Level 5 also carries an empty group named `aura` for effects to fill. A `singleLevel` model
+ * is built as level 1 whatever `level` says (see `lookLevel`).
  */
-export function buildParts(def: ModelDef, level: number): Group {
+export function buildParts(def: ModelDef, asked: number): Group {
+  const level = lookLevel(def, asked);
   const built = builtFor(def, level);
   const root = new Group();
   root.name = def.key;
@@ -291,7 +317,8 @@ export function prewarmModel(def: ModelDef, level: number): void {
  * Where a model's projectiles leave at `level`: the part the point rides on (none for a
  * bare point) and the point, in authored voxels. A model with no muzzle answers with its feet.
  */
-export function muzzleOf(def: ModelDef, level: number): { part?: string; at: [number, number, number] } {
+export function muzzleOf(def: ModelDef, asked: number): { part?: string; at: [number, number, number] } {
+  const level = def.singleLevel ? 1 : asked;
   const muzzle = def.muzzle;
   if (!muzzle) return { at: [0, 0, 0] };
   if (Array.isArray(muzzle)) return { at: muzzle };

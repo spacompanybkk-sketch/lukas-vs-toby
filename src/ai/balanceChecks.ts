@@ -56,6 +56,10 @@ export interface Played extends MatchResult {
   picks: Partial<Record<CardKey, number>>;
   /** Hero uses and spell casts per side. */
   powers: Record<Faction, number>;
+  /** Uses per power: `'hero:plants'`, `'hero:zombies'` and each spell key. */
+  casts: Partial<Record<string, number>>;
+  /** The spells each side was dealt. */
+  dealt: SpellKey[];
 }
 
 export interface SeriesStats {
@@ -76,16 +80,23 @@ export function fullConfig(seed: number, balance: Balance): MatchConfig {
 }
 
 /** A bot that counts what it plays. */
-function counting(bot: Bot, played: Pick<Played, 'sent' | 'merges' | 'picks' | 'powers'>): Bot {
+function counting(bot: Bot, played: Pick<Played, 'sent' | 'merges' | 'picks' | 'powers' | 'casts' | 'dealt'>): Bot {
+  let seen = false;
   return {
     faction: bot.faction,
     think(match) {
+      if (!seen) {
+        seen = true;
+        played.dealt.push(...match.state.players[bot.faction].spells.map((x) => x.key));
+      }
       const commands = bot.think(match);
       for (const c of commands) {
         if (c.type === 'place') played.sent[c.faction] += 1;
         if (c.type === 'merge') played.merges[c.faction] += 1;
         if (c.type === 'place' || c.type === 'merge') played.picks[c.unit] = (played.picks[c.unit] ?? 0) + 1;
         if (c.type === 'hero' || c.type === 'spell') played.powers[c.faction] += 1;
+        const power = c.type === 'hero' ? `hero:${c.faction}` : c.type === 'spell' ? c.spell : undefined;
+        if (power !== undefined) played.casts[power] = (played.casts[power] ?? 0) + 1;
       }
       return commands;
     },
@@ -94,7 +105,10 @@ function counting(bot: Bot, played: Pick<Played, 'sent' | 'merges' | 'picks' | '
 
 export function playOne(matchup: Matchup, seed: number, knobs: Knobs): Played {
   const { config, bots, prepare } = matchup.setup(seed, knobs);
-  const counts = { sent: { plants: 0, zombies: 0 }, merges: { plants: 0, zombies: 0 }, picks: {}, powers: { plants: 0, zombies: 0 } };
+  const counts = {
+    sent: { plants: 0, zombies: 0 }, merges: { plants: 0, zombies: 0 }, picks: {}, powers: { plants: 0, zombies: 0 },
+    casts: {}, dealt: [] as SpellKey[],
+  };
   const result = runMatch(config, bots.map((b) => counting(b, counts)), undefined, knobs.balance, prepare);
   return { ...result, ...counts };
 }
@@ -128,6 +142,25 @@ export function winShare(stats: SeriesStats, side: Faction): number {
 /** Nearest-rank percentile of an ascending list. */
 export function percentile(sorted: readonly number[], p: number): number {
   return sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)] ?? 0;
+}
+
+/**
+ * How often each power is used per match over a series: each spell per match it was dealt in, and
+ * each side's hero per match. Also the median tick of each spell's first cast.
+ */
+export function castsPerMatch(stats: SeriesStats): Record<string, number> {
+  const uses: Record<string, number> = {};
+  const dealtIn: Record<string, number> = {};
+  for (const r of stats.results) {
+    for (const [k, n] of Object.entries(r.casts)) uses[k] = (uses[k] ?? 0) + (n ?? 0);
+    for (const k of r.dealt) dealtIn[k] = (dealtIn[k] ?? 0) + 1;
+  }
+  const out: Record<string, number> = {};
+  for (const k of Object.keys({ ...uses, ...dealtIn })) {
+    const of = k.startsWith('hero:') ? stats.results.length : (dealtIn[k] ?? 0);
+    out[k] = of === 0 ? 0 : (uses[k] ?? 0) / of;
+  }
+  return out;
 }
 
 /** Each card's share of its side's card plays over a series, 0..1. */

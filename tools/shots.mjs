@@ -16,15 +16,6 @@ import { chromium } from 'playwright';
 // The unit lists live in one place, shared with the registry and the tests (Node strips its types).
 import { FIRST_PLANTS, PLANTS as ALL_PLANTS, RAISED, ZOMBIES as FIELDED_ZOMBIES } from '../src/render/models/roster.ts';
 
-/**
- * @type {{
- *   name: string,
- *   url: string,
- *   viewport?: { width: number, height: number },
- *   steps?: (page: import('playwright').Page) => Promise<void>,
- *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
- * }[]}
- */
 /** The three plants of the first level, which the first plant lawn shots stand on the lawn. */
 const PLANTS = [...FIRST_PLANTS];
 
@@ -55,6 +46,15 @@ function moves(key, frames) {
 const ZOMBIES = [...FIELDED_ZOMBIES];
 const RAISED_ZOMBIES = [...RAISED];
 
+/**
+ * @type {{
+ *   name: string,
+ *   url: string,
+ *   viewport?: { width: number, height: number },
+ *   steps?: (page: import('playwright').Page) => Promise<void>,
+ *   frames?: { suffix: string, run: (page: import('playwright').Page) => Promise<void> }[],
+ * }[]}
+ */
 const SCENARIOS = [
   { name: 'boot', url: '/?scene=boot' },
   { name: 'lawn', url: '/?scene=lawn&t=3' },
@@ -979,9 +979,14 @@ function portraitUrl(level, model = 'peashooter', yaw = 32) {
   return `/?scene=gallery&model=${model}&level=${level}&portrait=1&pitch=20&yaw=${yaw}&t=0.4`;
 }
 
+/** `url` with `debug` added, which a production build needs before it shows `window.__lvt`. */
+function withDebug(url) {
+  return url.includes('?') ? url.replace('?', '?debug&') : `${url}?debug`;
+}
+
 /** Loads a scene and waits until it has drawn and its fonts are in. */
 async function open(page, url) {
-  await page.goto(ORIGIN + url, { waitUntil: 'load' });
+  await page.goto(ORIGIN + withDebug(url), { waitUntil: 'load' });
   await page
     .waitForFunction(() => window.__lvt?.ready.then(() => true), null, { timeout: READY_TIMEOUT_MS })
     .catch((error) => {

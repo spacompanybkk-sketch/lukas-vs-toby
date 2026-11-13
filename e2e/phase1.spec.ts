@@ -2,7 +2,7 @@ import { expect, test } from './fixtures';
 import type { Page } from './fixtures';
 import { ZOMBIE_SPAWN_X } from '../src/sim/types';
 import {
-  analyse, around, cardPrice, clickTile, deniedCount, frames, glContexts, mergeMarkers, mergedEvents, openTitle, pickAndStart,
+  analyse, around, cardPrice, clickTile, deniedCount, forceResult, frames, glContexts, mergeMarkers, mergedEvents, openTitle, pickAndStart,
   plantAt, recordMerges, shootCanvas, snapshot, startBattle, tilePoint, unitPoint, waitCardReady, waitLive,
 } from './helpers';
 
@@ -239,7 +239,7 @@ test('wins: VICTORY, then Play again starts a fresh battle on the same side and 
   await page.evaluate(() => { (window as any).__old = (window.__lvt as any).session; });
   const first = await page.evaluate(() => (window.__lvt as any).screen.options);
   expect(first).toMatchObject({ playerFaction: 'zombies', skill: 'hard' });
-  await page.evaluate(() => (window.__lvt as any).damageBase('plants', 99999));
+  await forceResult(page, 'plants');
   const panel = page.locator('[data-screen="result"]');
   await expect(panel).toBeVisible({ timeout: 20_000 });
   await expect(panel.locator('h2')).toHaveText('VICTORY!');
@@ -261,7 +261,7 @@ test('wins: VICTORY, then Play again starts a fresh battle on the same side and 
 
 test('loses as Toby on Easy: DEFEAT shows when the zombie base falls', async ({ page }) => {
   await startBattle(page, 'zombies', 'easy');
-  await page.evaluate(() => (window.__lvt as any).damageBase('zombies', 99999));
+  await forceResult(page, 'zombies');
   const panel = page.locator('[data-screen="result"]');
   await expect(panel).toBeVisible({ timeout: 20_000 });
   await expect(panel.locator('h2')).toHaveText('DEFEAT');
@@ -379,7 +379,7 @@ test('settings: volume and quality are kept across a reload', async ({ page }) =
 
 for (const [asked, expected] of [[60, 60], [61, 60], [40, 40]] as const) {
   test(`stress scene with units=${asked}: ${expected} units fighting, the clock moving, projectiles flying`, async ({ page }) => {
-    await page.goto(`/?scene=stress&units=${asked}`);
+    await page.goto(`/?scene=stress&debug&units=${asked}`);
     await page.evaluate(() => window.__lvt.ready);
     const seen = await page.evaluate(() => new Promise<{ tick0: number; tick1: number; maxProjectiles: number; counts: number[] }>((resolve) => {
       const stress = (window.__lvt as any).stress;

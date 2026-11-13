@@ -179,7 +179,7 @@ Plants (Lukas)
 | Avocado Bunker | 125 | Fortress | Very high health plus armour that shaves every hit. |
 | Torchwood | 100 | Support | Peas passing through it catch fire: double damage and a burn. |
 | Cherry Bomber | 150 | Removal | One-second fuse, then a large blast. Gone afterwards. |
-| Pumpkin Squash | 175 | Bruiser | Leaps on the nearest zombie within 2 tiles and crushes that tile, then recovers. |
+| Pumpkin Squash | 175 | Bruiser | Leaps on the nearest zombie within 3 tiles and crushes that tile, then recovers. |
 
 Zombies (Toby)
 
@@ -249,7 +249,11 @@ both computers see.
 
 - One save per player (section 20; originally one per boy in the browser): coins, stars, unlocks, Marketplace upgrades,
   settings, best Free Play wave, and wins against his brother.
-- Marketplace as today: ten upgrade steps per unit, each adding health and damage.
+- Marketplace as today: ten upgrade steps per unit, each making it stronger. The steps
+  are small and differ per side (measured 2026-11-13: plants +5% damage and +0.5% health
+  a step, zombies +3% damage), so that every unit at step 10 makes Hard about as hard as
+  Medium is without upgrades. The first try, +5% health and damage for all, made two
+  steps enough to walk over Medium.
   Applies in Adventure, Quick Battle and Free Play. Never in Versus.
 - Almanac: every unlocked unit on a 3D turntable with its role, stat bars and five looks.
 - Old saves (`lpvtz_save_lukas`, `lpvtz_save_toby`) are read once. Coins carry over.
@@ -516,7 +520,9 @@ Calls made by the builder (Michal can reverse any):
   number pad. Toby logs in without reading: his picture, then three digits.
 - Progress is kept online so it loads on any device (the computer and the iPad), with a
   copy in the browser so the game still plays without a connection and syncs when it
-  returns. The newer save wins, per player.
+  returns. A sync never loses progress: when two devices both changed a player, the
+  saves are merged (the higher of stars, wins, upgrades and coins) (changed 2026-11-12
+  from "the newer save wins").
 - Every player can play both Adventures, as plants and as zombies; progress is kept per
   side. (Confirmed by Michal 2026-11-12: "any campaign for both sides with progress".) Lukas opens on plants and Toby on zombies, as today.
 - The leaderboard has four tables, each showing picture, name and number: Adventure
@@ -526,7 +532,7 @@ Calls made by the builder (Michal can reverse any):
 - Three wrong passwords lock that player for 30 seconds. The password is stored as a
   salted hash, never in the clear.
 - Deleting a player or resetting a forgotten password is behind a grown-up gate (a
-  separate code Michal sets), so a full list or a forgotten number is never a dead end.
+  separate six-digit code Michal sets), so a full list or a forgotten number is never a dead end.
 - The whole feature keeps the Minecraft look: boxy panels, pixel digits on the pad.
 
 Limits to be honest about:
@@ -534,8 +540,8 @@ Limits to be honest about:
 - Three digits is 1,000 combinations. It keeps brothers and friends out of each other's
   games; it does not stop a determined stranger. So a player holds a nickname, a picture
   and game numbers only: no surname, email, photo or anything personal.
-- Online storage needs two new database paths (`players/v2`, `leaderboard/v2`) with
-  their own rules: anyone may read the leaderboard; a save may be written only with its
+- Online storage needs new database paths under `v2/` (`players`, `secrets`, `saves`,
+  `board`, `admin`; mirrored under `v2test/` for automated checks) with their own rules: anyone may read the leaderboard; a save may be written only with its
   player's password hash; the 30-player cap is enforced by the rules, not just the screen.
   This is a rules deploy on `lukas-toby-plants-vs-zombies` and overrides the "no rules
   deploy" line in section 4. It happens only on Michal's go-ahead.
@@ -578,10 +584,15 @@ Calls made by the builder (Michal can reverse any):
 | Zombies | Frenzy | Zombies in a 3×3 area move and bite half as fast again for 6 s. |
 | Zombies | Grave Rise | Three Bone Minions claw up in one lane at the tapped column. |
 
-"Equal in power" is measured, not judged: for every pair of spells a side can be dealt,
-the computer playing itself over many seeds wins within 5 points of the same rate, and
-no single spell moves a Medium-v-Medium match by more than 6 points against having none.
-The tuner owns the numbers; the kinds stay.
+"Equal in power" is measured, not judged, and a spell must be an event a child sees:
+each spell, given alone to its side's Medium computer, lifts that side's win rate by
+about the same amount (12 points, within 8–16); with both sides dealt two, Medium v
+Medium stays at 40–60% for plants overall and within 30–70% for any single deal. Spells
+may be rare (waits up to 90 s; up to 180 s for the two blasts, Thunderbolt and Meteor,
+which must kill ordinary level-1 units in their area) but never tiny. The table above
+shows the starting values; the shipped numbers are in `src/data/balance.ts`. The tuner owns the numbers; the kinds
+stay. (Rewritten 2026-11-12: the first version capped a spell at 6 points, which tuned
+Thunderbolt down to 20 damage; that was the builder's mistake, not Michal's wish.)
 
 Delivery: rules, look, sound, buttons and computer play in phase 2, beside the hero
 powers. Adventure may later hand spells out as rewards (phase 4).

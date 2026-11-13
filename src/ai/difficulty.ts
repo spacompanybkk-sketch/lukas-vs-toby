@@ -11,7 +11,7 @@ import type { Balance } from '../data/balance';
 import { ALL_CARDS } from '../data/units';
 import { defaultConfig } from '../sim/match';
 import type { Faction, MatchConfig } from '../sim/types';
-import { SKILLS } from './basicBot';
+import { POWER_PACING, SKILLS } from './basicBot';
 import type { SkillTable, SkillTables } from './basicBot';
 import type { Skill } from './bot';
 
@@ -33,35 +33,40 @@ export type DifficultyTable = Readonly<Record<Skill, Readonly<Record<Faction, Di
 
 export const DIFFICULTY: DifficultyTable = {
   easy: {
-    // Lukas on Easy: the Easy zombies, nearly always playing at random, earning less, and three
+    // Lukas on Easy: the Easy zombies, nearly always playing at random, earning less, and 2.25
     // times the Sun trickle for him. A random tapper as plants, with ten cards and no plan, needs
     // all of it (a child tapping once every 6 s still wins about half).
-    plants: { skill: 'easy', income: { human: 3, computer: 0.7 }, randomShare: 0.9 },
-    // Toby on Easy: plants that build well but play a random card more often than not, and 30%
-    // more income for him (a child tapping once every 6 s still wins about half).
-    zombies: { skill: 'hard', income: { human: 1.3, computer: 1 }, randomShare: 0.8 },
+    plants: { skill: 'easy', income: { human: 2.25, computer: 0.7 }, randomShare: 0.9 },
+    // Toby on Easy: plants that build well but play a random card 40% of the time, and no extra
+    // income for him (a child tapping once every 6 s, pressing the glowing buttons, still wins about half).
+    zombies: { skill: 'hard', income: { human: 1, computer: 1 }, randomShare: 0.4 },
   },
   medium: {
-    // Medium zombies that mostly play at random, so a child finds openings, and twice the Sun
+    // Medium zombies that mostly play at random, so a child finds openings, and 1.8 times the Sun
     // trickle for him.
-    plants: { skill: 'medium', income: { human: 2, computer: 0.8 }, randomShare: 0.9 },
+    plants: { skill: 'medium', income: { human: 1.8, computer: 0.8 }, randomShare: 0.9 },
     // An adult sending steady waves wins about half (steadyZombies 40-65%): the computer plants'
-    // hero and peas out-play plain waves at equal income, so the zombies earn 40% more.
-    zombies: { skill: 'medium', income: { human: 1.4, computer: 1 }, randomShare: 0 },
+    // hero and peas out-play plain waves at equal income, so the zombies earn 20% more.
+    zombies: { skill: 'medium', income: { human: 1.2, computer: 1 }, randomShare: 0 },
   },
   hard: {
     plants: { skill: 'hard', income: { human: 1, computer: 1.05 }, randomShare: 0 },
     // Hard but not hopeless (Michal, 2026-11-12): steady waves win 15-40%.
-    zombies: { skill: 'hard', income: { human: 1.4, computer: 1.1 }, randomShare: 0 },
+    zombies: { skill: 'hard', income: { human: 1.2, computer: 1.1 }, randomShare: 0 },
   },
 };
 
-/** The skill table the computer plays with on `difficulty` against a human on `human`. */
+/**
+ * The skill table the computer plays with on `difficulty` against a human on `human`: the table
+ * of its skill, with the difficulty's random moves and the difficulty's pace with hero and spells.
+ */
 export function computerTable(
   human: Faction, difficulty: Skill, table: DifficultyTable = DIFFICULTY, skills: SkillTables = SKILLS,
 ): SkillTable {
   const setting = table[difficulty][human];
-  return { ...skills[opponentOf(human)][setting.skill], randomShare: setting.randomShare };
+  // The difficulty's own pace with hero and spells (Toby's Easy plays the Hard plant table, but is
+  // as slow and clumsy with its powers as any Easy computer).
+  return { ...skills[opponentOf(human)][setting.skill], randomShare: setting.randomShare, ...POWER_PACING[difficulty] };
 }
 
 export function opponentOf(faction: Faction): Faction {

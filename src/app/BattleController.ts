@@ -80,6 +80,17 @@ export const ZOMBIE_MERGE_REACH = 0.75;
 
 const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
+/**
+ * The HUD draws charge and recharge in eighths (`CHARGE_STEPS` in HeroButton, `RECHARGE_STEPS`
+ * in CardTray): the signals carry the fraction already cut to those steps, so they change only
+ * when the picture does, not on every tick.
+ */
+export const HUD_STEPS = 8;
+/** A charge (hero, spell), rounded down: a button never looks readier than it is. */
+const stepDown = (f: number): number => Math.floor(Math.min(1, Math.max(0, f)) * HUD_STEPS) / HUD_STEPS;
+/** A recharge still to go (cards), rounded up, for the same reason. */
+const stepUp = (f: number): number => Math.ceil(Math.min(1, Math.max(0, f)) * HUD_STEPS) / HUD_STEPS;
+
 function sameCards(a: readonly CardVM[], b: readonly CardVM[]): boolean {
   return a.length === b.length && a.every((c, i) => {
     const d = b[i];
@@ -105,6 +116,8 @@ export class BattleController {
   private heroPeriod: number;
   /** The spells the player has cast at least once: their charge is then the cooldown, not the first wait. */
   private readonly castOnce = new Set<SpellKey>();
+  /** The card selected when a power was picked: it comes back once the power is cast or put down. */
+  private cardBeforePower: UnitKey | null = null;
 
   constructor(opts: BattleOptions, balance: Balance = BALANCE) {
     this.playerFaction = opts.playerFaction;
@@ -169,6 +182,7 @@ export class BattleController {
     if (unit !== null) {
       this.hud.shovel.value = false;
       this.clearPowers();
+      this.cardBeforePower = null;
     }
   }
 
@@ -180,6 +194,7 @@ export class BattleController {
     if (on) {
       this.hud.selected.value = null;
       this.clearPowers();
+      this.cardBeforePower = null;
     }
   }
 
@@ -191,7 +206,7 @@ export class BattleController {
   selectHero(on: boolean): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (!on) {
-      this.hud.heroSelected.value = false;
+      if (this.hud.heroSelected.peek()) this.powerDone();
       return;
     }
     const reason = this.match.check({ type: 'hero', faction: this.playerFaction, lane: 0 });
@@ -199,8 +214,7 @@ export class BattleController {
       this.deny(reason);
       return;
     }
-    this.hud.selected.value = null;
-    this.hud.shovel.value = false;
+    this.pickPower();
     this.hud.spellSelected.value = null;
     this.hud.heroSelected.value = true;
   }
@@ -220,7 +234,7 @@ export class BattleController {
   selectSpell(key: SpellKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (key === null || key === this.hud.spellSelected.peek()) {
-      this.hud.spellSelected.value = null;
+      if (this.hud.spellSelected.peek() !== null) this.powerDone();
       return;
     }
     if (!this.match.state.players[this.playerFaction].spells.some((x) => x.key === key)) return;
@@ -231,8 +245,7 @@ export class BattleController {
         this.deny('spell-charging');
         return;
       }
-      this.hud.selected.value = null;
-      this.hud.shovel.value = false;
+      this.pickPower();
       this.hud.heroSelected.value = false;
       this.hud.spellSelected.value = key;
       return;
@@ -245,8 +258,8 @@ export class BattleController {
       return;
     }
     this.queued = cmd;
-    // Cast: nothing is waiting to be aimed any more.
-    this.clearPowers();
+    // Cast: nothing is waiting to be aimed any more (and a card put aside for it comes back).
+    if (this.hud.heroSelected.peek() || this.hud.spellSelected.peek() !== null) this.powerDone();
   }
 
   /**
@@ -348,7 +361,7 @@ export class BattleController {
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
-    this.clearPowers();
+    this.powerDone();
     return null;
   }
 
@@ -362,6 +375,7 @@ export class BattleController {
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
       this.clearPowers();
+      this.cardBeforePower = null;
       return;
     }
     const lower = key.toLowerCase();
@@ -390,8 +404,26 @@ export class BattleController {
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
     this.queued = cmd;
-    this.hud.spellSelected.value = null;
+    this.powerDone();
     return null;
+  }
+
+  /**
+   * A power is being picked: the card selected now (if no power was already waiting) is put
+   * aside, to come back when the power is cast or put down; the card and the shovel go down.
+   */
+  private pickPower(): void {
+    if (!this.hud.heroSelected.peek() && this.hud.spellSelected.peek() === null) this.cardBeforePower = this.hud.selected.peek();
+    this.hud.selected.value = null;
+    this.hud.shovel.value = false;
+  }
+
+  /** The power was cast or put down: nothing waits to be aimed, and the card put aside comes back if still in hand. */
+  private powerDone(): void {
+    this.clearPowers();
+    const card = this.cardBeforePower;
+    this.cardBeforePower = null;
+    if (card !== null && isCard(card) && this.match.state.config.cards[this.playerFaction].includes(card)) this.hud.selected.value = card;
   }
 
   private clearPowers(): void {
@@ -498,7 +530,7 @@ export class BattleController {
       return {
         unit, name: UNIT_INFO[unit].name, price: UNIT_INFO[unit].price, hotkey: HOTKEYS[i] ?? '',
         affordable: me.energy >= UNIT_INFO[unit].price,
-        rechargeFraction: full > 0 ? Math.min(1, Math.max(0, left / full)) : 0,
+        rechargeFraction: full > 0 ? stepUp(left / full) : 0,
       };
     });
     if (!sameCards(this.hud.cards.peek(), cards)) this.hud.cards.value = cards;
@@ -507,7 +539,7 @@ export class BattleController {
     const left = me.heroTimer;
     const hero: HeroVM = {
       ready: on && left === 0,
-      fraction: on ? Math.min(1, Math.max(0, 1 - left / this.heroPeriod)) : 0,
+      fraction: on ? stepDown(1 - left / this.heroPeriod) : 0,
     };
     const oldHero = this.hud.hero.peek();
     if (oldHero.ready !== hero.ready || oldHero.fraction !== hero.fraction) this.hud.hero.value = hero;
@@ -515,7 +547,7 @@ export class BattleController {
     const spells: SpellVM[] = me.spells.map(({ key, timer }) => {
       const stats = this.match.balance.spells[key];
       const period = seconds(this.castOnce.has(key) ? stats.cooldown : stats.firstReady);
-      return { key, ready: timer === 0, fraction: period > 0 ? Math.min(1, Math.max(0, 1 - timer / period)) : 1 };
+      return { key, ready: timer === 0, fraction: period > 0 ? stepDown(1 - timer / period) : 1 };
     });
     const oldSpells = this.hud.spells.peek();
     const same = oldSpells.length === spells.length && oldSpells.every((o, i) => {
