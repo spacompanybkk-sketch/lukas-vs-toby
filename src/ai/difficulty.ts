@@ -46,13 +46,13 @@ export const DIFFICULTY: DifficultyTable = {
     // trickle for him.
     plants: { skill: 'medium', income: { human: 2, computer: 0.8 }, randomShare: 0.9 },
     // An adult sending steady waves wins about half (steadyZombies 40-65%): the computer plants'
-    // hero and peas out-play plain waves at equal income, so the zombies earn 40% more.
-    zombies: { skill: 'medium', income: { human: 1.4, computer: 1 }, randomShare: 0 },
+    // hero and peas out-play plain waves at equal income, so the zombies earn 20% more.
+    zombies: { skill: 'medium', income: { human: 1.2, computer: 1 }, randomShare: 0 },
   },
   hard: {
     plants: { skill: 'hard', income: { human: 1, computer: 1.05 }, randomShare: 0 },
     // Hard but not hopeless (Michal, 2026-11-12): steady waves win 15-40%.
-    zombies: { skill: 'hard', income: { human: 1.4, computer: 1.1 }, randomShare: 0 },
+    zombies: { skill: 'hard', income: { human: 1.2, computer: 1.1 }, randomShare: 0 },
   },
 };
 
