@@ -408,10 +408,10 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
   },
   endless: {
-    // Task 8, measured (tools/levels.ts --free, 200 seeds, three blocks): survive, the wave reached
-    // by the beginner / average / expert 7 / 12-13 / 25-27; breakthrough, gardens broken 3 / 2-3 / 3
-    // (garden 1 at 1500, not the battle's 6000: the review found garden 1 unbreakable).
-    budgetBase: 250, budgetStep: 68, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
+    // Task 8, measured (tools/levels.ts --free, 200 seeds, four blocks): survive, the wave reached
+    // by the beginner / average / expert 7 / 10-11 / 27-33; breakthrough, gardens broken about 3 for
+    // every stand-in (garden 1 at 1500, not the battle's 6000: the review found it unbreakable).
+    budgetBase: 250, budgetStep: 65, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
     clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
     spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
