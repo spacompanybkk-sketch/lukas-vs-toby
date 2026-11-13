@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { levelById } from '../../adventure/levels';
 import { session } from '../../app/session';
 import { go, startLevel } from '../../app/store';
@@ -8,9 +8,10 @@ import { frameColor } from '../frameColor';
 import type { BoyPortraits } from '../hud/BaseBars';
 import { PixelIcon } from '../hud/PixelIcon';
 import { uiSound } from '../uiSound';
+import { QUESTION } from './adventurePictures';
 import { STAR } from './boardPictures';
 import { Digits, KindPicture, LevelCard, LockedCard, UnitPic } from './LevelCard';
-import { mapStones } from './mapModel';
+import { HOP_MS, mapStones } from './mapModel';
 import type { Stone } from './mapModel';
 import { LOCK } from './pictures';
 import { PlayerPicture } from './PlayerPicture';
@@ -24,8 +25,14 @@ export interface Pt { x: number; y: number }
 export interface MapHost {
   open(view: MapHostView): void;
   update(view: MapHostView): void;
-  /** Each stone's top middle and the flag's top, in client pixels; null when not on stage. */
-  layout(): { stones: Record<string, Pt>; flag: Pt | null } | null;
+  /** Measures where the 3D map is on the page again (the window or its zoom changed). */
+  measure(): void;
+  /**
+   * Each stone's top middle at rest and the middle of the flag's cloth, in client pixels; the hop's
+   * height in pixels; and a version that goes up whenever any of it moved. Called every frame, so
+   * it must be cheap and return the same object while nothing changed. Null when not on stage.
+   */
+  layout(): { readonly stones: Record<string, Pt>; readonly flag: Pt | null; readonly hop: number; readonly version: number } | null;
   close(): void;
 }
 
@@ -78,12 +85,19 @@ function StoneButton({ stone, fresh, portraits, onTap, place }: {
       aria-label={`Level ${def.n}${state === 'closed' ? ', locked' : ''}`}
       class={`stone is-${state}${fresh ? ' is-fresh' : ''}`} onClick={onTap}
     >
+      <span class="stone__body">
       {unlock !== null && (
+        // What winning this level brings: the unit's grey silhouette with a "?" block, in a bubble
+        // whose pointer comes down to this stone.
         <span class="stone__unlock" data-unlock={unlock} aria-hidden="true">
-          <UnitPic unit={unlock} portraits={portraits} class="stone__unlock-pic" />
+          <span class="stone__gift px pal-cream">
+            <UnitPic unit={unlock} portraits={portraits} class="stone__unlock-pic" />
+            <PixelIcon art={QUESTION} class="stone__q" />
+          </span>
+          <span class="stone__pointer" />
         </span>
       )}
-      <span class={`stone__badge px ${state === 'closed' ? 'pal-stone' : state === 'done' ? 'pal-cream' : 'pal-cream'}`}>
+      <span class={`stone__badge px ${state === 'closed' ? 'pal-stone' : 'pal-cream'}`}>
         <KindPicture kind={def.kind} class="stone__kind" />
         <Digits n={def.n} class="stone__n" />
         {state === 'closed' && <span class="stone__lock"><PixelIcon art={LOCK} /></span>}
@@ -97,6 +111,7 @@ function StoneButton({ stone, fresh, portraits, onTap, place }: {
           ))}
         </span>
       )}
+      </span>
     </button>
   );
 }
@@ -124,14 +139,16 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
   };
   const viewKey = view === null ? '' : `${view.side}|${view.frame}|${view.stones.map((s) => s.state).join(',')}`;
 
-  // The 3D map: open once, kept in step with the stones, closed when the screen goes.
+  // The 3D map: open once a player is there, kept in step with the stones, closed when the screen goes.
   const viewRef = useRef(view);
   viewRef.current = view;
+  const ready = view !== null;
   useLayoutEffect(() => {
-    if (host === undefined || viewRef.current === null) return undefined;
-    host.open(viewRef.current);
+    const v = viewRef.current;
+    if (host === undefined || v === null) return undefined;
+    host.open(v);
     return () => host.close();
-  }, [host, viewRef.current === null]);
+  }, [host, ready]);
   const firstKey = useRef(viewKey);
   useLayoutEffect(() => {
     if (firstKey.current === viewKey) return;
@@ -139,25 +156,37 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
     if (host !== undefined && viewRef.current !== null) host.update(viewRef.current);
   }, [host, viewKey]);
 
-  // The HTML follows the 3D stones every frame (they hop; the window may change size or zoom).
+  // The HTML over the 3D stones. Every frame asks the host for its layout, which is only projected
+  // again when the camera or the size changed; while its version stands, nothing is written. A
+  // move is one transform per element. The hop is a CSS animation of the height the host gives.
+  const root = useRef<HTMLDivElement | null>(null);
   const els = useRef(new Map<string, HTMLElement>());
+  const order = useRef<string[]>([]);
+  order.current = stones.map((s) => s.def.id);
   const marker = useRef<HTMLElement | null>(null);
+  const written = useRef(-1);
   const place = (): void => {
     const l = host?.layout() ?? null;
-    if (l === null) return;
-    for (const [id, el] of els.current) {
+    if (l === null || l.version === written.current) return;
+    written.current = l.version;
+    const ids = order.current;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i]!;
+      const el = els.current.get(id);
       const p = l.stones[id];
-      if (p === undefined) continue;
-      el.style.left = `${Math.round(p.x)}px`;
-      el.style.top = `${Math.round(p.y)}px`;
+      if (el === undefined || p === undefined) continue;
+      el.style.transform = `translate3d(${Math.round(p.x)}px, ${Math.round(p.y)}px, 0)`;
       el.dataset.placed = '';
+      // An unlock bubble leans away from the stone the path goes on to (or came from, at the end).
+      const near = l.stones[ids[i + 1] ?? ids[i - 1] ?? id];
+      if (near !== undefined) el.dataset.lean = near.x > p.x ? 'left' : 'right';
     }
     const m = marker.current;
     if (m !== null && l.flag !== null) {
-      m.style.left = `${Math.round(l.flag.x)}px`;
-      m.style.top = `${Math.round(l.flag.y)}px`;
+      m.style.transform = `translate3d(${Math.round(l.flag.x)}px, ${Math.round(l.flag.y)}px, 0)`;
       m.dataset.placed = '';
     }
+    root.current?.style.setProperty('--hop', `${l.hop}px`);
   };
   const placeRef = useRef(place);
   placeRef.current = place;
@@ -168,18 +197,25 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
       placeRef.current();
       raf = requestAnimationFrame(loop);
     };
-    const now = (): void => placeRef.current();
+    const resized = (): void => {
+      host.measure();
+      placeRef.current();
+    };
     loop();
-    window.addEventListener('resize', now);
-    window.visualViewport?.addEventListener('resize', now);
-    window.visualViewport?.addEventListener('scroll', now);
+    window.addEventListener('resize', resized);
+    window.addEventListener('orientationchange', resized);
+    window.visualViewport?.addEventListener('resize', resized);
+    window.visualViewport?.addEventListener('scroll', resized);
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener('resize', now);
-      window.visualViewport?.removeEventListener('resize', now);
-      window.visualViewport?.removeEventListener('scroll', now);
+      window.removeEventListener('resize', resized);
+      window.removeEventListener('orientationchange', resized);
+      window.visualViewport?.removeEventListener('resize', resized);
+      window.visualViewport?.removeEventListener('scroll', resized);
     };
   }, [host]);
+  // The CSS hop starts on the page clock's beat, so it keeps in step with the 3D stone's.
+  const [hopDelay] = useState(() => `-${Math.round(performance.now() % HOP_MS)}ms`);
 
   // A star won since the last look pops in, with the merge sound.
   const fresh = useRef<Set<string>>(new Set());
@@ -205,7 +241,10 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
   const close = (): void => { uiSound('click'); go({ name: 'map', side }); };
 
   return (
-    <div data-screen="map" data-side={side} class={`layer map${host === undefined ? ' map--flat' : ''}`}>
+    <div
+      ref={root} data-screen="map" data-side={side} class={`layer map${host === undefined ? ' map--flat' : ''}`}
+      style={{ '--hop-ms': `${HOP_MS}ms`, '--hop-delay': hopDelay }}
+    >
       <button
         type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
         onClick={() => { uiSound('click'); go({ name: 'play' }); }}

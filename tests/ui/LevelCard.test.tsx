@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { levelById } from '../../src/adventure/levels';
 import { ADVENTURE } from '../../src/adventure/rewards';
 import { session } from '../../src/app/session';
-import { go, screen } from '../../src/app/store';
+import { go, screen, startLevel } from '../../src/app/store';
 import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import type { Save } from '../../src/progress/save';
@@ -115,6 +115,26 @@ describe('Level card', () => {
     expect(s.name).toBe('battle');
     if (s.name !== 'battle') return;
     expect(s.options).toMatchObject({ playerFaction: 'plants', level: 'p1-2', cards: ['peashooter', 'sunflower'], skill: levelById('p1-2')!.opponent!.skill });
+  });
+
+  it('startLevel itself refuses a closed level (not only the map), and starts an open one', async () => {
+    await openCard('p1-1');
+    const save = session.player.value!;
+    act(() => go({ name: 'map', side: 'plants' }));
+    expect(startLevel(levelById('p1-3')!, save, 5)).toBe(false);
+    expect(screen.value.name).toBe('map');
+    expect(startLevel(levelById('z1-2')!, save, 5)).toBe(false);
+    expect(startLevel(levelById('p1-1')!, save, 5)).toBe(true);
+    expect(screen.value.name).toBe('battle');
+  });
+
+  it('the reward is a gift box with the unit\'s silhouette, set apart from the stars by a plus; the two bar goals differ', async () => {
+    await openCard('p1-3', { plants: { stars: { 'p1-1': 1, 'p1-2': 1 }, unlocked: [] } });
+    const row = [...need('.lcard__stars').children].map((c) => c.className.split(' ')[0]);
+    expect(row).toEqual(['lcard__star', 'lcard__star', 'lcard__star', 'lcard__plus', 'lcard__reward']);
+    expect(need('[data-reward] .lcard__bow')).toBeDefined();
+    expect(need('[data-reward] .lcard__gift [data-picture="potatoMine"]')).toBeDefined();
+    expect(all('[data-fill]').map((f) => `${f.dataset.fill} ${f.style.width}`)).toEqual(['yellow 50%', 'green 80%']);
   });
 
   it('a tap on the dim around the card closes it', async () => {

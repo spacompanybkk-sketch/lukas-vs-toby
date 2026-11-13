@@ -119,12 +119,14 @@ test('the map opens and closes ten times on one WebGL context, leaving nothing b
   const placed = (): Promise<boolean> => page.evaluate(() => {
     const l = (window.__lvt as any).map.layout();
     const el = document.querySelector<HTMLElement>('[data-stone="p1-8"]')!;
-    return Math.abs(parseFloat(el.style.left) - l.stones['p1-8'].x) <= 1 && Math.abs(parseFloat(el.style.top) - l.stones['p1-8'].y) <= 1;
+    // Placed by one transform: translate3d(x px, y px, 0).
+    const [x, y] = (el.style.transform.match(/-?[\d.]+(?=px)/g) ?? []).map(Number);
+    return Math.abs(x! - l.stones['p1-8'].x) <= 1 && Math.abs(y! - l.stones['p1-8'].y) <= 1;
   });
-  const at = await page.locator('[data-stone="p1-8"]').evaluate((e) => e.style.left);
+  const at = await page.locator('[data-stone="p1-8"]').evaluate((e) => e.style.transform);
   const vp = page.viewportSize()!;
   await page.setViewportSize({ width: Math.round(vp.width * 0.8), height: vp.height });
-  await expect.poll(() => page.locator('[data-stone="p1-8"]').evaluate((e) => e.style.left)).not.toBe(at);
+  await expect.poll(() => page.locator('[data-stone="p1-8"]').evaluate((e) => e.style.transform)).not.toBe(at);
   await expect.poll(placed).toBe(true);
   await page.setViewportSize(vp);
   await expect.poll(placed).toBe(true);

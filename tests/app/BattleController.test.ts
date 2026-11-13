@@ -214,6 +214,13 @@ describe('BattleController setup', () => {
     expect(c.hud.cards.value.map((v) => v.unit)).toEqual(['brainEater', 'veryFastWalker']);
   });
 
+  it('an empty hand deals no cards at all (not all ten)', () => {
+    const c = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 3, cards: [] });
+    expect(c.match.state.config.cards.plants).toEqual([]);
+    expect(c.hud.cards.value).toEqual([]);
+    expect(c.hud.selected.value).toBeNull();
+  });
+
   it('is kinder on Easy than on Medium, on both sides: more income for the human or more random moves by the computer', () => {
     // Phase 2 (Task 8): Toby's Easy leans on the computer's mistakes, Lukas's on his income.
     for (const side of ['plants', 'zombies'] as const) {

@@ -24,7 +24,7 @@ export interface BattleOptions {
   playerFaction: Faction; skill: Skill; seed: number;
   upgrades?: Partial<Record<CardKey, number>>;
   versus?: boolean;
-  /** The player's hand instead of all ten cards (an Adventure level deals only its own). */
+  /** The player's hand instead of all ten cards (an Adventure level deals only its own; [] deals none). */
   cards?: CardKey[];
   /** The Adventure level this battle plays (its id), or none for a Quick Battle. */
   level?: string;
@@ -132,7 +132,7 @@ export class BattleController {
     // only some of them; its random moves (`randomLegal`) play any card in its hand.
     const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
     config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
-    if (opts.cards !== undefined && opts.cards.length > 0) config.cards[opts.playerFaction] = [...opts.cards];
+    if (opts.cards !== undefined) config.cards[opts.playerFaction] = [...opts.cards];
     config.upgrades = { plants: {}, zombies: {}, [opts.playerFaction]: sideUpgrades(opts) };
     this.match = new Match(config, balance);
     const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;

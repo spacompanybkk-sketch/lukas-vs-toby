@@ -126,6 +126,9 @@ test('offline on a fresh device: play anyway as a guest, no player and no coins,
   await page.locator('[data-action="play"]').click();
   await expect(page.locator('[data-offline]')).toBeVisible();
   await page.locator('[data-action="guest"]').click();
+  // A guest has Quick Battle only.
+  await expect(page.locator('[data-play="adventure"][data-locked]')).toBeVisible();
+  await page.locator('[data-play="quick"]').click();
   await expect(page.locator('[data-screen="sidepick"]')).toBeVisible();
   await page.locator('[data-side="zombies"]').click();
   await page.locator('[data-action="start"]').click();

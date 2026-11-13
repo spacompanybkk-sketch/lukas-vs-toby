@@ -7,11 +7,11 @@ import type { UnitKey } from '../../sim/types';
 import { SILHOUETTES } from '../hud/CardTray';
 import { PixelIcon } from '../hud/PixelIcon';
 import type { PixelArt } from '../hud/PixelIcon';
-import { CLOCK, FACE_EASY, FACE_HARD, FACE_MEDIUM, FLAG, KIND_ART, SKULL_CROWN, TOWER } from './adventurePictures';
+import { BOW, CLOCK, FACE_EASY, FACE_HARD, FACE_MEDIUM, FLAG, KIND_ART, SKULL_CROWN, TOWER } from './adventurePictures';
 import { STAR, SWORDS } from './boardPictures';
 import { dealtCards, enemyUnits, starGoals } from './mapModel';
 import type { StarGoal } from './mapModel';
-import { ARROW, CROSS, DIGITS, LOCK } from './pictures';
+import { ARROW, CROSS, DIGITS, LOCK, PLUS } from './pictures';
 
 /** A level kind's picture: the main one, and a smaller one (the clock) on its corner. */
 export function KindPicture({ kind, class: cls = '' }: { kind: LevelKind; class?: string }) {
@@ -52,15 +52,19 @@ const FACES: { skill: Skill; art: PixelArt; label: string }[] = [
   { skill: 'hard', art: FACE_HARD, label: 'Hard' },
 ];
 
-/** What a star asks, drawn: a flag (win), a tower over a health bar, or a clock over a time bar. */
-function Goal({ goal }: { goal: StarGoal }) {
+/**
+ * What a star asks, drawn: a flag (win); or a tower (the base) or a clock (time left) over a big
+ * bar. The second star's bar is half full and yellow, the third's nearly full and green, so the two
+ * never look alike.
+ */
+function Goal({ goal, step }: { goal: StarGoal; step: 1 | 2 | 3 }) {
   const art = goal.kind === 'win' ? FLAG : goal.kind === 'base' ? TOWER : CLOCK;
   return (
-    <span class="goal" data-goal={goal.kind} data-share={goal.share} aria-hidden="true">
+    <span class={`goal goal--${step === 2 ? 'half' : step === 3 ? 'full' : 'win'}`} data-goal={goal.kind} data-share={goal.share} aria-hidden="true">
       <PixelIcon art={art} class="goal__icon" />
       {goal.kind !== 'win' && (
-        <span class={`goal__bar px pal-stone goal__bar--${goal.kind}`}>
-          <span class="goal__fill" style={{ width: `${goal.share * 100}%` }} />
+        <span class={`goal__bar goal__bar--${goal.kind}`}>
+          <span class="goal__fill" data-fill={step === 2 ? 'yellow' : 'green'} style={{ width: `${goal.share * 100}%` }} />
         </span>
       )}
     </span>
@@ -118,12 +122,19 @@ export function LevelCard({ def, save, portraits, onPlay, onSkill, onClose }: Le
           {goals.map((g, i) => (
             <span key={i} class={`lcard__star${i < stars ? ' is-won' : ''}`} data-star={i + 1} data-won={i < stars ? '' : undefined}>
               <PixelIcon art={STAR} class="lcard__star-icon" />
-              <Goal goal={g} />
+              <Goal goal={g} step={(i + 1) as 1 | 2 | 3} />
             </span>
           ))}
           {reward !== null && isCard(reward) && (
-            <span class="lcard__reward px pal-cream" data-reward={reward} aria-label="A new unit">
-              <UnitPic unit={reward} portraits={portraits} class="lcard__reward-pic" />
+            <span class="lcard__plus" aria-hidden="true"><PixelIcon art={PLUS} /></span>
+          )}
+          {reward !== null && isCard(reward) && (
+            // A gift: the new unit's grey silhouette in a box with a bow, apart from the stars.
+            <span class="lcard__reward" data-reward={reward} aria-label="A new unit">
+              <PixelIcon art={BOW} class="lcard__bow" />
+              <span class="lcard__gift px pal-red">
+                <UnitPic unit={reward} portraits={portraits} class="lcard__reward-pic" />
+              </span>
             </span>
           )}
         </div>

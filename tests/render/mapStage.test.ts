@@ -20,7 +20,9 @@ import { Effects } from '../../src/render/fx/Effects';
 import { Particles } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
-import { MapStage, PLANT_PATH, pathFor } from '../../src/scenes/mapStage';
+import { MapStage, PLANT_PATH, hopHeight, pathFor } from '../../src/scenes/mapStage';
+import { HOP_MS } from '../../src/ui/screens/mapModel';
+import { allocationsIn } from './allocations';
 import type { MapView } from '../../src/scenes/mapStage';
 
 function fakeStage(): StageLike {
@@ -144,21 +146,67 @@ describe('MapStage', () => {
     map.close();
   });
 
-  it('the next stone hops in steps and comes back down; the others stay put', () => {
+  it('the next stone hops in eight time steps on the page clock and comes back down; the others stay put', () => {
     const stage = fakeStage();
-    const map = new MapStage(stage);
+    let t = 0;
+    const map = new MapStage(stage, { clock: () => t });
     map.open(view('plants', 1));
     const next = stage.scene.getObjectByName('map-stone-p1-2') as Mesh;
     const other = stage.scene.getObjectByName('map-stone-p1-1') as Mesh;
     const heights = new Set<number>();
     for (let i = 0; i < 60; i++) {
+      t = i / 60;
       map.frame(0.5, 1 / 60, 1 / 60);
       heights.add(Number(next.position.y.toFixed(4)));
       expect(other.position.y).toBe(0);
     }
     expect(Math.max(...heights)).toBeGreaterThan(0.2);
     expect(heights.has(0)).toBe(true);
-    expect(heights.size).toBeLessThanOrEqual(9); // eighths of the hop
+    expect(heights.size).toBeLessThanOrEqual(5); // eight steps, symmetric: 0, 7/16, 3/4, 15/16, 1
+    // The same beat as the HTML's CSS hop: a whole hop every HOP_MS, the top half way.
+    expect(hopHeight(0)).toBe(0);
+    expect(hopHeight(HOP_MS / 2000)).toBe(1);
+    expect(hopHeight(HOP_MS / 1000 + 0.0001)).toBe(0);
+    map.close();
+  });
+
+  it('layout is projected again only when the camera or the measured size changed, with no allocation per frame', () => {
+    const stage = fakeStage();
+    let rects = 0;
+    const measure = stage.canvas.getBoundingClientRect;
+    stage.canvas.getBoundingClientRect = () => { rects++; return measure(); };
+    let t = 0;
+    const map = new MapStage(stage, { clock: () => t });
+    map.open(view('plants', 2));
+    expect(rects).toBe(1); // measured once, on open
+    const first = map.layout()!;
+    const v = first.version;
+    const p1 = first.stones['p1-1']!;
+    const p1x = p1.x;
+    expect(first.hop).toBeGreaterThan(0);
+    // Two hundred frames of a still camera: the hop and the drifting worlds move, the layout does not.
+    const counts = allocationsIn(() => {
+      for (let i = 0; i < 200; i++) {
+        t = i / 60;
+        map.frame(0.5, 1 / 60, 1 / 60);
+        expect(map.layout()).toBe(first);
+      }
+    });
+    expect(counts).toEqual({});
+    expect(first.version).toBe(v);
+    expect(rects).toBe(1);
+    // A new size: measured on request, then projected again into the same objects.
+    stage.canvas.getBoundingClientRect = () => { rects++; return { ...measure(), width: 800, right: 800 }; };
+    map.measure();
+    const again = map.layout()!;
+    expect(again).toBe(first);
+    expect(again.stones['p1-1']).toBe(p1);
+    expect(again.version).toBe(v + 1);
+    expect(p1.x).not.toBe(p1x);
+    // The camera moved (a new frame of the rig): projected again.
+    stage.camera.position.x += 0.5;
+    expect(map.layout()!.version).toBe(v + 2);
+    expect(rects).toBe(2);
     map.close();
   });
 

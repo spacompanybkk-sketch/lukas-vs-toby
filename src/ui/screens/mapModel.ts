@@ -10,6 +10,9 @@ import type { CardKey, Faction, UnitKey } from '../../sim/types';
  * player's marker stands on it), `open` (playable, not won yet, not the next one), `done` (won,
  * with 1–3 stars).
  */
+/** The next stone's hop, in milliseconds: the 3D stone and the HTML over it keep this beat. */
+export const HOP_MS = 625;
+
 export type StoneState = 'closed' | 'open' | 'next' | 'done';
 
 export interface Stone {

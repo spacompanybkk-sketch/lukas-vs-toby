@@ -77,19 +77,32 @@
 .stone {
   --stone: clamp(64px, min(7.4vw, 11vh), 96px);
   position: absolute;
-  left: -999px; top: -999px;
+  left: 0; top: 0;
   width: var(--stone);
   min-height: var(--stone);
   padding: 0;
   border: 0;
   background: none;
   translate: -50% calc(-100% + var(--stone) * 0.22);
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end;
   pointer-events: auto;
+  will-change: transform;
   touch-action: manipulation;
   cursor: pointer;
 }
 .map--flat .stone { translate: -50% -50%; }
+/* Over the 3D map, a stone shows once it has been placed over its 3D stone. */
+.map:not(.map--flat) .stone:not([data-placed]), .map:not(.map--flat) .map__marker:not([data-placed]) { visibility: hidden; }
+.stone__body { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; }
+/* The next stone and the player's picture hop with the 3D stone: the same beat, the same eight steps. */
+@keyframes map-hop {
+  0% { translate: 0 0; } 12.5% { translate: 0 calc(var(--hop, 0px) * -0.4375); }
+  25% { translate: 0 calc(var(--hop, 0px) * -0.75); } 37.5% { translate: 0 calc(var(--hop, 0px) * -0.9375); }
+  50% { translate: 0 calc(var(--hop, 0px) * -1); } 62.5% { translate: 0 calc(var(--hop, 0px) * -0.9375); }
+  75% { translate: 0 calc(var(--hop, 0px) * -0.75); } 87.5% { translate: 0 calc(var(--hop, 0px) * -0.4375); }
+  100% { translate: 0 0; }
+}
+.stone.is-next .stone__body, .map__marker-pic { animation: map-hop var(--hop-ms, 625ms) step-end var(--hop-delay, 0ms) infinite; }
 .stone__badge {
   position: relative;
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px;
@@ -109,14 +122,21 @@
 .stone.is-fresh .stone__star.is-on:nth-child(2) { animation-delay: 240ms; }
 .stone.is-fresh .stone__star.is-on:nth-child(3) { animation-delay: 480ms; }
 .stone.is-next .stone__badge { outline: var(--px-line) solid var(--c-sun); outline-offset: 3px; animation: px-breathe 1000ms steps(2, jump-none) infinite; }
-/* The unit a level unlocks: its black silhouette over the stone until the level is won. */
-.stone__unlock { position: absolute; bottom: calc(100% + 6px); left: 50%; translate: -50% 0; width: calc(var(--stone) * 0.7); }
-.stone__unlock-pic { width: 100%; background: var(--c-sun) !important; }
-.stone__unlock-pic img, .stone__unlock-pic svg { filter: brightness(0) opacity(0.8); }
-.stone.is-closed .stone__unlock { filter: none; }
+/* The unit a level unlocks: its grey silhouette and a "?" block in a bubble over its own stone,
+   leaning away from the next stone on the path, with a pointer down to the stone. */
+.stone__unlock { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; flex-direction: column; align-items: center; }
+.stone[data-lean='left'] .stone__unlock { translate: -78% 0; }
+.stone[data-lean='right'] .stone__unlock { translate: -22% 0; }
+.stone__gift { position: relative; display: block; width: calc(var(--stone) * 0.8); padding: 4px; }
+.stone__unlock-pic { width: 100%; background: var(--c-sky-hi) !important; }
+.stone__unlock-pic img, .stone__unlock-pic svg { filter: brightness(0) invert(0.42); }
+.stone__q { position: absolute; right: -12px; top: -12px; width: calc(var(--stone) * 0.34) !important; height: calc(var(--stone) * 0.34) !important; }
+.stone__pointer { width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 10px solid var(--ink); margin-top: -1px; }
+.stone[data-lean='left'] .stone__pointer { align-self: flex-end; margin-right: 12%; }
+.stone[data-lean='right'] .stone__pointer { align-self: flex-start; margin-left: 12%; }
 
 /* The player's picture on the flag of the next stone. */
-.map__marker { position: absolute; left: -999px; top: -999px; translate: -50% -50%; width: clamp(50px, min(5.6vw, 8.4vh), 76px); pointer-events: none; z-index: 1; }
+.map__marker { position: absolute; left: 0; top: 0; translate: -50% -50%; will-change: transform; width: clamp(50px, min(5.6vw, 8.4vh), 76px); pointer-events: none; z-index: 1; }
 .map--flat .map__marker { translate: -50% -100%; }
 .map__marker-pic { width: 100%; }
 
@@ -152,14 +172,23 @@
 .lcard__star { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .lcard__star-icon { width: clamp(44px, 8vh, 72px) !important; height: clamp(44px, 8vh, 72px) !important; filter: grayscale(1) brightness(0.55); }
 .lcard__star.is-won .lcard__star-icon { filter: none; }
-.goal { display: flex; flex-direction: column; align-items: center; gap: 3px; width: clamp(56px, 10vh, 92px); }
-.goal__icon { width: 80% !important; height: auto !important; aspect-ratio: 1; }
-.goal__bar { position: relative; display: block; width: 100%; height: clamp(10px, 1.8vh, 16px); padding: 0; overflow: hidden; }
-.goal__fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c-hp-good); }
-.goal__bar--clock .goal__fill { background: var(--c-sky); }
-.lcard__reward { display: block; width: clamp(56px, 10vh, 92px); padding: 6px; margin-left: clamp(6px, 1.4vw, 18px); }
-.lcard__reward-pic { width: 100%; background: var(--c-sun) !important; }
-.lcard__reward-pic img, .lcard__reward-pic svg { filter: brightness(0) opacity(0.8); }
+.goal { display: flex; flex-direction: column; align-items: center; gap: 4px; width: clamp(68px, 12vh, 112px); }
+.goal__icon { width: 64% !important; height: auto !important; aspect-ratio: 1; }
+/* A big bar: half full and yellow for the second star, nearly full and green for the third. */
+.goal__bar {
+  position: relative; display: block; width: 100%; height: clamp(16px, 2.8vh, 26px);
+  background: #4f5762; box-shadow: 0 0 0 var(--px-line) var(--ink); overflow: hidden;
+}
+.goal__fill { position: absolute; left: 0; top: 0; bottom: 0; }
+.goal__fill[data-fill='yellow'] { background: var(--c-hp-mid); box-shadow: inset 0 -4px 0 var(--c-sun-lo); }
+.goal__fill[data-fill='green'] { background: var(--c-hp-good); box-shadow: inset 0 -4px 0 var(--c-leaf-lo); }
+.lcard__plus { display: block; width: clamp(28px, 5vh, 44px); height: clamp(28px, 5vh, 44px); align-self: center; }
+.lcard__reward { position: relative; display: flex; flex-direction: column; align-items: center; align-self: center; }
+.lcard__bow { width: clamp(60px, 11vh, 96px) !important; height: clamp(30px, 5.5vh, 48px) !important; margin-bottom: -10px; position: relative; z-index: 1; }
+.lcard__bow { object-fit: cover; }
+.lcard__gift { display: block; width: clamp(64px, 11vh, 100px); padding: 8px; background-image: linear-gradient(90deg, transparent 44%, var(--c-sun) 44%, var(--c-sun) 56%, transparent 56%); }
+.lcard__reward-pic { width: 100%; background: var(--c-sky-hi) !important; }
+.lcard__reward-pic img, .lcard__reward-pic svg { filter: brightness(0) invert(0.42); }
 .lcard__foot { display: flex; align-items: center; justify-content: center; gap: clamp(14px, 3vw, 40px); width: 100%; }
 .lcard__faces { display: flex; gap: clamp(6px, 1vw, 12px); }
 .lcard__face { width: clamp(52px, 8.6vh, 80px); height: clamp(52px, 8.6vh, 80px); padding: 6px; }

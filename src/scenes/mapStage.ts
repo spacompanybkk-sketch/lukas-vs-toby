@@ -7,6 +7,7 @@ import { PALETTE } from '../render/palette';
 import { BoxBatch, seededRandom, shade } from '../render/world/boxes';
 import { buildIslet } from '../render/world/island';
 import type { Faction } from '../sim/types';
+import { HOP_MS } from '../ui/screens/mapModel';
 import type { StoneState } from '../ui/screens/mapModel';
 
 /** A client point (CSS pixels, origin at the viewport's top-left). */
@@ -20,11 +21,20 @@ export interface MapView {
   frame: string;
 }
 
-/** Where the HTML over the map goes: each stone's top middle, and the top of the flag (if any). */
+/**
+ * Where the HTML over the map goes: each stone's top middle at rest, the middle of the flag's
+ * cloth (if any), and how many pixels the next stone rises at the top of its hop (the HTML hops by
+ * a CSS animation of that height). One object, reused: its points change in place, and `version`
+ * goes up whenever any of them moved, so a caller with nothing new to write can skip at once.
+ */
 export interface MapLayout {
-  stones: Record<string, Pt>;
-  flag: Pt | null;
+  readonly stones: Record<string, Pt>;
+  readonly flag: Pt | null;
+  readonly hop: number;
+  readonly version: number;
 }
+
+
 
 /**
  * Where the eight stones lie on the Backyard for the plants, as (x, z) on the lawn: a stepping-stone
@@ -50,7 +60,7 @@ const STONE_H = 2;
 const STONE_TOP = STONE_H * VOX;
 /** How high the next stone hops (tiles) and how many hops a second. */
 const HOP = 0.32;
-const HOPS_PER_SECOND = 1.6;
+const HOPS_PER_SECOND = 1000 / HOP_MS;
 /** The flag's pole height above the stone top, where it stands (the stone's edge, away from the badge) and its cloth. */
 const POLE = 1.1;
 const POLE_X = -0.62;
@@ -129,6 +139,16 @@ function greyIslet(random: () => number, grave: boolean): BufferGeometry {
 }
 
 const at = new Vector3();
+const hopPt: Pt = { x: 0, y: 0 };
+
+/**
+ * The hop's height (0..1) at `seconds` on the page clock: a parabola in eight time steps
+ * (Minecraft moves in steps). The HTML's CSS hop uses the same eight steps.
+ */
+export function hopHeight(seconds: number): number {
+  const u = Math.floor(((seconds * HOPS_PER_SECOND) % 1) * 8) / 8;
+  return 4 * u * (1 - u);
+}
 
 /**
  * The world map, a director on the app's one stage (no renderer, canvas or light of its own). The
@@ -140,6 +160,17 @@ const at = new Vector3();
  */
 export class MapStage implements Director {
   private readonly stage: StageLike;
+  /** Seconds on the page clock: the 3D hop and the HTML's CSS hop share it, so they keep in step. */
+  private readonly clock: () => number;
+  private readonly out: { stones: Record<string, Pt>; flag: Pt | null; hop: number; version: number } = {
+    stones: {}, flag: null, hop: 0, version: 0,
+  };
+  private readonly flagPt: Pt = { x: 0, y: 0 };
+  /** The canvas's place on the page, measured on open and on `measure()` (a resize), never per frame. */
+  private readonly rect = { left: 0, top: 0, width: 0, height: 0 };
+  /** The camera the points were last projected with (world matrix, then projection). */
+  private readonly seen = new Float64Array(32);
+  private dirty = true;
   private readonly root = new Group();
   /** One matte material for everything the map builds; made on open, freed on close. */
   private material: MeshStandardMaterial | null = null;
@@ -147,10 +178,10 @@ export class MapStage implements Director {
   private nextStone: Mesh | null = null;
   private flag: Mesh | null = null;
   private worlds: { mesh: Group; y: number; phase: number }[] = [];
-  private time = 0;
 
-  constructor(stage: StageLike) {
+  constructor(stage: StageLike, { clock = () => performance.now() / 1000 }: { clock?: () => number } = {}) {
     this.stage = stage;
+    this.clock = clock;
     this.root.name = 'map';
   }
 
@@ -171,7 +202,7 @@ export class MapStage implements Director {
       this.material = new MeshStandardMaterial(MATTE_PLASTIC);
       this.stage.scene.add(this.root);
       this.buildWorlds();
-      this.time = 0;
+      this.measure();
     }
     this.update(view);
   }
@@ -190,7 +221,9 @@ export class MapStage implements Director {
     pebbles.name = 'map-pebbles';
     pebbles.receiveShadow = true;
     this.root.add(pebbles);
+    const points: Record<string, Pt> = {};
     view.stones.forEach((s, i) => {
+      points[s.id] = { x: 0, y: 0 };
       const [x, z] = path[i] ?? path[path.length - 1]!;
       const mesh = new Mesh(stoneGeometry(s.state), material);
       mesh.name = `map-stone-${s.id}`;
@@ -210,6 +243,9 @@ export class MapStage implements Director {
         this.flag = flag;
       }
     });
+    this.out.stones = points;
+    this.out.flag = this.flag ? this.flagPt : null;
+    this.dirty = true;
     // The camera rises over the island; the worlds in the sky stay in the picture.
     this.stage.rig.frameSubject(
       { x: [-1.4, 11.4], y: [0, 1.2], z: [-4.4, 6.2] },
@@ -217,44 +253,70 @@ export class MapStage implements Director {
     );
   }
 
+  /** Measures where the canvas is on the page: on open, and when the window or its zoom changes. */
+  measure(): void {
+    const r = this.stage.canvas.getBoundingClientRect();
+    this.rect.left = r.left;
+    this.rect.top = r.top;
+    this.rect.width = r.width || window.innerWidth;
+    this.rect.height = r.height || window.innerHeight;
+    this.dirty = true;
+  }
+
   /**
-   * Where the HTML goes, in client pixels: each stone's top middle (as it hops) and the top of the
-   * flag. Null while the map is not on stage.
+   * Where the HTML goes (see `MapLayout`); null while the map is not on stage. Cheap to call every
+   * frame: the points are projected again only when the camera or the measured size changed, into
+   * the same objects, with nothing allocated.
    */
   layout(): MapLayout | null {
     if (!this.isOpen) return null;
     const camera = this.stage.camera;
     camera.updateMatrixWorld();
-    const rect = this.stage.canvas.getBoundingClientRect();
-    const w = rect.width || window.innerWidth;
-    const h = rect.height || window.innerHeight;
-    const toClient = (v: Vector3): Pt => {
-      v.project(camera);
-      return { x: rect.left + (v.x * 0.5 + 0.5) * w, y: rect.top + (0.5 - v.y * 0.5) * h };
-    };
-    const stones: Record<string, Pt> = {};
-    for (const s of this.stones) stones[s.id] = toClient(at.set(s.x, s.mesh.position.y + STONE_TOP, s.z));
-    let flag: Pt | null = null;
+    const world = camera.matrixWorld.elements;
+    const proj = camera.projectionMatrix.elements;
+    let same = !this.dirty;
+    for (let i = 0; i < 16 && same; i++) same = this.seen[i] === world[i] && this.seen[16 + i] === proj[i];
+    if (same) return this.out;
+    for (let i = 0; i < 16; i++) {
+      this.seen[i] = world[i]!;
+      this.seen[16 + i] = proj[i]!;
+    }
+    this.dirty = false;
+    for (let i = 0; i < this.stones.length; i++) {
+      const s = this.stones[i]!;
+      this.project(s.x, STONE_TOP, s.z, this.out.stones[s.id]!);
+    }
+    this.out.hop = 0;
     if (this.flag && this.nextStone) {
       // The middle of the cloth: the player's picture goes there.
       const sx = this.flag.scale.x;
       const p = this.nextStone.position;
-      flag = toClient(at.set(p.x + sx * (POLE_X - CLOTH_W / 2), p.y + STONE_TOP + POLE - CLOTH_H / 2, p.z));
+      this.project(p.x + sx * (POLE_X - CLOTH_W / 2), STONE_TOP + POLE - CLOTH_H / 2, p.z, this.flagPt);
+      const restY = this.flagPt.y;
+      this.project(p.x, STONE_TOP + POLE - CLOTH_H / 2 + HOP, p.z, hopPt);
+      this.out.hop = Math.max(0, Math.round(restY - hopPt.y));
     }
-    return { stones, flag };
+    this.out.version++;
+    return this.out;
+  }
+
+  /** A world point to client pixels, written into `into`. */
+  private project(x: number, y: number, z: number, into: Pt): void {
+    at.set(x, y, z).project(this.stage.camera);
+    const r = this.rect;
+    into.x = r.left + (at.x * 0.5 + 0.5) * r.width;
+    into.y = r.top + (0.5 - at.y * 0.5) * r.height;
   }
 
   step(): void {}
 
-  frame(_alpha: number, realDt: number, _gameDt = 0): void {
-    this.time += realDt > 0 ? Math.min(realDt, 0.1) : 0;
-    if (this.nextStone) {
-      // A stepped hop (Minecraft moves in steps): up and down on a parabola, in eighths.
-      const u = (this.time * HOPS_PER_SECOND) % 1;
-      const h = 4 * u * (1 - u);
-      this.nextStone.position.y = (Math.round(h * 8) / 8) * HOP;
+  frame(_alpha: number, _realDt: number, _gameDt = 0): void {
+    const t = this.clock();
+    if (this.nextStone) this.nextStone.position.y = hopHeight(t) * HOP;
+    for (let i = 0; i < this.worlds.length; i++) {
+      const w = this.worlds[i]!;
+      w.mesh.position.y = w.y + Math.sin(t * 0.6 + w.phase) * 0.08;
     }
-    for (const w of this.worlds) w.mesh.position.y = w.y + Math.sin(this.time * 0.6 + w.phase) * 0.08;
   }
 
   detach(): void {

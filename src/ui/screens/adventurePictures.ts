@@ -212,6 +212,46 @@ export const FACE_HARD = art(FACE_ROWS('r', [
   '.....oo..oo.....',
 ]));
 
+/** A "?" block (a surprise to win), golden, with rivets. */
+export const QUESTION = art(outlined([
+  '................',
+  '.YYYYYYYYYYYYYY.',
+  '.YlyyyyyyyyyylY.',
+  '.YyyyyoooooyyyY.',
+  '.YyyyooyyyooyyY.',
+  '.YyyyooyyyooyyY.',
+  '.YyyyyyyyooyyyY.',
+  '.YyyyyyyooyyyyY.',
+  '.YyyyyyooyyyyyY.',
+  '.YyyyyyooyyyyyY.',
+  '.YyyyyyyyyyyyyY.',
+  '.YyyyyyooyyyyyY.',
+  '.YlyyyyooyyyylY.',
+  '.YYYYYYYYYYYYYY.',
+  '................',
+  '................',
+]));
+
+/** A gift's bow: two red loops and a knot. */
+export const BOW = art(outlined([
+  '................',
+  '................',
+  '................',
+  '................',
+  '..rrr......rrr..',
+  '.rRRrr....rrRRr.',
+  '.rR..rr..rr..Rr.',
+  '.rR...rrrr...Rr.',
+  '.rRR..rRRr..RRr.',
+  '..rrrrrRRrrrrr..',
+  '......rRRr......',
+  '.....rr..rr.....',
+  '....rr....rr....',
+  '................',
+  '................',
+  '................',
+]));
+
 /** A level kind's picture: one, or a main one with a smaller one on its corner. */
 export const KIND_ART: Readonly<Record<LevelKind, readonly PixelArt[]>> = Object.freeze({
   battle: [SWORDS],
@@ -223,5 +263,5 @@ export const KIND_ART: Readonly<Record<LevelKind, readonly PixelArt[]>> = Object
 
 /** Every picture here, for the tests. */
 export const ADVENTURE_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({
-  PATH_FLAG, SHIELD, HAMMER, CLOCK, BELT, SKULL_CROWN, TOWER, FLAG, FACE_EASY, FACE_MEDIUM, FACE_HARD,
+  PATH_FLAG, SHIELD, HAMMER, CLOCK, BELT, SKULL_CROWN, TOWER, FLAG, QUESTION, BOW, FACE_EASY, FACE_MEDIUM, FACE_HARD,
 });

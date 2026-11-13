@@ -1,6 +1,7 @@
 import { signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
-import { unlockedCards } from '../adventure/campaign';
+import { isOpen, unlockedCards } from '../adventure/campaign';
+import { LEVELS } from '../adventure/levels';
 import type { LevelDef } from '../adventure/types';
 import type { Save, Slot } from '../progress/save';
 import type { Faction } from '../sim/types';
@@ -40,9 +41,11 @@ export function go(s: Screen): void {
 /**
  * Starts Adventure level `def` for the owner of `save`: the battle on the level's side with the
  * level's cards the player holds and their Marketplace upgrades. The map is where its result
- * returns to.
+ * returns to. A level that is not open for `save` (or not a known level) is refused: nothing
+ * happens and the answer is false.
  */
-export function startLevel(def: LevelDef, save: Save, seed: number = Date.now()): void {
+export function startLevel(def: LevelDef, save: Save, seed: number = Date.now(), levels: readonly LevelDef[] = LEVELS): boolean {
+  if (!isOpen(save, def, levels)) return false;
   // TODO(Task 5): level modes. This is an ordinary battle against the level's computer (or an Easy
   // one for a scripted level); Task 5 builds the match from `levelConfig(def, save, seed)` instead
   // (scripted waves, the clock, the belt, the boss) and applies the result with `applyLevelResult`.
@@ -55,4 +58,5 @@ export function startLevel(def: LevelDef, save: Save, seed: number = Date.now())
     level: def.id,
   };
   go({ name: 'battle', options });
+  return true;
 }

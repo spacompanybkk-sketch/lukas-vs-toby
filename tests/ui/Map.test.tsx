@@ -21,25 +21,37 @@ let sounds: string[];
 let calls: string[];
 const NOW = 1_762_900_000_000;
 
-/** A 3D map stand-in: records what it is told and lays the stones out on a line. */
-function fakeHost(): MapHost & { views: MapHostView[] } {
+type Layout = NonNullable<ReturnType<MapHost['layout']>>;
+
+/**
+ * A 3D map stand-in: records what it is told and lays the stones out on a line. Like MapStage, its
+ * layout is one object whose version goes up only when something moved (a view or a measure).
+ */
+function fakeHost(): MapHost & { views: MapHostView[]; layouts: number; out: { stones: Record<string, { x: number; y: number }>; flag: { x: number; y: number } | null; hop: number; version: number } } {
   const views: MapHostView[] = [];
   let open = false;
-  return {
+  const host = {
     views,
-    open: (v) => { open = true; views.push(v); calls.push(`open ${v.side}`); },
-    update: (v) => { views.push(v); calls.push(`update ${v.side}`); },
-    close: () => { open = false; calls.push('close'); },
-    layout: () => {
-      if (!open) return null;
-      const v = views.at(-1)!;
-      return {
-        stones: Object.fromEntries(v.stones.map((s, i) => [s.id, { x: 100 + i * 100, y: 400 - i * 10 }])),
-        flag: v.stones.some((s) => s.state === 'next') ? { x: 55, y: 66 } : null,
-      };
+    layouts: 0,
+    out: { stones: {} as Record<string, { x: number; y: number }>, flag: null as { x: number; y: number } | null, hop: 9, version: 0 },
+    relayout(v: MapHostView) {
+      host.out.stones = Object.fromEntries(v.stones.map((s, i) => [s.id, { x: 100 + i * 100, y: 400 - i * 10 }]));
+      host.out.flag = v.stones.some((s) => s.state === 'next') ? { x: 55, y: 66 } : null;
+      host.out.version++;
     },
+    open: (v: MapHostView) => { open = true; views.push(v); calls.push(`open ${v.side}`); host.relayout(v); },
+    update: (v: MapHostView) => { views.push(v); calls.push(`update ${v.side}`); host.relayout(v); },
+    measure: () => { calls.push('measure'); host.out.version++; },
+    close: () => { open = false; calls.push('close'); },
+    layout: (): Layout | null => { host.layouts++; return open ? host.out : null; },
   };
+  return host;
 }
+
+const at = (sel: string): string => need(sel).style.transform;
+const frames = (n: number): Promise<void> => act(async () => {
+  for (let i = 0; i < n; i++) await new Promise((r) => requestAnimationFrame(() => r(null)));
+});
 
 beforeEach(() => {
   session.configure({ cloud: createFakeCloud(new FakeDatabase({ now: () => NOW })), storage: new MemoryStorage(), now: () => NOW, window: null, document: null });
@@ -176,22 +188,58 @@ describe('Map screen', () => {
       side: 'plants', frame: frameColor(session.player.value!.slot),
       stones: [{ id: 'p1-1', state: 'done' }, { id: 'p1-2', state: 'next' }, ...['3', '4', '5', '6', '7', '8'].map((n) => ({ id: `p1-${n}`, state: 'closed' }))],
     });
-    expect(need('[data-stone="p1-1"]').style.left).toBe('100px');
-    expect(need('[data-stone="p1-3"]').style.top).toBe('380px');
-    expect(need('[data-marker]').style.left).toBe('55px');
+    expect(at('[data-stone="p1-1"]')).toBe('translate3d(100px, 400px, 0)');
+    expect(at('[data-stone="p1-3"]')).toBe('translate3d(300px, 380px, 0)');
+    expect(at('[data-marker]')).toBe('translate3d(55px, 66px, 0)');
+    expect(need('[data-screen="map"]').style.getPropertyValue('--hop')).toBe('9px');
     // Opening a card does not rebuild the board.
     tap('[data-stone="p1-2"]');
     expect(calls).toEqual(['open plants']);
     tap('[data-action="close-card"]');
     tap('[data-tab="zombies"]');
     expect(calls).toEqual(['open plants', 'update zombies']);
-    // A resize places the HTML again at once.
-    host.layout = () => ({ stones: { 'z1-1': { x: 7, y: 8 } }, flag: null });
+    // A resize measures again and places the HTML at once.
+    host.out.stones['z1-1'] = { x: 7, y: 8 };
     act(() => { window.dispatchEvent(new Event('resize')); });
-    expect(need('[data-stone="z1-1"]').style.left).toBe('7px');
+    expect(calls).toContain('measure');
+    expect(at('[data-stone="z1-1"]')).toBe('translate3d(7px, 8px, 0)');
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('play');
     expect(calls.at(-1)).toBe('close');
+  });
+
+  it('every frame asks the layout, but writes nothing while its version stands', async () => {
+    await player({ 'p1-1': 1 });
+    const host = fakeHost();
+    mount(host);
+    act(() => go({ name: 'map', side: 'plants' }));
+    const stone = need('[data-stone="p1-2"]');
+    expect(stone.style.transform).toBe('translate3d(200px, 390px, 0)');
+    // A mark no placement would write: it stays while the layout's version stands.
+    stone.style.transform = 'mark';
+    need('[data-marker]').style.transform = 'mark';
+    const before = host.layouts;
+    await frames(5);
+    expect(host.layouts).toBeGreaterThan(before);
+    expect(stone.style.transform).toBe('mark');
+    expect(at('[data-marker]')).toBe('mark');
+    // The camera moved (the version went up): written again, as a transform.
+    host.out.stones['p1-2'] = { x: 210, y: 391 };
+    host.out.version++;
+    await frames(2);
+    expect(stone.style.transform).toBe('translate3d(210px, 391px, 0)');
+    expect(stone.style.left).toBe('');
+  });
+
+  it('an unlock bubble leans away from the next stone on the path', async () => {
+    await player({ 'p1-1': 1, 'p1-2': 1 });
+    const host = fakeHost();
+    mount(host);
+    act(() => go({ name: 'map', side: 'plants' }));
+    // The fake lays the path left to right: the next stone is always to the right.
+    expect(need('[data-stone="p1-3"]').dataset.lean).toBe('left');
+    expect(need('[data-stone="p1-3"] [data-unlock] .stone__q')).toBeDefined();
+    expect(need('[data-stone="p1-6"] [data-unlock="kernelPult"]')).toBeDefined();
   });
 
   it('opening and closing the map ten times leaves the host closed each time', async () => {
