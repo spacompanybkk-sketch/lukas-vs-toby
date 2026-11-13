@@ -126,6 +126,9 @@ describe('a Free Play run through the app', () => {
     steps(c, seconds(FREE_PLAY.firstWaveSeconds + BALANCE.endless.gapSeconds * 2) + 1);
     act(() => { need('[data-hud="pause"]').click(); });
     expect(q('[data-bank]')).toBeNull();
+    // One way out of a run: Quit, which banks it. No Restart that would throw the run away unpaid.
+    expect(q('[data-screen="pause"] [data-action="restart"]')).toBeNull();
+    expect(q('[data-screen="pause"] [data-action="resume"]')).not.toBeNull();
     act(() => { need('[data-screen="pause"] [data-action="quit"]').click(); });
     expect(need('[data-bank] [data-bank-wave]').dataset.bankWave).toBe('3');
     expect(need('[data-bank] [data-bank-wave]').dataset.bankCoins).toBe('10');

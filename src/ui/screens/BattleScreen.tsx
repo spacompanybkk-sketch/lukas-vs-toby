@@ -563,7 +563,8 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
   return (
     <PauseMenu
       onResume={() => { setSettingsOpen(false); ctl.setPaused(false); }}
-      onRestart={onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
+      // A Free Play run has one way out, Quit, which banks it; a Restart would throw it away unpaid.
+      onRestart={ctl.endless != null ? undefined : onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
       bank={ctl.endless != null ? <LiveBank endless={ctl.endless} /> : undefined}
     />
   );

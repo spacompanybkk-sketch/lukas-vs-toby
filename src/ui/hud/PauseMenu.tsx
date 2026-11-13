@@ -6,7 +6,8 @@ import './hud.css';
 
 export interface PauseMenuProps {
   onResume(): void;
-  onRestart(): void;
+  /** None: no Restart button (a Free Play run, whose one way out is Quit, which banks it). */
+  onRestart?(): void;
   onSettings(): void;
   onQuit(): void;
   /** Shown once Quit is armed: what quitting banks (a Free Play run's flag and coins). */
@@ -36,7 +37,7 @@ const TICK: PixelArt = {
 };
 
 /**
- * Dimmed overlay with four big picture buttons; Resume is the biggest. Quit takes two taps (the
+ * Dimmed overlay with four big picture buttons (three without Restart); Resume is the biggest. Quit takes two taps (the
  * first shows a tick on it), so a stray finger never throws a match away.
  */
 export function PauseMenu({ onResume, onRestart, onSettings, onQuit, bank }: PauseMenuProps) {
@@ -55,9 +56,11 @@ export function PauseMenu({ onResume, onRestart, onSettings, onQuit, bank }: Pau
           <span class="ico ico--play" aria-hidden="true" /><span class="btn__label inked">Resume</span>
         </button>
         <div class="pause__grid">
-          <button type="button" data-action="restart" class="btn pal-cream" onClick={other(onRestart)}>
-            <span class="ico ico--restart" aria-hidden="true" /><span class="btn__label">Restart</span>
-          </button>
+          {onRestart !== undefined && (
+            <button type="button" data-action="restart" class="btn pal-cream" onClick={other(onRestart)}>
+              <span class="ico ico--restart" aria-hidden="true" /><span class="btn__label">Restart</span>
+            </button>
+          )}
           <button type="button" data-action="settings" class="btn pal-cream" onClick={other(onSettings)}>
             <span class="ico ico--gear" aria-hidden="true" /><span class="btn__label">Settings</span>
           </button>

@@ -497,11 +497,13 @@
 @keyframes quit-armed { 0% { filter: none; } 50% { filter: brightness(1.2); } }
 .pause__grid {
   display: grid;
-  grid-template-columns: repeat(3, auto);
+  grid-auto-flow: column; /* three buttons, or two in a Free Play run (no Restart): centred either way */
+  grid-auto-columns: auto;
+  justify-content: center;
   gap: clamp(10px, 1.6vw, 20px);
 }
 @media (max-width: 700px) {
-  .pause__grid { grid-template-columns: 1fr; }
+  .pause__grid { grid-auto-flow: row; grid-template-columns: 1fr; }
 }
 
 /* ---- Result ----
