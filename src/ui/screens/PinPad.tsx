@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { PixelIcon } from '../hud/PixelIcon';
 import { uiSound } from '../uiSound';
-import { BACKSPACE, CLOUD_OFF, DIGITS, HOURGLASS } from './pictures';
+import { ARROW, BACKSPACE, CHECK, CLOUD_OFF, CROSS, DIGITS, HOURGLASS } from './pictures';
 import './players.css';
 
 /**
  * What the owner of the pad says about a number: `ok` (it moves on; the pad keeps its boxes
  * filled), `wrong` (shake, clear, deny), `locked` (as wrong, then the hourglass: `lockedUntil`
- * says until when), `offline` (clear, and a crossed-out cloud for a moment).
+ * says until when), `offline` (clear, and a crossed-out cloud for a moment), `failed` (clear,
+ * and a big cross for a moment: refused for another reason, try again).
  */
-export type PadAnswer = 'ok' | 'wrong' | 'locked' | 'offline';
+export type PadAnswer = 'ok' | 'wrong' | 'locked' | 'offline' | 'failed';
 
 export interface PinPadProps {
   /** Digits in the number: 3 for a player, 4 for the grown-up code. */
@@ -43,6 +44,7 @@ export function PinPad({ length = 3, head, onCode, onBack, lockedUntil, now = ()
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(0);
   const [offline, setOffline] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [, setTick] = useState(0);
   const gone = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -83,6 +85,11 @@ export function PinPad({ length = 3, head, onCode, onBack, lockedUntil, now = ()
     if (a === 'offline') {
       setOffline(true);
       later(() => setOffline(false), OFFLINE_MS);
+      return;
+    }
+    if (a === 'failed') {
+      setFailed(true);
+      later(() => setFailed(false), OFFLINE_MS);
       return;
     }
     setShake((n) => n + 1);
@@ -140,22 +147,34 @@ export function PinPad({ length = 3, head, onCode, onBack, lockedUntil, now = ()
 
   const shakeCls = shake === 0 ? '' : shake % 2 === 1 ? ' is-wrong is-wrong-a' : ' is-wrong is-wrong-b';
   return (
-    <div data-screen={screenName} class="layer layer--menu pinpad">
+    <div data-screen={screenName} class={`layer layer--menu pinpad${step === 2 ? ' pinpad--repeat' : ''}`}>
       <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={onBack}>
         <span class="ico ico--back" aria-hidden="true" />
       </button>
       <div class="pinpad__body">
         <div class="pinpad__left">
           {head}
-          {step !== undefined && (
-            <div class="pin-step" data-pin-step={String(step)} aria-label={step === 1 ? 'Choose a number' : 'Type it again'}>
-              {[1, 2].map((n) => <span key={n} class={`pin-step__dot px${n === step ? ' is-on' : n < step ? ' is-done' : ''}`} />)}
+          {step === 2 && (
+            // Step 2 is unmistakable without words: the first number done (green, ticked), a big
+            // arrow down, and the same boxes again to fill.
+            <div class="pin-done" data-pin-done aria-hidden="true">
+              <span class="pin-done__row">
+                {Array.from({ length }, (_, i) => <span key={i} class="pin-box pin-box--done px" />)}
+              </span>
+              <PixelIcon art={CHECK} class="pin-done__tick" />
+              <PixelIcon art={ARROW} class="pin-done__arrow" />
             </div>
           )}
+          {step !== undefined && <span class="visually-hidden" data-pin-step={String(step)}>{step === 1 ? 'Choose a number' : 'Type it again'}</span>}
           <div data-pin-boxes class={`pin-boxes${shakeCls}`} aria-label={`${digits.length} of ${length}`}>
             {Array.from({ length }, (_, i) => (
               <span key={i} data-pin-box class={`pin-box px${i < digits.length ? ' is-filled' : ''}`} />
             ))}
+            {failed && (
+              <span class="pin-offline" data-pin-failed aria-label="Try again">
+                <PixelIcon art={CROSS} class="pin-offline__icon" />
+              </span>
+            )}
             {offline && (
               <span class="pin-offline" data-pin-offline aria-label="No connection">
                 <PixelIcon art={CLOUD_OFF} class="pin-offline__icon" />

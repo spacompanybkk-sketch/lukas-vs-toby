@@ -24,8 +24,18 @@ const isBoy = (slot: Slot): slot is BoySlot => slot === 'p01' || slot === 'p02';
 export const LOCK_MS = 30_000;
 export const MAX_WRONG = 3;
 
-/** Device keys: the unlock time of a locked player; an old save carried here; a grown-up code known here. */
-export const lockKey = (slot: Slot): string => `lvt2_lock_${slot}`;
+/** Five wrong grown-up codes in a row lock the gate on this device for this long. */
+export const GATE_LOCK_MS = 60_000;
+export const GATE_MAX_WRONG = 5;
+/** The id the grown-up gate's lock and count are kept under (never a slot). */
+const GATE = 'grownup';
+
+/**
+ * Device keys: the unlock time of a locked player (or of the gate), the wrong tries in a row
+ * that lead to it, an old save carried here, a grown-up code known here.
+ */
+export const lockKey = (id: Slot | typeof GATE): string => `lvt2_lock_${id}`;
+export const wrongKey = (id: Slot | typeof GATE): string => `lvt2_wrong_${id}`;
 const oldImportKey = (slot: Slot): string => `lvt2_oldimport_${slot}`;
 const GROWN_UP_KNOWN = 'lvt2_grownup_known';
 
@@ -69,8 +79,6 @@ interface Live { cloud: Cloud; storage: Storage | undefined; now: () => number; 
  */
 export class PlayerSession {
   private readonly live = signal<Live | null>(null);
-  /** Wrong numbers in a row, per player, since the last right one (this page only). */
-  private readonly wrong = new Map<Slot, number>();
   /** A create whose answer never came: the same taps again try its place first. */
   private pending: { slot: Slot; name: string; picture: CardKey; pin: string } | null = null;
 
@@ -89,7 +97,6 @@ export class PlayerSession {
       ...(deps.window !== undefined ? { window: deps.window } : {}),
       ...(deps.document !== undefined ? { document: deps.document } : {}),
     });
-    this.wrong.clear();
     this.pending = null;
     this.live.value = { cloud: deps.cloud, storage, now, sync };
   }
@@ -133,17 +140,48 @@ export class PlayerSession {
 
   /** When a locked player may try again (ms on this session's clock), or 0 when not locked. */
   lockedUntil(slot: Slot): number {
+    return this.lockTime(slot, LOCK_MS);
+  }
+
+  /** When the grown-up gate opens again on this device, or 0. */
+  gateLockedUntil(): number {
+    return this.lockTime(GATE, GATE_LOCK_MS);
+  }
+
+  /**
+   * The stored unlock time of `id`. An expired lock is cleared with its count. A lock further
+   * away than one whole lock (the device clock was set back) is cleared too: never a longer wait.
+   */
+  private lockTime(id: Slot | typeof GATE, longest: number): number {
     const { storage } = this.d;
-    let raw: string | null = null;
-    try {
-      raw = storage?.getItem(lockKey(slot)) ?? null;
-    } catch {
-      raw = null;
-    }
+    const raw = readKey(storage, lockKey(id));
+    if (raw === null) return 0;
     const until = Number(raw);
-    if (raw === null || !Number.isFinite(until) || until <= this.now()) return 0;
-    // A clock set back can never make the wait longer than one lock.
-    return Math.min(until, this.now() + LOCK_MS);
+    const now = this.now();
+    if (!Number.isFinite(until) || until <= now || until - now > longest) {
+      removeKey(storage, lockKey(id));
+      removeKey(storage, wrongKey(id));
+      return 0;
+    }
+    return until;
+  }
+
+  /** One more wrong try for `id` (kept on the device); the `max`th in a row locks it. */
+  private countWrong(id: Slot | typeof GATE, max: number, ms: number): boolean {
+    const { storage } = this.d;
+    const n = (Number(readKey(storage, wrongKey(id))) || 0) + 1;
+    if (n < max) {
+      writeKey(storage, wrongKey(id), String(n));
+      return false;
+    }
+    removeKey(storage, wrongKey(id));
+    writeKey(storage, lockKey(id), String(this.now() + ms));
+    return true;
+  }
+
+  private clearWrong(id: Slot | typeof GATE): void {
+    removeKey(this.d.storage, wrongKey(id));
+    removeKey(this.d.storage, lockKey(id));
   }
 
   async login(slot: Slot, pin: string): Promise<LoginResult> {
@@ -158,10 +196,9 @@ export class PlayerSession {
       const known = readKey(storage, hashKey(slot));
       if (known !== null && known !== (await pinHash(slot, pin))) r = 'wrong-pin';
     }
-    if (r === 'wrong-pin') return this.countWrong(slot);
+    if (r === 'wrong-pin') return this.countWrong(slot, MAX_WRONG, LOCK_MS) ? 'locked' : 'wrong-pin';
     if (typeof r === 'string') return r;
-    this.wrong.delete(slot);
-    removeKey(storage, lockKey(slot));
+    this.clearWrong(slot);
     this.importOld(slot);
     return this.player.peek() ?? r;
   }
@@ -178,17 +215,6 @@ export class PlayerSession {
       if (slot === 'p02') save = { ...save, difficulty: { plants: 'easy', zombies: 'easy' } };
     }
     return sync.adopt(save, pin);
-  }
-
-  private countWrong(slot: Slot): 'wrong-pin' | 'locked' {
-    const n = (this.wrong.get(slot) ?? 0) + 1;
-    if (n < MAX_WRONG) {
-      this.wrong.set(slot, n);
-      return 'wrong-pin';
-    }
-    this.wrong.delete(slot);
-    writeKey(this.d.storage, lockKey(slot), String(this.now() + LOCK_MS));
-    return 'locked';
   }
 
   /** Carries the old game's save of Lukas or Toby into the logged-in save, if this device has one. */
@@ -238,7 +264,7 @@ export class PlayerSession {
       if (typeof r === 'string') return r;
       this.pending = null;
       if (r.importedOld && isBoy(target)) writeKey(storage, oldImportKey(target), '1');
-      removeKey(storage, lockKey(target));
+      this.clearWrong(target);
       return r;
     }
     return 'taken';
@@ -263,10 +289,11 @@ export class PlayerSession {
     return readKey(this.d.storage, GROWN_UP_KNOWN) !== null;
   }
 
-  async checkGrownUp(code: string): Promise<'ok' | 'wrong' | 'offline'> {
+  /** Whether `code` is the grown-up code. `other`: the cloud refused for another reason. */
+  async checkGrownUp(code: string): Promise<'ok' | 'wrong' | 'offline' | 'other'> {
     const r = await this.d.cloud.checkGrownUpCode(await grownUpHash(code));
     if (r === 'ok') writeKey(this.d.storage, GROWN_UP_KNOWN, '1');
-    return r === 'ok' ? 'ok' : r === 'offline' ? 'offline' : 'wrong';
+    return r === 'ok' ? 'ok' : r === 'offline' ? 'offline' : r === 'wrong-pin' ? 'wrong' : 'other';
   }
 
   /** Sets the grown-up code; only once, ever (`taken` when one exists). */
@@ -276,10 +303,43 @@ export class PlayerSession {
     return r === 'ok' ? 'ok' : r === 'offline' ? 'offline' : 'taken';
   }
 
+  /**
+   * The grown-up gate. `ok`: the code is right. `new`: the cloud had no code at all, and this
+   * one is now set (the screen asks for it again to confirm; a different second entry is fixed
+   * with `changeGrownUp`). `wrong`: a code is set and this is not it; five in a row lock the
+   * gate on this device for 60 s (`locked`). `offline` / `other`: no answer / refused otherwise.
+   * "Set a new code" is only ever offered when the cloud itself says none was set.
+   */
+  async openGate(code: string): Promise<'ok' | 'new' | 'wrong' | 'locked' | 'offline' | 'other'> {
+    if (this.gateLockedUntil() > 0) return 'locked';
+    const r = await this.checkGrownUp(code);
+    if (r === 'ok') {
+      this.clearWrong(GATE);
+      return 'ok';
+    }
+    if (r !== 'wrong') return r;
+    // A refused proof means: not the code, or no code at all. Setting it tells which — the
+    // database takes a code only when none exists (the hash is well formed, so a refusal here
+    // can only mean one is set).
+    const set = await this.setGrownUp(code);
+    if (set === 'ok') {
+      this.clearWrong(GATE);
+      return 'new';
+    }
+    if (set === 'offline') return 'offline';
+    return this.countWrong(GATE, GATE_MAX_WRONG, GATE_LOCK_MS) ? 'locked' : 'wrong';
+  }
+
+  /** A new grown-up code, proven with the current one. */
+  async changeGrownUp(oldCode: string, newCode: string): Promise<'ok' | 'wrong' | 'offline' | 'other'> {
+    const r = await this.d.cloud.changeGrownUpCode(await grownUpHash(oldCode), await grownUpHash(newCode));
+    return r === 'ok' ? 'ok' : r === 'offline' ? 'offline' : r === 'wrong-pin' ? 'wrong' : 'other';
+  }
+
   async deletePlayer(slot: Slot, code: string): Promise<'ok' | 'wrong' | 'offline' | 'failed'> {
     const { cloud, storage, sync } = this.d;
     const gate = await this.checkGrownUp(code);
-    if (gate !== 'ok') return gate;
+    if (gate !== 'ok') return gate === 'other' ? 'failed' : gate;
     const r = await cloud.deletePlayer(slot, await grownUpHash(code));
     if (r !== 'ok') return r === 'offline' ? 'offline' : 'failed';
     if (sync.save.peek()?.slot === slot) sync.logout();
@@ -299,7 +359,7 @@ export class PlayerSession {
     const { slot } = player;
     // "Wrong code" only when the code really is wrong; any other refusal is a retry.
     const gate = await this.checkGrownUp(code);
-    if (gate !== 'ok') return gate;
+    if (gate !== 'ok') return gate === 'other' ? 'failed' : gate;
     const local = loadLocal(slot, storage);
     const known = readKey(storage, hashKey(slot));
     let remote: Save | null = null;
@@ -318,8 +378,7 @@ export class PlayerSession {
     if (sync.save.peek()?.slot === slot) sync.logout();
     saveLocal(save, storage);
     writeKey(storage, hashKey(slot), newHash);
-    removeKey(storage, lockKey(slot));
-    this.wrong.delete(slot);
+    this.clearWrong(slot);
     return kept ? 'ok' : 'fresh';
   }
 
@@ -328,8 +387,7 @@ export class PlayerSession {
     removeLocal(slot, storage);
     removeKey(storage, hashKey(slot));
     removeKey(storage, syncKey(slot));
-    removeKey(storage, lockKey(slot));
-    this.wrong.delete(slot);
+    this.clearWrong(slot);
   }
 
   dispose(): void {

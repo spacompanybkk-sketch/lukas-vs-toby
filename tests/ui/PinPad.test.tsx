@@ -166,8 +166,23 @@ describe('PinPad', () => {
     expect(q('[data-pin-offline]')).toBeNull();
   });
 
-  it('shows which of the two steps it is when choosing a number', () => {
+  it('shows which of the two steps it is when choosing a number: step 2 has the first row done, ticked, an arrow and a tint', () => {
+    act(() => render(<PinPad step={1} onCode={() => 'ok'} onBack={() => {}} />, root));
+    expect(need('[data-pin-step]').getAttribute('data-pin-step')).toBe('1');
+    expect(q('[data-pin-done]')).toBeNull();
     act(() => render(<PinPad step={2} onCode={() => 'ok'} onBack={() => {}} />, root));
     expect(need('[data-pin-step]').getAttribute('data-pin-step')).toBe('2');
+    expect(root.querySelectorAll('[data-pin-done] .pin-box--done')).toHaveLength(3);
+    expect(need('.pinpad').classList.contains('pinpad--repeat')).toBe(true);
+  });
+
+  it('failed (refused for another reason): the boxes clear and a big cross shows for a moment', async () => {
+    act(() => render(<PinPad onCode={() => 'failed'} onBack={() => {}} />, root));
+    for (const k of ['1', '2', '3']) press(k);
+    await flush();
+    expect(q('[data-pin-failed]')).not.toBeNull();
+    expect(filled()).toBe(0);
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(q('[data-pin-failed]')).toBeNull();
   });
 });

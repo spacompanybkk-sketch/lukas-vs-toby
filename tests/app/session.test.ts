@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LOCK_MS, PlayerSession, lockKey } from '../../src/app/session';
+import { GATE_LOCK_MS, LOCK_MS, PlayerSession, lockKey, wrongKey } from '../../src/app/session';
 import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import { loadLocal, saveLocal } from '../../src/progress/localStore';
@@ -192,6 +192,33 @@ describe('login and the lock-out', () => {
     reloaded.dispose();
   });
 
+  it('the count of wrong numbers survives a reload: two wrong, reload, one wrong locks', async () => {
+    expect(await s.login('p03', '000')).toBe('wrong-pin');
+    expect(await s.login('p03', '001')).toBe('wrong-pin');
+    expect(storage.getItem(wrongKey('p03'))).toBe('2');
+    const reloaded = deviceSession();
+    expect(await reloaded.login('p03', '002')).toBe('locked');
+    expect(storage.getItem(wrongKey('p03'))).toBeNull();
+    reloaded.dispose();
+  });
+
+  it('a lock that has run out is cleared with its count', async () => {
+    for (const pin of ['000', '001', '002']) await s.login('p03', pin);
+    clock.t += LOCK_MS;
+    expect(s.lockedUntil('p03')).toBe(0);
+    expect(storage.getItem(lockKey('p03'))).toBeNull();
+    // A fresh three tries, not one.
+    expect(await s.login('p03', '000')).toBe('wrong-pin');
+  });
+
+  it('a device clock set back never makes the wait longer than one lock', async () => {
+    for (const pin of ['000', '001', '002']) await s.login('p03', pin);
+    clock.t -= 24 * 3600_000; // the clock went back a day
+    expect(s.lockedUntil('p03')).toBe(0);
+    expect(storage.getItem(lockKey('p03'))).toBeNull();
+    expect(asSave(await s.login('p03', '123')).name).toBe('Mia');
+  });
+
   it('a right number resets the count: wrong, wrong, right, wrong does not lock', async () => {
     await s.login('p03', '000');
     await s.login('p03', '000');
@@ -341,10 +368,38 @@ describe('grown-up', () => {
     expect(s.lockedUntil('p03')).toBe(0);
   });
 
+  it('the gate: the first code typed is set only when the cloud has none; then right, wrong, and five wrong lock it 60 s', async () => {
+    expect(await s.openGate('135799')).toBe('new');
+    clock.t += 1;
+    expect(await s.openGate('135799')).toBe('ok');
+    clock.t += 1;
+    // On another device that has never seen a code: a mistype is just wrong, never "set a new code".
+    const other = deviceSession(new MemoryStorage());
+    expect(await other.openGate('111111')).toBe('wrong');
+    for (let i = 0; i < 3; i++) expect(await other.openGate('111111')).toBe('wrong');
+    expect(await other.openGate('111111')).toBe('locked');
+    expect(other.gateLockedUntil()).toBe(clock.t + GATE_LOCK_MS);
+    expect(await other.openGate('135799')).toBe('locked');
+    clock.t += GATE_LOCK_MS;
+    expect(await other.openGate('135799')).toBe('ok');
+    other.dispose();
+  });
+
+  it('a mistyped confirmation of a new code is fixed by choosing again (proven with the first)', async () => {
+    expect(await s.openGate('135799')).toBe('new');
+    clock.t += 1;
+    expect(await s.changeGrownUp('135799', '246802')).toBe('ok');
+    clock.t += 1;
+    expect(await s.openGate('246802')).toBe('ok');
+    clock.t += 1;
+    expect(await s.checkGrownUp('135799')).toBe('wrong');
+  });
+
   it('offline the grown-up gate says offline', async () => {
     db.offline = true;
     expect(await s.checkGrownUp('135799')).toBe('offline');
     expect(await s.setGrownUp('135799')).toBe('offline');
+    expect(await s.openGate('135799')).toBe('offline');
   });
 
   it('a device copy left behind is not shown after the player is deleted elsewhere', async () => {

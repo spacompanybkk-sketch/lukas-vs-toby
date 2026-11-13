@@ -27,6 +27,15 @@
 .pic__img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
 .pic .pic__silhouette { width: 62%; height: 62%; }
 
+/* The player's own frame colour (frameColor): a thick boxy band between two ink lines. */
+.pic-frame {
+  display: block;
+  padding: clamp(5px, 7%, 12px);
+  background: var(--frame);
+  box-shadow: 0 0 0 var(--px-line) var(--ink);
+}
+.pic-frame > .pic { width: 100%; }
+
 /* ---- Players grid ---- */
 .players { place-items: center; padding-top: calc(var(--gutter-top) + var(--btn-h) + 12px); padding-bottom: calc(var(--gutter-bottom) + 64px); }
 .players__grid { display: grid; gap: 12px; justify-content: center; align-content: center; }
@@ -101,7 +110,27 @@
 .pinpad__left { display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2.4vh, 24px); }
 .pad-head { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .pad-head__pic { width: clamp(120px, 26vh, 220px); --lip: 0px; padding: 0; }
+.pad-head__pic.pic-frame { padding: clamp(8px, 1.6vh, 14px); }
 .pad-head__name { font-size: var(--fs-big); line-height: 1; color: var(--white); }
+/* Step 2 of choosing a number: the first row done (green, ticked), a big arrow down, a green tint. */
+.pinpad--repeat { background: linear-gradient(rgba(62, 154, 46, 0.42), rgba(62, 154, 46, 0.42)), var(--menu-backdrop); }
+.pinpad--repeat .pad-head__pic { width: clamp(96px, 17vh, 160px); }
+.pin-done { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pin-done__row { display: flex; gap: clamp(6px, 1vw, 12px); }
+.pin-box.pin-box--done {
+  width: calc(var(--key) * 0.44);
+  height: calc(var(--key) * 0.44);
+  --fill: var(--c-leaf); --hi: var(--c-leaf-hi); --lo: var(--c-leaf-lo);
+}
+.pinpad .pin-done .pin-done__tick {
+  position: absolute;
+  right: calc(var(--key) * -0.62);
+  top: calc(var(--key) * -0.14);
+  width: calc(var(--key) * 0.58);
+  height: calc(var(--key) * 0.58);
+}
+.pinpad .pin-done .pin-done__arrow { width: calc(var(--key) * 0.8); height: calc(var(--key) * 0.8); rotate: 90deg; animation: arrow-bob 900ms steps(2, jump-none) infinite; }
+@keyframes arrow-bob { 0% { translate: 0 -3px; } 100% { translate: 0 4px; } }
 .pin-step { display: flex; gap: 10px; }
 .pin-step__dot { width: 22px; height: 22px; --fill: var(--c-stone-lo); --hi: var(--c-stone); --lo: var(--ink); }
 .pin-step__dot.is-done { --fill: var(--c-leaf); --hi: var(--c-leaf-hi); --lo: var(--c-leaf-lo); }

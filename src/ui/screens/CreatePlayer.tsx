@@ -5,6 +5,7 @@ import { PICTURES, validName } from '../../progress/save';
 import type { Slot } from '../../progress/save';
 import type { CardKey } from '../../sim/types';
 import { PixelIcon } from '../hud/PixelIcon';
+import { frameColor } from '../frameColor';
 import { uiSound } from '../uiSound';
 import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
@@ -128,7 +129,7 @@ export function CreatePlayer({ portraits = {}, boy }: CreatePlayerProps) {
     case 'pin':
       return (
         <PinPad
-          key="pin" screenName="create" step={1} head={<PadHead who={who} portraits={portraits} />} onBack={back}
+          key="pin" screenName="create" step={1} head={<PadHead who={who} portraits={portraits} frame={boy !== undefined ? frameColor(boy) : undefined} />} onBack={back}
           onCode={(code): PadAnswer => {
             pin.current = code;
             setStep('repeat');
@@ -139,7 +140,7 @@ export function CreatePlayer({ portraits = {}, boy }: CreatePlayerProps) {
     case 'repeat':
       return (
         <PinPad
-          key="repeat" screenName="create" step={2} head={<PadHead who={who} portraits={portraits} />} onBack={back}
+          key="repeat" screenName="create" step={2} head={<PadHead who={who} portraits={portraits} frame={boy !== undefined ? frameColor(boy) : undefined} />} onBack={back}
           onCode={async (code): Promise<PadAnswer> => {
             if (code !== pin.current) {
               setTimeout(() => { if (alive.current) setStep('pin'); }, MISMATCH_MS);

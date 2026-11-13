@@ -615,9 +615,15 @@ function playerShots() {
     ['pinpad-wrong', async (page) => {
       await manyPlayers(page, 2);
       await page.click('[data-player="p02"]');
+      // Shot only: hold the shake (its 420 ms clear-up waits) and freeze it mid-swing.
+      await page.evaluate(() => {
+        const st = window.setTimeout;
+        window.setTimeout = (fn, ms, ...a) => st(fn, ms === 420 ? 60_000 : ms, ...a);
+      });
       for (const d of '999') await page.click(`[data-key="${d}"]`);
       await page.waitForFunction(() => document.querySelector('[data-pin-boxes].is-wrong') !== null, null, { polling: 'raf' });
-      await page.waitForTimeout(60);
+      await page.waitForTimeout(90);
+      await page.evaluate(() => document.getAnimations().forEach((a) => a.pause()));
     }],
     ['pinpad-locked', async (page) => {
       await manyPlayers(page, 2);
@@ -633,6 +639,15 @@ function playerShots() {
       await page.click('[data-action="play"]');
       await page.click('[data-player="p02"]');
       await page.waitForSelector('[data-pin-step="1"]');
+      await page.click('[data-key="7"]');
+      await settleUi(page);
+    }],
+    ['create-repeat', async (page) => {
+      await page.click('[data-action="play"]');
+      await page.click('[data-player="p02"]');
+      await page.waitForSelector('[data-pin-step="1"]');
+      for (const d of '777') await page.click(`[data-key="${d}"]`);
+      await page.waitForSelector('[data-pin-step="2"]');
       await page.click('[data-key="7"]');
       await settleUi(page);
     }],

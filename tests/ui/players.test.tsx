@@ -96,6 +96,34 @@ describe('Players', () => {
     expect(need('[data-player="p01"]').textContent).toContain('Lukas');
   });
 
+  it('every tile has its own frame colour by place, the same on the number pad', async () => {
+    await session.create('Mia', 'brainEater', '111');
+    session.logout();
+    mount();
+    tap('[data-action="play"]');
+    await see('[data-player="p03"]');
+    const toby = need('[data-player="p02"] [data-frame]').getAttribute('data-frame');
+    const mia = need('[data-player="p03"] [data-frame]').getAttribute('data-frame');
+    expect(toby).not.toBe(mia); // the same picture, told apart by the frame
+    tap('[data-player="p03"]');
+    await see('[data-screen="pinpad"]');
+    expect(need('.pad-head [data-frame]').getAttribute('data-frame')).toBe(mia);
+  });
+
+  it('back while the number is being checked stays on the pictures (never lands on Home)', async () => {
+    await makeLukas();
+    tap('[data-action="logout"]');
+    tap(await see('[data-player="p01"]') && '[data-player="p01"]');
+    await see('[data-screen="pinpad"]');
+    for (const d of '123') tap(`[data-key="${d}"]`);
+    tap('[data-action="back"]');
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await see('[data-screen="players"]');
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.value.name).toBe('players');
+    expect(session.player.value).toBeNull();
+  });
+
   it('uses the unit portraits once they are drawn', async () => {
     mount({ portraits: { peashooter: 'data:image/png;base64,AAAA' } });
     tap('[data-action="play"]');
@@ -299,6 +327,25 @@ describe('grown-up gate', () => {
     await see('[data-note]');
     expect(q('[data-row="p01"]')).toBeNull();
     expect(db.peek('v2/players/p01')).toBeNull();
+  });
+
+  it('on a device that never saw the code, a mistype just shakes (never "set a new code"); five lock the gate', async () => {
+    await session.setGrownUp('246802');
+    storage.removeItem('lvt2_grownup_known');
+    mount();
+    tap('[data-action="play"]');
+    await see('[data-action="grownup"]');
+    await openGate();
+    for (let i = 0; i < 4; i++) {
+      clock.t += 1;
+      await typePin('999999');
+      await see('[data-pin-boxes].is-wrong');
+      expect(q('[data-pin-done]')).toBeNull();
+      await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
+    }
+    clock.t += 1;
+    await typePin('999999');
+    await see('[data-lock]');
   });
 
   it('a wrong code once one is known on this device just shakes', async () => {

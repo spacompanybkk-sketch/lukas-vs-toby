@@ -4,6 +4,7 @@ import { GROWN_UP_DIGITS } from '../../cloud/hash';
 import type { RosterEntry } from '../../app/session';
 import { go } from '../../app/store';
 import { PixelIcon } from '../hud/PixelIcon';
+import { frameColor } from '../frameColor';
 import { uiSound } from '../uiSound';
 import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
@@ -14,7 +15,11 @@ import './players.css';
 
 type Step =
   | { name: 'code' }
-  | { name: 'new-code'; first: string }
+  /** The cloud had no code; `first` is now set: type it again to confirm. */
+  | { name: 'confirm'; first: string }
+  /** The confirmation differed: choose the code again (twice), replacing `current`. */
+  | { name: 'rechoose'; current: string }
+  | { name: 'rechoose2'; current: string; first: string }
   | { name: 'list'; note?: string }
   | { name: 'delete'; who: RosterEntry }
   | { name: 'pin'; who: RosterEntry }
@@ -61,44 +66,72 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
       return (
         <PinPad
           key="code" screenName="grownup" length={GROWN_UP_DIGITS} head={lockHead('Grown-up code')} onBack={toPlayers}
+          lockedUntil={() => session.gateLockedUntil()} now={() => session.now()}
           onCode={async (c): Promise<PadAnswer> => {
-            const r = await session.checkGrownUp(c);
-            if (r === 'offline') return 'offline';
+            const r = await session.openGate(c);
             if (r === 'ok') {
               code.current = c;
               void openList();
               return 'ok';
             }
-            // Not the code. If this device has never seen one, it may be the first: type it again to set it.
-            if (session.grownUpKnown()) return 'wrong';
-            setStep({ name: 'new-code', first: c });
-            return 'ok';
+            if (r === 'new') {
+              // The cloud said there was no code: this one is set now; confirm it.
+              code.current = c;
+              setStep({ name: 'confirm', first: c });
+              return 'ok';
+            }
+            return r === 'other' ? 'failed' : r;
           }}
         />
       );
-    case 'new-code':
+    case 'confirm':
       return (
         <PinPad
-          key="new-code" screenName="grownup" length={GROWN_UP_DIGITS} step={2} head={lockHead('New code? Type it again')}
-          onBack={() => setStep({ name: 'code' })}
-          onCode={async (c): Promise<PadAnswer> => {
-            if (c !== step.first) {
-              later(() => setStep({ name: 'code' }));
-              return 'wrong';
+          key="confirm" screenName="grownup" length={GROWN_UP_DIGITS} step={2} head={lockHead('New code. Type it again')}
+          onBack={toPlayers}
+          onCode={(c): PadAnswer => {
+            if (c === step.first) {
+              void openList();
+              return 'ok';
             }
-            const r = await session.setGrownUp(c);
-            if (r === 'offline') return 'offline';
-            if (r === 'taken') {
-              // A code exists already, and this was not it.
-              later(() => setStep({ name: 'code' }));
-              return 'wrong';
-            }
-            code.current = c;
-            void openList();
+            later(() => setStep({ name: 'rechoose', current: step.first }));
+            return 'wrong';
+          }}
+        />
+      );
+    case 'rechoose':
+      return (
+        <PinPad
+          key="rechoose" screenName="grownup" length={GROWN_UP_DIGITS} step={1} head={lockHead('They differed. Choose the code again')}
+          onBack={toPlayers}
+          onCode={(c): PadAnswer => {
+            setStep({ name: 'rechoose2', current: step.current, first: c });
             return 'ok';
           }}
         />
       );
+    case 'rechoose2': {
+      const { current, first } = step;
+      return (
+        <PinPad
+          key="rechoose2" screenName="grownup" length={GROWN_UP_DIGITS} step={2} head={lockHead('Type it again')}
+          onBack={() => setStep({ name: 'rechoose', current })}
+          onCode={async (c): Promise<PadAnswer> => {
+            if (c !== first) {
+              later(() => setStep({ name: 'rechoose', current }));
+              return 'wrong';
+            }
+            const r = await session.changeGrownUp(current, c);
+            if (r === 'ok') {
+              code.current = c;
+              void openList();
+              return 'ok';
+            }
+            return r === 'offline' ? 'offline' : 'failed';
+          }}
+        />
+      );
+    }
     case 'offline':
       return (
         <div data-screen="grownup" data-step="offline" class="layer layer--menu create">
@@ -125,7 +158,7 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
             <ul class="grown__list">
               {(players ?? []).map((p) => (
                 <li key={p.slot} class="grown__row" data-row={p.slot}>
-                  <PlayerPicture picture={p.picture} portraits={portraits} class="grown__pic px" />
+                  <PlayerPicture picture={p.picture} portraits={portraits} class="grown__pic" frame={frameColor(p.slot)} />
                   <span class="grown__name">{p.name}</span>
                   <button type="button" data-action="new-number" aria-label={`New number for ${p.name}`} class="btn btn--square pal-wood" onClick={() => setStep({ name: 'pin', who: p })}>
                     <PixelIcon art={KEY} class="grown__icon" />
@@ -145,12 +178,13 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
       return (
         <PinPad
           key={`delete-${who.slot}`} screenName="grownup" length={GROWN_UP_DIGITS}
-          head={<div class="grown__confirm"><PadHead who={who} portraits={portraits} /><span class="grown__text">Delete? Type the code</span><PixelIcon art={CROSS} class="grown__confirm-x" /></div>}
+          head={<div class="grown__confirm"><PadHead who={who} portraits={portraits} frame={frameColor(who.slot)} /><span class="grown__text">Delete? Type the code</span><PixelIcon art={CROSS} class="grown__confirm-x" /></div>}
           onBack={() => setStep({ name: 'list' })}
           onCode={async (c): Promise<PadAnswer> => {
             const r = await session.deletePlayer(who.slot, c);
             if (r === 'wrong') return 'wrong';
-            if (r !== 'ok') return 'offline'; // no answer or refused: the crossed cloud, try again
+            if (r === 'offline') return 'offline';
+            if (r !== 'ok') return 'failed';
             uiSound('click');
             void openList(`${who.name} was deleted.`);
             return 'ok';
@@ -162,7 +196,7 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
       return (
         <PinPad
           key={`pin-${step.who.slot}`} screenName="grownup" step={1}
-          head={<div class="grown__confirm"><PadHead who={step.who} portraits={portraits} /><span class="grown__text">New number</span></div>}
+          head={<div class="grown__confirm"><PadHead who={step.who} portraits={portraits} frame={frameColor(step.who.slot)} /><span class="grown__text">New number</span></div>}
           onBack={() => setStep({ name: 'list' })}
           onCode={(c): PadAnswer => {
             setStep({ name: 'pin2', who: step.who, first: c });
@@ -175,7 +209,7 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
       return (
         <PinPad
           key={`pin2-${who.slot}`} screenName="grownup" step={2}
-          head={<div class="grown__confirm"><PadHead who={who} portraits={portraits} /><span class="grown__text">Again</span><PixelIcon art={CHECK} class="grown__confirm-x" /></div>}
+          head={<div class="grown__confirm"><PadHead who={who} portraits={portraits} frame={frameColor(who.slot)} /><span class="grown__text">Again</span><PixelIcon art={CHECK} class="grown__confirm-x" /></div>}
           onBack={() => setStep({ name: 'pin', who })}
           onCode={async (c): Promise<PadAnswer> => {
             if (c !== first) {
@@ -183,10 +217,10 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
               return 'wrong';
             }
             const r = await session.resetPin(who, code.current, c);
-            if (r === 'offline' || r === 'failed' || r === 'wrong') {
-              // The code was right a moment ago: anything else is a retry (the crossed cloud), never "wrong".
-              return 'offline';
-            }
+            // The code was right a moment ago: anything but a real wrong code is a retry.
+            if (r === 'offline') return 'offline';
+            if (r === 'wrong') return 'wrong';
+            if (r === 'failed') return 'failed';
             uiSound('click');
             void openList(r === 'fresh'
               ? `${who.name} has a new number. This device had no copy of the progress, so it starts fresh.`

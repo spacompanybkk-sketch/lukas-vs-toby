@@ -5,6 +5,7 @@ import type { Roster, RosterEntry } from '../../app/session';
 import { go } from '../../app/store';
 import type { Slot } from '../../progress/save';
 import { PixelIcon } from '../hud/PixelIcon';
+import { frameColor } from '../frameColor';
 import { uiSound } from '../uiSound';
 import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
@@ -131,7 +132,7 @@ function PlayerGrid({ roster, portraits }: { roster: Roster | null; portraits: R
               class={`ptile px pal-side side-${sideOf(p)}${i === 0 && pulse ? ' is-last' : ''}${p.exists ? '' : ' is-new'}${locked ? ' is-locked' : ''}`}
               onClick={() => tap(p)}
             >
-              <PlayerPicture picture={p.picture} portraits={portraits} class="ptile__pic" />
+              <PlayerPicture picture={p.picture} portraits={portraits} class="ptile__pic" frame={frameColor(p.slot)} />
               <span class="ptile__name inked">{p.name}</span>
               {locked && <span class="ptile__badge px pal-slate" data-locked><PixelIcon art={HOURGLASS} /></span>}
             </button>
@@ -182,8 +183,19 @@ function GrownUpLock() {
 }
 
 function LoginPad({ who, portraits }: { who: RosterEntry; portraits: Record<string, string> }) {
+  // Backed out (or the pad went away) while the number was being checked: stay where the child went.
+  const left = useRef(false);
+  useEffect(() => () => { left.current = true; }, []);
+  const back = (): void => {
+    left.current = true;
+    go({ name: 'players' });
+  };
   const onCode = async (pin: string): Promise<PadAnswer> => {
     const r = await session.login(who.slot, pin);
+    if (left.current) {
+      if (typeof r === 'object') session.logout();
+      return 'ok';
+    }
     if (typeof r === 'object') {
       uiSound('merge');
       go({ name: 'home' });
@@ -195,18 +207,18 @@ function LoginPad({ who, portraits }: { who: RosterEntry; portraits: Record<stri
   };
   return (
     <PinPad
-      head={<PadHead who={who} portraits={portraits} />}
-      onCode={onCode} onBack={() => go({ name: 'players' })}
+      head={<PadHead who={who} portraits={portraits} frame={frameColor(who.slot)} />}
+      onCode={onCode} onBack={back}
       lockedUntil={() => session.lockedUntil(who.slot)} now={() => session.now()}
     />
   );
 }
 
 /** The player's picture, big, with the name under it. */
-export function PadHead({ who, portraits }: { who: { name: string; picture: RosterEntry['picture'] }; portraits: Record<string, string> }) {
+export function PadHead({ who, portraits, frame }: { who: { name: string; picture: RosterEntry['picture'] }; portraits: Record<string, string>; frame?: string }) {
   return (
     <div class="pad-head">
-      <PlayerPicture picture={who.picture} portraits={portraits} class="pad-head__pic px" />
+      <PlayerPicture picture={who.picture} portraits={portraits} class="pad-head__pic px" frame={frame} />
       <span class="pad-head__name inked">{who.name}</span>
     </div>
   );
