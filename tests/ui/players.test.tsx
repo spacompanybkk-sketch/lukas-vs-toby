@@ -297,6 +297,10 @@ describe('Players', () => {
     tap('[data-action="play"]');
     await see('[data-offline]');
     tap('[data-action="guest"]');
+    // A guest has Quick Battle only (Adventure and Free Play need a player).
+    await see('[data-screen="play"]');
+    expect(need('[data-play="adventure"]').hasAttribute('data-locked')).toBe(true);
+    tap('[data-play="quick"]');
     await see('[data-screen="sidepick"]');
     expect(session.player.value).toBeNull();
     tap('[data-side="plants"]');
@@ -311,7 +315,11 @@ describe('Players', () => {
     tap((await see('[data-action="new-player"]')) && '[data-action="new-player"]');
     await see('[data-step="offline"]');
     tap('[data-action="guest"]');
+    await see('[data-screen="play"]');
+    tap('[data-play="quick"]');
     await see('[data-screen="sidepick"]');
+    tap('[data-action="back"]');
+    expect(screen.value.name).toBe('play');
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('title');
   });
@@ -335,9 +343,10 @@ describe('Players', () => {
     expect(need('[data-sync]').getAttribute('data-sync')).toBe('offline');
   });
 
-  it('Home: Play goes to the side pick preset from the save; a changed difficulty is saved; back to Home', async () => {
+  it('Home: Play → Quick Battle goes to the side pick preset from the save; a changed difficulty is saved; back to the Play menu and Home', async () => {
     await makeLukas();
     tap('[data-home="play"]');
+    tap(await see('[data-play="quick"]') && '[data-play="quick"]');
     await see('[data-screen="sidepick"]');
     expect(need('[data-side="plants"]').getAttribute('aria-pressed')).toBe('true');
     expect(need('[data-skill="medium"]').getAttribute('aria-pressed')).toBe('true');
@@ -345,8 +354,11 @@ describe('Players', () => {
     expect(session.player.value?.difficulty.plants).toBe('hard');
     expect(loadLocal('p01', storage)?.difficulty.plants).toBe('hard');
     tap('[data-action="back"]');
+    await see('[data-screen="play"]');
+    tap('[data-action="back"]');
     await see('[data-screen="home"]');
     tap('[data-home="play"]');
+    tap('[data-play="quick"]');
     await see('[data-skill="hard"][aria-pressed="true"]');
   });
 
@@ -517,6 +529,7 @@ describe('after a battle', () => {
     await typePin('123');
     await see('[data-screen="home"]');
     tap('[data-home="play"]');
+    tap('[data-play="quick"]');
     tap('[data-action="start"]');
     await see('[data-screen="battle"]');
     act(() => { hud().result.value = { winner: 'plants', playerWon: true }; });
@@ -543,6 +556,7 @@ describe('after a battle', () => {
     await see('[data-screen="home"]');
     act(() => session.update((save) => ({ ...save, upgrades: { peashooter: 4, brainEater: 2 } })));
     tap('[data-home="play"]');
+    tap('[data-play="quick"]');
     tap('[data-action="start"]');
     await see('[data-screen="battle"]');
     expect(seen.at(-1)).toMatchObject({ playerFaction: 'plants', upgrades: { peashooter: 4, brainEater: 2 } });

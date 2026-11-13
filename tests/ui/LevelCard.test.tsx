@@ -1,0 +1,132 @@
+// @vitest-environment happy-dom
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { levelById } from '../../src/adventure/levels';
+import { ADVENTURE } from '../../src/adventure/rewards';
+import { session } from '../../src/app/session';
+import { go, screen } from '../../src/app/store';
+import { FakeDatabase } from '../../src/cloud/fakeCloud';
+import { createFakeCloud } from '../../src/cloud/restClient';
+import type { Save } from '../../src/progress/save';
+import { App } from '../../src/ui/App';
+import { resetSeenStars } from '../../src/ui/screens/Map';
+import { MemoryStorage } from '../progress/memoryStorage';
+
+let root: HTMLElement;
+let sounds: string[];
+const NOW = 1_762_900_000_000;
+
+beforeEach(() => {
+  session.configure({ cloud: createFakeCloud(new FakeDatabase({ now: () => NOW })), storage: new MemoryStorage(), now: () => NOW, window: null, document: null });
+  sounds = [];
+  resetSeenStars();
+  root = document.createElement('div');
+  document.body.appendChild(root);
+});
+afterEach(() => {
+  act(() => render(null, root));
+  root.remove();
+  session.dispose();
+  go({ name: 'title' });
+});
+
+const q = (sel: string): HTMLElement | null => root.querySelector<HTMLElement>(sel);
+const all = (sel: string): HTMLElement[] => [...root.querySelectorAll<HTMLElement>(sel)];
+const need = (sel: string): HTMLElement => {
+  const el = q(sel);
+  if (el === null) throw new Error(`missing ${sel}\n${root.innerHTML.slice(0, 600)}`);
+  return el;
+};
+const tap = (sel: string): void => { act(() => { need(sel).click(); }); };
+
+/** A player with `progress`, on the map of `side` with the card of `id` open. */
+async function openCard(id: string, progress: Partial<Pick<Save, 'plants' | 'zombies'>> = {}): Promise<void> {
+  const made = await session.create('Mia', 'peashooter', '123');
+  if (typeof made === 'string') throw new Error(made);
+  session.update((s) => ({ ...s, ...progress }));
+  act(() => render(<App onSound={(n) => sounds.push(n)} />, root));
+  const side = id.startsWith('p') ? 'plants' : 'zombies';
+  act(() => go({ name: 'map', side, card: id }));
+}
+const pictures = (sel: string): string[] => all(`${sel} [data-picture]`).map((p) => p.dataset.picture ?? '');
+
+describe('Level card', () => {
+  it('a first battle: its kind and number, the one card dealt, the enemy, three empty stars (win, base at half, nearly full)', async () => {
+    await openCard('p1-1');
+    const card = need('[data-screen="level-card"]');
+    expect(card.dataset.kind).toBe('battle');
+    expect(need('.lcard__head [data-kind="battle"]')).toBeDefined();
+    expect(pictures('[data-dealt]')).toEqual(['peashooter']);
+    expect(pictures('[data-enemy]')).toEqual(['brainEater']);
+    expect(all('[data-star]')).toHaveLength(3);
+    expect(all('[data-star][data-won]')).toHaveLength(0);
+    expect(all('[data-goal]').map((g) => `${g.dataset.goal} ${g.dataset.share}`)).toEqual([
+      'win 1', `base ${ADVENTURE.baseStars.two}`, `base ${ADVENTURE.baseStars.three}`,
+    ]);
+    expect(q('[data-reward]')).toBeNull();
+    expect(card.textContent?.trim()).toBe(''); // pictures only
+  });
+
+  it('a won level shows its stars filled', async () => {
+    await openCard('p1-1', { plants: { stars: { 'p1-1': 2 }, unlocked: [] } });
+    expect(all('[data-star][data-won]').map((s) => s.dataset.star)).toEqual(['1', '2']);
+  });
+
+  it('a Survive level that unlocks a unit shows its silhouette as the reward; deals only the cards the player holds', async () => {
+    await openCard('p1-3', { plants: { stars: { 'p1-1': 1, 'p1-2': 1 }, unlocked: [] } });
+    expect(need('.lcard__head [data-kind="survive"]')).toBeDefined();
+    expect(need('[data-reward]').dataset.reward).toBe('potatoMine');
+    expect(pictures('[data-dealt]')).toEqual(['peashooter', 'sunflower', 'walnutBomb']);
+    expect(pictures('[data-enemy]')).toEqual(['brainEater']);
+  });
+
+  it('a Breakthrough level asks for time left: two clock stars', async () => {
+    await openCard('z1-3', { zombies: { stars: { 'z1-1': 1, 'z1-2': 1 }, unlocked: [] } });
+    expect(all('[data-goal]').map((g) => `${g.dataset.goal} ${g.dataset.share}`)).toEqual([
+      'win 1', `clock ${ADVENTURE.clockStars.two}`, `clock ${ADVENTURE.clockStars.three}`,
+    ]);
+    expect(pictures('[data-enemy]')).toEqual(['peashooter', 'walnutBomb']);
+  });
+
+  it('a boss level shows the skull-crown first among the enemies', async () => {
+    const stars = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`p1-${i + 1}`, 1 as const]));
+    await openCard('p1-8', { plants: { stars, unlocked: ['potatoMine', 'kernelPult'] } });
+    expect(need('[data-enemy] [data-boss]').dataset.boss).toBe('brainTitan');
+    expect(pictures('[data-dealt]')).toHaveLength(5);
+  });
+
+  it('three faces with the saved difficulty ringed; a change is saved for that side', async () => {
+    await openCard('z1-1');
+    const pressed = (): string[] => all('[data-skill][aria-pressed="true"]').map((b) => b.dataset.skill ?? '');
+    expect(all('[data-skill]').map((b) => b.dataset.skill)).toEqual(['easy', 'medium', 'hard']);
+    const saved = session.player.value!.difficulty.zombies;
+    expect(pressed()).toEqual([saved]);
+    tap('[data-skill="hard"]');
+    expect(session.player.value!.difficulty.zombies).toBe('hard');
+    expect(pressed()).toEqual(['hard']);
+    expect(sounds.at(-1)).toBe('click');
+  });
+
+  it('the big play button starts the level: a battle on its side with its cards (startLevel)', async () => {
+    await openCard('p1-2', { plants: { stars: { 'p1-1': 1 }, unlocked: [] } });
+    tap('[data-action="start-level"]');
+    const s = screen.value;
+    expect(s.name).toBe('battle');
+    if (s.name !== 'battle') return;
+    expect(s.options).toMatchObject({ playerFaction: 'plants', level: 'p1-2', cards: ['peashooter', 'sunflower'], skill: levelById('p1-2')!.opponent!.skill });
+  });
+
+  it('a tap on the dim around the card closes it', async () => {
+    await openCard('p1-1');
+    act(() => { need('[data-veil]').click(); });
+    expect(screen.value).toEqual({ name: 'map', side: 'plants' });
+  });
+
+  it('every target is a button (tap only), and the card of a level of the other side does not open', async () => {
+    await openCard('p1-1');
+    for (const b of all('[data-screen="level-card"] button')) expect(b.getAttribute('type')).toBe('button');
+    act(() => go({ name: 'map', side: 'zombies', card: 'p1-1' }));
+    expect(q('[data-screen="level-card"]')).toBeNull();
+  });
+});

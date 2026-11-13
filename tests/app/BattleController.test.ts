@@ -207,6 +207,13 @@ describe('BattleController setup', () => {
     },
   );
 
+  it('an Adventure level deals the player only its cards (the computer keeps all ten); the tray shows them', () => {
+    const c = new BattleController({ playerFaction: 'zombies', skill: 'easy', seed: 3, cards: ['brainEater', 'veryFastWalker'], level: 'z1-2' });
+    expect(c.match.state.config.cards.zombies).toEqual(['brainEater', 'veryFastWalker']);
+    expect(c.match.state.config.cards.plants).toEqual(ALL_CARDS.plants);
+    expect(c.hud.cards.value.map((v) => v.unit)).toEqual(['brainEater', 'veryFastWalker']);
+  });
+
   it('is kinder on Easy than on Medium, on both sides: more income for the human or more random moves by the computer', () => {
     // Phase 2 (Task 8): Toby's Easy leans on the computer's mistakes, Lukas's on his income.
     for (const side of ['plants', 'zombies'] as const) {

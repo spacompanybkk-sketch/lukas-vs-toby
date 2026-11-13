@@ -83,7 +83,7 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
         <PixelIcon art={DOOR} class="home__door-icon" />
       </button>
       <div class="home__menu">
-        <button type="button" data-home="play" aria-label="Play" class="btn btn--big pal-leaf home__play" onClick={() => to({ name: 'sidepick' })}>
+        <button type="button" data-home="play" aria-label="Play" class="btn btn--big pal-leaf home__play" onClick={() => to({ name: 'play' })}>
           <span class="ico ico--play home__play-icon" aria-hidden="true" />
         </button>
         <div class="home__places">

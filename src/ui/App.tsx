@@ -29,6 +29,9 @@ import { Almanac } from './screens/Almanac';
 import type { AlmanacHost } from './screens/Almanac';
 import { Players } from './screens/Players';
 import { SidePick } from './screens/SidePick';
+import { FreePlaySoon, PlayMenu, PlaySide } from './screens/PlayMenu';
+import { MapScreen } from './screens/Map';
+import type { MapHost } from './screens/Map';
 import { Title } from './screens/Title';
 import { setUiSound } from './uiSound';
 import './screens/screens.css';
@@ -59,6 +62,8 @@ export interface AppProps {
   onSound?(name: SfxName): void;
   /** The Almanac's turntable on the shared stage (none: the Almanac shows its panels only). */
   almanac?: AlmanacHost;
+  /** The Adventure map's 3D board on the shared stage (none: the stones are laid out flat). */
+  map?: MapHost;
 }
 
 /** Production fallback: there is no stand-in, so a missing factory is a loud error. */
@@ -150,7 +155,7 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   }, []);
 }
 
-export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, almanac }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, almanac, map }: AppProps) {
   const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
@@ -202,6 +207,18 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       break;
     case 'sidepick':
       body = <PlayerSidePick boys={boys} />;
+      break;
+    case 'play':
+      body = <PlayMenu />;
+      break;
+    case 'side':
+      body = <PlaySide key={s.mode} mode={s.mode} boys={boys} portraits={portraits} />;
+      break;
+    case 'map':
+      body = <MapScreen side={s.side} card={s.card} portraits={portraits} boys={boys} host={map} />;
+      break;
+    case 'freeplay':
+      body = <FreePlaySoon side={s.side} />;
       break;
     case 'battle':
       body = (
@@ -270,8 +287,12 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
 
   if (live === null) return null;
   const again = (): void => go({ name: 'battle', options: { ...options, seed: (Date.now() + live.id) >>> 0 } });
-  // A logged-in player goes back to their Home; a battle opened without one, to the title.
-  const quit = (): void => go({ name: players.player.peek() !== null ? 'home' : 'title' });
+  // An Adventure level goes back to its map; otherwise a logged-in player goes back to their Home,
+  // a battle opened without one, to the title.
+  const quit = (): void => {
+    if (options.level !== undefined && players.player.peek() !== null) go({ name: 'map', side: options.playerFaction });
+    else go({ name: players.player.peek() !== null ? 'home' : 'title' });
+  };
   return (
     <BattleScreen
       key={live.id} session={live.session} {...rest}
@@ -300,7 +321,9 @@ function useBattleCoins(
     let alive = true;
     const stop = ctl.hud.result.subscribe((result) => {
       const before = players.player.peek();
-      if (result === null || done || before === null) return;
+      // TODO(Task 5): an Adventure level's result goes through `applyLevelResult` (stars, coins,
+      // unlocks, once per battle id), not the Quick Battle reward.
+      if (result === null || done || before === null || options.level !== undefined) return;
       done = true;
       const base = ctl.hud.base.peek()[ctl.playerFaction];
       const r = { won: result.playerWon, skill: options.skill, baseHpShare: base.max > 0 ? base.hp / base.max : 0 };
@@ -328,13 +351,13 @@ function useBattleCoins(
  */
 function PlayerSidePick({ boys }: { boys: BoyPortraits | undefined }) {
   const me = players.player.value;
-  if (me === null) return <SidePick portraits={boys} />;
+  if (me === null) return <SidePick portraits={boys} onBack={() => go({ name: 'play' })} />;
   return (
     <SidePick
       portraits={boys} difficulty={me.difficulty} upgrades={me.upgrades}
       side={me.slot === 'p01' ? 'plants' : me.slot === 'p02' ? 'zombies' : null}
       onSkill={(side, skill) => players.update((save) => ({ ...save, difficulty: { ...save.difficulty, [side]: skill } }))}
-      onBack={() => go({ name: 'home' })}
+      onBack={() => go({ name: 'play' })}
     />
   );
 }

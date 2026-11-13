@@ -22,6 +22,7 @@ import { modeStorage } from '../cloud/modeStorage';
 import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
 import { AlmanacStage } from '../scenes/almanacStage';
+import { MapStage } from '../scenes/mapStage';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
 export const PORTRAIT_SIZE = 120;
@@ -101,6 +102,9 @@ export function mountGame(
   // The Almanac's turntable takes the same stage (no second renderer or context).
   const almanac = stage ? new AlmanacStage(stage) : null;
   lvt.almanac = almanac;
+  // The Adventure map's board, on the same stage too.
+  const map = stage ? new MapStage(stage) : null;
+  lvt.map = map;
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
@@ -172,7 +176,7 @@ export function mountGame(
   // The menus have the demo battle behind them and their own tune.
   const stopScreens = effect(() => {
     const s = screen.value;
-    if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac') {
+    if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac' && s.name !== 'map') {
       demo?.show();
       audio.startMusic('menu');
     }
@@ -198,7 +202,7 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
-      onSound={playUi} almanac={almanac ?? undefined}
+      onSound={playUi} almanac={almanac ?? undefined} map={map ?? undefined}
     />
   );
   render(<Root />, ui);
