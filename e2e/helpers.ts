@@ -31,13 +31,44 @@ export async function pickAndStart(page: Page, side: Side, skill: Skill = 'mediu
   await page.locator('[data-action="start"]').click();
 }
 
-/** Waits until the READY… and FIGHT! banners are gone and the simulation is running. */
+/** Frames the stage has drawn so far (0 without one). */
+const drawn = (page: Page): Promise<number> => page.evaluate(() => ((window.__lvt as any).stage?.frames as number | undefined) ?? 0);
+
+/**
+ * Waits until the READY… and FIGHT! banners are gone and the simulation is running. The opening
+ * camera move and the banners run on real frames: if they never finish, the error says whether
+ * the page drew at all in that time (a starved page: the machine or its GPU was too busy) or drew
+ * and still did not begin (a bug).
+ */
 export async function waitLive(page: Page): Promise<void> {
-  await page.waitForFunction(() => {
-    const lvt = window.__lvt as { session?: { live?: boolean } | null };
-    return lvt.session?.live === true;
-  }, undefined, { timeout: 30_000 });
+  const before = await drawn(page);
+  try {
+    await page.waitForFunction(() => {
+      const lvt = window.__lvt as { session?: { live?: boolean } | null };
+      return lvt.session?.live === true;
+    }, undefined, { timeout: 30_000 });
+  } catch (e) {
+    const after = await drawn(page);
+    throw new Error(
+      after - before < 30
+        ? `the battle did not begin: the page drew only ${after - before} frames in 30 s (starved by a busy machine)`
+        : `the battle did not begin although the page drew ${after - before} frames: ${String(e)}`,
+    );
+  }
   await expect(page.locator('[data-banner]')).toHaveCount(0);
+}
+
+/**
+ * Decides the match at once through the debug hooks: `loser`'s base is knocked down and the
+ * match steps once, so the result does not wait on the live loop's next step.
+ */
+export async function forceResult(page: Page, loser: Side): Promise<void> {
+  await page.evaluate((l) => {
+    const lvt = window.__lvt as any;
+    lvt.damageBase(l, 99999);
+    lvt.fastForward(1);
+  }, loser);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.hud.result.value !== null)).toBe(true);
 }
 
 /** From a fresh page to a live battle. */
