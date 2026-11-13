@@ -10,9 +10,7 @@ import type { Band } from '../../../src/ai/bands';
  */
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'newest-card child as plants v easy': '90% (cap 85): the Easy plants cell cannot lower it without dropping the slow tapper below 45',
-  'slow tapper as plants v easy': '43.5% (45): accepted; 47 and 55 on the other two seed blocks',
-  'steady zombies v hard': '14.0% (15): within a point; 18.5 and 13.0 on the other blocks; it does not move with income (noise)',
-  'random child as zombies v hard': '15.5% (<15): within a point; a child pressing the buttons does as well as steady waves on Hard',
+  'random child as zombies v hard': '16.5% (<15): a child pressing the buttons does as well as steady waves on Hard (10.0 and 14.0 on the other blocks)',
   'pick share walnutBomb': '2.9% (3%): accepted; the three walls share the wall plays',
 };
 
