@@ -5,9 +5,9 @@ import { ALL_CARDS, factionOf } from '../data/units';
 import type { Save } from '../progress/save';
 import { defaultConfig } from '../sim/match';
 import { ZOMBIE_SPAWN_X } from '../sim/types';
-import type { CardKey, Faction, MatchConfig } from '../sim/types';
+import type { CardKey, Faction, MatchConfig, PreparedUnit } from '../sim/types';
 import { ADVENTURE } from './rewards';
-import type { LevelDef, LevelMatchFields, Spawn } from './types';
+import type { LevelDef, Spawn } from './types';
 
 /** The cards `side` holds in Adventure: its first three, and those it has unlocked, in unlock order. */
 export function unlockedCards(save: Save, side: Faction): CardKey[] {
@@ -50,7 +50,7 @@ function spawnX(s: Spawn, faction: Faction): number {
  */
 export function levelConfig(
   def: LevelDef, save: Save, seed: number, b: Balance = BALANCE,
-): MatchConfig & LevelMatchFields {
+): MatchConfig {
   const player = def.side;
   const enemy = opponentOf(player);
   const base = defaultConfig(seed, b);
@@ -62,7 +62,7 @@ export function levelConfig(
     if (level !== undefined) upgrades[key] = level;
   }
 
-  const spawn = (s: Spawn): { unit: Spawn['unit']; faction: Faction; lane: number; x: number; level: number } => {
+  const spawn = (s: Spawn): PreparedUnit => {
     const faction = factionOf(s.unit);
     return { unit: s.unit, faction, lane: s.lane, x: spawnX(s, faction), level: s.level ?? 1 };
   };
@@ -73,15 +73,16 @@ export function levelConfig(
   const startEnergy = { ...base.startEnergy };
   if (def.startEnergy !== null) startEnergy[player] = def.startEnergy;
 
-  // TODO(merge): MatchConfig has these fields once Task 2 lands
-  const level: LevelMatchFields = {
+  // TODO(merge): `def.boss` is not mapped yet (the bosses arrive with Task 3); until then a boss
+  // level is the sim's 'boss' mode, which plays by battle rules against the level's `opponent`.
+  const level: Pick<MatchConfig, 'mode' | 'script' | 'prepared' | 'goalTicks' | 'belt' | 'noEnergy' | 'invulnerableBase'> = {
     mode: def.kind,
     script,
     prepared: def.prepared.map(spawn),
     goalTicks: def.seconds === null ? null : seconds(def.seconds),
     belt: def.belt === null
       ? null
-      : { everyTicks: seconds(def.belt.everySeconds), cards: [...def.belt.cards], slots: ADVENTURE.beltSlots },
+      : { side: player, everyTicks: seconds(def.belt.everySeconds), cards: [...def.belt.cards], slots: ADVENTURE.beltSlots },
     noEnergy: def.kind === 'conveyor',
     // A plant Survive or Conveyor: the zombie base cannot be hurt, the plants hold out. On the
     // zombies' side those kinds are races: the plant base can be hurt, the clock wins for the plants.

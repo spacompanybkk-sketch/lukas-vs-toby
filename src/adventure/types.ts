@@ -1,7 +1,7 @@
 import type { Skill } from '../ai/bot';
 import type { CardKey, Faction, UnitKey } from '../sim/types';
 
-// TODO(merge): `BossKey` comes from src/sim/types.ts once Task 3 lands.
+// TODO(merge): `BossKey` comes from src/sim/types.ts once Task 3 (bosses) lands.
 export type BossKey = 'brainTitan' | 'elderOak';
 
 /**
@@ -38,15 +38,4 @@ export interface LevelDef {
   /** The player's start energy; null = the balance default. */
   startEnergy: number | null;
   spells: boolean; unlocks: CardKey | null; teaches: TutorialStep[] | null;
-}
-
-// TODO(merge): MatchConfig has these fields once Task 2 lands
-export interface LevelMatchFields {
-  mode: 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';
-  script: { tick: number; unit: UnitKey; faction: Faction; lane: number; x: number; level: number }[];
-  prepared: { unit: UnitKey; faction: Faction; lane: number; x: number; level: number }[];
-  goalTicks: number | null;
-  belt: { everyTicks: number; cards: CardKey[]; slots: number } | null;
-  noEnergy: boolean;
-  invulnerableBase: Faction | null;
 }
