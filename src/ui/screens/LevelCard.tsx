@@ -1,4 +1,5 @@
 import type { Skill } from '../../ai/bot';
+import { levelHasEnergy } from '../../adventure/campaign';
 import { ADVENTURE } from '../../adventure/rewards';
 import type { LevelDef, LevelKind } from '../../adventure/types';
 import { factionOf, isCard } from '../../data/units';
@@ -142,7 +143,8 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
           )}
         </div>
         <div class="lcard__foot">
-          <div class="lcard__faces" role="group" aria-label="Difficulty">
+          {/* The difficulty changes only the player's income: no faces on a level with no energy. */}
+          {levelHasEnergy(def) && <div class="lcard__faces" role="group" aria-label="Difficulty">
             {FACES.map((f) => (
               <button
                 key={f.skill} type="button" data-skill={f.skill} aria-label={f.label} aria-pressed={f.skill === skill}
@@ -152,7 +154,7 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
                 <PixelIcon art={f.art} />
               </button>
             ))}
-          </div>
+          </div>}
           {onTutorial !== undefined && def.teaches !== null && def.teaches.length > 0 && (
             <button type="button" data-action="replay-tutorial" aria-label="Show me how" class="btn btn--square pal-cream lcard__teach" onClick={onTutorial}>
               <PixelIcon art={GLOVE} />

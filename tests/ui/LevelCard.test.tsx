@@ -108,6 +108,19 @@ describe('Level card', () => {
     expect(sounds.at(-1)).toBe('click');
   });
 
+  it('a level with no energy (conveyor) shows no difficulty faces: they change only income', async () => {
+    await openCard('p1-5', { plants: { stars: { 'p1-1': 3, 'p1-2': 3, 'p1-3': 3, 'p1-4': 3 }, unlocked: ['potatoMine'] } });
+    expect(all('[data-skill]')).toHaveLength(0);
+    expect(q('[data-action="start-level"]')).not.toBeNull();
+    act(() => session.update((s) => ({ ...s, zombies: { stars: { 'z1-1': 3, 'z1-2': 3, 'z1-3': 3, 'z1-4': 3 }, unlocked: ['desertZombie'] } })));
+    act(() => go({ name: 'map', side: 'zombies', card: 'z1-5' }));
+    expect(need('[data-screen="level-card"]').dataset.level).toBe('z1-5');
+    expect(all('[data-skill]')).toHaveLength(0);
+    // A level with energy keeps them.
+    act(() => go({ name: 'map', side: 'zombies', card: 'z1-4' }));
+    expect(all('[data-skill]')).toHaveLength(3);
+  });
+
   it('the big play button starts the level: a battle on its side with its cards (startLevel)', async () => {
     await openCard('p1-2', { plants: { stars: { 'p1-1': 1 }, unlocked: [] } });
     tap('[data-action="start-level"]');

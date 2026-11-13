@@ -15,6 +15,12 @@ export function unlockedCards(save: Save, side: Faction): CardKey[] {
   return ALL_CARDS[side].filter((k, i) => i < ADVENTURE.firstCards || unlocked.includes(k));
 }
 
+/** Whether the level's players earn and spend energy (a Conveyor deals from its belt instead), so
+ * the difficulty, which changes only the player's income, means anything there. */
+export function levelHasEnergy(def: Pick<LevelDef, 'kind'>): boolean {
+  return def.kind !== 'conveyor';
+}
+
 /** `side`'s levels in campaign order (world, then number), whatever order the list is in. */
 function chain(side: Faction, levels: readonly LevelDef[]): LevelDef[] {
   return levels.filter((l) => l.side === side).sort((a, b) => a.world - b.world || a.n - b.n);
@@ -85,7 +91,7 @@ export function levelConfig(
     belt: def.belt === null
       ? null
       : { side: player, everyTicks: seconds(def.belt.everySeconds), cards: [...def.belt.cards], slots: ADVENTURE.beltSlots },
-    noEnergy: def.kind === 'conveyor',
+    noEnergy: !levelHasEnergy(def),
     // A plant Survive or Conveyor: the zombie base cannot be hurt, the plants hold out. On the
     // zombies' side those kinds are races: the plant base can be hurt, the clock wins for the plants.
     invulnerableBase: player === 'plants' && (def.kind === 'survive' || def.kind === 'conveyor') ? 'zombies' : null,
