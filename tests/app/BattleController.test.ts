@@ -649,7 +649,8 @@ describe('BattleController hero power', () => {
     expect(c.hud.hero.value).toEqual({ ready: true, fraction: 1 });
     c.heroLane(0);
     c.step();
-    expect(c.hud.hero.value.fraction).toBeCloseTo(1 / seconds(60), 9);
+    // In whole eighths (the button's steps): one tick into the new charge shows as none yet.
+    expect(c.hud.hero.value.fraction).toBe(0);
     for (let i = 0; i < seconds(30) - 1; i++) c.step();
     expect(c.hud.hero.value.fraction).toBeCloseTo(0.5, 9);
   });
@@ -696,7 +697,7 @@ describe('BattleController spells', () => {
     d.click({ lane: 0, col: 5 }, null);
     d.step();
     expect(d.hud.spells.value[0]).toMatchObject({ key: 'thunderbolt', ready: false });
-    expect(d.hud.spells.value[0]?.fraction).toBeCloseTo(1 / seconds(BALANCE.spells.thunderbolt.cooldown), 12);
+    expect(d.hud.spells.value[0]?.fraction).toBe(0); // a tick into the cooldown: no eighth yet
   });
 
   it('picking an aimed spell clears the card, the shovel and the hero; a tap casts it and puts it down', () => {
@@ -973,5 +974,32 @@ describe('BattleController gives the card back after a power (final fix round)',
     c.select('peashooter');
     c.selectSpell('sunShower');
     expect(c.hud.selected.value).toBe('peashooter');
+  });
+});
+
+describe('BattleController HUD charge in whole steps (final fix round)', () => {
+  it('hero, spells and cards change their signals only when a picture step changes, not every tick', () => {
+    const c = make();
+    c.match.state.players.plants.energy = 900;
+    c.select('peashooter');
+    c.click({ lane: 2, col: 2 }, null); // the Peashooter card starts recharging
+    c.step();
+    const writes = { hero: 0, spells: 0, cards: 0 };
+    const offs = [
+      c.hud.hero.subscribe(() => { writes.hero++; }),
+      c.hud.spells.subscribe(() => { writes.spells++; }),
+      c.hud.cards.subscribe(() => { writes.cards++; }),
+    ];
+    writes.hero = writes.spells = writes.cards = 0; // subscribe calls once at once
+    const ticks = seconds(4);
+    for (let i = 0; i < ticks; i++) c.step();
+    for (const off of offs) off();
+    // 4 s of a 45 s hero charge, a 20 s first spell wait and a card recharge: a handful of eighths each, never one write per tick.
+    expect(writes.hero).toBeLessThanOrEqual(2);
+    expect(writes.spells).toBeLessThanOrEqual(3);
+    expect(writes.cards).toBeLessThan(ticks / 4);
+    for (const s of c.hud.spells.value) expect(s.fraction * 8).toBe(Math.round(s.fraction * 8));
+    expect(c.hud.hero.value.fraction * 8).toBe(Math.round(c.hud.hero.value.fraction * 8));
+    for (const card of c.hud.cards.value) expect(card.rechargeFraction * 8).toBe(Math.round(card.rechargeFraction * 8));
   });
 });
