@@ -66,7 +66,22 @@ const MINUTE = 1800;
  * to be most extreme (strongest plant hands against weakest zombie hands and the other way round).
  * Measuring all 100 at 300 seeds each is 30,000 matches; these are where a miss would show.
  */
-export const EXTREME_PAIRS: ReadonlyArray<readonly [readonly SpellKey[], readonly SpellKey[]]> = [];
+export const EXTREME_PAIRS: ReadonlyArray<readonly [readonly SpellKey[], readonly SpellKey[]]> = (() => {
+  // One-spell edges at 600 seeds (Task 8b): Sun Shower 22.7 is the strongest plant spell, Rock Wall
+  // 10.8 the weakest; Meteor 15.3 and Brain Feast 15.0 the strongest zombie ones, Frenzy 10.3 the weakest.
+  const strongPlants: SpellKey[][] = [
+    ['sunShower', 'vines'], ['sunShower', 'healingRain'], ['sunShower', 'thunderbolt'], ['sunShower', 'rockWall'], ['vines', 'healingRain'],
+  ];
+  const weakZombies: SpellKey[][] = [['frenzy', 'fog'], ['frenzy', 'graveRise']];
+  const weakPlants: SpellKey[][] = [
+    ['rockWall', 'thunderbolt'], ['rockWall', 'healingRain'], ['thunderbolt', 'healingRain'], ['rockWall', 'vines'], ['thunderbolt', 'vines'],
+  ];
+  const strongZombies: SpellKey[][] = [['meteor', 'brainFeast'], ['meteor', 'graveRise']];
+  const out: Array<readonly [readonly SpellKey[], readonly SpellKey[]]> = [];
+  for (const p of strongPlants) for (const z of weakZombies) out.push([p, z]);
+  for (const p of weakPlants) for (const z of strongZombies) out.push([p, z]);
+  return out;
+})();
 const MM: MatchupSpec = { kind: 'bot', plants: 'medium', zombies: 'medium' };
 const HH: MatchupSpec = { kind: 'bot', plants: 'hard', zombies: 'hard' };
 const NO_SPELLS: MatchupSpec = { kind: 'spells', plants: [], zombies: [] };
