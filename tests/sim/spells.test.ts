@@ -59,20 +59,21 @@ describe('the spell table', () => {
   });
 
   it('has the starting values of spec 21 and the plan\'s cooldowns, first ready at 20 s', () => {
-    // Task 8 retuned these (no one spell may move Medium v Medium more than 6 points); the rules
-    // tests below use spec 21's starting values through classicBalance().
+    // Task 8b tuned these (felt, and each worth about +12 points of Medium v Medium on its own);
+    // the rules tests below use spec 21's starting values through classicBalance().
     expect(BALANCE.spells).toEqual({
-      thunderbolt: { cooldown: 60, firstReady: 20, size: 2, damage: 20 },
-      vines: { cooldown: 45, firstReady: 20, size: 2, seconds: 1.5 },
-      sunShower: { cooldown: 60, firstReady: 20, size: 0, amount: 5 },
-      healingRain: { cooldown: 50, firstReady: 20, size: 3, amount: 100 },
-      rockWall: { cooldown: 60, firstReady: 20, size: 1, seconds: 6 },
-      meteor: { cooldown: 60, firstReady: 20, size: 2, damage: 15 },
-      fog: { cooldown: 45, firstReady: 20, size: 2, seconds: 3 },
-      brainFeast: { cooldown: 60, firstReady: 20, size: 0, amount: 20 },
-      frenzy: { cooldown: 50, firstReady: 20, size: 3, seconds: 5, factor: 2 },
-      graveRise: { cooldown: 60, firstReady: 20, size: 1, count: 1, minCol: 9 },
+      thunderbolt: { cooldown: 90, firstReady: 45, size: 2, damage: 300 },
+      vines: { cooldown: 60, firstReady: 45, size: 2, seconds: 8 },
+      sunShower: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
+      healingRain: { cooldown: 90, firstReady: 45, size: 3, amount: 125 },
+      rockWall: { cooldown: 90, firstReady: 45, size: 1, seconds: 12 },
+      meteor: { cooldown: 90, firstReady: 45, size: 2, damage: 200 },
+      fog: { cooldown: 90, firstReady: 45, size: 2, seconds: 6 },
+      brainFeast: { cooldown: 90, firstReady: 45, size: 0, amount: 75 },
+      frenzy: { cooldown: 60, firstReady: 45, size: 3, seconds: 10, factor: 2.5 },
+      graveRise: { cooldown: 90, firstReady: 45, size: 1, count: 2, minCol: 4 },
     });
+    expect(BALANCE.units.rock?.hp).toBe(1500); // Rock Wall's rock
     expect(classicBalance().spells.thunderbolt.damage).toBe(300); // spec 21's starting values, for the rules tests
   });
 
@@ -92,7 +93,7 @@ describe('the deal', () => {
         const pool = [...SPELLS[side]];
         const expected = [pool.splice(randomInt(rng, pool.length), 1)[0], pool.splice(randomInt(rng, pool.length), 1)[0]];
         expect(m.state.players[side].spells.map((x) => x.key)).toEqual(expected);
-        expect(m.state.players[side].spells.every((x) => x.timer === seconds(20))).toBe(true);
+        expect(m.state.players[side].spells.every((x) => x.timer === seconds(BALANCE.spells[x.key].firstReady))).toBe(true);
       }
       expect(m.state.rng).toBe(rng.rng);
     }

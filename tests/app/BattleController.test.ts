@@ -3,7 +3,7 @@ import { BattleController } from '../../src/app/BattleController';
 import { DIFFICULTY, battleConfig } from '../../src/ai/difficulty';
 import { BALANCE, seconds } from '../../src/data/balance';
 import { ZOMBIE_SPAWN_X } from '../../src/sim/types';
-import type { Faction } from '../../src/sim/types';
+import type { Faction, SpellKey } from '../../src/sim/types';
 
 function make(playerFaction: Faction = 'plants', seed = 7): BattleController {
   return new BattleController({ playerFaction, skill: 'easy', seed });
@@ -449,14 +449,15 @@ describe('BattleController spells', () => {
     const c = make();
     const keys = c.match.state.players.plants.spells.map((x) => x.key);
     expect(c.hud.spells.value).toEqual(keys.map((key) => ({ key, ready: false, fraction: 0 })));
-    for (let i = 0; i < seconds(10); i++) c.step();
+    const half = seconds(BALANCE.spells[keys[0] as SpellKey].firstReady) / 2; // every spell has the same first wait
+    for (let i = 0; i < half; i++) c.step();
     expect(c.hud.spells.value[0]?.fraction).toBeCloseTo(0.5, 9);
     const before = c.hud.spells.value;
     c.setPaused(true);
     c.step();
     expect(c.hud.spells.value).toBe(before); // only written when it changes
     c.setPaused(false);
-    for (let i = 0; i < seconds(10); i++) c.step();
+    for (let i = 0; i < half; i++) c.step();
     expect(c.hud.spells.value.every((x) => x.ready && x.fraction === 1)).toBe(true);
 
     const d = dealt();
