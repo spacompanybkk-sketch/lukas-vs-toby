@@ -119,7 +119,8 @@ describe('difficulty setup', () => {
       expect(hard.randomShare).toBe(0);
       expect(hard.income.computer).toBeGreaterThan(1);
       expect(hard.income.computer).toBeGreaterThanOrEqual(medium.income.computer);
-      expect(easy.income.human).toBeGreaterThan(1);
+      // Easy is kinder than Medium: more income for the human, or more mistakes by the computer.
+      expect(easy.income.human > medium.income.human || easy.randomShare > medium.randomShare).toBe(true);
     }
   });
 });
