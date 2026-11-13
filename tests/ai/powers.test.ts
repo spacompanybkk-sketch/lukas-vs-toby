@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fullConfig } from '../../src/ai/balanceChecks';
-import { createBasicBot } from '../../src/ai/basicBot';
+import { SKILLS, createBasicBot } from '../../src/ai/basicBot';
 import { heroMove, powerMove } from '../../src/ai/powers';
 import { BALANCE, cloneBalance } from '../../src/data/balance';
 import { Match, spawnUnit } from '../../src/sim/match';
@@ -98,21 +98,36 @@ describe('hero and spell aim', () => {
 });
 
 describe('thinking cost', () => {
-  it('a Hard bot thinks in well under 0.2 ms a tick on average over a whole match', () => {
-    const m = new Match(fullConfig(5, BALANCE));
-    const bots = [createBasicBot('plants', 'hard', 5), createBasicBot('zombies', 'hard', 5)];
-    let spent = 0;
-    let calls = 0;
-    while (m.state.winner === null && m.state.tick < 14_400) {
-      const commands = [];
-      for (const bot of bots) {
-        const t = performance.now();
-        commands.push(...bot.think(m));
-        spent += performance.now() - t;
-        calls += 1;
+  it('a Hard bot thinks in well under 0.2 ms per think on average, and under 2 ms in 99 of 100 thinks', () => {
+    // The app calls think every tick; a bot only works on one tick of every `thinkEvery` (a seeded
+    // phase). That tick is found from the timings: the residue of tick % thinkEvery with the highest
+    // mean cost. Only those calls are counted, so a slow think cannot hide among the idle ticks.
+    const perThink: number[] = [];
+    for (const seed of [5, 6, 7]) {
+      const m = new Match(fullConfig(seed, BALANCE));
+      const bots = [createBasicBot('plants', 'hard', seed), createBasicBot('zombies', 'hard', seed)];
+      const every = [SKILLS.plants.hard.thinkEvery, SKILLS.zombies.hard.thinkEvery];
+      const byResidue = bots.map((_, i) => Array.from({ length: every[i] as number }, (): number[] => []));
+      while (m.state.winner === null && m.state.tick < 14_400) {
+        const commands = [];
+        for (let i = 0; i < bots.length; i++) {
+          const t = performance.now();
+          commands.push(...(bots[i] as (typeof bots)[number]).think(m));
+          byResidue[i]?.[m.state.tick % (every[i] as number)]?.push(performance.now() - t);
+        }
+        m.step(commands);
       }
-      m.step(commands);
+      for (const residues of byResidue) {
+        const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+        const thinks = residues.reduce((best, xs) => (mean(xs) > mean(best) ? xs : best), [] as number[]);
+        perThink.push(...thinks);
+      }
     }
-    expect(spent / calls).toBeLessThan(0.2);
+    perThink.sort((a, b) => a - b);
+    const mean = perThink.reduce((a, b) => a + b, 0) / perThink.length;
+    const p99 = perThink[Math.ceil(0.99 * perThink.length) - 1] ?? 0;
+    expect(perThink.length).toBeGreaterThan(1000);
+    expect(mean, `mean ${mean.toFixed(3)} ms per think`).toBeLessThan(0.2);
+    expect(p99, `p99 ${p99.toFixed(3)} ms`).toBeLessThan(2);
   });
 });
