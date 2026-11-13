@@ -20,6 +20,7 @@ import { Stage } from './Stage';
 import { defaultCloud } from '../cloud/restClient';
 import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
+import { AlmanacStage } from '../scenes/almanacStage';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
 export const PORTRAIT_SIZE = 120;
@@ -88,6 +89,9 @@ export function mountGame(
   let firstSession = jumpIn !== null;
 
   const demo = stage ? new TitleDemo(stage) : null;
+  // The Almanac's turntable takes the same stage (no second renderer or context).
+  const almanac = stage ? new AlmanacStage(stage) : null;
+  lvt.almanac = almanac;
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
@@ -159,7 +163,7 @@ export function mountGame(
   // The menus have the demo battle behind them and their own tune.
   const stopScreens = effect(() => {
     const s = screen.value;
-    if (s.name !== 'battle' && s.name !== 'unsupported') {
+    if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac') {
       demo?.show();
       audio.startMusic('menu');
     }
@@ -185,7 +189,7 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
-      onSound={playUi}
+      onSound={playUi} almanac={almanac ?? undefined}
     />
   );
   render(<Root />, ui);

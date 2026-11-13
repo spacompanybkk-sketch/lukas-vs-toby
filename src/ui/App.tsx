@@ -24,6 +24,8 @@ import { CreatePlayer } from './screens/CreatePlayer';
 import { GrownUp } from './screens/GrownUp';
 import { Home, Soon } from './screens/Home';
 import { Leaderboard } from './screens/Leaderboard';
+import { Almanac } from './screens/Almanac';
+import type { AlmanacHost } from './screens/Almanac';
 import { Players } from './screens/Players';
 import { SidePick } from './screens/SidePick';
 import { Title } from './screens/Title';
@@ -54,6 +56,8 @@ export interface AppProps {
   fpsSource?: () => FpsStats;
   /** Plays a menu sound (a key, a refusal, a coin). */
   onSound?(name: SfxName): void;
+  /** The Almanac's turntable on the shared stage (none: the Almanac shows its panels only). */
+  almanac?: AlmanacHost;
 }
 
 /** Production fallback: there is no stand-in, so a missing factory is a loud error. */
@@ -145,7 +149,7 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   }, []);
 }
 
-export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, almanac }: AppProps) {
   const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
@@ -186,8 +190,10 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
     case 'leaderboard':
       body = <Leaderboard portraits={portraits} />;
       break;
-    case 'marketplace':
     case 'almanac':
+      body = <Almanac portraits={portraits} host={almanac} />;
+      break;
+    case 'marketplace':
       body = <Soon place={s.name} />;
       break;
     case 'grownup':

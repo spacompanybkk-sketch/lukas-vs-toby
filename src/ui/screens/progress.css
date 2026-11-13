@@ -102,3 +102,61 @@
 .rank-up__rank { width: calc(var(--hud-h) * 0.72); height: calc(var(--hud-h) * 0.72); font-size: var(--hud-fs); }
 @keyframes rank-hop { 0% { transform: translateY(0); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0); } }
 
+/* ---- Almanac: the turntable shows through on the left; panel on the right; pictures below ---- */
+.almanac {
+  --tile-a: clamp(52px, min(8.2vw, 11vh), 104px);
+  grid-template-columns: 1fr minmax(300px, 38vw);
+  grid-template-rows: 1fr auto;
+  grid-template-areas: 'stage info' 'grid grid';
+  align-items: stretch;
+  gap: clamp(8px, 1.6vh, 18px) clamp(12px, 2vw, 28px);
+  padding-top: var(--gutter-top);
+  /* Only the bottom strip is dimmed, so the turning unit stays bright. */
+  background: linear-gradient(to bottom, transparent 0 58%, rgba(26, 16, 8, 0.35) 72%);
+}
+.almanac__info {
+  grid-area: info;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.5vh, 16px);
+  padding: clamp(12px, 2vh, 22px);
+  margin-right: var(--px-line);
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.almanac__head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.almanac__role { flex: none; width: clamp(48px, 7.5vh, 72px); height: clamp(48px, 7.5vh, 72px); padding: 6px; }
+.almanac__name { font-size: var(--fs-btn); color: var(--white); line-height: 1.05; }
+.almanac__stat { display: grid; grid-template-columns: clamp(34px, 5.4vh, 52px) 1fr; align-items: center; gap: 10px; }
+.almanac__stat-icon { width: 100%; aspect-ratio: 1; }
+.almanac__track { display: block; height: clamp(22px, 3.6vh, 34px); padding: 4px; --fill: #3a2c1c; --hi: #2a1b0e; --lo: #4a3828; }
+.almanac__fill { display: block; height: 100%; min-width: 6px; animation: bar-grow 360ms steps(6, end) both; transform-origin: left; }
+.almanac__fill--hp { background: var(--c-red); box-shadow: inset 0 3px 0 var(--c-red-hi), inset 0 -3px 0 var(--c-red-lo); }
+.almanac__fill--dps { background: var(--c-sun); box-shadow: inset 0 3px 0 #fff4b0, inset 0 -3px 0 var(--c-sun-lo); }
+.almanac__fill--speed { background: var(--c-sky); box-shadow: inset 0 3px 0 var(--c-sky-hi), inset 0 -3px 0 #2e86c1; }
+@keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.almanac__instead { display: block; width: clamp(34px, 5.4vh, 52px); aspect-ratio: 1; }
+.almanac__pips { display: flex; gap: clamp(6px, 1vw, 12px); }
+.almanac__pip { min-width: 0; width: clamp(44px, 7vh, 64px); min-height: clamp(44px, 7vh, 64px); padding: 0 0 var(--px-bev); }
+.almanac__pip.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: 3px; }
+.almanac__pip-digit { width: 62% !important; height: 62% !important; }
+.almanac__act { align-self: flex-start; min-height: var(--btn-h); padding-inline: calc(var(--btn-h) * 0.5); }
+.almanac__grid {
+  grid-area: grid;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.4vh, 14px);
+  padding-bottom: calc(var(--px-lip) + 8px);
+}
+.almanac__row { display: flex; gap: clamp(5px, 0.7vw, 10px); justify-content: center; }
+.almanac__tile {
+  --lip: var(--px-lip);
+  width: var(--tile-a);
+  padding: 4px;
+  margin-bottom: var(--lip);
+  touch-action: manipulation;
+}
+.almanac__tile .almanac__pic { width: 100%; box-shadow: none; }
+.almanac__tile:active { --lip: 1px; transform: translateY(calc(var(--px-lip) - 1px)); filter: brightness(var(--press-dim)); }
+.almanac__tile.is-on { outline: calc(var(--px-line) + 1px) solid var(--c-sun); outline-offset: 3px; --fill: var(--side-hi); }

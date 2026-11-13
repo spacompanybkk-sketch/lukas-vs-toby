@@ -415,7 +415,7 @@ const SCENARIOS = [
   cheer('result-cheer-zombies', 'plants', 'plants'),
   // ---- Players: log-in, number pad, new player, Home, grown-up (phase 4a Task 3) ----
   ...playerShots(),
-  // Phase 4a: the leaderboard (and later the Almanac) at the iPad and laptop sizes.
+  // Phase 4a: the leaderboard and the Almanac at the iPad and laptop sizes.
   ...progressShots(),
   // The phase-2 HUD pieces (?scene=hud-gallery) at the iPad, iPad Air and laptop sizes.
   ...hudGallery(),
@@ -1157,6 +1157,37 @@ function progressShots() {
       await page.waitForFunction(() => window.__lvt.session?.resultReady.value === true, null, { timeout: 15_000 });
       await page.waitForSelector('[data-rank-up]');
       await page.waitForTimeout(1800);
+    }],
+    ['almanac', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="almanac"]');
+      await page.waitForSelector('[data-unit="peashooter"][aria-pressed="true"]');
+      await page.waitForTimeout(1200);
+      await nextFrames(page, 3);
+    }],
+    ['almanac-zombie', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="almanac"]');
+      await page.click('[data-unit="cowboyZombie"]');
+      await page.click('[data-level="5"]');
+      await page.waitForTimeout(1200);
+      await nextFrames(page, 3);
+    }],
+    ['almanac-bunker', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="almanac"]');
+      await page.click('[data-unit="avocadoBunker"]');
+      await page.click('[data-level="3"]');
+      await page.waitForTimeout(1200);
+      await nextFrames(page, 3);
+    }],
+    ['almanac-minion', async (page) => {
+      await asPlayer(page, 'Lukas', 'peashooter', 'p01');
+      await page.click('[data-home="almanac"]');
+      await page.click('[data-unit="boneMinion"]');
+      await page.click('[data-action="act"]');
+      await page.waitForTimeout(300);
+      await nextFrames(page, 3);
     }],
   ];
   return sizes.flatMap(([size, viewport]) => base.map(([name, steps]) => ({
