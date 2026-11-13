@@ -7,13 +7,14 @@
  * - Hero (Mega Mower, Bone Storm): the lane where the damage it would deal, plus the price of what
  *   it would kill, is largest. A zombie near the plant base counts double for the Mower.
  * - Thunderbolt / Meteor: the 2×2 with the most damage dealt (each unit counts up to the spell's
- *   damage), held until that clears its own line.
+ *   damage), once an area holds two enemies or damage worth 1.5× the spell's; after waiting
+ *   `BLAST_PATIENCE` seconds, any area with an enemy (a child should see it used).
  * - Vines: the 2×2 holding the most zombie health that is walking into plants.
  * - Fog: the 2×2 whose plants would fire the most at zombies in its blind seconds.
  * - Frenzy: the 3×3 whose zombies are biting plants hardest, or about to.
  * - Healing Rain: the 3×3 with the most plant health to give back.
  * - Rock Wall: in front of the lane with the most zombie health closing in.
- * - Grave Rise: three minions just right of the front plant of the lane its zombies push hardest.
+ * - Grave Rise: its minions just right of the front plant of the lane its zombies push hardest.
  * - Sun Shower / Brain Feast: as soon as they are ready.
  */
 
@@ -24,16 +25,22 @@ import { isStanding } from '../sim/lookup';
 import { spellArea } from '../sim/spells';
 import { COLS, LANES, PLANT_COLS } from '../sim/types';
 import type { Command, Faction, SimState, SpellKey, SpellSize, Unit } from '../sim/types';
+import { seconds } from '../data/balance';
+import { nextRandom, randomInt } from '../sim/rng';
+import { TICKS_PER_SECOND } from '../sim/types';
 import { biteDps, shotDps } from './laneModel';
+import type { BotRng } from './lawn';
 
 /** What a power must be worth before it is fired, as a multiple of its own damage where it has one. */
 export const POWER_LINES = {
   /** Hero: damage dealt plus prices killed, × its damage. */
   hero: 1.5,
-  /** Thunderbolt: damage dealt, × its damage (held for a crowd: rarer and bigger). */
-  thunderbolt: 3,
-  /** Meteor: damage dealt, × its damage. */
-  meteor: 4,
+  /**
+   * Thunderbolt / Meteor: damage dealt, × its damage. Either this, or two enemies in the area, fires
+   * it; once it has waited `BLAST_PATIENCE` seconds, one enemy is enough (a child sees it used).
+   */
+  thunderbolt: 1.5,
+  meteor: 1.5,
   /** Vines: zombie health held. */
   vines: 700,
   /** Fog: plant damage prevented. */
@@ -45,6 +52,40 @@ export const POWER_LINES = {
   /** Rock Wall: zombie health closing in on the lane. */
   rock: 500,
 } as const;
+
+/** Seconds a ready Thunderbolt or Meteor waits for a crowd before it settles for any enemy. */
+export const BLAST_PATIENCE = 20;
+
+/**
+ * How a computer player paces its powers (from its skill table): none before `firstSeconds` into
+ * the match, at least `gapSeconds` between two, and `aimMiss` of them aimed at a random legal spot
+ * instead of the best one. Easy is slow and clumsy with them, Hard is neither.
+ */
+export interface PowerPacing { readonly firstSeconds: number; readonly gapSeconds: number; readonly aimMiss: number }
+
+/** No pacing: every power as soon as it pays, aimed well. */
+export const UNPACED: PowerPacing = { firstSeconds: 0, gapSeconds: 0, aimMiss: 0 };
+
+/** What a player remembers about its powers between thinks. */
+export interface PowerMemory {
+  /** The tick it last used a power, or null. */
+  lastTick: number | null;
+  /** The first tick each ready power was seen ready (`'hero'` or a spell key), cleared once used. */
+  readySince: Partial<Record<SpellKey | 'hero', number>>;
+}
+
+export function newPowerMemory(): PowerMemory {
+  return { lastTick: null, readySince: {} };
+}
+
+/** A zombie this close to the plant base (x) counts double for the Mega Mower: it is at the gate. */
+const GATE_X = 3;
+/** Vines only count zombies already on the lawn proper (left of the graveyard's middle). */
+const ON_LAWN_X = 8.5;
+/** Fog only counts plants with a zombie this close ahead: they would be shooting during the fog. */
+const FOG_REACH = 7;
+/** Frenzy counts zombies this close to the front plant of their lane: they are about to bite. */
+const ABOUT_TO_BITE = 2.5;
 
 /** The lawn as the powers see it: each standing unit, by side, on its tile. */
 interface Grid {
@@ -77,24 +118,56 @@ function better(a: Pick | null, b: Pick | null): Pick | null {
  * The hero power or a dealt spell worth firing right now, or null. The hero comes first, then the
  * spells in deal order. Whatever it returns, `match.check` accepts.
  */
-export function powerMove(match: Match, faction: Faction): Command | null {
+export function powerMove(
+  match: Match, faction: Faction, pacing: PowerPacing = UNPACED, memory?: PowerMemory, rng?: BotRng,
+): Command | null {
   const s = match.state;
   const player = s.players[faction];
   const heroReady = s.config.heroes[faction] && player.heroTimer === 0;
+  if (memory !== undefined) {
+    const seen = (key: SpellKey | 'hero', ready: boolean): void => {
+      if (!ready) delete memory.readySince[key];
+      else memory.readySince[key] ??= s.tick;
+    };
+    seen('hero', heroReady);
+    for (const slot of player.spells) seen(slot.key, slot.timer === 0);
+  }
   const spellReady = player.spells.some((slot) => slot.timer === 0);
   if (!heroReady && !spellReady) return null; // the usual case: nothing to aim, nothing read
+  if (s.tick < seconds(pacing.firstSeconds)) return null;
+  if (memory?.lastTick != null && s.tick - memory.lastTick < seconds(pacing.gapSeconds)) return null;
   const b = match.balance;
   const grid = readGrid(s);
+  const waited = (key: SpellKey | 'hero'): number => {
+    const since = memory?.readySince[key];
+    return since === undefined ? 0 : (s.tick - since) / TICKS_PER_SECOND;
+  };
+  const use = (cmd: Command): Command => {
+    const aimed = rng !== undefined && pacing.aimMiss > 0 && nextRandom(rng) < pacing.aimMiss ? misaim(match, cmd, rng) : cmd;
+    if (memory !== undefined) memory.lastTick = s.tick;
+    return aimed;
+  };
   if (heroReady) {
     const pick = heroPick(b, grid, faction);
-    if (pick !== null && match.check(pick.cmd) === null) return pick.cmd;
+    if (pick !== null && match.check(pick.cmd) === null) return use(pick.cmd);
   }
   for (const slot of player.spells) {
     if (slot.timer !== 0) continue;
-    const pick = spellPick(b, grid, faction, slot.key);
-    if (pick !== null && match.check(pick.cmd) === null) return pick.cmd;
+    const pick = spellPick(b, grid, faction, slot.key, waited(slot.key));
+    if (pick !== null && match.check(pick.cmd) === null) return use(pick.cmd);
   }
   return null;
+}
+
+/** The same power aimed at a random spot it may legally go (a clumsy aim); the aimed one if none. */
+function misaim(match: Match, cmd: Command, rng: BotRng): Command {
+  if (cmd.type !== 'hero' && cmd.type !== 'spell') return cmd;
+  for (let tries = 0; tries < 8; tries++) {
+    const lane = randomInt(rng, LANES);
+    const other: Command = cmd.type === 'hero' ? { ...cmd, lane } : { ...cmd, lane, col: randomInt(rng, COLS) };
+    if (match.check(other) === null) return other;
+  }
+  return cmd;
 }
 
 /** The hero power alone, where `powerMove` would fire it, or null: for players that cast no spells. */
@@ -115,7 +188,7 @@ function heroPick(b: Balance, grid: Grid, faction: Faction): Pick | null {
   for (const u of grid.units) {
     if (u.faction === faction) continue;
     let v = Math.min(u.hp, damage) + (u.hp <= damage ? priceOf(u.key) : 0);
-    if (faction === 'plants' && u.x < 3) v *= 2; // a zombie at the gate
+    if (faction === 'plants' && u.x < GATE_X) v *= 2; // a zombie at the gate
     scores[u.lane] = (scores[u.lane] ?? 0) + v;
   }
   let best: Pick | null = null;
@@ -163,7 +236,7 @@ function frontZombie(grid: Grid, lane: number): Unit | undefined {
   return front;
 }
 
-function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey): Pick | null {
+function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey, waited = 0): Pick | null {
   const stats = b.spells[spell];
   const enemy = enemyOf(faction);
   switch (spell) {
@@ -172,29 +245,36 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey): P
       return { cmd: { type: 'spell', faction, spell, lane: 0, col: 0 }, score: 1 };
     case 'thunderbolt':
     case 'meteor': {
+      // Fired on a crowd (two enemies, or damage worth its line), or after waiting, on anyone.
       const damage = stats.damage ?? 0;
-      return bestArea(grid, faction, spell, stats.size, enemy, POWER_LINES[spell] * damage, (u) => Math.min(u.hp, damage));
+      const patient = waited >= BLAST_PATIENCE;
+      const count = bestArea(grid, faction, spell, stats.size, enemy, patient ? 1 : 2, () => 1);
+      const worth = bestArea(grid, faction, spell, stats.size, enemy, POWER_LINES[spell] * damage, (u) => Math.min(u.hp, damage));
+      if (worth !== null) return worth;
+      if (count === null) return null;
+      // Among the areas holding enough enemies, the one with the most damage dealt.
+      return bestArea(grid, faction, spell, stats.size, enemy, 0, (u) => Math.min(u.hp, damage));
     }
     case 'vines': {
       // Zombies with a plant somewhere ahead of them in their lane.
       const fronts = Array.from({ length: LANES }, (_, lane) => frontPlant(grid, lane)?.x ?? -1);
       return bestArea(grid, faction, spell, stats.size, 'zombies', POWER_LINES.vines,
-        (z) => (fronts[z.lane] ?? -1) >= 0 && z.x < 8.5 ? z.hp : 0);
+        (z) => (fronts[z.lane] ?? -1) >= 0 && z.x < ON_LAWN_X ? z.hp : 0);
     }
     case 'fog': {
       // Plants with a zombie in their lane they could be shooting at for the whole fog.
       const near = Array.from({ length: LANES }, (_, lane) => frontZombie(grid, lane)?.x ?? Infinity);
       const secs = stats.seconds ?? 0;
       return bestArea(grid, faction, spell, stats.size, 'plants', POWER_LINES.fog,
-        (p) => ((near[p.lane] ?? Infinity) - p.x < 7 ? shotDps(b, p) * secs : 0));
+        (p) => ((near[p.lane] ?? Infinity) - p.x < FOG_REACH ? shotDps(b, p) * secs : 0));
     }
     case 'frenzy': {
       const secs = stats.seconds ?? 0;
       const extra = (stats.factor ?? 1) - 1;
-      // Zombies biting, or about to (within 2.5 tiles of the lane's front plant): faster feet and teeth.
+      // Zombies biting, or about to (within ABOUT_TO_BITE of the lane's front plant): faster feet and teeth.
       const fronts = Array.from({ length: LANES }, (_, lane) => frontPlant(grid, lane)?.x ?? -Infinity);
       return bestArea(grid, faction, spell, stats.size, 'zombies', POWER_LINES.frenzy,
-        (z) => (z.blocked || z.x - (fronts[z.lane] ?? -Infinity) < 2.5 ? biteDps(b, z) * secs * extra : 0));
+        (z) => (z.blocked || z.x - (fronts[z.lane] ?? -Infinity) < ABOUT_TO_BITE ? biteDps(b, z) * secs * extra : 0));
     }
     case 'healingRain': {
       const amount = stats.amount ?? 0;
@@ -232,7 +312,7 @@ function rockPick(grid: Grid, faction: Faction): Pick | null {
 }
 
 /**
- * Three minions in the lane where its zombies push hardest (most zombie health), or failing that
+ * Its minions (Grave Rise's `count`) in the lane where its zombies push hardest (most zombie health), or failing that
  * the lane with the fewest plants, just right of that lane's front plant (never left of `minCol`).
  */
 function gravePick(grid: Grid, faction: Faction, minCol: number): Pick {
@@ -251,4 +331,32 @@ function gravePick(grid: Grid, faction: Faction, minCol: number): Pick {
   const front = frontPlant(grid, lane);
   const col = Math.min(COLS - 1, Math.max(minCol, front === undefined ? minCol : Math.floor(front.x) + 1));
   return { cmd: { type: 'spell', faction, spell: 'graveRise', lane, col }, score: 1 };
+}
+
+/**
+ * A small child's press of a glowing button: the first ready power (the hero, then the spells in
+ * deal order), aimed at a random spot, half the time on the half of the lawn where most units are
+ * (where something is happening) and otherwise anywhere. Null when nothing is ready or no spot is
+ * legal after a few tries.
+ */
+export function childPower(match: Match, faction: Faction, rng: BotRng): Command | null {
+  const s = match.state;
+  const player = s.players[faction];
+  const ready: Array<SpellKey | 'hero'> = [];
+  if (s.config.heroes[faction] && player.heroTimer === 0) ready.push('hero');
+  for (const slot of player.spells) if (slot.timer === 0) ready.push(slot.key);
+  const power = ready[0];
+  if (power === undefined) return null;
+  let left = 0;
+  let right = 0;
+  for (const u of s.units) if (isStanding(u)) { if (u.x < COLS / 2) left += 1; else right += 1; }
+  for (let tries = 0; tries < 8; tries++) {
+    const busy = nextRandom(rng) < 0.5;
+    const lane = randomInt(rng, LANES);
+    const half = right > left ? COLS / 2 : 0;
+    const col = busy ? half + randomInt(rng, COLS / 2) : randomInt(rng, COLS);
+    const cmd: Command = power === 'hero' ? { type: 'hero', faction, lane } : { type: 'spell', faction, spell: power, lane, col };
+    if (match.check(cmd) === null) return cmd;
+  }
+  return null;
 }
