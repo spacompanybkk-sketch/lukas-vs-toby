@@ -7,10 +7,10 @@
  * - Hero (Mega Mower, Bone Storm): the lane where the damage it would deal, plus the price of what
  *   it would kill, is largest. A zombie near the plant base counts double for the Mower.
  * - Thunderbolt / Meteor: the 2×2 with the most damage dealt (each unit counts up to the spell's
- *   damage).
+ *   damage), held until that clears its own line.
  * - Vines: the 2×2 holding the most zombie health that is walking into plants.
  * - Fog: the 2×2 whose plants would fire the most at zombies in its blind seconds.
- * - Frenzy: the 3×3 whose zombies are biting plants hardest.
+ * - Frenzy: the 3×3 whose zombies are biting plants hardest, or about to.
  * - Healing Rain: the 3×3 with the most plant health to give back.
  * - Rock Wall: in front of the lane with the most zombie health closing in.
  * - Grave Rise: three minions just right of the front plant of the lane its zombies push hardest.
@@ -30,8 +30,10 @@ import { biteDps, shotDps } from './laneModel';
 export const POWER_LINES = {
   /** Hero: damage dealt plus prices killed, × its damage. */
   hero: 1.5,
-  /** Thunderbolt / Meteor: damage dealt, × its damage. */
-  blast: 1.5,
+  /** Thunderbolt: damage dealt, × its damage (held for a crowd: rarer and bigger). */
+  thunderbolt: 3,
+  /** Meteor: damage dealt, × its damage. */
+  meteor: 4,
   /** Vines: zombie health held. */
   vines: 700,
   /** Fog: plant damage prevented. */
@@ -171,7 +173,7 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey): P
     case 'thunderbolt':
     case 'meteor': {
       const damage = stats.damage ?? 0;
-      return bestArea(grid, faction, spell, stats.size, enemy, POWER_LINES.blast * damage, (u) => Math.min(u.hp, damage));
+      return bestArea(grid, faction, spell, stats.size, enemy, POWER_LINES[spell] * damage, (u) => Math.min(u.hp, damage));
     }
     case 'vines': {
       // Zombies with a plant somewhere ahead of them in their lane.
@@ -189,8 +191,10 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey): P
     case 'frenzy': {
       const secs = stats.seconds ?? 0;
       const extra = (stats.factor ?? 1) - 1;
+      // Zombies biting, or about to (within 2.5 tiles of the lane's front plant): faster feet and teeth.
+      const fronts = Array.from({ length: LANES }, (_, lane) => frontPlant(grid, lane)?.x ?? -Infinity);
       return bestArea(grid, faction, spell, stats.size, 'zombies', POWER_LINES.frenzy,
-        (z) => (z.blocked ? biteDps(b, z) * secs * extra : 0));
+        (z) => (z.blocked || z.x - (fronts[z.lane] ?? -Infinity) < 2.5 ? biteDps(b, z) * secs * extra : 0));
     }
     case 'healingRain': {
       const amount = stats.amount ?? 0;
