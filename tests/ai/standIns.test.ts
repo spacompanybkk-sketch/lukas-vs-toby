@@ -158,17 +158,14 @@ describe('the stand-ins of phase 2', () => {
     const fifth = places.indexOf(firstLane[4] as (typeof places)[number]);
     expect(places.slice(0, fifth).every((c) => c.type === 'place' && c.lane === first.lane)).toBe(true);
     expect(new Set(places.map((c) => (c.type === 'place' ? c.lane : -1))).size).toBeGreaterThan(1);
-    for (const c of commands.filter((x) => x.cmd.faction === 'plants')) {
-      expect(c.cmd.type === 'spell').toBe(false);
-      expect(c.tick % ADULT_EVERY).toBe(0);
-    }
+    for (const c of commands.filter((x) => x.cmd.faction === 'plants')) expect(c.tick % ADULT_EVERY).toBe(0);
   });
 
-  it('steadyZombies sends waves of three into one lane, never merges and casts no spell', () => {
+  it('steadyZombies sends waves of three into one lane and never merges', () => {
     const { commands, problems } = play([createBasicBot('plants', 'medium', 7), createSteadyZombies(7)], 7, 6000);
     expect(problems).toEqual([]);
     const mine = commands.filter((c) => c.cmd.faction === 'zombies').map((c) => c.cmd);
-    expect(mine.some((c) => c.type === 'merge' || c.type === 'spell')).toBe(false);
+    expect(mine.some((c) => c.type === 'merge')).toBe(false);
     const sends = mine.filter((c) => c.type === 'place');
     expect(sends.length).toBeGreaterThanOrEqual(6);
     for (let i = 0; i + 2 < sends.length; i += 3) {

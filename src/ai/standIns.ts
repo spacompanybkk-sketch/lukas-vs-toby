@@ -15,12 +15,13 @@
  *   afford (the newest, shiniest one), into a random lane or tile.
  * - `createFortressPlants`: an adult as plants the way Michal first played: one lane built up
  *   first (Sunflowers at the back, Peashooters, a Walnut Bomb in front), then the next lane out,
- *   and so on; then more Peashooters. It rebuilds what it loses in the same order and fires its
- *   hero into a lane full of zombies. It casts no spells and ignores lanes it has not reached.
+ *   and so on; then more Peashooters. It rebuilds what it loses in the same order, fires its hero
+ *   and casts its spells where they pay (as the computer aims them), and ignores lanes it has not
+ *   reached.
  * - `createSteadyZombies`: an adult as zombies with no tricks: mixed waves of three (a tank, a
  *   fighter, a shooter) into the lane whose plants shoot least, one wave after the other. It waits
- *   for the energy, sends a Brain Eater when the next card is recharging, never merges, casts no
- *   spells, and fires its hero into the lane where it hits most plants.
+ *   for the energy, sends a Brain Eater when the next card is recharging, never merges, and fires
+ *   its hero and casts its spells where they pay (as the computer aims them: big buttons, no tricks).
  *
  * Like the basic bot, each is a pure function of the match it is shown and its own private random
  * numbers (never the match's), its schedule follows `match.state.tick`, and it only returns
@@ -37,7 +38,7 @@ import type { Bot } from './bot';
 import { shotDps } from './laneModel';
 import { mergeCommand, placeCommand, readLawn, sendCommand } from './lawn';
 import type { BotRng } from './lawn';
-import { heroMove } from './powers';
+import { powerMove } from './powers';
 
 /** Keeps stand-ins of different kinds made with one seed from drawing the same numbers. */
 const SALT = {
@@ -193,8 +194,8 @@ export function createFortressPlants(seed: number, every = ADULT_EVERY): Bot {
     think(match) {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
-      const hero = heroMove(match, 'plants');
-      if (hero !== null) return [hero];
+      const power = powerMove(match, 'plants');
+      if (power !== null) return [power];
       const lawn = readLawn(s);
       const next = (): Command | null => {
         for (const lane of lanes) {
@@ -241,8 +242,8 @@ export function createSteadyZombies(seed: number, every = ADULT_EVERY): Bot {
     think(match) {
       const s = match.state;
       if (s.winner !== null || s.tick % every !== 0) return [];
-      const hero = heroMove(match, 'zombies');
-      if (hero !== null) return [hero];
+      const power = powerMove(match, 'zombies');
+      if (power !== null) return [power];
       if (lane < 0) {
         // The lane whose plants shoot least, then hold least; ties in a random order.
         const lawn = readLawn(s);
