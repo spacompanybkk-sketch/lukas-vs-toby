@@ -4,6 +4,7 @@ import { BACKYARD } from '../../src/adventure/levels/backyard';
 import { levelsFor } from '../../src/adventure/levels';
 import type { LevelDef } from '../../src/adventure/types';
 import { standInSave } from '../../src/ai/levelChecks';
+import { createBasicBot } from '../../src/ai/basicBot';
 import { BALANCE, seconds } from '../../src/data/balance';
 import { ALL_CARDS, factionOf } from '../../src/data/units';
 import { newSave } from '../../src/progress/save';
@@ -104,6 +105,28 @@ describe('the Backyard (Task 8 data)', () => {
     expect(levelConfig(p8, standInSave('average', p8), 1).boss).toEqual({ key: 'brainTitan', faction: 'zombies', lane: 2 });
     expect(levelConfig(z8, standInSave('average', z8), 1).boss).toEqual({ key: 'elderOak', faction: 'plants', lane: 2 });
   });
+
+  /**
+   * A child who does nothing must not win. Only the plants' hold-out levels are won by waiting, as
+   * designed: p1-3 and p1-5 (the zombie base cannot be hurt; nothing in their waves reaches a 4500 /
+   * 6000 base unaided). p1-6 is a hold-out too, but its waves are strong enough that an idle base falls.
+   */
+  const WAITING_WINS = ['p1-3', 'p1-5'];
+  it('an idle player never wins a level (20 seeds), except the hold-outs where waiting is the point', () => {
+    for (const def of BACKYARD) {
+      const enemy = def.side === 'plants' ? 'zombies' : 'plants';
+      let wins = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        const m = new Match(levelConfig(def, standInSave('beginner', def), seed));
+        const bot = def.opponent === null ? null : createBasicBot(enemy, def.opponent.skill, (Math.imul(seed, 2654435761) + 1) >>> 0);
+        while (m.state.winner === null && m.state.tick < 20_000) m.step(bot === null ? [] : bot.think(m));
+        expect(m.state.winner, `${def.id} seed ${seed} ends`).not.toBeNull();
+        if (m.state.winner === def.side) wins += 1;
+      }
+      if (WAITING_WINS.includes(def.id)) expect(wins, def.id).toBe(20);
+      else expect(wins, def.id).toBe(0);
+    }
+  }, 120_000);
 
   describe('the tutorial levels (1-3 of each side) are calm', () => {
     const tutorials = BACKYARD.filter((l) => l.n <= 3);

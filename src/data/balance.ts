@@ -412,7 +412,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // by the beginner / average / expert 7 / 10-11 / 27-33; breakthrough, gardens broken about 3 for
     // every stand-in (garden 1 at 1500, not the battle's 6000: the review found it unbreakable).
     budgetBase: 250, budgetStep: 65, gapSeconds: 20, levelEvery: 5, bossEvery: 10,
-    clockSeconds: 90, clockBonusSeconds: 30, gardenBaseHp: 1500, gardenHpStep: 0.15,
+    clockSeconds: 90, clockBonusSeconds: 45, gardenBaseHp: 1500, gardenHpStep: 0.15,
     spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
 });

@@ -93,11 +93,12 @@ const PLANTS: LevelDef[] = [
   },
   {
     // Boss: the Brain Titan walks the middle lane - its shield bounces peas, pults still hurt it.
-    // A few Brain Eaters keep the other lanes busy.
+    // A few Brain Eaters keep the other lanes busy. A 4700 base: left alone, the base's own strikes
+    // must not fell the Titan before it falls (an idle player loses).
     ...base('p1-8', 8), side: 'plants', kind: 'boss',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
-    boss: { key: 'brainTitan', lane: 2 },
-    waves: trickle('brainEater', 30, 16, 9, [0, 4, 1, 3]),
+    boss: { key: 'brainTitan', lane: 2 }, baseHp: { plants: 4700 },
+    waves: trickle('brainEater', 30, 20, 6, [0, 4, 1, 3]),
     spells: true,
   },
 ];
@@ -140,7 +141,7 @@ const ZOMBIES: LevelDef[] = [
     ...base('z1-5', 5), side: 'zombies', kind: 'conveyor',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'],
     belt: { everySeconds: 5, cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'] },
-    seconds: 150, baseHp: { plants: 4600, zombies: 10000 },
+    seconds: 150, baseHp: { plants: 4300, zombies: 10000 },
     prepared: garden('peashooter', [[0, 3], [1, 2], [2, 3], [3, 2], [4, 3]]),
     waves: regrow('peashooter', [[40, 1, 1], [40, 3, 1], [80, 0, 1], [80, 4, 1], [120, 2, 1], [120, 1, 0]]),
     spells: true,
