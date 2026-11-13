@@ -96,7 +96,7 @@ const PLANTS: LevelDef[] = [
     ...base('p1-8', 8), side: 'plants', kind: 'boss',
     cards: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
     boss: { key: 'brainTitan', lane: 2 },
-    waves: trickle('brainEater', 25, 12, 14, [0, 4, 1, 3]),
+    waves: trickle('brainEater', 30, 16, 9, [0, 4, 1, 3]),
     spells: true,
   },
 ];

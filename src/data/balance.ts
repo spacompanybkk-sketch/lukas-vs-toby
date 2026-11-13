@@ -388,17 +388,17 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
   },
   bosses: {
     brainTitan: {
-      recharge: 0, hp: 3100, armor: 0, speed: 0.1,
-      melee: { damage: 60, interval: 1.5, reach: 0.6 },
+      recharge: 0, hp: 3800, armor: 0, speed: 0.1,
+      melee: { damage: 40, interval: 1.5, reach: 0.6 },
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [
         { kind: 'slam', everySeconds: 12, windupSeconds: 1.5, damage: 400, sideDamage: 200, reach: 0.6 },
-        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 3, level: 1 },
+        { kind: 'summon', everySeconds: 6, unit: 'veryFastWalker', count: 2, level: 1 },
         { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 1, bouncesStraight: true },
       ],
     },
     elderOak: {
-      recharge: 0, hp: 4000, armor: 0, speed: 0,
+      recharge: 0, hp: 4200, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'barrage', everySeconds: 10, count: 3, damage: 150, splash: 0.75, speed: 5 },
