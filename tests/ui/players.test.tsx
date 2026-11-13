@@ -381,6 +381,41 @@ describe('grown-up gate', () => {
     await see('[data-lock]');
   });
 
+  it('a new number on a device with no copy of the save warns first and needs two taps to go on', async () => {
+    // Mia made on another device: this one has neither her save nor her hash.
+    const other = new MemoryStorage();
+    configure(other);
+    await session.create('Mia', 'sunflower', '111');
+    session.logout();
+    configure();
+    await session.setGrownUp('246802');
+    mount();
+    tap('[data-action="play"]');
+    await see('[data-action="grownup"]');
+    await openGate();
+    await typePin('246802');
+    tap((await see('[data-row="p03"] [data-action="new-number"]')) && '[data-row="p03"] [data-action="new-number"]');
+    await see('[data-step="warn"]');
+    expect(q('[data-warn-lost]')).not.toBeNull();
+    expect(q('[data-warn-device]')).not.toBeNull();
+    expect(q('[data-pin-boxes]')).toBeNull();
+    tap('[data-action="warn-go"]');
+    expect(q('[data-step="warn"]')).not.toBeNull(); // the first tap only arms
+    tap('[data-action="warn-go"]');
+    await see('[data-pin-step="1"]');
+  });
+
+  it('a new number on the device that has the save goes straight to the number', async () => {
+    await makeLukas();
+    tap('[data-action="logout"]');
+    await see('[data-player="p01"]');
+    await session.setGrownUp('246802');
+    await openGate();
+    await typePin('246802');
+    tap((await see('[data-row="p01"] [data-action="new-number"]')) && '[data-row="p01"] [data-action="new-number"]');
+    await see('[data-pin-step="1"]');
+  });
+
   it('a wrong code once one is known on this device just shakes', async () => {
     await session.setGrownUp('246802');
     mount();

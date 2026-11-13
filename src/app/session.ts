@@ -423,6 +423,12 @@ export class PlayerSession {
     return 'ok';
   }
 
+  /** Whether this device holds a copy of the player's save, or the hash to read the cloud's. */
+  hasDeviceCopy(slot: Slot): boolean {
+    const { storage } = this.d;
+    return loadLocal(slot, storage) !== null || readKey(storage, hashKey(slot)) !== null;
+  }
+
   /**
    * A new number for a player who forgot theirs. The progress is kept when this device has it
    * (its copy, or the cloud's read with the number last used here); otherwise the save starts

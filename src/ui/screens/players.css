@@ -296,3 +296,13 @@
 @media (max-height: 760px) {
   .pinpad { --key: clamp(72px, 11.6vh, 100px); }
 }
+
+/* A new number on a device without the child's save: lost coins and stars, use the child's device. */
+.grown__warn { align-items: center; text-align: center; }
+.grown__warn-pics { display: flex; align-items: center; justify-content: center; gap: clamp(14px, 2.4vw, 32px); }
+.grown__warn .grown__warn-me { width: clamp(84px, 14vh, 130px); }
+.grown__warn-lost, .grown__warn-device { position: relative; display: flex; align-items: center; gap: 6px; }
+.grown .grown__warn-icon { width: clamp(56px, 9vh, 84px); height: clamp(56px, 9vh, 84px); --ico-size: clamp(56px, 9vh, 84px); }
+.grown .grown__warn-cross { position: absolute; inset: -10%; width: 120%; height: 120%; }
+.grown .grown__warn-arrow { width: clamp(40px, 6vh, 60px); height: clamp(40px, 6vh, 60px); }
+.grown__note--warn { color: var(--c-red-lo); }

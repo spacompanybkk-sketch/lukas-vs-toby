@@ -10,7 +10,7 @@ import { PinPad } from './PinPad';
 import type { PadAnswer } from './PinPad';
 import { PadHead } from './Players';
 import { PlayerPicture } from './PlayerPicture';
-import { CHECK, CLOUD_OFF, CROSS, KEY, LOCK } from './pictures';
+import { ARROW, CHECK, CLOUD_OFF, COIN, CROSS, KEY, LOCK, TABLET } from './pictures';
 import './players.css';
 
 type Step =
@@ -22,6 +22,8 @@ type Step =
   | { name: 'rechoose2'; current: string; first: string }
   | { name: 'list'; note?: string }
   | { name: 'delete'; who: RosterEntry }
+  /** This device holds no copy of the child's save: warn before asking for a new number. */
+  | { name: 'warn'; who: RosterEntry }
   | { name: 'pin'; who: RosterEntry }
   | { name: 'pin2'; who: RosterEntry; first: string }
   | { name: 'offline' };
@@ -160,7 +162,7 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
                 <li key={p.slot} class="grown__row" data-row={p.slot}>
                   <PlayerPicture picture={p.picture} portraits={portraits} class="grown__pic" frame={frameColor(p.slot)} />
                   <span class="grown__name">{p.name}</span>
-                  <button type="button" data-action="new-number" aria-label={`New number for ${p.name}`} class="btn btn--square pal-wood" onClick={() => setStep({ name: 'pin', who: p })}>
+                  <button type="button" data-action="new-number" aria-label={`New number for ${p.name}`} class="btn btn--square pal-wood" onClick={() => setStep(session.hasDeviceCopy(p.slot) ? { name: 'pin', who: p } : { name: 'warn', who: p })}>
                     <PixelIcon art={KEY} class="grown__icon" />
                   </button>
                   <button type="button" data-action="delete" aria-label={`Delete ${p.name}`} class="btn btn--square pal-stone" onClick={() => setStep({ name: 'delete', who: p })}>
@@ -192,6 +194,8 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
         />
       );
     }
+    case 'warn':
+      return <ResetWarning who={step.who} portraits={portraits} onBack={() => setStep({ name: 'list' })} onGo={() => setStep({ name: 'pin', who: step.who })} />;
     case 'pin':
       return (
         <PinPad
@@ -232,3 +236,49 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
     }
   }
 }
+
+/**
+ * Before a new number on a device that holds no copy of the child's save: the coins and stars
+ * crossed out (they would start again from nothing) and a tablet with an arrow (do this on the
+ * child's own device instead). Going on takes two taps: the first arms, the second goes.
+ */
+function ResetWarning({ who, portraits, onBack, onGo }: { who: RosterEntry; portraits: Record<string, string>; onBack(): void; onGo(): void }) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <div data-screen="grownup" data-step="warn" class="layer layer--menu grown">
+      <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={onBack}>
+        <span class="ico ico--back" aria-hidden="true" />
+      </button>
+      <div class="grown__panel grown__warn panel px pal-cream">
+        <div class="grown__warn-pics">
+          <PlayerPicture picture={who.picture} portraits={portraits} class="grown__warn-me" frame={frameColor(who.slot)} />
+          <span class="grown__warn-lost" data-warn-lost aria-label="Coins and stars would be lost">
+            <PixelIcon art={COIN} class="grown__warn-icon" />
+            <span class="ico ico--star grown__warn-icon" aria-hidden="true" />
+            <PixelIcon art={CROSS} class="grown__warn-cross" />
+          </span>
+          <span class="grown__warn-device" data-warn-device aria-label="Use the child's own device">
+            <PixelIcon art={ARROW} class="grown__warn-arrow" />
+            <PixelIcon art={TABLET} class="grown__warn-icon" />
+          </span>
+        </div>
+        <p class="grown__note grown__note--warn">
+          This device has no copy of {who.name}'s progress. A new number here starts {who.name} again from nothing.
+          Do it on {who.name}'s own device to keep the coins and stars.
+        </p>
+        <div class="row">
+          <button type="button" data-action="warn-back" class="btn pal-leaf" onClick={onBack}>
+            <span class="ico ico--back" aria-hidden="true" /><span class="btn__label">Back</span>
+          </button>
+          <button
+            type="button" data-action="warn-go" aria-pressed={armed} class={`btn ${armed ? 'pal-red' : 'pal-stone'}`}
+            onClick={() => { if (armed) onGo(); else setArmed(true); }}
+          >
+            <span class="btn__label">{armed ? 'Tap again to start fresh' : 'Start fresh anyway'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

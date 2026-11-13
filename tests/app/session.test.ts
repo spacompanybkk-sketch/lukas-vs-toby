@@ -429,6 +429,13 @@ describe('grown-up', () => {
     expect(await s.resetPin({ slot: 'p03', name: 'Mia', picture: 'sunflower' }, '135799', '12')).toBe('failed');
   });
 
+  it('hasDeviceCopy: this device has the save (or its hash); another does not', async () => {
+    expect(s.hasDeviceCopy('p03')).toBe(true);
+    const other = deviceSession(new MemoryStorage());
+    expect(other.hasDeviceCopy('p03')).toBe(false);
+    other.dispose();
+  });
+
   it('a new number on a device that knows nothing of the player starts the save fresh, and says so', async () => {
     await s.setGrownUp('135799');
     const ipad = deviceSession(new MemoryStorage());
