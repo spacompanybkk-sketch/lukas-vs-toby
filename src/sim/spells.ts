@@ -129,6 +129,7 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
     }
     case 'healingRain':
       for (const u of friends()) {
+        if (u.key === 'rock') continue; // a rock is no plant: it does not grow back
         const gain = Math.min(need(stats.amount, cmd.spell), u.maxHp - u.hp);
         if (gain <= 0) continue;
         u.hp += gain;
@@ -164,8 +165,9 @@ function putOn(s: SimState, units: Unit[], kind: StatusKind, stats: SpellStats, 
   for (const u of units) applyStatus(s, u, kind, ticks, 0, null, events);
 }
 
+/** Whether a standing plant (a rock included) is on the tile; one already down does not count. */
 function plantOn(s: SimState, lane: number, col: number): boolean {
-  return s.units.some((u) => u.faction === 'plants' && u.lane === lane && Math.floor(u.x) === col);
+  return s.units.some((u) => u.faction === 'plants' && isStanding(u) && u.lane === lane && Math.floor(u.x) === col);
 }
 
 /** A number the spell's row must have; a row without it is an error in the table, never a silent zero. */

@@ -229,6 +229,25 @@ describe('the plants\' spells', () => {
     ]);
   });
 
+  it('Healing Rain never heals a Rock Wall rock (it is no plant that grows back)', () => {
+    const m = ready('healingRain');
+    m.state.players.plants.spells.push({ key: 'rockWall', timer: 0 });
+    m.step([cast('rockWall', 2, 3)]);
+    const rock = m.state.units.find((u) => u.key === 'rock');
+    if (!rock) throw new Error('no rock');
+    rock.hp = 100;
+    const events = m.step([cast('healingRain', 2, 3)]);
+    expect(rock.hp).toBe(100);
+    expect(eventsOf(events, 'unitHealed')).toEqual([]);
+  });
+
+  it('Rock Wall: a tile whose plant is already down this tick counts as free', () => {
+    const m = ready('rockWall');
+    const p = idle(m, 'plants', 1, 6.5, 1000);
+    p.hp = 0; // down, removed at the end of the tick
+    expect(m.check(cast('rockWall', 1, 6))).toBeNull();
+  });
+
   it('Rock Wall: an 800-hp rock on an empty plant tile that leaves after 360 ticks, spent', () => {
     const m = ready('rockWall');
     const events = m.step([cast('rockWall', 1, 6)]);
