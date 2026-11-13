@@ -4,7 +4,10 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1484 bytes). Re-pinned in phase 4a
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 1940 bytes). Re-pinned in phase 3
+ * (Adventure) when the setup gained its level fields (`mode` .. `invulnerableBase`) and the state
+ * `scriptIndex` and `belt` (cross-checked by a separate Python FNV-1a feeding the 456 new bytes on
+ * from the earlier checksum); before that it was 1403206276 over 1484 bytes, re-pinned in phase 4a
  * when the setup gained its Marketplace `upgrades` (cross-checked by feeding the 64 new bytes on
  * from the earlier checksum); before that it was 2247931455 over 1420 bytes, re-pinned in phase 2
  * for the owner's Sunflower rule, when units gained `hurt`; in Task 4b it was 1072679369 over 1404
@@ -19,7 +22,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 1403206276;
+const GOLDEN_HASH = 525061730;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -76,7 +79,19 @@ function makeState(): SimState {
       heroes: { plants: true, zombies: false },
       spells: { plants: 2, zombies: 1 },
       upgrades: { plants: { peashooter: 3, sunflower: 0 }, zombies: { brainEater: 10 } },
+      mode: 'conveyor',
+      script: [
+        { tick: 30, unit: 'brainEater', faction: 'zombies', lane: 1, x: 8.5, level: 2 },
+        { tick: 60, unit: 'veryFastWalker', faction: 'zombies', lane: 3, level: 1 },
+      ],
+      prepared: [{ unit: 'walnutBomb', faction: 'plants', lane: 2, x: 3.5, level: 1 }],
+      goalTicks: 2700,
+      belt: { side: 'plants', everyTicks: 90, cards: ['peashooter', 'walnutBomb'], slots: 5 },
+      noEnergy: true,
+      invulnerableBase: 'zombies',
     },
+    scriptIndex: 1,
+    belt: ['peashooter'],
   };
 }
 
@@ -224,6 +239,39 @@ describe('hashState', () => {
     ['config an upgrade on another card', (s) => { s.config.upgrades.plants.walnutBomb = 1; }],
     ['config upgrades moved to the other side', (s) => { s.config.upgrades = { plants: { brainEater: 10 } as never, zombies: { peashooter: 3, sunflower: 0 } as never }; }],
     ['config a zombie upgrade level', (s) => { s.config.upgrades.zombies.brainEater = 9; }],
+    // Level modes.
+    ['config mode', (s) => { s.config.mode = 'survive'; }],
+    ['config the number of script entries', (s) => { s.config.script.pop(); }],
+    ['config a script tick', (s) => { s.config.script[0]!.tick = 31; }],
+    ['config a script unit', (s) => { s.config.script[0]!.unit = 'skeletonWarrior'; }],
+    ['config a script faction', (s) => { s.config.script[0]!.faction = 'plants'; }],
+    ['config a script lane', (s) => { s.config.script[0]!.lane = 2; }],
+    ['config a script x', (s) => { s.config.script[0]!.x = 8; }],
+    ['config a script x given versus absent', (s) => { delete s.config.script[0]!.x; }],
+    ['config a script x absent versus given', (s) => { s.config.script[1]!.x = 9.5; }],
+    ['config a script level', (s) => { s.config.script[1]!.level = 2; }],
+    ['config the script order', (s) => { s.config.script.reverse(); }],
+    ['config the number of prepared units', (s) => { s.config.prepared.pop(); }],
+    ['config a prepared unit', (s) => { s.config.prepared[0]!.unit = 'peashooter'; }],
+    ['config a prepared faction', (s) => { s.config.prepared[0]!.faction = 'zombies'; }],
+    ['config a prepared lane', (s) => { s.config.prepared[0]!.lane = 0; }],
+    ['config a prepared x', (s) => { s.config.prepared[0]!.x = 4.5; }],
+    ['config a prepared level', (s) => { s.config.prepared[0]!.level = 3; }],
+    ['config goalTicks', (s) => { s.config.goalTicks = 2699; }],
+    ['config goalTicks null', (s) => { s.config.goalTicks = null; }],
+    ['config belt null', (s) => { s.config.belt = null; }],
+    ['config belt side', (s) => { s.config.belt!.side = 'zombies'; }],
+    ['config belt everyTicks', (s) => { s.config.belt!.everyTicks = 91; }],
+    ['config belt cards', (s) => { s.config.belt!.cards = ['walnutBomb', 'peashooter']; }],
+    ['config the number of belt cards', (s) => { s.config.belt!.cards.pop(); }],
+    ['config belt slots', (s) => { s.config.belt!.slots = 4; }],
+    ['config noEnergy', (s) => { s.config.noEnergy = false; }],
+    ['config invulnerableBase', (s) => { s.config.invulnerableBase = 'plants'; }],
+    ['config invulnerableBase null', (s) => { s.config.invulnerableBase = null; }],
+    ['scriptIndex', (s) => { s.scriptIndex = 2; }],
+    ['a belt card', (s) => { s.belt[0] = 'walnutBomb'; }],
+    ['the number of belt cards', (s) => { s.belt.push('peashooter'); }],
+    ['an empty belt', (s) => { s.belt = []; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -320,6 +368,17 @@ describe('snapshotState / restoreState', () => {
     expected.config.upgrades = { plants: {}, zombies: {} };
     expect(restored).toEqual(expected);
     expect(hashState(restored)).toBe(hashState(expected));
+  });
+
+  it('round-trips the level fields and the belt', () => {
+    const s = makeState();
+    const restored = restoreState(snapshotState(s));
+    expect(restored.config.script).toEqual(s.config.script);
+    expect(Object.hasOwn(restored.config.script[1]!, 'x')).toBe(false);
+    expect([restored.config.mode, restored.config.goalTicks, restored.config.belt, restored.config.noEnergy, restored.config.invulnerableBase])
+      .toEqual(['conveyor', 2700, s.config.belt, true, 'zombies']);
+    expect([restored.scriptIndex, restored.belt]).toEqual([1, ['peashooter']]);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
   });
 
   it('round-trips the upgrades', () => {

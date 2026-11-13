@@ -116,7 +116,8 @@ export function withBaseDefense(damage = 60, interval = 1): Balance {
 /**
  * The default setup with the energy and base health these tests were written for, 200 and 3000 a
  * side, so a test of the rules keeps testing them whatever the tuner does to the shipped starting
- * values in `BALANCE`; and, as in phase 1, with no hero powers and no spells.
+ * values in `BALANCE`; and, as in phase 1, with no hero powers and no spells; a plain battle (the
+ * level fields at their neutral values).
  */
 export function classicConfig(seed: number, balance: Balance = classicBalance()): MatchConfig {
   const config = defaultConfig(seed, balance);
@@ -124,6 +125,14 @@ export function classicConfig(seed: number, balance: Balance = classicBalance())
   config.baseHp = { plants: 3000, zombies: 3000 };
   config.heroes = { plants: false, zombies: false };
   config.spells = { plants: 0, zombies: 0 };
+  // A plain battle, whatever defaultConfig comes to default to: no script, no clock, no belt.
+  config.mode = 'battle';
+  config.script = [];
+  config.prepared = [];
+  config.goalTicks = null;
+  config.belt = null;
+  config.noEnergy = false;
+  config.invulnerableBase = null;
   return config;
 }
 

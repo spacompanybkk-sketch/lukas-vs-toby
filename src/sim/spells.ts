@@ -119,6 +119,7 @@ export function castSpell(s: SimState, b: Balance, cmd: SpellCommand, events: Si
       break;
     case 'sunShower':
     case 'brainFeast': {
+      if (s.config.noEnergy) break; // a level with no energy: cast for nothing
       const amount = need(stats.amount, cmd.spell);
       s.players[cmd.faction].energy += amount;
       events.push({
