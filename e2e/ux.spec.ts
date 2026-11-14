@@ -156,6 +156,10 @@ test('pictures of the other fixes: one clock (B, E), the map picture on Quit (D)
   test.skip(SHOTS === undefined || test.info().project.name !== 'ipad', 'pictures only');
   test.setTimeout(150_000);
   await setUp(page);
+  await press(page.locator('[data-home="leaderboard"]'));
+  await press(page.locator('[data-tab="wave"]'));
+  await shot(page, 'G-leaderboard-wave');
+  await press(page.locator('[data-action="back"]'));
   await press(page.locator('[data-home="play"]'));
   await shot(page, 'G-play-menu');
   await press(page.locator('[data-play="free"]'));

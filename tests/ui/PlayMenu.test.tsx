@@ -9,7 +9,6 @@ import { createFakeCloud } from '../../src/cloud/restClient';
 import type { CardKey } from '../../src/sim/types';
 import { App } from '../../src/ui/App';
 import { ADVENTURE_PICTURES, ENDLESS } from '../../src/ui/screens/adventurePictures';
-import { WAVE } from '../../src/ui/screens/boardPictures';
 import { pixelPaths } from '../../src/ui/hud/PixelIcon';
 import { setUiSound } from '../../src/ui/uiSound';
 import { MemoryStorage } from '../progress/memoryStorage';
@@ -117,7 +116,6 @@ describe('Play menu', () => {
     const drawn = (sel: string): string[] => [...need(sel).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
     const endless = pixelPaths(ENDLESS).map((p) => p.d);
     expect(drawn('[data-play="free"] svg')).toEqual(endless);
-    expect(drawn('[data-play="free"] svg')).not.toEqual(pixelPaths(WAVE).map((p) => p.d));
     tap('[data-play="free"]');
     expect(drawn('.play__mode-mark svg')).toEqual(endless);
   });

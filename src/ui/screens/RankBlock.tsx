@@ -1,11 +1,12 @@
 import type { RankUp, Table } from '../../app/board';
 import { PixelIcon } from '../hud/PixelIcon';
 import type { PixelArt } from '../hud/PixelIcon';
-import { ROBOT, STAR, SWORDS, UP, WAVE } from './boardPictures';
+import { ROBOT, STAR, SWORDS, UP } from './boardPictures';
+import { ENDLESS } from './adventurePictures';
 import './progress.css';
 
 /** The picture of each leaderboard table. */
-export const TABLE_ART: Readonly<Record<Table, PixelArt>> = Object.freeze({ stars: STAR, wave: WAVE, versus: SWORDS, computer: ROBOT });
+export const TABLE_ART: Readonly<Record<Table, PixelArt>> = Object.freeze({ stars: STAR, wave: ENDLESS, versus: SWORDS, computer: ROBOT });
 
 /** A place as a block: gold for 1st, iron for 2nd, bronze for 3rd, wood after that. */
 export function RankBlock({ rank, class: cls = '' }: { rank: number; class?: string }) {
