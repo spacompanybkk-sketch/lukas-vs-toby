@@ -66,8 +66,9 @@
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
 }
-.battle:has(.tut-twist) .battle__top { z-index: 6; }
-.battle:has(.tut-twist) .battle__bottom { filter: brightness(0.45) grayscale(0.6); }
+/* `is-twist` comes from the battle screen's own render (no `:has`: Safari before 15.4 lacks it). */
+.battle.is-twist .battle__top { z-index: 6; }
+.battle.is-twist .battle__bottom { filter: brightness(0.45) grayscale(0.6); }
 /* The "tap" hint marks no target: the glove alone taps the middle of the lawn. */
 .tut-mark--none { display: none; }
 

@@ -151,9 +151,10 @@ export const HERO_BANNER_MS = 600;
 const SHAKE_MS = 300;
 
 /**
- * The HUD over the lawn. This component reads no signal itself: each HUD block below is a small
- * leaf that reads only the signals it shows, so a tick re-renders only what changed (the clock
- * when a second passes, a card when its recharge steps), never the whole screen.
+ * The HUD over the lawn. This component reads one signal only (whether a twist pan holds, which
+ * changes twice a lesson): each HUD block below is a small leaf that reads only the signals it
+ * shows, so a tick re-renders only what changed (the clock when a second passes, a card when its
+ * recharge steps), never the whole screen.
  */
 export function BattleScreen(props: BattleScreenProps) {
   const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null, rankUp = null } = props;
@@ -161,6 +162,13 @@ export function BattleScreen(props: BattleScreenProps) {
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
+  // The one signal this screen reads: a twist pan holding the match (it changes when the pan starts
+  // and ends, so it costs a re-render twice a lesson). `is-twist` raises Pause above the pan's tap
+  // catcher and dims the cards; a class in the screen's own render, so no re-render drops it.
+  const twistOn = useComputed(() => {
+    const vm = ctl.tutorial?.twist?.value ?? null;
+    return vm !== null && vm.holding && hud.result.value === null;
+  }).value;
 
   // A hidden tab always pauses; coming back never resumes by itself.
   useEffect(() => {
@@ -177,7 +185,7 @@ export function BattleScreen(props: BattleScreenProps) {
   }, [portrait, ctl, hud]);
 
   return (
-    <div data-screen="battle" class={`battle side-${side}`}>
+    <div data-screen="battle" class={`battle side-${side}${twistOn ? ' is-twist' : ''}`}>
       <ResultClears hud={hud} resultReady={session.resultReady} clear={level !== null || ctl.endless != null}>
       <div class="battle__top">
         <div class="battle__left">
@@ -274,9 +282,9 @@ function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySigna
 
 /**
  * A twist pan holding the match: a clear catcher over the whole screen, so a tap anywhere (the lawn,
- * the sky, the dimmed cards) ends it. While it is up the cards and powers dim and the Pause button
- * sits above it (CSS: `.battle:has(.tut-twist)`; no class is put on the battle's root, which
- * re-renders). Gone under the pause menu (Pause is no tap on the pan) and at the result.
+ * the sky, the dimmed cards) ends it. While the pan holds, the screen's `is-twist` class dims the
+ * cards and keeps the Pause button above it. Gone under the pause menu (Pause is no tap on the
+ * pan) and at the result.
  */
 function LiveTwist({ ctl, twist }: { ctl: Controller; twist: ReadonlySignal<TwistVM | null> }) {
   const vm = twist.value;

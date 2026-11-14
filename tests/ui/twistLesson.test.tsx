@@ -130,4 +130,27 @@ describe('the twist pan through the app', () => {
     tap('[data-twist="ice"]');
     expect(me().teached).toEqual(['z2-1.ice']);
   });
+
+  it('is-twist on the battle screen (raises Pause over the catcher, dims the cards) comes from the screen\'s render: kept through a re-render, gone when the pan ends', async () => {
+    const c = startP21();
+    const battle = (): HTMLElement => need('[data-screen="battle"]');
+    expect(battle().classList.contains('is-twist')).toBe(false); // not before the hold
+    steps(c, 3);
+    expect(battle().classList.contains('is-twist')).toBe(true);
+    // The screen re-renders (new card pictures arrive): the class stays.
+    act(() => render(<App createSession={factory} />, root));
+    expect(battle().classList.contains('is-twist')).toBe(true);
+    // Pause: the button still pauses (no tap on the pan), the class stays under the menu.
+    tap('[data-hud="pause"]');
+    expect(c.tutorial!.current?.id).toBe('p2-1.fog');
+    expect(battle().classList.contains('is-twist')).toBe(true);
+    tap('[data-screen="pause"] [data-action="resume"]');
+    tap('[data-twist="fog"]');
+    expect(battle().classList.contains('is-twist')).toBe(false);
+    // The rules raise Pause and dim by the class, never by :has (Safari before 15.4 has none).
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(`${process.cwd()}/src/ui/hud/tutorial.css`, 'utf8');
+    expect(css).toMatch(/\.battle\.is-twist \.battle__top \{ z-index: 6; \}/);
+    expect(css).not.toContain(':has(');
+  });
 });
