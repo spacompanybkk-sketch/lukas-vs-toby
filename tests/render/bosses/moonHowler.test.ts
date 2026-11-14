@@ -55,8 +55,10 @@ describe('the Moon Howler on the lawn', () => {
     const row = demoBalance('moonHowler').bosses.moonHowler;
     expect(row.phases).toHaveLength(2);
     expect(row.phases?.[1]?.some((p) => p.kind === 'strike' && p.target === 'lanes' && p.status?.kind === 'blind')).toBe(true);
-    // A copy: the shipped table is not touched.
-    expect(BALANCE.bosses.moonHowler.phases?.[1]?.some((p) => p.kind === 'strike')).not.toBe(true);
+    // A scene's own copy: the shipped row (Task 4's numbers) is not touched.
+    expect(row).not.toBe(BALANCE.bosses.moonHowler);
+    expect(row.hp).toBe(5600);
+    expect(BALANCE.bosses.moonHowler.phases?.[1]?.some((p) => p.kind === 'strike' && p.status?.kind === 'blind')).toBe(true);
   });
 
   it('the claw slam winds up with the red tiles for its own wind-up, the arm rising, and lands', () => {

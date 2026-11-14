@@ -24,6 +24,7 @@ import { BossBar } from '../ui/hud/BossBar';
 import { TopBar } from '../ui/hud/TopBar';
 import '../ui/hud/hud.css';
 import { STRIKE_DEMOS, bossDemoMatch, strikeDemoBalance } from './bossScript';
+import { BALANCE, type Balance } from '../data/balance';
 
 // A boss at work (phase 3 Task 3): the demo level of `bossScript.ts` through the battle view on
 // the real lawn, with the clock and the boss bar over it (no tray, no sound). For judging the
@@ -34,6 +35,7 @@ import { STRIKE_DEMOS, bossDemoMatch, strikeDemoBalance } from './bossScript';
 //                                               bosses fight in their own world (the Meadow's fog,
 //                                               the Tundra's ice and snow) with their demo table
 //   &world=<key>                                another world's look (the boss's lawn twist stays)
+//   &table=shipped                              the shipped `Balance.bosses` numbers, not the demo's own row
 //   &strike=stun|blind|burn|none                a test-only Titan that strikes first (tiles at 3–5 s,
 //                                               a lane at 9–11 s), leaving that status (bossScript.ts)
 //   &seed=<n>                                   the match's seed (default 1)
@@ -87,7 +89,9 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const askedBoss = params.get('boss') ?? '';
   const key: BossKey = strike === undefined && isBoss(askedBoss as BossKey) ? (askedBoss as BossKey) : 'brainTitan';
   const seed = Math.trunc(number(params, 'seed', 1));
-  const match = strike === undefined ? bossDemoMatch(key, seed) : bossDemoMatch(key, seed, strikeDemoBalance(strike as StatusKind | 'none'));
+  const shipped = params.get('table') === 'shipped';
+  const match = strike !== undefined ? bossDemoMatch(key, seed, strikeDemoBalance(strike as StatusKind | 'none'))
+    : shipped ? bossDemoMatch(key, seed, BALANCE as Balance) : bossDemoMatch(key, seed);
   const player = factionOf(key) === 'zombies' ? 'plants' : 'zombies';
   const askedWorld = WORLD_ORDER.find((w) => w === params.get('world'));
   const world: WorldKey = askedWorld ?? DEMO_WORLD[key];

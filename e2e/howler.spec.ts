@@ -7,10 +7,10 @@ import { frames, glContexts } from './helpers';
 
 interface Seen { slam: boolean; summon: boolean; shield: boolean; howl: boolean; phase2: boolean; defeated: boolean; contexts: number }
 
-test('the Moon Howler demo plays from entrance to defeat on one WebGL context', async ({ page }) => {
+for (const table of ['demo', 'shipped'] as const) test(`the Moon Howler demo (${table} numbers) plays from entrance to defeat on one WebGL context`, async ({ page }) => {
   test.setTimeout(180_000);
   // `&t=0`: the scene's own clock holds, so every step (and its events) is the test's.
-  await page.goto('/?scene=boss-demo&boss=moonHowler&seed=1&t=0&debug&cloud=fake');
+  await page.goto(`/?scene=boss-demo&boss=moonHowler&seed=1&t=0&table=${table}&debug&cloud=fake`);
   await page.evaluate(() => window.__lvt.ready);
   const contexts = await glContexts(page);
   const seen: Seen = { slam: false, summon: false, shield: false, howl: false, phase2: false, defeated: false, contexts };
