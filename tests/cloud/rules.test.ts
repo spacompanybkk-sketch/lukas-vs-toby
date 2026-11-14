@@ -24,11 +24,11 @@ describe('database.rules.json', () => {
     expect(text).toBe(built);
   });
 
-  it('keeps the three old open paths exactly as they were', () => {
-    expect(rules.presence).toEqual({ '.read': true, '.write': true });
-    expect(rules.rooms).toEqual({ '.read': true, '.write': true });
-    expect(rules.challenges).toEqual({ '.read': true, '.write': true });
-    expect(Object.keys(rules)).toEqual(['presence', 'rooms', 'challenges', 'v2', 'v2test']);
+  it('closes the old paths: only v2 and v2test at the top, and no grant at the root', () => {
+    expect(Object.keys(rules)).toEqual(['v2', 'v2test']);
+    for (const p of ['presence', 'rooms', 'challenges']) expect(rules[p], p).toBeUndefined();
+    expect(rules['.read']).toBeUndefined();
+    expect(rules['.write']).toBeUndefined();
   });
 
   it('has the same block under v2 and v2test (only the root named inside differs)', () => {
