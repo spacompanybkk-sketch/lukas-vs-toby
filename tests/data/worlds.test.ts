@@ -43,8 +43,8 @@ describe('worlds', () => {
 });
 
 describe('LEVELS as a concatenation', () => {
-  it('keeps the Backyard levels, ids and order', () => {
-    expect(LEVELS.length).toBe(BACKYARD.length);
-    expect(LEVELS.map((l) => l.id)).toEqual(BACKYARD.map((l) => l.id));
+  it('keeps the Backyard levels, ids and order (first, before the later worlds)', () => {
+    expect(LEVELS.slice(0, BACKYARD.length).map((l) => l.id)).toEqual(BACKYARD.map((l) => l.id));
+    expect(LEVELS.slice(BACKYARD.length).every((l) => l.world > 1)).toBe(true);
   });
 });

@@ -23,8 +23,10 @@ const HOWLER_LEVEL: LevelDef = {
 };
 const MANGO_UNLOCK: LevelDef = { ...levelById('p1-3')!, id: 'p2-3', world: 2, n: 3, unlocks: 'mangoPult' };
 const MELON_LEVEL: LevelDef = { ...Z18, id: 'z2-8', world: 2, n: 8, boss: { key: 'frostMelon', lane: 2 } };
-const WITH_MANGO = [...LEVELS, MANGO_UNLOCK, HOWLER_LEVEL];
-const WITHOUT_MANGO = [...LEVELS, HOWLER_LEVEL];
+/** World 1 alone: these stand-in levels stand in for the real world 2 (whose p2-3 unlocks the Mango-pult). */
+const W1 = LEVELS.filter((l) => l.world === 1);
+const WITH_MANGO = [...W1, MANGO_UNLOCK, HOWLER_LEVEL];
+const WITHOUT_MANGO = [...W1, HOWLER_LEVEL];
 
 interface Sent { tick: number; cmd: Command; struck: ReadonlySet<number> }
 

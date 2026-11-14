@@ -343,7 +343,7 @@ describe('Map screen: one island per world', () => {
   });
 
   it('with a world 2 to play (stand-in levels): the map opens on it, its stones are there, the arrow back is open', async () => {
-    mapLevels.value = previewWorlds(LEVELS);
+    mapLevels.value = previewWorlds(LEVELS.filter((l) => l.world === 1));
     await player(won('p1'));
     const host = fakeHost();
     mount(host);
@@ -368,7 +368,7 @@ describe('Map screen: one island per world', () => {
   });
 
   it('a card asked for by id opens on its own island; a closed stone\'s arrow leads to the level to play now', async () => {
-    mapLevels.value = previewWorlds(LEVELS);
+    mapLevels.value = previewWorlds(LEVELS.filter((l) => l.world === 1));
     await player(won('p1'));
     mount();
     act(() => go({ name: 'map', side: 'plants', card: 'p2-1' }));

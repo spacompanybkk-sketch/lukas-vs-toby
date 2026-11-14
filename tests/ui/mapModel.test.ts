@@ -7,8 +7,9 @@ import { mapIslands, mapStones, mapTheme, openingWorld, twistKinds } from '../..
 
 const NOW = 1_762_900_000_000;
 const fresh = newSave('p01', 'Lukas', 'peashooter', NOW);
-/** The shipped levels plus stand-in worlds 2 and 3 for each side (copies of world 1 with their twist). */
-const MORE = previewWorlds(LEVELS);
+/** World 1 plus stand-in worlds 2 and 3 for each side (copies of world 1 with their twist; world 1
+ *  alone as input, since the shipped world 2 now has plant levels of its own). */
+const MORE = previewWorlds(LEVELS.filter((l) => l.world === 1));
 const won = (prefix: string, n = 8): Record<string, 3> =>
   Object.fromEntries(Array.from({ length: n }, (_, i) => [`${prefix}-${i + 1}`, 3]));
 
@@ -19,7 +20,7 @@ describe('mapIslands: one island per world, in the side\'s own order', () => {
     expect(mapIslands(fresh, 'zombies').map((i) => i.world)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it('shipped levels: world 1 is open for both sides; worlds 2–5 have no levels yet and are locked', () => {
+  it('shipped levels: world 1 is open for both sides; worlds 2–5 are locked for a new player', () => {
     for (const side of ['plants', 'zombies'] as const) {
       expect(mapIslands(fresh, side).map((i) => i.locked)).toEqual([false, true, true, true, true]);
     }
