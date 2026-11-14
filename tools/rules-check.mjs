@@ -12,8 +12,10 @@
  * be changed afterwards except with the current code (the script changes it and back), so keep
  * the same six-digit LVT_TEST_GROWNUP_CODE for every run.
  *
- * No SDK; plain fetch to the REST API. Never touches `v2`, `presence`, `rooms` or `challenges`
- * except the read-only check of `presence`.
+ * No SDK; plain fetch to the REST API. Never touches `v2`. Outside `v2test` it only makes requests
+ * the rules must refuse: a read and a write on each retired old path (`presence`, `rooms`,
+ * `challenges`) and on an unknown top-level path. If one of those writes lands (200), the closed
+ * rules are not published, and the row is a surprise.
  */
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -189,8 +191,11 @@ const ROWS = [
   ['delete the grown-up code', () => call('DELETE', `${R}/admin/secret`), 401],
   ['delete the grown-up code with its proof', () => patch({ 'admin/secret': null, [`admin/proof/${G}`]: { touch: SV } }), 401],
 
-  // The old paths stay as they are (read-only check: nothing is written there).
-  ['old presence path still readable', () => get('presence'), 200],
+  // The retired old paths and any unknown top-level path: closed to everyone.
+  ...['presence', 'rooms', 'challenges', 'lvtRulesCheck'].flatMap((p) => [
+    [`read ${p}/x`, () => get(`${p}/x`), 401],
+    [`write ${p}/x`, () => put(`${p}/x`, 'rules-check'), 401],
+  ]),
 
   // Grown-up reset, then cleanup.
   ['reset p29\'s pin with the grown-up proof', () => patch({
