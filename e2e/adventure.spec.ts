@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures';
 import type { Locator } from '@playwright/test';
 import type { Page } from './fixtures';
-import { boxHitsPolygon, deniedCount, forceResult, frames, glContexts, lawnCorners, logIn, openTitle, tilePoint, waitLive } from './helpers';
+import { boxHitsPolygon, deniedCount, forceResult, frames, glContexts, lawnCorners, logIn, nameFitsTile, openTitle, tilePoint, waitLive } from './helpers';
 
 // Phase 3 Task 4: the way into Adventure: the Play menu, the map on the shared stage, the level card.
 
@@ -9,26 +9,6 @@ import { boxHitsPolygon, deniedCount, forceResult, frames, glContexts, lawnCorne
 async function press(target: Locator): Promise<void> {
   if (test.info().project.name === 'ipad') await target.tap();
   else await target.click();
-}
-
-/** A name must be visible, on one line, and fully inside its tile. */
-async function nameFitsTile(page: Page, tile: string, name: string, word: string): Promise<void> {
-  const label = page.locator(`${tile} ${name}`);
-  await expect(label).toBeVisible();
-  await expect(label).toHaveText(new RegExp(`^${word}$`, 'i'));
-  const r = await page.evaluate(([t, n]) => {
-    const a = document.querySelector(t!)!.getBoundingClientRect();
-    const el = document.querySelector(`${t} ${n}`)! as HTMLElement;
-    const b = el.getBoundingClientRect();
-    const lh = parseFloat(getComputedStyle(el).lineHeight);
-    return { l: b.left - a.left, r: a.right - b.right, t: b.top - a.top, b: a.bottom - b.bottom, h: b.height, lh, over: el.scrollWidth - el.clientWidth };
-  }, [tile, name]);
-  expect(r.l).toBeGreaterThanOrEqual(4);
-  expect(r.r).toBeGreaterThanOrEqual(4);
-  expect(r.t).toBeGreaterThanOrEqual(0);
-  expect(r.b).toBeGreaterThanOrEqual(4);
-  expect(r.h).toBeLessThanOrEqual(r.lh * 1.5); // one line
-  expect(r.over).toBeLessThanOrEqual(0);
 }
 
 /** Home → Play → Adventure → a side → the map, by taps only. */
@@ -307,7 +287,6 @@ test('a conveyor level: the belt replaces the tray, a belt card goes on a tile f
   expect(await coins(page)).toBe(before);
   expect(await pending(page)).toBeNull();
 });
-
 
 // Phase 3 Task 6: the tutorial, by following the glove with taps only.
 
