@@ -1,7 +1,8 @@
 import { ALL_CARDS } from '../data/units';
+import { cloneLawn, NO_TWIST } from './lawn';
 import { LANES } from './types';
 import type {
-  BeltConfig, BossConfig, CardKey, EndlessConfig, Faction, Hazard, IncomingUnit, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
+  BeltConfig, BossConfig, CardKey, EndlessConfig, Faction, Hazard, IncomingUnit, LawnConfig, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
 } from './types';
 
 /**
@@ -140,6 +141,7 @@ const PROJECTILE: Fields<Projectile> = {
   targetId: nullableNum, targetX: nullableNum,
   pierceLeft: num, hitIds: nums,
   burning: bool, burnDps: num, burnTicks: num,
+  fadeX: nullableNum, // fog, after everything else
 };
 
 const HAZARD: Fields<Hazard> = {
@@ -172,6 +174,30 @@ const PREPARED_UNIT: Fields<PreparedUnit> = { unit: str, faction: str, lane: num
 const BELT: Fields<BeltConfig> = { side: str, everyTicks: num, cards: strs, slots: num };
 const BOSS: Fields<BossConfig> = { key: str, faction: str, lane: num };
 const ENDLESS: Fields<EndlessConfig> = { cards: strs, firstWaveTicks: num };
+/** The lawn's twists; a null twist is a presence byte of 0, as for any nullable value. */
+const LAWN: Fields<LawnConfig> = {
+  rocks: nums,
+  fog: nullableNum,
+  ice: (f, ice) => {
+    if (ice === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      nums(f, ice.lanes);
+      f.num(ice.speed);
+    }
+  },
+  lava: (f, lava) => {
+    if (lava === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      nums(f, lava.tiles);
+      f.num(lava.dps);
+      f.num(lava.burnTicks);
+    }
+  },
+};
 const INCOMING: Fields<IncomingUnit> = { tick: num, unit: str, lane: num, x: num, level: num, index: num };
 
 /**
@@ -218,6 +244,7 @@ const CONFIG: Fields<MatchConfig> = {
       record(f, ENDLESS, endless);
     }
   },
+  lawn: (f, lawn) => record(f, LAWN, lawn), // the twists, after everything else
 };
 
 const STATE: Fields<SimState> = {
@@ -264,12 +291,18 @@ export function snapshotState(s: SimState): string {
  * state. A snapshot missing any top-level key of the state is refused with an error, with one
  * exception: a snapshot made before the plant base had a defence has no `baseDefenseTimers`; it
  * gets one timer per lane, all at 0, which is what the timers read whenever the defence is off;
- * and one made before the Marketplace has no `config.upgrades`: it gets none on either side.
+ * one made before the Marketplace has no `config.upgrades`: it gets none on either side; and one
+ * made before the lawn twists has no `config.lawn` (it gets `NO_TWIST`) and projectiles without
+ * `fadeX` (they get null: no fog).
  */
 export function restoreState(json: string): SimState {
   const s = JSON.parse(json) as SimState;
   s.baseDefenseTimers ??= new Array<number>(LANES).fill(0);
-  if (typeof s.config === 'object' && s.config !== null) s.config.upgrades ??= { plants: {}, zombies: {} };
+  if (typeof s.config === 'object' && s.config !== null) {
+    s.config.upgrades ??= { plants: {}, zombies: {} };
+    s.config.lawn ??= cloneLawn(NO_TWIST);
+  }
+  if (Array.isArray(s.projectiles)) for (const p of s.projectiles) p.fadeX ??= null;
   const missing = Object.keys(STATE).filter((key) => !Object.hasOwn(s, key));
   if (missing.length > 0) throw new Error(`The snapshot has no ${missing.join(', ')}`);
   return s;

@@ -89,6 +89,9 @@ export interface Projectile {
   pierceLeft: number; hitIds: number[]; // piercing only: how many more it may hit, whom it has hit
   burning: boolean; // set alight by a Torchwood
   burnDps: number; burnTicks: number; // the burn a burning one puts on whom it damages, level-scaled; 0 otherwise
+  // Fog (`LawnConfig.fog`): the x past which it fades out unspent (`projectileFaded`), fire x ± fog;
+  // null without fog and for a lobbed shot aimed at a unit (it lands on its target).
+  fadeX: number | null;
 }
 
 /** Something left on the lawn that hurts the other side's units standing in it (a Brain Rot puddle). */
@@ -157,6 +160,26 @@ export interface MatchConfig {
    * and adds to the clock in `SimState.clock`; `goalTicks` must be null). Checked by `checkEndless`.
    */
   endless: EndlessConfig | null;
+  /**
+   * The lawn's twists (spec 8, worlds 2–5; see `src/sim/lawn.ts`), each off when null or empty:
+   * `NO_TWIST` in Versus, Quick Battle and Free Play. Checked by `checkLawn`.
+   */
+  lawn: LawnConfig;
+}
+
+/**
+ * What a world's lawn does (see `src/sim/lawn.ts`); the twists compose.
+ * - `rocks`: plant tiles (lane × `PLANT_COLS` + col) no plant can be put on; zombies and shots ignore them.
+ * - `fog`: how many tiles a shot reaches; a straight, piercing or unaimed lobbed shot fades out past it.
+ * - `ice`: zombies in these lanes walk `speed` times as fast.
+ * - `lava`: lawn tiles (lane × `COLS` + col) that set whoever stands on them burning: `dps` for
+ *   `burnTicks`, topped up every tick they stand there.
+ */
+export interface LawnConfig {
+  rocks: number[];
+  fog: number | null;
+  ice: { lanes: number[]; speed: number } | null;
+  lava: { tiles: number[]; dps: number; burnTicks: number } | null;
 }
 
 /**
@@ -219,7 +242,8 @@ export type CommandRejection =
   | 'max-level' | 'not-yours' | 'plants-only' | 'hero-charging' | 'hero-off'
   | 'spell-charging' | 'spell-not-dealt' | 'spells-off'
   | 'no-belt' | 'bad-slot' // belt: this side has no belt; no card waits in that slot
-  | 'boss'; // remove: a boss cannot be dug up
+  | 'boss' // remove: a boss cannot be dug up
+  | 'rock'; // place, belt, Rock Wall: a rock of the lawn (`LawnConfig.rocks`) is on that tile
 
 export type SimEvent =
   | { type: 'commandRejected'; command: Command; reason: CommandRejection }
@@ -234,6 +258,8 @@ export type SimEvent =
     type: 'projectileHit'; projectileId: number; lane: number; x: number; targetId: number | null;
     targetBase: Faction | null; blocked: boolean; burning: boolean;
   }
+  // Fog: a shot went its `fadeX` without meeting anything and faded out at `x`.
+  | { type: 'projectileFaded'; id: number; x: number; lane: number }
   | { type: 'unitDamaged'; unitId: number; amount: number; hp: number }
   | { type: 'unitDied'; unitId: number; key: UnitKey; faction: Faction; lane: number; x: number; level: number;
     // spent: a mine or cherry that went off, a rock that crumbled; base: felled by the plant base's

@@ -1066,6 +1066,7 @@ export class BattleView {
       case 'waveStarted': // Free Play: the HUD shows the wave number
       case 'gardenBroken':
       case 'bossPhase': // the shield's pattern event and the HUD's notches show it
+      case 'projectileFaded': // fog: the projectile leaves with the state; its puff is the looks task's
         break;
       default: {
         const unhandled: never = e;

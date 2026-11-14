@@ -4,7 +4,11 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 2254 bytes). Re-pinned in phase 3
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 2370 bytes). Re-pinned once in the
+ * worlds machinery plan, Task 2 (lawn twists), when projectiles gained `fadeX` (fog; after
+ * `burnTicks`) and the setup its `lawn` (after `endless`), cross-checked by a separate Python FNV-1a
+ * written from the documented layout, fed the JSON of `makeState()` (3452586360 over 2370 bytes);
+ * before that it was 3852161195 over 2254 bytes. Re-pinned in phase 3
  * Task 8 (levels) when units gained `stunFatigue` (a boss's stun resistance; 8 bytes per unit, after
  * `phase`), cross-checked by a separate Python FNV-1a written from the documented layout, fed the
  * JSON of `makeState()` (3852161195 over 2254 bytes; the same script without `stunFatigue` gives the
@@ -33,7 +37,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 3852161195;
+const GOLDEN_HASH = 3452586360;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -59,7 +63,7 @@ function makeState(): SimState {
       {
         id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1, spawnTick: 118,
         flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25,
-        pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
+        pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90, fadeX: 7.5,
       },
     ],
     hazards: [
@@ -102,6 +106,7 @@ function makeState(): SimState {
       invulnerableBase: 'zombies',
       boss: { key: 'elderOak', faction: 'plants', lane: 2 },
       endless: { cards: ['brainEater', 'veryFastWalker'], firstWaveTicks: 90 },
+      lawn: { rocks: [3, 17], fog: 5, ice: { lanes: [1, 3], speed: 1.6 }, lava: { tiles: [12, 44], dps: 15, burnTicks: 60 } },
     },
     scriptIndex: 1,
     belt: ['peashooter'],
@@ -316,6 +321,23 @@ describe('hashState', () => {
     ['an incoming x', (s) => { s.incoming[0]!.x = 9; }],
     ['an incoming level', (s) => { s.incoming[0]!.level = 3; }],
     ['an incoming index', (s) => { s.incoming[0]!.index = 0; }],
+    // Lawn twists.
+    ['a projectile fadeX', (s) => { s.projectiles[0]!.fadeX = 7.25; }],
+    ['a projectile fadeX null', (s) => { s.projectiles[0]!.fadeX = null; }],
+    ['config a rock tile', (s) => { s.config.lawn.rocks[1] = 18; }],
+    ['config the number of rocks', (s) => { s.config.lawn.rocks.pop(); }],
+    ['config the rock order', (s) => { s.config.lawn.rocks.reverse(); }],
+    ['config fog', (s) => { s.config.lawn.fog = 4; }],
+    ['config fog null', (s) => { s.config.lawn.fog = null; }],
+    ['config ice null', (s) => { s.config.lawn.ice = null; }],
+    ['config an ice lane', (s) => { s.config.lawn.ice!.lanes[0] = 0; }],
+    ['config the number of ice lanes', (s) => { s.config.lawn.ice!.lanes.pop(); }],
+    ['config ice speed', (s) => { s.config.lawn.ice!.speed = 1.5; }],
+    ['config lava null', (s) => { s.config.lawn.lava = null; }],
+    ['config a lava tile', (s) => { s.config.lawn.lava!.tiles[0] = 13; }],
+    ['config the number of lava tiles', (s) => { s.config.lawn.lava!.tiles.pop(); }],
+    ['config lava dps', (s) => { s.config.lawn.lava!.dps = 16; }],
+    ['config lava burnTicks', (s) => { s.config.lawn.lava!.burnTicks = 59; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -397,7 +419,7 @@ describe('snapshotState / restoreState', () => {
     expect(restored.units[0]).toMatchObject({ blind: 15, burn: 40, burnDps: 10, ownerId: null });
     expect(restored.units[1]).toMatchObject({ stun: 20, tied: 7, poison: 60, poisonDps: 15, stacks: 2, ownerId: 9, auraTimer: 33 });
     expect(restored.projectiles[0]).toMatchObject({
-      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
+      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90, fadeX: 7.5,
     });
     expect(restored.hazards).toEqual(s.hazards);
     expect(restored.hazards).not.toBe(s.hazards);

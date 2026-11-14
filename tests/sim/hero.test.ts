@@ -142,7 +142,7 @@ describe('Mega Mower', () => {
     m.state.projectiles.push({
       id: 98, kind: 'brain', faction: 'zombies', lane: 3, x: 6, speed: 0.1, damage: 15, ownerId: shooter.id, spawnTick: 0,
       flight: 'straight', sourceKey: 'brainEater', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [],
-      burning: false, burnDps: 0, burnTicks: 0,
+      burning: false, burnDps: 0, burnTicks: 0, fadeX: null,
     });
     const base = { ...m.state.baseHp };
     const events = m.step([hero('plants', 3)]);

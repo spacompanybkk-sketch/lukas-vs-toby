@@ -247,7 +247,7 @@ function barrage(s: SimState, u: Unit, p: Barrage, events: SimEvent[]): void {
       speed: p.speed / TICKS_PER_SECOND, damage: p.damage, ownerId: u.id, spawnTick: s.tick,
       flight: 'lobbed', sourceKey: u.key, level: 1,
       targetId: target.id, targetX: target.x, pierceLeft: 0, hitIds: [],
-      burning: false, burnDps: 0, burnTicks: 0,
+      burning: false, burnDps: 0, burnTicks: 0, fadeX: null, // a boss's attack is never fogged
     };
     s.nextId += 1;
     s.projectiles.push(acorn);

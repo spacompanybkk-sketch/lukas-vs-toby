@@ -57,7 +57,7 @@ function shot(ctx: Ctx, id: number, kind: ProjectileKind, owner: Unit, extra: Pa
   const p: Projectile = {
     id, kind, faction: owner.faction, lane: owner.lane, x: owner.x, speed: 0.2, damage: 10, ownerId: owner.id,
     spawnTick: 0, flight: 'straight', sourceKey: owner.key, level: 1, targetId: null, targetX: null,
-    pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0, ...extra,
+    pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0, fadeX: null, ...extra,
   };
   ctx.match.state.projectiles.push(p);
   ctx.apply({
@@ -494,7 +494,7 @@ describe('BattleView review fixes (wiring A)', () => {
     const trident = first.spawn('tridentZombie', 3, 8.5);
     const fire = first.spawn('peashooter', 4, 1.5);
     const s = first.match.state;
-    const base = { speed: 0.2, damage: 10, spawnTick: 0, level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0 };
+    const base = { speed: 0.2, damage: 10, spawnTick: 0, level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0, fadeX: null };
     s.projectiles.push(
       { ...base, id: 1, kind: 'pea', faction: 'plants', lane: 0, x: 4, ownerId: pea.id, flight: 'straight', sourceKey: 'peashooter' },
       { ...base, id: 2, kind: 'kernel', faction: 'plants', lane: 1, x: 4.5, ownerId: pult.id, flight: 'lobbed', sourceKey: 'kernelPult', targetId: z.id, targetX: 7.5 },

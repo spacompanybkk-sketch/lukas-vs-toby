@@ -231,6 +231,7 @@ export function playEventSounds(
       case 'waveStarted': // Free Play: the HUD shows the wave number
       case 'gardenBroken':
       case 'bossPhase': // its shield's bossPattern is the sound
+      case 'projectileFaded': // fog: no sound of its own yet
         break;
       default: {
         const unhandled: never = e;

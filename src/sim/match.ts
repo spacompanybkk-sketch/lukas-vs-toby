@@ -13,6 +13,7 @@ import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
 import { levelUp } from './levelUp';
+import { cloneLawn, NO_TWIST } from './lawn';
 import { inLane, isBoss, isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { checkLevel, tickScript } from './script';
@@ -46,7 +47,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     spells: { plants: 2, zombies: 2 },
     upgrades: { plants: {}, zombies: {} },
     mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null,
-    boss: null, endless: null,
+    boss: null, endless: null, lawn: cloneLawn(NO_TWIST),
   };
 }
 
@@ -70,6 +71,8 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     invulnerableBase: c.invulnerableBase,
     boss: c.boss === null || c.boss === undefined ? (c.boss as null) : { ...c.boss },
     endless: c.endless === null || c.endless === undefined ? (c.endless as null) : { ...c.endless, cards: [...c.endless.cards] },
+    // A setup from before the twists has none: NO_TWIST. Null is kept for `checkLawn` to refuse.
+    lawn: c.lawn === undefined ? cloneLawn(NO_TWIST) : c.lawn === null ? c.lawn : cloneLawn(c.lawn),
   };
 }
 

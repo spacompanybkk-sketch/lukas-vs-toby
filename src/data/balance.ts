@@ -200,6 +200,12 @@ export interface Balance {
     clockSeconds: number; clockBonusSeconds: number; gardenBaseHp: number; gardenHpStep: number;
     spreadSeconds: number; gardenMinCol: number; gardenMaxCol: number;
   };
+  /**
+   * The lawn twists of worlds 2–5 (see `LawnConfig`, built by `levelConfig` from a level's
+   * `twist`): fog lets a shot reach `reach` tiles; ice makes zombies walk `speed` times as fast;
+   * lava burns whoever stands on it for `dps` a second, lasting `burnSeconds` after they step off.
+   */
+  twists: { fog: { reach: number }; ice: { speed: number }; lava: { dps: number; burnSeconds: number } };
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -415,6 +421,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     clockSeconds: 90, clockBonusSeconds: 45, gardenBaseHp: 1500, gardenHpStep: 0.15,
     spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
+  // Worlds machinery rulings 3, 5, 6: fog 5 tiles, ice ×1.6, lava 15 dps with a 2 s refreshing burn.
+  twists: { fog: { reach: 5 }, ice: { speed: 1.6 }, lava: { dps: 15, burnSeconds: 2 } },
 });
 
 /** Seconds to whole ticks. */

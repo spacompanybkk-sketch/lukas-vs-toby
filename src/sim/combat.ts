@@ -102,6 +102,7 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
     targetId: aimedAt ? aimedAt.id : null, targetX: aimedAt ? aimedAt.x : null,
     pierceLeft: flight === 'piercing' ? (shot.pierce ?? 1) : 0, hitIds: [],
     burning: false, burnDps: 0, burnTicks: 0,
+    fadeX: null,
   };
   s.nextId += 1;
   s.projectiles.push(p);
