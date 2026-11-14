@@ -221,10 +221,16 @@ export function playEventSounds(
         else if (key !== undefined && isBoss(key)) audio.play(BOSS_LOOK[key].call, at(unitX(state, e.unitId)));
         break;
       }
-      case 'bossStrike':
-        // Any boss's strike: a warning as it winds up, a crash as it lands, where its tiles are.
+      case 'bossStrike': {
+        // Any boss's strike: a warning as it winds up, a crash as it lands, where its tiles are; a
+        // boss with a strike move of its own (the Howler's howl, the Melon's freeze) calls as it winds up.
         audio.play(e.windup ? 'strikeWindup' : 'strikeImpact', at(meanCol(e.tiles) + 0.5));
+        const key = unitKey(state, e.unitId);
+        if (e.windup && key !== undefined && isBoss(key) && BOSS_LOOK[key].fx.strike !== undefined) {
+          audio.play(BOSS_LOOK[key].call, at(unitX(state, e.unitId)));
+        }
         break;
+      }
       case 'bossDefeated':
         audio.play(BOSS_LOOK[e.key].defeat);
         break;

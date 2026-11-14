@@ -22,6 +22,8 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   | 'healingRain' | 'rockWall' | 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise'
   // phase 3: the bosses, two each (a signature call for the entrance and the patterns, a defeat sting)
   | 'titanRoar' | 'titanDefeat' | 'oakCreak' | 'oakDefeat'
+  // step 2: the world-2 bosses, two each as above
+  | 'howlerHowl' | 'howlerDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
   | 'strikeWindup' | 'strikeImpact';
 
@@ -650,6 +652,55 @@ function oakDefeat(v: Voice, t: number, p: number): void {
 }
 
 /**
+ * The Moon Howler's howl: a cartoon "a-WOOOOO" (a yip, then a triangle voice sliding up an octave
+ * and holding with a wide wobble through a vowel filter that opens to "oo", a sine an octave up for
+ * the moonlit shine) over a breath of wind. Silly and big, not scary.
+ */
+function howlerHowl(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'triangle', freq: 520 * p, to: 760 * p, glide: 0.05, at: t, attack: 0.004, peak: 0.16, decay: 0.07 });
+  const vowel = filter(v, 'bandpass', 700, 2.5);
+  vowel.frequency.setValueAtTime(700, t + 0.1);
+  vowel.frequency.linearRampToValueAtTime(1300, t + 0.35);
+  vowel.frequency.linearRampToValueAtTime(800, t + 1.15);
+  const env = envelope(v, t + 0.1, 0.12, 0.42, 0.55, 0.45);
+  const o = v.ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(330 * p, t + 0.1);
+  o.frequency.exponentialRampToValueAtTime(660 * p, t + 0.42);
+  o.frequency.exponentialRampToValueAtTime(600 * p, t + 0.9);
+  o.frequency.exponentialRampToValueAtTime(420 * p, t + 1.2);
+  o.connect(vowel);
+  v.play(o, t + 0.1, env.end);
+  vibrato(v, [o.frequency], 6, 14 * p, t + 0.1, 0.3, env.end);
+  vowel.connect(env.gain);
+  env.gain.connect(v.input);
+  tone(v, { type: 'sine', freq: 1320 * p, to: 1200 * p, glide: 0.6, at: t + 0.4, attack: 0.08, peak: 0.05, hold: 0.3, decay: 0.3 });
+  noise(v, { at: t + 0.05, attack: 0.2, peak: 0.06, hold: 0.4, decay: 0.45, filter: 'bandpass', freq: 900, to: 500, glide: 0.9, q: 0.8 });
+}
+
+/**
+ * The Moon Howler beaten: a sad puppy whine sliding down with a wobble ("aooo-ooh"), two small
+ * whimpers, then a soft thump as it lands.
+ */
+function howlerDefeat(v: Voice, t: number, p: number): void {
+  const env = envelope(v, t, 0.04, 0.24, 0.3, 0.3);
+  const o = v.ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(700 * p, t);
+  o.frequency.exponentialRampToValueAtTime(330 * p, t + 0.62);
+  const round = filter(v, 'lowpass', 1800, 1);
+  o.connect(round);
+  round.connect(env.gain);
+  env.gain.connect(v.input);
+  v.play(o, t, env.end);
+  vibrato(v, [o.frequency], 7, 12 * p, t, 0.1, env.end);
+  [0.72, 0.88].forEach((off) => {
+    tone(v, { type: 'triangle', freq: 560 * p, to: 420 * p, glide: 0.08, at: t + off, attack: 0.005, peak: 0.14, decay: 0.08 });
+  });
+  tone(v, { type: 'sine', freq: 90 * p, to: 45 * p, glide: 0.15, at: t + 1.08, attack: 0.003, peak: 0.4, decay: 0.2 });
+}
+
+/**
  * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
  * and filtered) and a rising whistle, like something about to fall on the marked tiles.
  */
@@ -675,7 +726,7 @@ export const SFX: Record<SfxName, Recipe> = {
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
-  titanRoar, titanDefeat, oakCreak, oakDefeat, strikeWindup, strikeImpact,
+  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, strikeWindup, strikeImpact,
 };
 
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];

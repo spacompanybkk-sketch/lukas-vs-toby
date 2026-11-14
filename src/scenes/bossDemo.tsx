@@ -13,10 +13,13 @@ import { disposeModels } from '../render/voxel/build';
 import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
 import { Sky } from '../render/world/Sky';
+import { dressWorld } from '../app/Stage';
+import { WORLD_ORDER, type WorldKey } from '../data/worlds';
 import { factionOf } from '../data/units';
 import { isBoss } from '../sim/lookup';
 import type { BossKey, SimEvent, StatusKind } from '../sim/types';
 import { TICKS_PER_SECOND } from '../sim/types';
+import { NO_TWIST } from '../sim/lawn';
 import { BossBar } from '../ui/hud/BossBar';
 import { TopBar } from '../ui/hud/TopBar';
 import '../ui/hud/hud.css';
@@ -26,7 +29,11 @@ import { STRIKE_DEMOS, bossDemoMatch, strikeDemoBalance } from './bossScript';
 // the real lawn, with the clock and the boss bar over it (no tray, no sound). For judging the
 // bosses by eye and for the screenshot tool.
 //
-//   ?scene=boss-demo&boss=brainTitan|elderOak   which boss (default the Brain Titan)
+//   ?scene=boss-demo&boss=brainTitan|elderOak|moonHowler|frostMelon
+//                                               which boss (default the Brain Titan); the world-2
+//                                               bosses fight in their own world (the Meadow's fog,
+//                                               the Tundra's ice and snow) with their demo table
+//   &world=<key>                                another world's look (the boss's lawn twist stays)
 //   &strike=stun|blind|burn|none                a test-only Titan that strikes first (tiles at 3–5 s,
 //                                               a lane at 9–11 s), leaving that status (bossScript.ts)
 //   &seed=<n>                                   the match's seed (default 1)
@@ -37,6 +44,8 @@ import { STRIKE_DEMOS, bossDemoMatch, strikeDemoBalance } from './bossScript';
 // `window.__lvt.battle` holds `{ match, view, advance, focus, redraw, events }` as in the roster demo.
 
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
+/** Where each boss fights: the world it ends. */
+const DEMO_WORLD: Record<BossKey, WorldKey> = { brainTitan: 'backyard', elderOak: 'backyard', moonHowler: 'meadow', frostMelon: 'tundra' };
 const WARM_UP_FRAMES = 6;
 const STEP_SECONDS = 1 / STEPS_PER_SECOND;
 const FRAMES_PER_STEP = 2;
@@ -80,6 +89,9 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const seed = Math.trunc(number(params, 'seed', 1));
   const match = strike === undefined ? bossDemoMatch(key, seed) : bossDemoMatch(key, seed, strikeDemoBalance(strike as StatusKind | 'none'));
   const player = factionOf(key) === 'zombies' ? 'plants' : 'zombies';
+  const askedWorld = WORLD_ORDER.find((w) => w === params.get('world'));
+  const world: WorldKey = askedWorld ?? DEMO_WORLD[key];
+  if (world !== 'backyard' || match.state.config.lawn !== NO_TWIST) dressWorld({ lawn, sky, renderer }, world, match.state.config.lawn);
   const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, player, { balance: match.balance });
 
   const clock = signal(0);
