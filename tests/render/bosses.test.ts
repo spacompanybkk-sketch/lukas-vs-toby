@@ -132,6 +132,23 @@ describe('a boss on the lawn', () => {
     expect(shown(s.scene, 'boss-windup-tile')).toBe(3);
   });
 
+  it('a match that ends mid wind-up takes the slam tiles and arrows away, and they stay away', () => {
+    const s = stage('brainTitan');
+    s.until((e) => e.type === 'bossPattern' && e.kind === 'slam' && e.windup);
+    s.play(0.2);
+    expect(shown(s.scene, 'boss-windup-tile')).toBe(3);
+    s.view.applyEvents([{ type: 'matchEnded', winner: 'plants' }], s.match.state);
+    // The state still holds the wind-up (the match stopped stepping in it): frames go on.
+    for (let f = 0; f < 30; f++) {
+      s.view.applyEvents([], s.match.state);
+      s.view.frame(s.match.state, 0.5, DT, 10 + f * DT);
+    }
+    expect(s.view.bossFx.windingUp).toBe(false);
+    expect(shown(s.scene, 'boss-windup-tile')).toBe(0);
+    expect(shown(s.scene, 'boss-windup-fill')).toBe(0);
+    expect(shown(s.scene, 'boss-windup-arrow')).toBe(0);
+  });
+
   it('a view that joins during a wind-up shows the tiles and plays the raised arm', () => {
     const s = stage('brainTitan');
     const m = bossDemoMatch('brainTitan', 1);

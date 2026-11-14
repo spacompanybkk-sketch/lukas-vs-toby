@@ -1009,6 +1009,7 @@ export class BattleView {
         break;
       case 'matchEnded':
         this.onFeel({ slowMo: 1.5 });
+        this.bossFx.clear(); // a slam or strike wound up when the match ended never lands: its warnings go
         break;
       case 'statusApplied':
       case 'statusEnded': {
