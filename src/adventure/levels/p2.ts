@@ -35,49 +35,53 @@ export const P2: LevelDef[] = [
   },
   {
     // The one idea: to hit the zombie base a shooter must stand at column 3 or further. The Easy
-    // computer on half income, a small zombie base.
+    // computer on ×0.7 income, a small zombie base (800: the beginner, whose shooters stand in
+    // columns 0-3, breaks it in under 4 minutes).
     ...base('p2-2', 2), side: 'plants', kind: 'battle', cards: FIVE,
-    baseHp: { zombies: 2500 }, twist: { fog: 7 },
-    opponent: { skill: 'easy', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'], incomeScale: 0.5 },
+    baseHp: { zombies: 800 }, twist: { fog: 7 },
+    opponent: { skill: 'easy', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'], incomeScale: 0.7 },
   },
   {
     // The one idea: belt cards - walls in front of forward shooters. Scripted waves in all five
     // lanes; the base falls to them unaided (an idle player loses, as p1-5). Unlocks the Mango-pult.
     ...base('p2-3', 3), side: 'plants', kind: 'conveyor', cards: ['peashooter', 'walnutBomb', 'potatoMine', 'kernelPult'],
     belt: { everySeconds: 5, cards: ['peashooter', 'walnutBomb', 'potatoMine', 'kernelPult'] },
-    seconds: 120, baseHp: { plants: 4500 }, twist: { fog: 6 },
+    // A 150 s belt (120 s: a 2-minute level, under the 2.5-minute target).
+    seconds: 150, baseHp: { plants: 4000 }, twist: { fog: 6 },
     waves: [
-      ...trickle('brainEater', 15, 6, 14, [2, 0, 4, 1, 3]),
-      ...trickle('desertZombie', 50, 15, 4, [1, 3, 0, 4]),
-      ...flag('brainEater', 100, [0, 1, 2, 3, 4]),
+      ...trickle('brainEater', 15, 6, 19, [2, 0, 4, 1, 3]),
+      ...trickle('desertZombie', 50, 15, 6, [1, 3, 0, 4]),
+      ...flag('brainEater', 120, [0, 1, 2, 3, 4]),
     ],
     unlocks: 'mangoPult',
   },
   {
-    // The one idea: the Mango-pult's splash on clumps of zombies. The Medium computer on ×0.3 income,
-    // now with Skeleton Archers.
+    // The one idea: the Mango-pult's splash on clumps of zombies. The Medium computer on ×0.75 income,
+    // now with Skeleton Archers. Fog battles drag (content design §7.2), so: a tiny zombie base (400,
+    // a shooter forward enough to reach it ends the match) and 500 start energy (a quick first line;
+    // the default 190 left 11% of the average player's matches running into sudden death).
     ...base('p2-4', 4), side: 'plants', kind: 'battle', cards: SIX,
-    baseHp: { zombies: 3000 }, twist: { fog: 6 },
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'], incomeScale: 0.3 },
+    baseHp: { zombies: 400 }, twist: { fog: 6 }, startEnergy: 500,
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'], incomeScale: 0.75 },
   },
   {
     // The one idea: shields stop peas, lob over them. Flags of Skeleton Warriors at 70 s and 130 s
     // with Skeleton Archers mixed in (their range is capped at 5 by the fog too).
     ...base('p2-5', 5), side: 'plants', kind: 'survive', cards: SIX,
-    seconds: 150, baseHp: { plants: 4000 }, twist: { fog: 5 },
+    seconds: 150, baseHp: { plants: 4700 }, twist: { fog: 5 },
     waves: [
-      ...trickle('brainEater', 20, 7, 18, [2, 1, 3, 0, 4]),
-      ...trickle('skeletonArcher', 45, 20, 5, [1, 3, 2, 0, 4]),
+      ...trickle('brainEater', 20, 11, 10, [2, 1, 3, 0, 4]),
+      ...trickle('skeletonArcher', 45, 20, 3, [1, 3, 2, 0, 4]),
       ...flag('skeletonWarrior', 70, [1, 2, 3]),
       ...flag('skeletonWarrior', 130, [0, 1, 2, 3, 4]),
     ],
   },
   {
-    // The one idea: guard your forward shooters with a wall. The Medium computer on ×0.35, now with
-    // Hot Topics. Unlocks the Avocado Bunker.
+    // The one idea: guard your forward shooters with a wall. The Medium computer on ×0.68, now with
+    // Hot Topics; a tiny zombie base and 500 start energy as p2-4. Unlocks the Avocado Bunker.
     ...base('p2-6', 6), side: 'plants', kind: 'battle', cards: SIX,
-    baseHp: { zombies: 3500 }, twist: { fog: 5 },
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic'], incomeScale: 0.35 },
+    baseHp: { zombies: 400 }, twist: { fog: 5 }, startEnergy: 500,
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic'], incomeScale: 0.68 },
     unlocks: 'avocadoBunker',
   },
   {
@@ -86,16 +90,18 @@ export const P2: LevelDef[] = [
     ...base('p2-7', 7), side: 'plants', kind: 'survive', cards: SEVEN,
     seconds: 170, baseHp: { plants: 4000 }, twist: { fog: 5 },
     waves: [
-      ...trickle('desertZombie', 20, 8, 18, [2, 1, 3, 0, 4]),
-      ...trickle('cowboyZombie', 40, 16, 8, [1, 3, 2, 4, 0]),
+      ...trickle('desertZombie', 20, 10, 13, [2, 1, 3, 0, 4]),
+      ...trickle('cowboyZombie', 40, 20, 6, [1, 3, 2, 4, 0]),
       ...flag('brainEater', 150, [0, 1, 2, 3, 4]), ...flag('cowboyZombie', 152, [1, 3]),
     ],
   },
   {
     // Boss: the Moon Howler walks the middle lane - its moon dome bounces peas, pults still hurt it;
-    // its howl blinds a lane. Very Fast Walker "pups" trickle down the other lanes.
+    // its howl blinds a lane. Very Fast Walker "pups" trickle down the other lanes. A 5300 base, so
+    // the base's own strikes do not fell the Howler before it falls (an idle player loses), and 400
+    // start energy (what a player who plays gets and an idle one does not use).
     ...base('p2-8', 8), side: 'plants', kind: 'boss', cards: SEVEN,
-    boss: { key: 'moonHowler', lane: 2 }, baseHp: { plants: 5000 }, twist: { fog: 5 },
+    boss: { key: 'moonHowler', lane: 2 }, baseHp: { plants: 5300 }, twist: { fog: 5 }, startEnergy: 400,
     waves: trickle('veryFastWalker', 30, 20, 8, [0, 4, 1, 3]),
   },
 ];
