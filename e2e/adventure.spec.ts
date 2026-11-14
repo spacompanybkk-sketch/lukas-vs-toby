@@ -11,6 +11,26 @@ async function press(target: Locator): Promise<void> {
   else await target.click();
 }
 
+/** A name must be visible, on one line, and fully inside its tile. */
+async function nameFitsTile(page: Page, tile: string, name: string, word: string): Promise<void> {
+  const label = page.locator(`${tile} ${name}`);
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(new RegExp(`^${word}$`, 'i'));
+  const r = await page.evaluate(([t, n]) => {
+    const a = document.querySelector(t!)!.getBoundingClientRect();
+    const el = document.querySelector(`${t} ${n}`)! as HTMLElement;
+    const b = el.getBoundingClientRect();
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    return { l: b.left - a.left, r: a.right - b.right, t: b.top - a.top, b: a.bottom - b.bottom, h: b.height, lh, over: el.scrollWidth - el.clientWidth };
+  }, [tile, name]);
+  expect(r.l).toBeGreaterThanOrEqual(4);
+  expect(r.r).toBeGreaterThanOrEqual(4);
+  expect(r.t).toBeGreaterThanOrEqual(0);
+  expect(r.b).toBeGreaterThanOrEqual(4);
+  expect(r.h).toBeLessThanOrEqual(r.lh * 1.5); // one line
+  expect(r.over).toBeLessThanOrEqual(0);
+}
+
 /** Home → Play → Adventure → a side → the map, by taps only. */
 async function toMap(page: Page, side: 'plants' | 'zombies' = 'plants'): Promise<void> {
   await press(page.locator('[data-home="play"]'));
@@ -371,4 +391,23 @@ test('the tutorial of z1-1 by the glove: the Brain Eater, then its lane', async 
   await followGlove(page, ['z1-1.card', 'z1-1.lane'], wrong);
   expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
     .filter((u: any) => u.faction === 'zombies').map((u: any) => `${u.key} ${u.lane}`))).toEqual(['brainEater 2']);
+});
+
+test('the Play menu names its three tiles, each fully inside its tile, at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  await openTitle(page);
+  await logIn(page);
+  await press(page.locator('[data-home="play"]'));
+  await expect(page.locator('[data-screen="play"]')).toBeVisible();
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }]) {
+    await page.setViewportSize(size);
+    await expect(page.locator('[data-screen="play"]')).toBeVisible();
+    for (const [mode, word] of [['adventure', 'ADVENTURE'], ['quick', 'QUICK BATTLE'], ['free', 'FREE PLAY']] as const) {
+      await nameFitsTile(page, `[data-play="${mode}"]`, '[data-play-name]', word);
+      // The picture stays the main thing: taller than the name.
+      const pic = await page.locator(`[data-play="${mode}"] .play__art`).first().boundingBox();
+      const nm = await page.locator(`[data-play="${mode}"] [data-play-name]`).boundingBox();
+      expect(pic!.height).toBeGreaterThan(nm!.height * 2);
+    }
+  }
 });

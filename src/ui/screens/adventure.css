@@ -9,14 +9,21 @@
   position: relative;
   width: clamp(180px, min(26vw, 40vh), 320px);
   height: clamp(180px, min(26vw, 40vh), 320px);
-  padding: 0;
+  padding: 0 0 calc(var(--px-bev) + 4%);
+  flex-direction: column; gap: 0;
+  container-type: inline-size;
   animation: px-pop var(--t-pop) steps(4, end) both;
+}
+/* The picture takes what the name leaves; the name sits under it, centred, on one line. */
+.play__pic { flex: 1 1 0; min-height: 0; width: 100%; display: grid; place-items: center; position: relative; }
+.play__name {
+  flex: none; max-width: 94%; font-size: 10cqw; line-height: 1; color: var(--white);
+  text-transform: uppercase; white-space: nowrap; text-align: center;
 }
 .play__mode:nth-child(2) { animation-delay: 60ms; }
 .play__mode:nth-child(3) { animation-delay: 120ms; }
-.play__mode .play__art { width: 72% !important; height: 72% !important; }
-.play__duo { position: relative; display: grid; place-items: center; width: 100%; height: 100%; }
-.play__duo .play__art { width: 72% !important; height: 72% !important; }
+.play__mode .play__art { width: 84% !important; height: 84% !important; }
+.play__duo .play__art { width: 84% !important; height: 84% !important; }
 .play__corner { position: absolute; right: 6%; bottom: 6%; width: 44% !important; height: 44% !important; }
 .play__mode.is-locked .play__art { filter: grayscale(0.85) brightness(0.8); }
 .play__mode.is-nudged-a { animation: px-hop-a 420ms steps(6, end) both; }
