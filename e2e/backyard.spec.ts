@@ -195,13 +195,24 @@ test('a conveyor level by taps and by drag; a breakthrough lost on the clock pay
   await expect(page.locator('[data-hud="tray"]')).toHaveCount(0);
   const plantKey = (lane: number, col: number): Promise<string | null> => page.evaluate(([ln, c]) => (window.__lvt as any).session.controller.match.state.units
     .find((u: any) => u.faction === 'plants' && u.lane === ln && Math.floor(u.x) === c)?.key ?? null, [lane, col] as const);
-  // By taps: the first belt card, then a tile.
+  // By taps, as the belt's lesson shows: the glove on the first belt card (the match held), then on its tile.
   const first = page.locator('[data-belt][data-slot="0"]');
   await expect(first).toBeVisible();
+  const glove = page.locator('[data-tutorial] .tut-hand');
+  await expect(glove).toHaveAttribute('data-glove-step', 'p1-5.belt');
+  await expect(glove).toHaveAttribute('data-glove', 'card');
+  await expect(glove).toHaveAttribute('data-holding', 'true');
   const tapped = await first.getAttribute('data-card');
   await press(first);
-  await tapAt(page, await tilePoint(page, 1, 2));
-  await expect.poll(() => plantKey(1, 2)).toBe(tapped);
+  await expect(glove).toHaveAttribute('data-glove-step', 'p1-5.belt-tile');
+  await expect(glove).toHaveAttribute('data-glove', 'tile');
+  await expect(glove).toHaveAttribute('data-glove-x', /\d+/);
+  const aim = { x: Number(await glove.getAttribute('data-glove-x')), y: Number(await glove.getAttribute('data-glove-y')) };
+  const tile = await tilePoint(page, 2, 1);
+  expect(Math.abs(aim.x - tile.x) + Math.abs(aim.y - tile.y)).toBeLessThan(3);
+  await tapAt(page, aim);
+  await expect.poll(() => plantKey(2, 1)).toBe(tapped);
+  await expect(page.locator('[data-tutorial]')).toHaveCount(0);
   // By drag: the next belt card (the belt brings one) pulled onto another tile.
   await expect.poll(async () => {
     await page.evaluate(() => (window.__lvt as any).fastForward(15));

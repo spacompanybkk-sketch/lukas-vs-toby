@@ -260,11 +260,13 @@ test('a conveyor level: the belt replaces the tray, a belt card goes on a tile f
   const key = await card.getAttribute('data-card');
   await press(card);
   await expect(card).toHaveAttribute('aria-pressed', 'true');
-  const at = await tilePoint(page, 2, 2);
+  // The belt's lesson: the glove then points at lane 2, column 1 (taps elsewhere wait).
+  await expect(page.locator('[data-tutorial] .tut-hand')).toHaveAttribute('data-glove-step', 'p1-5.belt-tile');
+  const at = await tilePoint(page, 2, 1);
   if (test.info().project.name === 'ipad') await page.touchscreen.tap(at.x, at.y);
   else await page.mouse.click(at.x, at.y);
   await expect.poll(() => page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
-    .filter((u: any) => u.faction === 'plants' && u.lane === 2 && Math.floor(u.x) === 2).map((u: any) => u.key))).toEqual([key]);
+    .filter((u: any) => u.faction === 'plants' && u.lane === 2 && Math.floor(u.x) === 1).map((u: any) => u.key))).toEqual([key]);
 
   // The belt keeps clear of lanes 0–4 at the smallest iPad window.
   await page.setViewportSize({ width: 1024, height: 650 });

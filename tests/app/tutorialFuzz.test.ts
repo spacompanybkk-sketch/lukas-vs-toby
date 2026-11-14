@@ -44,6 +44,8 @@ function gloveActionValid(c: BattleController): boolean {
       const spell = c.hud.spellSelected.peek();
       if (spell !== null) return c.match.check({ type: 'spell', faction: side, spell, lane: a.lane, col: a.col }) === null;
       const card = c.hud.selected.peek();
+      const slot = c.levelHud.beltSlot.peek();
+      if (slot !== null) return c.match.check({ type: 'belt', faction: side, slot, lane: a.lane, col: a.col }) === null;
       return card !== null && c.match.check({ type: 'place', faction: side, unit: card as never, lane: a.lane, col: a.col }) === null;
     }
     case 'unit': {
@@ -133,7 +135,7 @@ function idle(c: BattleController, maxSeconds: number): void {
 }
 
 describe('the tutorial never freezes the match without an action to take', () => {
-  for (const id of ['p1-1', 'p1-2', 'p1-3', 'z1-1', 'z1-2', 'z1-3', 'p1-4', 'z1-4']) {
+  for (const id of ['p1-1', 'p1-2', 'p1-3', 'z1-1', 'z1-2', 'z1-3', 'p1-4', 'z1-4', 'p1-5', 'z1-5']) {
     it(`${id}: following the glove ends every step, on 50 seeds`, () => {
       for (const seed of SEEDS) follow(taught(id, seed), 150);
     }, 120_000);
