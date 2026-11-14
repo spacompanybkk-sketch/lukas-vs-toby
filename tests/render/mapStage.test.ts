@@ -49,6 +49,7 @@ function fakeStage(): StageLike {
       d.detach();
       rig.reset();
     },
+    setWorld() {},
   };
   stage.scene.add(stage.lawn.group, particles.object, stage.fx.group);
   return stage;

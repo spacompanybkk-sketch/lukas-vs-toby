@@ -10,6 +10,8 @@ import { disposeModels } from '../render/voxel/build';
 import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
 import { Sky } from '../render/world/Sky';
+import { dressWorld } from '../app/Stage';
+import { worldParams } from './worldParams';
 import { Match, defaultConfig, spawnUnit } from '../sim/match';
 import { MAX_LEVEL, PLANT_COLS } from '../sim/types';
 import type { Faction, SimEvent, UnitKey } from '../sim/types';
@@ -19,6 +21,7 @@ import { mixMatch, stepMix } from './stressMix';
 // lawn, bases and battle view, with a real `Match` kept full of units.
 //
 //   ?scene=stress&units=<n>    n units alive at any time, half per side (default 60)
+//   &world=<key>               a world's look with its sample twist tiles (&twist=0: none)
 //   &quality=low|medium|high
 //   &mix                       the mixed roster instead (see stressMix.ts): all 21 kinds, every
 //                              shot kind, puddles, statuses on a third, two rocks, and a spell
@@ -40,6 +43,8 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const lawn = new Lawn();
   const sky = new Sky();
   renderer.scene.add(sky.group, lawn.group);
+  const { world, lawn: twist } = worldParams(params);
+  dressWorld({ lawn, sky, renderer }, world, twist);
   await document.fonts?.load("22px 'Lilita One'").catch(() => undefined);
 
   const particles = new Particles();

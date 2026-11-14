@@ -1,7 +1,7 @@
 import { BackSide, Color, Group, Mesh, ShaderMaterial, SphereGeometry } from 'three';
 import { DISPLAY_TO_SCENE_GLSL, SUN_TRAVEL } from '../look';
-import { PALETTE } from '../palette';
 import { BoxBatch, seededRandom } from './boxes';
+import { LOOKS, type SkyLook } from './looks';
 
 const DOME_VERTEX = /* glsl */ `
   varying vec3 vWorld;
@@ -162,22 +162,31 @@ function buildCloud(spec: CloudSpec): BoxBatch {
 export class Sky {
   readonly group = new Group();
   private readonly clouds: { mesh: Mesh; spec: CloudSpec }[] = [];
+  private readonly domeUniforms: Record<'uTop' | 'uHorizon' | 'uHaze' | 'uDeep', { value: Color }>;
+  private readonly cloudUniforms: Record<'uLit' | 'uSide' | 'uUnder' | 'uFar', { value: Color }>;
 
-  constructor() {
+  constructor(look: SkyLook = LOOKS.backyard.sky) {
     this.group.name = 'sky';
+    this.domeUniforms = {
+      uTop: { value: new Color(look.top) },
+      uHorizon: { value: new Color(look.horizon) },
+      // Between the two, for the part of the lower sky the camera sees most.
+      uHaze: { value: new Color(look.haze) },
+      uDeep: { value: new Color(look.deep) },
+    };
+    this.cloudUniforms = {
+      uLit: { value: new Color(look.cloud) },
+      uSide: { value: new Color(look.cloudSide) },
+      uUnder: { value: new Color(look.cloudUnder) },
+      uFar: { value: new Color(look.cloudFar) },
+    };
 
     const dome = new Mesh(
       new SphereGeometry(400, 32, 16),
       new ShaderMaterial({
         vertexShader: DOME_VERTEX,
         fragmentShader: DOME_FRAGMENT,
-        uniforms: {
-          uTop: { value: new Color(PALETTE.skyTop) },
-          uHorizon: { value: new Color(PALETTE.skyHorizon) },
-          // Between the two, for the part of the lower sky the camera sees most.
-          uHaze: { value: new Color(PALETTE.skyHaze) },
-          uDeep: { value: new Color(PALETTE.skyDeep) },
-        },
+        uniforms: { ...this.domeUniforms },
         side: BackSide,
         depthWrite: false,
         depthTest: false,
@@ -194,10 +203,7 @@ export class Sky {
       fragmentShader: CLOUD_FRAGMENT,
       uniforms: {
         uToSun: { value: SUN_TRAVEL.clone().negate() },
-        uLit: { value: new Color(PALETTE.cloud) },
-        uSide: { value: new Color(PALETTE.cloudSide) },
-        uUnder: { value: new Color(PALETTE.cloudUnder) },
-        uFar: { value: new Color(PALETTE.cloudFar) },
+        ...this.cloudUniforms,
       },
     });
     for (const spec of CLOUDS) {
@@ -207,6 +213,20 @@ export class Sky {
       this.clouds.push({ mesh, spec });
     }
     this.update(0);
+  }
+
+  /** Repaints the dome and the clouds in another world's colours (nothing is rebuilt). */
+  setLook(look: SkyLook): void {
+    const d = this.domeUniforms;
+    d.uTop.value.set(look.top);
+    d.uHorizon.value.set(look.horizon);
+    d.uHaze.value.set(look.haze);
+    d.uDeep.value.set(look.deep);
+    const c = this.cloudUniforms;
+    c.uLit.value.set(look.cloud);
+    c.uSide.value.set(look.cloudSide);
+    c.uUnder.value.set(look.cloudUnder);
+    c.uFar.value.set(look.cloudFar);
   }
 
   /** Frees every geometry and material the sky made. Take `group` out of the scene first. */

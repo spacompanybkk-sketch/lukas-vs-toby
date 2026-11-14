@@ -13,11 +13,12 @@ import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
 import { spawnUnit } from '../../src/sim/match';
 import type { Faction } from '../../src/sim/types';
+import type { WorldKey } from '../../src/data/worlds';
 
 const DT = 1 / 60;
 
 /** The stage without WebGL: a real scene, camera, rig, lawn and effects; `show` and `release` as the real one. */
-function fakeStage(): StageLike & { handOvers: number } {
+function fakeStage(): StageLike & { handOvers: number; worlds: string[] } {
   const camera = new PerspectiveCamera(30, 1, 2, 200);
   const rig = new CameraRig(camera);
   rig.frameLawn(window.innerWidth / window.innerHeight);
@@ -39,6 +40,10 @@ function fakeStage(): StageLike & { handOvers: number } {
       d.detach();
       stage.rig.reset(); // as the real stage does on every hand-over
       stage.handOvers++;
+    },
+    worlds: [] as string[],
+    setWorld(world: WorldKey) {
+      stage.worlds.push(world);
     },
   };
   stage.scene.add(stage.lawn.group, particles.object, stage.fx.group);
