@@ -7,6 +7,7 @@ import { seededRandom } from './boxes';
 import { buildGrass } from './grass';
 import { buildIsland, buildIslet } from './island';
 import { buildProps } from './props';
+import { PlaceMarks } from './PlaceMarks';
 import { TileMark, type MarkState } from './TileMark';
 
 /** A small rock adrift beside the island. */
@@ -33,6 +34,7 @@ export class Lawn {
   private readonly wind = { value: 0 };
   private readonly tileMark = new TileMark('tile-mark', 1, 1);
   private readonly laneMark = new TileMark('lane-mark', LAWN_COLS, 1);
+  private readonly placeMarks = new PlaceMarks();
   private readonly islets: Islet[] = [];
   private readonly grass: InstancedMesh;
   private readonly materials: Material[];
@@ -84,7 +86,7 @@ export class Lawn {
       this.islets.push({ mesh, y, phase: random() * 6.28 });
     }
 
-    this.group.add(this.tileMark.mesh, this.laneMark.mesh);
+    this.group.add(this.tileMark.mesh, this.laneMark.mesh, this.placeMarks.mesh);
     this.update(0);
   }
 
@@ -125,6 +127,14 @@ export class Lawn {
     this.laneMark.show(LAWN_COLS / 2, Math.floor(lane) + 0.5, state, side);
   }
 
+  /**
+   * Marks every tile the picked card may go on (`mask`: 1 at `lane * LAWN_COLS + col`), in `side`'s
+   * colour; null clears them. Call it when the tiles change, not every frame.
+   */
+  showPlaceable(mask: Uint8Array | null, side: Faction): void {
+    this.placeMarks.show(mask, side);
+  }
+
   /** Frees every geometry and material the lawn made. Take `group` out of the scene first. */
   dispose(): void {
     this.group.traverse((object) => {
@@ -135,5 +145,6 @@ export class Lawn {
     this.grass.dispose();
     this.tileMark.dispose();
     this.laneMark.dispose();
+    this.placeMarks.dispose();
   }
 }

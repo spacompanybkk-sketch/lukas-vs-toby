@@ -83,6 +83,8 @@ export class BattleSession implements Director, InputTarget {
   private cheerFor = 0;
   private endSounds = false;
   private readonly offEffects: (() => void)[] = [];
+  /** The version of the controller's place marks the lawn shows (-1: none shown). */
+  private placeShown = -1;
   /** Keeps poison and burn to one sound a second across the battle. */
   private readonly soundGate = new SoundGate();
 
@@ -155,6 +157,12 @@ export class BattleSession implements Director, InputTarget {
     this.stage.timeScale = this.clock.tick(realDt);
     this.time += gameDt;
     this.view.setMergeCue(this.live ? this.controller.mergeCue() : null);
+    // Where the picked card may go: redrawn only when the tiles change (`placeTiles` keeps a version).
+    const place = this.live ? this.controller.placeTiles() : -1;
+    if (place !== this.placeShown) {
+      this.placeShown = place;
+      this.view.setPlaceable(place < 0 ? null : this.controller.placeable);
+    }
     this.view.frame(state, alpha, gameDt, this.time);
     if (!this.ended) this.audio.setIntensity(battleIntensity(state));
     else if (this.fallen && !this.ready.peek()) {

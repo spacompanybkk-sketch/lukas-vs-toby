@@ -366,6 +366,14 @@ export class BattleView {
     this.mergeCue = unit;
   }
 
+  /**
+   * Marks the tiles the picked card may go on (the controller's `placeable`), or none (null). Call
+   * it when they change (the controller's version), not every frame: it uploads the marks.
+   */
+  setPlaceable(mask: Uint8Array | null): void {
+    this.lawn.showPlaceable(mask, this.playerFaction);
+  }
+
   /** The view of a unit, for tools and tests. */
   unit(id: number): UnitView | undefined {
     return this.views.get(id);
@@ -833,6 +841,7 @@ export class BattleView {
     for (const { light, base } of this.lights) light.color.copy(base);
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
+    this.lawn.showPlaceable(null, this.playerFaction);
     this.resolveCelebrate?.();
     this.resolveCelebrate = null;
   }
