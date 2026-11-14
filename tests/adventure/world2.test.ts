@@ -31,11 +31,10 @@ describe('world 1 after the move', () => {
     expect(now).toEqual(WORLD1_BEFORE);
   });
 
-  it('is all of LEVELS while world 2 has no levels yet', () => {
-    expect(P2).toEqual([]);
-    expect(Z2).toEqual([]);
-    expect(LEVELS.every((l) => l.world === 1)).toBe(true);
-    expect(LEVELS).toHaveLength(16);
+  it('is 16 levels of LEVELS beside world 2\'s own (which are only world 2)', () => {
+    expect([...P2, ...Z2].every((l) => l.world === 2)).toBe(true);
+    expect(LEVELS.filter((l) => l.world === 1)).toHaveLength(16);
+    expect(LEVELS).toHaveLength(16 + P2.length + Z2.length);
   });
 });
 
@@ -92,7 +91,9 @@ describe('a save from before world 2', () => {
     if (parsed === null) throw new Error('the old save does not parse');
     return parsed;
   }
-  const WITH_W2: readonly LevelDef[] = [...LEVELS, w2('plants', 1), w2('plants', 2), w2('zombies', 1), w2('zombies', 2)];
+  /** World 1 alone (as shipped before world 2 had levels). */
+  const W1: readonly LevelDef[] = LEVELS.filter((l) => l.world === 1);
+  const WITH_W2: readonly LevelDef[] = [...W1, w2('plants', 1), w2('plants', 2), w2('zombies', 1), w2('zombies', 2)];
 
   it.each(['plants', 'zombies'] as const)('%s: world 2\'s first level is next and its island opens', (side) => {
     const save = oldSave();
@@ -107,14 +108,21 @@ describe('a save from before world 2', () => {
 
   it.each(['plants', 'zombies'] as const)('%s: world 1 reads the same as without world 2', (side) => {
     const save = oldSave();
-    expect(mapStones(save, side, 1, WITH_W2)).toEqual(mapStones(save, side, 1, LEVELS));
-    expect(mapIslands(save, side, WITH_W2)[0]).toEqual(mapIslands(save, side, LEVELS)[0]);
+    expect(mapStones(save, side, 1, WITH_W2)).toEqual(mapStones(save, side, 1, W1));
+    expect(mapIslands(save, side, WITH_W2)[0]).toEqual(mapIslands(save, side, W1)[0]);
   });
 
-  it.each(['plants', 'zombies'] as const)('%s: with the shipped (empty) world 2 nothing changes: world 1, all done', (side) => {
+  it.each(['plants', 'zombies'] as const)('%s: with world 1 alone nothing changes: world 1, all done', (side) => {
     const save = oldSave();
-    expect(nextLevel(save, side, LEVELS)).toBeNull();
-    expect(openingWorld(save, side, LEVELS)).toBe(1);
+    expect(nextLevel(save, side, W1)).toBeNull();
+    expect(openingWorld(save, side, W1)).toBe(1);
+  });
+
+  it.each(['plants', 'zombies'] as const)('%s: with the shipped levels, world 2\'s first level is next once the side has one', (side) => {
+    const save = oldSave();
+    const first = levelsFor(side, 2)[0];
+    expect(nextLevel(save, side, LEVELS)?.id ?? null).toBe(first?.id ?? null);
+    expect(openingWorld(save, side, LEVELS)).toBe(first === undefined ? 1 : 2);
   });
 });
 
@@ -180,7 +188,11 @@ describe('the world-2 bosses (rows: Task 4, tests/sim/bossWorld2.test.ts; looks:
     expect(m.state.units.some((u) => u.key === key)).toBe(true);
   });
 
-  it('no level uses them yet', () => {
-    expect(LEVELS.filter((l) => l.boss !== null).map((l) => l.boss!.key).sort()).toEqual(['brainTitan', 'elderOak']);
+  it('only the world-2 boss levels use them (p2-8 the Howler, z2-8 the Melon, once each side has its levels)', () => {
+    for (const l of LEVELS.filter((x) => x.boss !== null)) {
+      const want = l.world === 1 ? (l.side === 'plants' ? 'brainTitan' : 'elderOak') : (l.side === 'plants' ? 'moonHowler' : 'frostMelon');
+      expect(l.boss!.key, l.id).toBe(want);
+      expect(l.n, l.id).toBe(8);
+    }
   });
 });

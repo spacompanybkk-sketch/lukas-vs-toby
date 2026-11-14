@@ -13,6 +13,14 @@ import { prepareFreePlay } from '../../src/app/levelSession';
 
 const fresh = (): Save => newSave('p01', 'Kid', 'peashooter', 0);
 
+/** What a graduate of every shipped level has unlocked on `side`, in campaign order. */
+const graduateUnlocks = (side: 'plants' | 'zombies'): Save['plants']['unlocked'] =>
+  LEVELS.filter((l) => l.side === side && l.unlocks !== null)
+    .sort((a, b) => a.world - b.world || a.n - b.n).map((l) => l.unlocks!);
+/** Three stars on every shipped level of `side` (the graduate has met every enemy card there). */
+const graduateStars = (side: 'plants' | 'zombies'): Save['plants']['stars'] =>
+  Object.fromEntries(LEVELS.filter((l) => l.side === side).map((l) => [l.id, 3 as const]));
+
 describe('the Free Play setup', () => {
   it('survive (plants): endless zombie waves from 10 s, no clock, the zombie base safe, the zombies hold nothing', () => {
     const c = freePlayConfig(fresh(), 'plants', 7);
@@ -96,15 +104,15 @@ describe('the score and the reward', () => {
 });
 
 describe('the shipped Free Play is the measured one', () => {
-  it('the screen\'s match equals the level checks\' Free Play for a graduate of every level (five cards a side after the Backyard, his difficulty\'s income)', () => {
+  it('the screen\'s match equals the level checks\' Free Play for a graduate of every level (three cards a side and every level\'s unlock, his difficulty\'s income)', () => {
     expect(freePlayCards()).toEqual({
-      plants: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
-      zombies: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'],
+      plants: ALL_CARDS.plants.slice(0, 3 + graduateUnlocks('plants').length),
+      zombies: ALL_CARDS.zombies.slice(0, 3 + graduateUnlocks('zombies').length),
     });
     const save: Save = {
       ...fresh(), difficulty: { plants: 'easy', zombies: 'easy' }, adventureDifficulty: { plants: 'easy', zombies: 'easy' },
-      plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
-      zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
+      plants: { stars: graduateStars('plants'), unlocked: graduateUnlocks('plants') },
+      zombies: { stars: graduateStars('zombies'), unlocked: graduateUnlocks('zombies') },
     };
     for (const seed of [1, 7, 99]) {
       expect(freePlayConfig(save, 'plants', seed)).toEqual(freePlayConfigFor('beginner', 'plants', seed));
@@ -116,8 +124,8 @@ describe('the shipped Free Play is the measured one', () => {
   it('a player on Hard: the same match as the measured one but for his income (×0.75)', () => {
     const save: Save = {
       ...fresh(), difficulty: { plants: 'hard', zombies: 'hard' }, adventureDifficulty: { plants: 'hard', zombies: 'hard' },
-      plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
-      zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
+      plants: { stars: graduateStars('plants'), unlocked: graduateUnlocks('plants') },
+      zombies: { stars: graduateStars('zombies'), unlocked: graduateUnlocks('zombies') },
     };
     for (const side of ['plants', 'zombies'] as const) {
       for (const seed of [1, 7, 99]) {

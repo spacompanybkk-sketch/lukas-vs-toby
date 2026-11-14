@@ -29,10 +29,9 @@ describe('the Backyard', () => {
     expect(BACKYARD).toHaveLength(16);
     expect(levelsFor('plants', 1).map((l) => l.id)).toEqual(['p1-1', 'p1-2', 'p1-3', 'p1-4', 'p1-5', 'p1-6', 'p1-7', 'p1-8']);
     expect(levelsFor('zombies', 1).map((l) => l.id)).toEqual(['z1-1', 'z1-2', 'z1-3', 'z1-4', 'z1-5', 'z1-6', 'z1-7', 'z1-8']);
-    expect(levelsFor('plants', 2)).toEqual([]);
-    // LEVELS is the Backyard, each level with its tutorial from TEACHES (Task 6).
+    // LEVELS' world 1 is the Backyard, each level with its tutorial from TEACHES (Task 6).
     const bare = (ls: readonly LevelDef[]) => ls.map(({ teaches: _, ...rest }) => rest);
-    expect(bare(LEVELS)).toEqual(bare(BACKYARD));
+    expect(bare(LEVELS.filter((l) => l.world === 1))).toEqual(bare(BACKYARD));
     for (const l of LEVELS) expect(l.teaches).toEqual(TEACHES[l.id] ?? null);
     expect(levelById('z1-5')?.kind).toBe('conveyor');
     expect(levelById('nope')).toBeNull();
