@@ -299,6 +299,14 @@ export class AudioEngine {
   }
 
   /**
+   * The theme last asked for by `startMusic` (playing, or waiting for the unlock), or null after
+   * `stopMusic` or before any. Read by tests and tools.
+   */
+  get musicTheme(): Theme | null {
+    return this.wantedTheme;
+  }
+
+  /**
    * Starts a theme from its first bar (the same theme already playing carries on; another one
    * crossfades). Asked before the unlock, it starts at the unlock. It starts straight at the
    * latest `setIntensity` target, even one given before the unlock or before this call.

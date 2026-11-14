@@ -187,6 +187,19 @@ describe('music scheduler', () => {
     expect(fake.allProblems()).toEqual([]);
   });
 
+  it('musicTheme reads the theme asked for, before and after the unlock, and null once stopped', async () => {
+    const early = new AudioEngine();
+    expect(early.musicTheme).toBeNull();
+    early.startMusic('citadel');
+    expect(early.musicTheme).toBe('citadel');
+    const { engine } = await setup();
+    engine.startMusic('meadow');
+    engine.startMusic('tundra');
+    expect(engine.musicTheme).toBe('tundra');
+    engine.stopMusic(0.1);
+    expect(engine.musicTheme).toBeNull();
+  });
+
   it('switching themes crossfades without a jump', async () => {
     const { engine, fake } = await setup();
     engine.startMusic('menu');
