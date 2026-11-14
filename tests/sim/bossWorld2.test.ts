@@ -15,9 +15,8 @@ import { place } from './helpers';
  * that they end, pass the mark and stay deterministic through a snapshot.
  *
  * Rhythm (ruling A13 of the phase-3 plan: `everySeconds` is the gap after the previous timed pattern,
- * and the timed patterns take turns): phase 1 is a two-pattern cycle of 10–11 s, so each attack
- * comes back about every 10–11 s (an attack every 5–5.5 s); phase 2 is a three-pattern cycle of
- * 10 s (an attack every 3.3 s), faster as the design asks.
+ * and the timed patterns take turns): phase 1 has one attack every 8-12 s (the design's "every 11 s /
+ * 8 s" / "every 9 s / 12 s" as gaps); phase 2 runs three patterns, one every 6-7 s on average.
  */
 
 const HOWLER: BossConfig = { key: 'moonHowler', faction: 'zombies', lane: 2 };
@@ -36,13 +35,13 @@ describe('the rows (content design §2)', () => {
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 1, bouncesStraight: true },
     ]);
     expect(howler.phases![0]).toEqual([
-      { kind: 'summon', everySeconds: 5, unit: 'veryFastWalker', count: 2, level: 1 },
-      { kind: 'slam', everySeconds: 6, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+      { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+      { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
     ]);
     expect(howler.phases![1]).toEqual([
-      { kind: 'strike', everySeconds: 4, windupSeconds: 2, target: 'lanes', count: 1, damage: 60, status: { kind: 'blind', seconds: 4 } },
-      { kind: 'summon', everySeconds: 3, unit: 'brainEater', count: 2, level: 2 },
-      { kind: 'slam', everySeconds: 3, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+      { kind: 'strike', everySeconds: 6, windupSeconds: 2, target: 'lanes', count: 1, damage: 60, status: { kind: 'blind', seconds: 4 } },
+      { kind: 'summon', everySeconds: 5, unit: 'brainEater', count: 2, level: 2 },
+      { kind: 'slam', everySeconds: 7, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
     ]);
   });
 
@@ -53,20 +52,21 @@ describe('the rows (content design §2)', () => {
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
     ]);
     expect(melon.phases![0]).toEqual([
-      { kind: 'barrage', everySeconds: 4, count: 3, damage: 200, splash: 0.75, speed: 5 },
-      { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+      { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+      { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
     ]);
     expect(melon.phases![1]).toEqual([
-      { kind: 'strike', everySeconds: 4, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } },
-      { kind: 'barrage', everySeconds: 3, count: 4, damage: 200, splash: 0.75, speed: 5 },
-      { kind: 'summon', everySeconds: 3, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+      { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } },
+      { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
+      { kind: 'summon', everySeconds: 6, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
     ]);
   });
 
-  it.each([['moonHowler', howler], ['frostMelon', melon]] as const)('%s: phase 2 attacks more often than phase 1, each attack back within 11 s', (_key, stats: BossStats) => {
+  it.each([['moonHowler', howler], ['frostMelon', melon]] as const)('%s: one attack every 8-12 s in phase 1, more often in phase 2', (_key, stats: BossStats) => {
     const [p1, p2] = [patternsOf(stats, 0), patternsOf(stats, 1)];
-    expect(cycle(p1)).toBeLessThanOrEqual(11);
-    expect(cycle(p2)).toBeLessThanOrEqual(11);
+    for (const p of p1) expect(p.everySeconds).toBeGreaterThanOrEqual(8);
+    for (const p of p1) expect(p.everySeconds).toBeLessThanOrEqual(12);
+    expect(cycle(p2) / timed(p2)).toBeLessThanOrEqual(7);
     expect(cycle(p2) / timed(p2)).toBeLessThan(cycle(p1) / timed(p1));
   });
 });
@@ -116,7 +116,7 @@ describe('the phases switch at the mark', () => {
     expect(boss().shieldLeft).toBe(seconds(stats.patterns.find((p) => p.kind === 'shield')!.seconds));
     expect(boss().pattern).toBe(0);
     expect(patternsOf(stats, 1)[0]!.kind).toBe('strike');
-    expect(boss().patternTimer).toBe(seconds(4) - 1);
+    expect(boss().patternTimer).toBe(seconds(6) - 1);
   });
 });
 

@@ -429,10 +429,13 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
     // The world-2 bosses (step-2 plan Task 4, content design §2). Tunable start values: the level
     // tasks tune hp (Howler 4800-7000, Melon 5000-7500). `everySeconds` is the gap after the previous
-    // timed pattern and the timed patterns take turns, so the design's "slam every 11 s, summon every
-    // 8 s" is a two-pattern cycle of 11 s here (each attack back every 11 s, one every 5.5 s); phase 2
-    // runs three patterns on a 10 s cycle (one every 3.3 s). Each phase opens with its first pattern:
-    // the pups come first, and phase 2 opens with the howl / the freeze while the shield is still up.
+    // timed pattern and the timed patterns take turns, so phase 1 has one attack every 8-11 s as the
+    // design reads ("slam every 11 s, summon every 8 s": the pups 8 s after the slam, the slam 11 s
+    // after the pups; a cycle of 19-21 s, as the Titan's 18 and the Oak's 20). Phase 2 is faster: three
+    // patterns, one every 6-7 s. Each phase opens with its first pattern: the pups / the barrage first,
+    // and phase 2 with the howl / the freeze, as the shield goes down. A probe on world-1 boss levels
+    // with world-2 rows: a 10-11 s phase-1 cycle (each gap 4-6 s) left the Melon unwinnable (0% for
+    // every stand-in at hp 3000-6000; its Peashooters win the base race), so the gaps stay at 8-12 s.
     moonHowler: {
       recharge: 0, hp: 5500, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },
@@ -442,13 +445,13 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       ],
       phases: [
         [
-          { kind: 'summon', everySeconds: 5, unit: 'veryFastWalker', count: 2, level: 1 },
-          { kind: 'slam', everySeconds: 6, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+          { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
         ],
         [
-          { kind: 'strike', everySeconds: 4, windupSeconds: 2, target: 'lanes', count: 1, damage: 60, status: { kind: 'blind', seconds: 4 } }, // the howl
-          { kind: 'summon', everySeconds: 3, unit: 'brainEater', count: 2, level: 2 },
-          { kind: 'slam', everySeconds: 3, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2, target: 'lanes', count: 1, damage: 60, status: { kind: 'blind', seconds: 4 } }, // the howl: wind-up 2 s, blinds a lane 4 s
+          { kind: 'summon', everySeconds: 5, unit: 'brainEater', count: 2, level: 2 },
+          { kind: 'slam', everySeconds: 7, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
         ],
       ],
     },
@@ -460,13 +463,13 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       ],
       phases: [
         [
-          { kind: 'barrage', everySeconds: 4, count: 3, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
         ],
         [
-          { kind: 'strike', everySeconds: 4, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } }, // the freeze
-          { kind: 'barrage', everySeconds: 3, count: 4, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 3, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } }, // the freeze
+          { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 6, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
         ],
       ],
     },
