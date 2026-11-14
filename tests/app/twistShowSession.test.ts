@@ -154,7 +154,7 @@ describe('the twist pan on the stage', () => {
     run(stage, 1);
     expect(session.twistShow?.kind).toBe('ice');
     expect(inScene(stage, 'ice-pulse')).toHaveLength(1);
-    expect(inScene(stage, 'ghost-zombie').length).toBeGreaterThan(0);
+    expect(inScene(stage, 'ghost-brainEater').length).toBeGreaterThan(0);
     expect(stage.rig.focusing).toBe(true);
   });
 

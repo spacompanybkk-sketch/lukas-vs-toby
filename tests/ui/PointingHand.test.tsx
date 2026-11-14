@@ -4,7 +4,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GloveVM } from '../../src/app/tutorial';
-import { PointingHand } from '../../src/ui/hud/PointingHand';
+import { PointingHand, TAP_HINT_Y } from '../../src/ui/hud/PointingHand';
 
 // The glove's cost on an iPad: a card target is found once and measured while it settles, on a
 // resize and now and then, not read from the page every frame.
@@ -52,15 +52,19 @@ describe('PointingHand', () => {
     expect(reads).toBe(1);
   });
 
-  it('the twist pan\'s "tap" hint: the glove taps the middle of the lawn, with no target frame', () => {
+  it('the twist pan\'s "tap" hint: the glove taps a fixed point on the screen (centre, above the cards), whatever the camera does, with no target frame', () => {
     const glove = signal<GloveVM | null>({ aim: { kind: 'tap' }, holding: true, step: 'p2-1.fog' });
-    const host = { tileToClient: (lane: number, col: number) => ({ x: 100 + col * 60, y: 200 + lane * 40 }) };
+    let shift = 0;
+    const host = { tileToClient: (lane: number, col: number) => ({ x: 100 + col * 60 + shift, y: 200 + lane * 40 }) };
     act(() => render(<PointingHand glove={glove} host={host} hidden={false} />, root.querySelector('#glove')!));
     vi.advanceTimersToNextFrame();
     const hand = root.querySelector<HTMLElement>('[data-glove]')!;
     expect(hand.dataset.glove).toBe('tap');
-    expect(hand.dataset.gloveX).toBe(String(100 + 4.5 * 60));
-    expect(hand.dataset.gloveY).toBe('280');
+    expect(hand.dataset.gloveX).toBe(String(Math.round(window.innerWidth / 2)));
+    expect(hand.dataset.gloveY).toBe(String(Math.round(window.innerHeight * TAP_HINT_Y)));
+    shift = 300; // the camera pans: the lawn moves on the screen, the glove does not
+    vi.advanceTimersToNextFrame();
+    expect(hand.dataset.gloveX).toBe(String(Math.round(window.innerWidth / 2)));
     expect(root.querySelector('.tut-mark')!.classList.contains('tut-mark--none')).toBe(true);
   });
 });

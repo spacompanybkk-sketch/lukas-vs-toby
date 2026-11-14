@@ -62,7 +62,7 @@ export type GloveAim =
   | { kind: 'hero' }
   /** A spell button, by its place in the deal. */
   | { kind: 'spell'; index: number; key: SpellKey }
-  /** A twist pan's hint: anywhere will do; the glove taps the middle of the lawn. */
+  /** A twist pan's hint: anywhere will do; the glove taps a fixed point, mid-screen above the cards. */
   | { kind: 'tap' };
 
 /** The glove as the HUD shows it: where it points, whether the match is held (the screen dims), and which step. */

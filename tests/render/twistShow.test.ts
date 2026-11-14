@@ -32,7 +32,8 @@ describe('TwistShow: fog', () => {
       expect(pea).toBeDefined();
       expect(show.fadeX - show.startX).toBe(reach);
       const start = pea!.position.x;
-      expect(Math.abs(start - show.startX)).toBeLessThanOrEqual(0.3); // from the shooter's mouth
+      expect(Math.abs(start - show.startX)).toBeLessThanOrEqual(0.6); // from the shooter's mouth
+      expect(start).toBeGreaterThan(show.startX); // in front of it
       // Mid-flight the pea is between the tile and the puff.
       play(show, 0.6);
       expect(pea!.position.x).toBeGreaterThan(start);
@@ -67,8 +68,8 @@ describe('TwistShow: ice', () => {
   it('pulses every icy lane and slides a ghost zombie down one, faster than one walking a plain lane beside it', () => {
     const show = new TwistShow('ice', iceLawn([1, 3]), puffs());
     expect(named(show, 'ice-pulse')).toHaveLength(2);
-    const ghosts = named(show, 'ghost-zombie');
-    expect(ghosts.length).toBeGreaterThan(0);
+    expect(show.slider.object.name).toBe('ghost-brainEater');
+    expect(show.walker?.object.name).toBe('ghost-brainEater');
     const icy = show.slider;
     const plain = show.walker;
     expect([1, 3]).toContain(icy.lane);
@@ -97,20 +98,66 @@ describe('TwistShow: ice', () => {
   });
 });
 
+describe('TwistShow: the fog reads', () => {
+  for (const reach of [7, 5]) {
+    it(`reach ${reach}: the real Peashooter model, lightly see-through; a mist bank from the reach on; the lane past it darker; a white pixel puff`, () => {
+      const show = new TwistShow('fog', fogLawn(reach), puffs());
+      expect(show.shooter?.object.name).toBe('ghost-peashooter');
+      let meshes = 0;
+      show.shooter!.object.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        meshes += 1;
+        const m = o.material as { opacity: number; transparent: boolean };
+        expect(m.transparent).toBe(true);
+        expect(m.opacity).toBeGreaterThanOrEqual(0.6);
+      });
+      expect(meshes).toBeGreaterThan(0);
+      const [bank] = named(show, 'fog-bank');
+      bank!.geometry.computeBoundingBox();
+      const bb = bank!.geometry.boundingBox!;
+      expect(bb.min.x).toBeGreaterThanOrEqual(show.fadeX - 0.3);
+      expect(bb.min.x).toBeLessThanOrEqual(show.fadeX);
+      expect(bb.min.z).toBeLessThanOrEqual(0.3);
+      expect(bb.max.z).toBeGreaterThanOrEqual(4.7);
+      const [past] = named(show, 'fog-past-reach');
+      expect(past!.position.x - ((past!.geometry as unknown as { parameters: { width: number } }).parameters.width) / 2).toBeCloseTo(show.fadeX, 5);
+      const puff = show.group.getObjectByName('fog-puff')!;
+      expect(puff.visible).toBe(false);
+      for (let i = 0; i < 600 && !puff.visible; i++) show.update(1 / 60);
+      expect(puff.visible).toBe(true);
+      expect(puff.position.x).toBeCloseTo(show.fadeX, 5);
+      play(show, 0.6);
+      expect(puff.visible).toBe(false); // short
+      show.dispose();
+    });
+  }
+});
+
 describe('TwistShow: disposal', () => {
-  it('frees every geometry and material it made', () => {
+  it('frees every geometry and material it made, and leaves the models\' shared geometry alone', () => {
     for (const show of [new TwistShow('fog', fogLawn(6), puffs()), new TwistShow('ice', iceLawn([2]), puffs())]) {
-      const meshes: Mesh[] = [];
-      show.group.traverse((o) => { if (o instanceof Mesh) meshes.push(o); });
-      expect(meshes.length).toBeGreaterThan(0);
-      let freed = 0;
-      for (const m of meshes) {
-        m.geometry.addEventListener('dispose', () => { freed += 1; });
-        const mats = Array.isArray(m.material) ? m.material : [m.material];
-        for (const mat of mats) mat.addEventListener('dispose', () => { freed += 1; });
+      const own: Mesh[] = [];
+      const shared: Mesh[] = [];
+      const models = [show.shooter?.object, show.slider.object, show.walker?.object].filter((o) => o !== undefined && o.name.startsWith('ghost-'));
+      show.group.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        let p: typeof o.parent = o;
+        let inModel = false;
+        while (p !== null) { if (models.includes(p)) inModel = true; p = p.parent; }
+        (inModel ? shared : own).push(o);
+      });
+      expect(own.length).toBeGreaterThan(0);
+      expect(shared.length).toBeGreaterThan(0);
+      const freedGeometry = new Set<unknown>();
+      const freedMaterial = new Set<unknown>();
+      for (const m of [...own, ...shared]) {
+        m.geometry.addEventListener('dispose', () => { freedGeometry.add(m.geometry); });
+        (m.material as Mesh['material'] & { addEventListener: Function }).addEventListener('dispose', () => { freedMaterial.add(m.material); });
       }
       show.dispose();
-      expect(freed).toBeGreaterThanOrEqual(meshes.length);
+      for (const m of own) expect(freedGeometry.has(m.geometry)).toBe(true);
+      for (const m of shared) expect(freedGeometry.has(m.geometry)).toBe(false);
+      for (const m of [...own, ...shared]) expect(freedMaterial.has(m.material)).toBe(true);
       expect(show.disposed).toBe(true);
       show.update(1 / 60); // harmless afterwards
       show.dispose();

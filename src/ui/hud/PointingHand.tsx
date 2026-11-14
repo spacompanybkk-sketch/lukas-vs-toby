@@ -92,18 +92,19 @@ function lawnBox(aim: GloveAim, host: GloveHost): Box | null {
       return { x: p.x, y: p.y, w, h: w * 1.1, ty: p.y, tx: p.x - w * 0.38 };
     }
     case 'tap': {
-      // The middle of the lawn (between columns 4 and 5 of lane 2): any tap ends a twist pan.
-      const p = host.tileToClient?.(2, 4) ?? null;
-      const q = host.tileToClient?.(2, 5) ?? null;
-      if (p === null || q === null) return null;
-      const x = (p.x + q.x) / 2;
-      const y = (p.y + q.y) / 2;
-      const w = Math.max(40, Math.abs(q.x - p.x));
+      // Fixed on the screen (it does not drift as the camera pans): the middle, at the bottom of the
+      // lawn's part of the screen, just above the cards. Any tap ends a twist pan.
+      const x = window.innerWidth / 2;
+      const y = window.innerHeight * TAP_HINT_Y;
+      const w = Math.max(48, window.innerWidth * 0.06);
       return { x, y, w, h: w * 0.72, ty: y };
     }
     default: return null;
   }
 }
+
+/** Where the twist pan's "tap" glove taps, as a share of the window's height (the tray is the bottom 22%). */
+export const TAP_HINT_Y = 0.68;
 
 /** Frames after an aim appears (or the window changes) during which an HTML target is measured every frame (its pop-in or a belt card's 600 ms slide-in settling: 40 frames is 667 ms at 60 fps). */
 const SETTLE_FRAMES = 40;

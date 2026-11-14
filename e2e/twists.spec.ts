@@ -28,12 +28,12 @@ async function tapAt(page: Page, at: { x: number; y: number }): Promise<void> {
  * With `lessons`, the stand-ins carry the world-2 lessons (not yet learnt), every card unlocked,
  * and level `n` of the world is started (the ones before it won).
  */
-async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1): Promise<void> {
+async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1, fog?: number): Promise<void> {
   await openTitle(page);
   await logIn(page);
-  await page.evaluate(([s, w, withLessons, upTo]) => {
+  await page.evaluate(([s, w, withLessons, upTo, reach]) => {
     const lvt = window.__lvt as any;
-    lvt.previewWorlds(true, [2, 3, 4, 5], withLessons);
+    lvt.previewWorlds(true, [2, 3, 4, 5], withLessons, reach ?? undefined);
     const l = s === 'plants' ? 'p' : 'z';
     // Every level before world `w`'s level `upTo` won: the map opens on world w.
     const stars: Record<string, number> = {};
@@ -44,7 +44,7 @@ async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 
       ? (s === 'plants' ? ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] : ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'])
       : undefined;
     lvt.players.update((p: any) => ({ ...p, teached: ids, [s]: { ...p[s], stars, ...(unlocked ? { unlocked } : {}) } }));
-  }, [side, world, lessons, n] as const);
+  }, [side, world, lessons, n, fog ?? null] as const);
   await press(page.locator('[data-home="play"]'));
   await press(page.locator('[data-play="adventure"]'));
   await press(page.locator(`[data-side="${side}"]`));
@@ -332,20 +332,23 @@ test('shots: the fog pan mid-flight and its puff, the tap hint, the ice pan, a n
     show?.group.traverse((o: any) => { if (o.name === 'ghost-pea') pea = o; });
     return pea === null ? null : { x: pea.position.x as number, visible: pea.visible as boolean, start: show.startX as number, fade: show.fadeX as number };
   });
-  await playStandIn(page, 'plants', 2, true);
-  await expect.poll(() => showing(page)).toBe('fog');
-  await frames(page, 90); // the camera has eased in
-  // Mid-flight: the pea half way to its puff.
-  await expect.poll(async () => { const p = await peaState(); return p !== null && p.visible && p.x > p.start + (p.fade - p.start) * 0.4 && p.x < p.start + (p.fade - p.start) * 0.7; }, { intervals: [16], timeout: 15_000 }).toBe(true);
-  await shot('fog-pan-mid-flight');
-  // The puff: just after the pea melts.
-  await expect.poll(async () => (await peaState())?.visible === true, { intervals: [16] }).toBe(true);
-  await expect.poll(async () => (await peaState())?.visible === false, { intervals: [16], timeout: 15_000 }).toBe(true);
-  await frames(page, 4);
-  await shot('fog-pan-puff');
-  await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
-  await frames(page, 10);
-  await shot('fog-tap-hint');
+  for (const reach of [7, 5]) {
+    await playStandIn(page, 'plants', 2, true, 1, reach);
+    await expect.poll(() => showing(page)).toBe('fog');
+    expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.fog)).toBe(reach);
+    await frames(page, 40); // the camera has eased in (the hint glove comes at 3 s)
+    // Mid-flight: the pea half way to where it vanishes.
+    await expect.poll(async () => { const p = await peaState(); return p !== null && p.visible && p.x > p.start + (p.fade - p.start) * 0.45 && p.x < p.start + (p.fade - p.start) * 0.7; }, { intervals: [16], timeout: 15_000 }).toBe(true);
+    await shot(`fog${reach}-pan-mid-flight`);
+    // The puff: just after the pea vanishes into the mist.
+    await expect.poll(async () => (await peaState())?.visible === true, { intervals: [16] }).toBe(true);
+    await expect.poll(async () => (await peaState())?.visible === false, { intervals: [16], timeout: 15_000 }).toBe(true);
+    await frames(page, 3);
+    await shot(`fog${reach}-pan-puff`);
+    await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
+    await frames(page, 10);
+    await shot(`fog${reach}-tap-hint`);
+  }
   await playStandIn(page, 'zombies', 2, true);
   await expect.poll(() => showing(page)).toBe('ice');
   await frames(page, 100);
