@@ -2,6 +2,8 @@ import { isOpen, nextLevel, unlockedCards } from '../../adventure/campaign';
 import { LEVELS, levelsFor } from '../../adventure/levels';
 import type { LevelDef } from '../../adventure/types';
 import { factionOf, isCard } from '../../data/units';
+import { arenaOf } from '../../data/worlds';
+import type { WorldKey } from '../../data/worlds';
 import type { Save } from '../../progress/save';
 import type { CardKey, Faction, UnitKey } from '../../sim/types';
 
@@ -23,9 +25,56 @@ export interface Stone {
   unlock: CardKey | null;
 }
 
-/** The stones of `side`'s Backyard for the owner of `save`, in path order. */
-export function mapStones(save: Save, side: Faction, levels: readonly LevelDef[] = LEVELS): Stone[] {
-  const mine = levelsFor(side, 1, levels);
+/** A campaign world's number in a side's own order (its arena is `arenaOf(side, world)`). */
+export type World = LevelDef['world'];
+export const WORLD_NUMBERS: readonly World[] = [1, 2, 3, 4, 5];
+
+/**
+ * One island of the map: `side`'s `world`-th world, its arena (look), whether it is locked (no
+ * levels yet, or its first level not open) and the stars won on it.
+ */
+export interface Island { world: World; arena: WorldKey; locked: boolean; stars: number }
+
+/** `side`'s five islands for the owner of `save`, in the side's own order (the zombies' reversed). */
+export function mapIslands(save: Save, side: Faction, levels: readonly LevelDef[] = LEVELS): Island[] {
+  return WORLD_NUMBERS.map((world) => {
+    const mine = levelsFor(side, world, levels);
+    const first = mine[0];
+    let stars = 0;
+    for (const def of mine) stars += save[side].stars[def.id] ?? 0;
+    return { world, arena: arenaOf(side, world), locked: first === undefined || !isOpen(save, first, levels), stars };
+  });
+}
+
+/**
+ * The island the map opens on: the world of `side`'s next level; with every level won, the last
+ * world that has levels; with none at all, world 1.
+ */
+export function openingWorld(save: Save, side: Faction, levels: readonly LevelDef[] = LEVELS): World {
+  const next = nextLevel(save, side, levels);
+  if (next !== null) return next.world;
+  let last: World = 1;
+  for (const def of levels) if (def.side === side && def.world > last) last = def.world;
+  return last;
+}
+
+/** The twists a level card draws, in this order: fog, rocks, ice, lava (an empty list is none). */
+export type TwistPicture = 'fog' | 'rocks' | 'ice' | 'lava';
+
+export function twistKinds(def: LevelDef): TwistPicture[] {
+  const t = def.twist;
+  if (t === undefined) return [];
+  const out: TwistPicture[] = [];
+  if (t.fog === true) out.push('fog');
+  if ((t.rocks?.length ?? 0) > 0) out.push('rocks');
+  if ((t.iceLanes?.length ?? 0) > 0) out.push('ice');
+  if ((t.lavaTiles?.length ?? 0) > 0) out.push('lava');
+  return out;
+}
+
+/** The stones of `side`'s `world` for the owner of `save`, in path order (none on a world without levels). */
+export function mapStones(save: Save, side: Faction, world: World = 1, levels: readonly LevelDef[] = LEVELS): Stone[] {
+  const mine = levelsFor(side, world, levels);
   const next = nextLevel(save, side, levels);
   return mine.map((def) => {
     const stars = save[side].stars[def.id] ?? 0;
