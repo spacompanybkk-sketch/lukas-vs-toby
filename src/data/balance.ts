@@ -107,12 +107,22 @@ export interface SpellStats {
  *   zombie, each at that lane's foremost one: `damage`, and the same within `splash` of it.
  * - shield: for `seconds`, all damage times `damageFactor`; with `bouncesStraight`, straight shots
  *   bounce off (lobbed shots, blasts, heroes and spells still hurt).
+ * - strike: as its wind-up starts (its last `windupSeconds`) it picks its tiles with the state rng
+ *   and says which (`bossStrike`, `windup` true): `count` whole lanes (`target` 'lanes'), or `count`
+ *   tiles that have an enemy standing on them (`target` 'tiles'). Then every enemy standing on one
+ *   of those tiles takes `damage`, and `status` for `seconds` (`dps` for poison and burn): freeze
+ *   (stun), fog breath (blind), lava pour (burn), rockfall (damage alone). Generic: any boss may have it.
  */
 export type BossPattern =
   | { kind: 'slam'; everySeconds: number; windupSeconds: number; damage: number; sideDamage: number; reach: number }
   | { kind: 'summon'; everySeconds: number; unit: UnitKey; count: number; level: number; minCol?: number; maxCol?: number }
   | { kind: 'barrage'; everySeconds: number; count: number; damage: number; splash: number; speed: number }
-  | { kind: 'shield'; everySeconds: 0; atHealth: readonly number[]; seconds: number; damageFactor: number; bouncesStraight: boolean };
+  | { kind: 'shield'; everySeconds: 0; atHealth: readonly number[]; seconds: number; damageFactor: number; bouncesStraight: boolean }
+  | {
+    kind: 'strike'; everySeconds: number; windupSeconds: number;
+    target: 'lanes' | 'tiles'; count: number; damage: number;
+    status?: { kind: StatusKind; seconds: number; dps?: number };
+  };
 
 /**
  * A boss's numbers: a unit's (`hp`, `speed`, a bite, …; `recharge` is a placeholder nothing reads)

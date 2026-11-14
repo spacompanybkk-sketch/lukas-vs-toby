@@ -16,7 +16,8 @@ import type {
  *   - a boolean is one byte, 0 or 1;
  *   - a string is its length (as a number) then each char code as two bytes, low byte first;
  *   - an array is its length (as a number) then its elements in array order;
- *   - an optional or nullable value is a presence byte (0 absent or null, 1 present) then the value.
+ *   - an optional or nullable value is a presence byte (0 absent or null, 1 present) then the value;
+ *   - one exception: a unit's `strikeTiles` is fed only when it is not empty (see `UNIT`).
  * Two browsers running the same match must therefore print the same checksum.
  *
  * Every table is typed as a record over all the keys of what it hashes, so a field added to the
@@ -132,6 +133,11 @@ const UNIT: Fields<Unit> = {
   stacks: num, ownerId: nullableNum,
   expires: num, haste: num, hasteCarry: num, hurt: num,
   pattern: num, patternTimer: num, shieldLeft: num, phase: num, stunFatigue: num,
+  // A strike being wound up. Hashed only when it has tiles (then as a list: length, tiles), so a
+  // state with no strike in it, every Titan and Oak fight among them, hashes as before strikes.
+  strikeTiles: (f, tiles) => {
+    if (tiles.length > 0) nums(f, tiles);
+  },
 };
 
 const PROJECTILE: Fields<Projectile> = {
@@ -293,7 +299,7 @@ export function snapshotState(s: SimState): string {
  * gets one timer per lane, all at 0, which is what the timers read whenever the defence is off;
  * one made before the Marketplace has no `config.upgrades`: it gets none on either side; and one
  * made before the lawn twists has no `config.lawn` (it gets `NO_TWIST`) and projectiles without
- * `fadeX` (they get null: no fog).
+ * `fadeX` (they get null: no fog), and units made before boss strikes have no `strikeTiles` (none).
  */
 export function restoreState(json: string): SimState {
   const s = JSON.parse(json) as SimState;
@@ -303,6 +309,7 @@ export function restoreState(json: string): SimState {
     s.config.lawn ??= cloneLawn(NO_TWIST);
   }
   if (Array.isArray(s.projectiles)) for (const p of s.projectiles) p.fadeX ??= null;
+  if (Array.isArray(s.units)) for (const u of s.units) u.strikeTiles ??= [];
   const missing = Object.keys(STATE).filter((key) => !Object.hasOwn(s, key));
   if (missing.length > 0) throw new Error(`The snapshot has no ${missing.join(', ')}`);
   return s;

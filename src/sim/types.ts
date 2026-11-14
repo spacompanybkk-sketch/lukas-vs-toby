@@ -77,6 +77,7 @@ export interface Unit {
   shieldLeft: number; // ticks left of its shield phase, 0 = no shield
   phase: number; // how many of its shield health marks it has passed (0 = none yet)
   stunFatigue: number; // ticks: each stun adds `stunWindowSeconds`, 1 wears off a tick; shortens the next stuns
+  strikeTiles: number[]; // a boss's strike being wound up: the tiles it announced (lane × COLS + col); empty otherwise
 }
 
 export interface Projectile {
@@ -298,5 +299,8 @@ export type SimEvent =
   // projectiles), a shield going up. `col` is null but for a slam.
   | { type: 'bossPattern'; unitId: number; kind: BossPatternKind; lane: number; col: number | null; windup: boolean }
   | { type: 'bossPhase'; unitId: number; phase: number } // the boss passed shield mark number `phase` (1, 2, …)
+  // A boss's strike: the tiles it will hit as its wind-up starts (`windup` true), then the blow on
+  // those same tiles (`windup` false; whoever stands there is hurt, see `BossPattern` strike).
+  | { type: 'bossStrike'; unitId: number; tiles: { lane: number; col: number }[]; windup: boolean }
   | { type: 'bossDefeated'; unitId: number; key: BossKey; faction: Faction } // the boss fell; matchEnded follows
   | { type: 'matchEnded'; winner: Faction | 'draw' };

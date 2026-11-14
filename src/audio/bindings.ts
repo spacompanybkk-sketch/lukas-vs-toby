@@ -232,6 +232,7 @@ export function playEventSounds(
       case 'gardenBroken':
       case 'bossPhase': // its shield's bossPattern is the sound
       case 'projectileFaded': // fog: no sound of its own yet
+      case 'bossStrike': // no sound of its own yet
         break;
       default: {
         const unhandled: never = e;

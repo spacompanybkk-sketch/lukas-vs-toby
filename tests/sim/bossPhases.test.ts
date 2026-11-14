@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { seconds } from '../../src/data/balance';
 import type { Balance, BossStats } from '../../src/data/balance';
 import { isWindingUp, patternsOf } from '../../src/sim/boss';
-import { Match, defaultConfig } from '../../src/sim/match';
+import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
 import type { BossConfig, Command, MatchConfig, SimEvent, Unit } from '../../src/sim/types';
 import { classicBalance, place } from './helpers';
 
@@ -211,5 +211,155 @@ describe('a boss with two phases', () => {
     boss().hp = boss().maxHp * 0.5;
     m.step();
     expect([boss().pattern, boss().patternTimer]).toEqual([pattern, timer - 1]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The strike.
+
+type StrikeEvent = Extract<SimEvent, { type: 'bossStrike' }>;
+const strikeOf = (more: Partial<Extract<Pattern, { kind: 'strike' }>> = {}): Pattern => ({
+  kind: 'strike', everySeconds: 4, windupSeconds: 2, target: 'tiles', count: 2, damage: 100, status: { kind: 'stun', seconds: 1 }, ...more,
+});
+const WALNUTS: MatchConfig['prepared'] = [
+  { unit: 'walnutBomb', faction: 'plants', lane: 0, x: 1.5, level: 1 },
+  { unit: 'walnutBomb', faction: 'plants', lane: 1, x: 2.5, level: 1 },
+  { unit: 'walnutBomb', faction: 'plants', lane: 3, x: 4.5, level: 1 },
+  { unit: 'walnutBomb', faction: 'plants', lane: 4, x: 6.5, level: 1 },
+];
+const tileOf = (u: Unit) => ({ lane: u.lane, col: Math.floor(u.x) });
+const same = (a: { lane: number; col: number }, b: { lane: number; col: number }) => a.lane === b.lane && a.col === b.col;
+
+/** Steps until (and including) the step with a bossStrike event of this `windup`; returns its events. */
+function untilStrike(m: Match, windup: boolean, limit = 30 * 10): SimEvent[] {
+  for (let i = 0; i < limit; i++) {
+    const events = m.step();
+    if (events.some((e) => e.type === 'bossStrike' && e.windup === windup)) return events;
+  }
+  throw new Error('no strike');
+}
+
+describe('the strike', () => {
+  it('tiles: announces `count` tiles with a standing enemy at the start of the wind-up, then hits exactly those, with its status', () => {
+    const b = phasedBalance({ patterns: [strikeOf()] });
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const { m, boss } = phasedFight(b, WALNUTS, seed);
+      const announce = untilStrike(m, true);
+      expect(m.state.tick).toBe(seconds(4) - seconds(2)); // the boss came on at tick 0; its timer reached the wind-up 2 s before the strike
+      const said = announce.find((e): e is StrikeEvent => e.type === 'bossStrike')!;
+      expect(said.unitId).toBe(boss().id);
+      expect(said.tiles).toHaveLength(2);
+      const walnuts = m.state.units.filter((u) => u.key === 'walnutBomb');
+      for (const t of said.tiles) expect(walnuts.some((u) => same(tileOf(u), t))).toBe(true);
+      expect(boss().strikeTiles).toEqual(said.tiles.map((t) => t.lane * 10 + t.col));
+
+      const hit = untilStrike(m, false);
+      expect(m.state.tick).toBe(seconds(4));
+      expect(hit.find((e): e is StrikeEvent => e.type === 'bossStrike')).toEqual({ ...said, windup: false });
+      expect(boss().strikeTiles).toEqual([]);
+      for (const u of walnuts) {
+        const struck = said.tiles.some((t) => same(tileOf(u), t));
+        expect([seed, u.lane, u.maxHp - u.hp]).toEqual([seed, u.lane, struck ? 100 : 0]);
+        expect(hit.some((e) => e.type === 'statusApplied' && e.unitId === u.id && e.status === 'stun')).toBe(struck);
+      }
+    }
+  });
+
+  it('tiles: an enemy that leaves an announced tile during the wind-up is not hit; one that steps onto it is', () => {
+    const b = phasedBalance({ patterns: [strikeOf({ count: 1, status: undefined })] });
+    const { m } = phasedFight(b, [{ unit: 'walnutBomb', faction: 'plants', lane: 2, x: 3.5, level: 1 }]);
+    const said = untilStrike(m, true).find((e): e is StrikeEvent => e.type === 'bossStrike')!;
+    expect(said.tiles).toEqual([{ lane: 2, col: 3 }]);
+    const walnut = m.state.units.find((u) => u.key === 'walnutBomb')!;
+    walnut.x = 4.5; // (the test moves it: plants never walk)
+    const other = spawnUnit(m.state, m.balance, 'sunflower', 2, 3.5);
+    untilStrike(m, false);
+    expect([walnut.hp === walnut.maxHp, other.hp === other.maxHp]).toEqual([true, false]);
+  });
+
+  it('lanes: `count` whole lanes, every tile of them, with a burn of its dps', () => {
+    const b = phasedBalance({ patterns: [strikeOf({ target: 'lanes', count: 2, damage: 40, status: { kind: 'burn', seconds: 2, dps: 20 } })] });
+    const { m } = phasedFight(b, WALNUTS, 3);
+    const said = untilStrike(m, true).find((e): e is StrikeEvent => e.type === 'bossStrike')!;
+    const lanes = [...new Set(said.tiles.map((t) => t.lane))];
+    expect(lanes).toHaveLength(2);
+    expect(said.tiles).toEqual(lanes.flatMap((lane) => Array.from({ length: 10 }, (_, col) => ({ lane, col }))));
+    untilStrike(m, false);
+    for (const u of m.state.units.filter((x) => x.key === 'walnutBomb')) {
+      const struck = lanes.includes(u.lane);
+      expect([u.lane, u.maxHp - u.hp > 0, u.burnDps]).toEqual([u.lane, struck, struck ? 20 : 0]);
+    }
+  });
+
+  it('a plant boss strikes zombies (the Elder Oak with a strike, the zombies wherever they stand)', () => {
+    const b = shippedBosses();
+    b.bosses.elderOak = { ...b.bosses.elderOak, patterns: [strikeOf({ count: 5, target: 'tiles', status: undefined }), SHIPPED_OAK.patterns[2]!] };
+    const c: MatchConfig = {
+      ...defaultConfig(1, b), mode: 'boss', boss: { key: 'elderOak', faction: 'plants', lane: 2 },
+      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      prepared: [{ unit: 'skeletonWarrior', faction: 'zombies', lane: 4, x: 9.5, level: 1 }],
+    };
+    const m = new Match(c, b);
+    m.step();
+    const z = m.state.units.find((u) => u.key === 'skeletonWarrior')!;
+    z.stun = 10_000; // it stays on its tile
+    const said = untilStrike(m, true).find((e): e is StrikeEvent => e.type === 'bossStrike')!;
+    expect(said.tiles).toEqual([{ lane: 4, col: 9 }]); // the only tile with a zombie on it (count 5: all there are)
+    untilStrike(m, false);
+    expect(z.maxHp - z.hp).toBe(100 - z.armor);
+  });
+
+  it('a snapshot taken mid-wind-up restores the announced tiles and finishes the same', () => {
+    const b = phasedBalance({ patterns: [strikeOf(), SUMMON_WALKER] });
+    for (const seed of [1, 2, 3]) {
+      const { m } = phasedFight(b, WALNUTS, seed);
+      untilStrike(m, true);
+      for (let i = 0; i < 20; i++) m.step();
+      const restored = Match.restore(m.snapshot(), b);
+      expect(restored.hash()).toBe(m.hash());
+      expect(restored.state.units.find((u) => u.key === 'brainTitan')!.strikeTiles).toHaveLength(2);
+      const a = untilStrike(m, false);
+      const r = untilStrike(restored, false);
+      expect(r).toEqual(a);
+      for (let i = 0; i < 30 * 20; i++) {
+        m.step();
+        restored.step();
+      }
+      expect(restored.hash()).toBe(m.hash());
+    }
+  });
+
+  it('a phase change during the wind-up drops the announced tiles (the new phase starts afresh)', () => {
+    const b = phasedBalance({ patterns: [SLAM, SHIELD], phases: [[strikeOf()], [SUMMON_WARRIOR]] });
+    const { m, boss } = phasedFight(b, WALNUTS);
+    untilStrike(m, true);
+    expect(boss().strikeTiles).toHaveLength(2);
+    boss().hp = boss().maxHp * 0.5;
+    m.step();
+    expect(boss().strikeTiles).toEqual([]);
+    const later: SimEvent[] = [];
+    for (let i = 0; i < 30 * 5; i++) later.push(...m.step());
+    expect(later.some((e) => e.type === 'bossStrike')).toBe(false);
+    expect(m.state.units.filter((u) => u.key === 'walnutBomb').every((u) => u.hp === u.maxHp)).toBe(true);
+  });
+
+  it('no enemy on the lawn: no tiles, nothing announced, nothing struck; the next pattern still comes', () => {
+    const b = phasedBalance({ patterns: [strikeOf(), SUMMON_WALKER] });
+    const { m } = phasedFight(b);
+    const events: SimEvent[] = [];
+    for (let i = 0; i < 30 * 10; i++) events.push(...m.step());
+    expect(events.some((e) => e.type === 'bossStrike')).toBe(false);
+    expect(summonedKeys(events)).toEqual(['veryFastWalker']);
+  });
+
+  it.each([
+    ['a wind-up as long as its gap', { windupSeconds: 4 }, /strike: windupSeconds 4 must be above 0 and shorter than everySeconds 4/],
+    ['no wind-up', { windupSeconds: 0 }, /strike: windupSeconds 0 must be above 0/],
+    ['a count of 0', { count: 0 }, /strike: count 0 is not a whole number from 1/],
+    ['a negative damage', { damage: -1 }, /strike: damage -1 must be a number from 0/],
+    ['an unknown target', { target: 'rows' as never }, /strike: target "rows" is not lanes or tiles/],
+  ] as const)('refuses %s', (_name, more, message) => {
+    expect(() => phasedFight(phasedBalance({ patterns: [strikeOf(more)] }))).toThrow(message);
+    expect(() => phasedFight(phasedBalance({ patterns: [SLAM, SHIELD], phases: [[SUMMON_WALKER], [strikeOf(more)]] }))).toThrow(message);
   });
 });

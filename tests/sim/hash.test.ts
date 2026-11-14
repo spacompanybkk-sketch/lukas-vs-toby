@@ -50,13 +50,13 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
-        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
+        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0, strikeTiles: [],
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
-        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12,
+        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12, strikeTiles: [],
       },
     ],
     projectiles: [
@@ -322,6 +322,7 @@ describe('hashState', () => {
     ['an incoming level', (s) => { s.incoming[0]!.level = 3; }],
     ['an incoming index', (s) => { s.incoming[0]!.index = 0; }],
     // Lawn twists.
+    ['a unit strikeTiles from none to one', (s) => { unit(s, 1).strikeTiles = [23]; }],
     ['a projectile fadeX', (s) => { s.projectiles[0]!.fadeX = 7.25; }],
     ['a projectile fadeX null', (s) => { s.projectiles[0]!.fadeX = null; }],
     ['config a rock tile', (s) => { s.config.lawn.rocks[1] = 18; }],
@@ -369,6 +370,29 @@ describe('hashState', () => {
     unit(a, 0).x = -0;
     unit(b, 0).x = 0;
     expect(hashState(a)).toBe(hashState(b));
+  });
+});
+
+describe('a boss strike being wound up (strikeTiles)', () => {
+  it('adds no bytes while empty, so a state with no strike hashes as before strikes (the golden is unchanged)', () => {
+    expect(hashState(makeState())).toBe(GOLDEN_HASH);
+  });
+
+  it('tells its tiles, their number and their order apart', () => {
+    const hashes = [[23], [24], [23, 24], [24, 23]].map((tiles) => {
+      const s = makeState();
+      unit(s, 1).strikeTiles = tiles;
+      return hashState(s);
+    });
+    expect(new Set([...hashes, GOLDEN_HASH]).size).toBe(5);
+  });
+
+  it('a snapshot made before strikes (units without strikeTiles) restores with none, and the same checksum', () => {
+    const old = JSON.parse(snapshotState(makeState())) as { units: Record<string, unknown>[] };
+    for (const u of old.units) delete u.strikeTiles;
+    const restored = restoreState(JSON.stringify(old));
+    expect(restored.units.map((u) => u.strikeTiles)).toEqual([[], []]);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
   });
 });
 

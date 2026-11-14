@@ -1067,6 +1067,7 @@ export class BattleView {
       case 'gardenBroken':
       case 'bossPhase': // the shield's pattern event and the HUD's notches show it
       case 'projectileFaded': // fog: the projectile leaves with the state; its puff is the looks task's
+      case 'bossStrike': // no visual of its own yet (the boss effects task)
         break;
       default: {
         const unhandled: never = e;
