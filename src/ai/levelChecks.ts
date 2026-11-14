@@ -191,11 +191,17 @@ export function standInFor(def: LevelDef, kind: LevelStandIn, seed: number, leve
   return createLevelStandIn(kind, def.side, seed, { hero: !heroHidden(def, levels) });
 }
 
-/** One level, one stand-in, one seed. */
-export function playLevel(def: LevelDef, kind: LevelStandIn, seed: number, balance: Balance = BALANCE, levels: readonly LevelDef[] = LEVELS): LevelPlayed {
+/**
+ * One level, one stand-in, one seed. `wrap` (probes only) changes the stand-in, e.g. to hide a
+ * twist from him.
+ */
+export function playLevel(
+  def: LevelDef, kind: LevelStandIn, seed: number, balance: Balance = BALANCE, levels: readonly LevelDef[] = LEVELS,
+  wrap: (bot: Bot) => Bot = (bot) => bot,
+): LevelPlayed {
   const config = levelConfig(def, standInSave(kind, def, levels), seed, balance);
   const maxTicks = config.goalTicks ?? MAX_MATCH_TICKS;
-  const { match, end } = play(config, [standInFor(def, kind, seed, levels), levelOpponent(def, seed)], balance, maxTicks + 1);
+  const { match, end } = play(config, [wrap(standInFor(def, kind, seed, levels)), levelOpponent(def, seed)], balance, maxTicks + 1);
   const s = match.state;
   const side = def.side;
   const won = s.winner === side;
