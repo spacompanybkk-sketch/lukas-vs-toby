@@ -164,6 +164,39 @@ describe('the Moon Howler on the lawn', () => {
     expect(ears(titan)).toBe(0);
   });
 
+  it('a pup keeps its ears through a level swap and while it falls, they flash with its hits, and the pair is free only once it has left', () => {
+    const s = bossStage('moonHowler');
+    s.until((e) => e.type === 'bossPattern' && e.kind === 'summon');
+    s.play(0.1);
+    const count = (demoBalance('moonHowler').bosses.moonHowler.phases?.[0]?.find((p) => p.kind === 'summon') as { count: number }).count;
+    const pups = s.match.state.units.filter((u) => u.key === 'veryFastWalker');
+    expect(pups).toHaveLength(count);
+    expect(shown(s.scene, 'boss-pup-ears')).toBe(count);
+    const pup = s.view.unit(pups[0]!.id)!;
+    const earsOn = (): boolean => { let on = false; pup.model.root.traverse((o) => { if (o.name === 'boss-pup-ears') on = true; }); return on; };
+    // A level swap (a merge) builds a new model: the ears go onto its head.
+    const before = pup.model.root;
+    pup.startMerge(2);
+    s.frames(45);
+    expect(pup.model.root).not.toBe(before);
+    expect(earsOn()).toBe(true);
+    // A hit flashes the ears with the rest of it.
+    pup.hurt();
+    s.frames(1);
+    let ears: { material: MeshStandardMaterial } | null = null;
+    pup.model.root.traverse((o) => { if (o.name === 'boss-pup-ears') ears = o as unknown as { material: MeshStandardMaterial }; });
+    expect(ears!.material.emissive.getHex()).not.toBe(0);
+    // Falling, it keeps them; gone from the lawn, the pair is free (not worn by anyone).
+    pup.die();
+    s.frames(6);
+    expect(earsOn()).toBe(true);
+    s.frames(120);
+    expect(pup.wrapper.parent).toBeNull();
+    let worn = 0;
+    s.scene.traverse((o) => { if (o.name === 'boss-pup-ears') worn++; });
+    expect(worn).toBe(count - 1);
+  });
+
   it('its phase-2 parts (the lit pendant, the crescent moon, the glowing eyes) show only from phase 2, as the state says', () => {
     const s = bossStage('moonHowler');
     s.play(1);

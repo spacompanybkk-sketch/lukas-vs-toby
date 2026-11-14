@@ -93,6 +93,8 @@ export const STRIKE_TINT: Readonly<Record<StatusKind | 'none', string>> = {
 const STRIKE_TILES = LANES * COLS;
 const STRIKE_FILL_OPACITY = 0.38;
 
+/** A pair of pup's ears: who wears them, the model they were put on (a level swap makes a new one), the head mesh whose flash they copy. */
+interface PupEars { mesh: Mesh; material: MeshStandardMaterial; owner: UnitView | null; root: Object3D | null; source: Mesh | null }
 interface Roller { object: Object3D; age: number; active: boolean; from: Vector3; dx: number; dz: number }
 /** An acorn's landing mark: which acorn (−1: free), how far it had to fly, how far it has come (0..1). */
 interface AcornMark { mesh: Mesh; id: number; from: number; progress: number }
@@ -166,10 +168,10 @@ export class BossFx {
   private readonly shardColors: number[] = [];
   /** Wolf ears for the units a boss with `fx.pups` summons (made on its first summon), and who wears each. */
   private earGeometry: ReturnType<BoxBatch['build']> | null = null;
-  private readonly earMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-  private readonly ears: { mesh: Mesh; owner: UnitView | null }[] = [];
-  /** How many units spawned this step still get ears (set by a summon, cleared by the boss's `sync`). */
+  private readonly ears: PupEars[] = [];
+  /** How many units of `pupKey` spawned this step still get ears (set by a summon, cleared by the boss's `sync`). */
   private pupsDue = 0;
+  private pupKey: UnitKey | null = null;
   /** The boss's view (one boss a match), while it stands. */
   private boss: UnitView | null = null;
   private entranceLeft = -1;
@@ -360,7 +362,7 @@ export class BossFx {
         }
         break;
       case 'summon':
-        if (lookOf(view.key).fx.pups === true) this.pupsDue = PUPS_MAX;
+        if (lookOf(view.key).fx.pups === true) this.duePups(view.key as BossKey, e.unitId, state);
         if (lookOf(view.key).fx.summon === 'ring') {
           view.playFor('cheer', 0.9);
           v1.set(view.currX, 0, view.lane + 0.5);
@@ -396,32 +398,85 @@ export class BossFx {
    */
   spawned(view: UnitView): void {
     const boss = this.boss;
-    if (this.pupsDue <= 0 || boss === null || view.faction !== boss.faction || view.boss) return;
-    const head = view.model.root.getObjectByName('head');
-    if (!head) return;
+    if (this.pupsDue <= 0 || boss === null || view.faction !== boss.faction || view.boss || view.key !== this.pupKey) return;
     this.pupsDue--;
-    let slot = this.ears.find((e) => e.owner === null || e.owner.dying || e.owner.wrapper.parent === null);
+    // A slot whose pup is gone from the lawn (not merely dying: its ears ride its fall).
+    let slot: PupEars | undefined;
+    for (let i = 0; i < this.ears.length && slot === undefined; i++) if ((this.ears[i] as PupEars).owner === null) slot = this.ears[i];
     if (slot === undefined) {
       if (this.ears.length >= PUPS_POOL) return;
       this.earGeometry ??= wolfEars();
-      const mesh = new Mesh(this.earGeometry, this.earMaterial);
+      const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+      const mesh = new Mesh(this.earGeometry, material);
       mesh.name = 'boss-pup-ears';
-      slot = { mesh, owner: null };
+      slot = { mesh, material, owner: null, root: null, source: null };
       this.ears.push(slot);
     }
     slot.owner = view;
+    this.wearEars(slot);
+  }
+
+  /**
+   * The summon of the boss `id` (from its state after the step): which of its patterns it was (the
+   * timed one before its next) and so how many of which unit came on as its pups.
+   */
+  private duePups(key: BossKey, id: number, state: SimState | undefined): void {
+    this.pupsDue = 0;
+    this.pupKey = null;
+    const u = state?.units.find((v) => v.id === id);
+    if (u === undefined) return;
+    const list = patternsOf(this.balance.bosses[key], u.phase);
+    let summon: Extract<BossPattern, { kind: 'summon' }> | null = null;
+    for (let i = 1; i <= list.length && summon === null; i++) {
+      const p = list[(((u.pattern - i) % list.length) + list.length) % list.length];
+      if (p !== undefined && p.kind === 'summon') summon = p as Extract<BossPattern, { kind: 'summon' }>;
+    }
+    if (summon === null) return;
+    this.pupsDue = summon.count;
+    this.pupKey = summon.unit;
+  }
+
+  /** Puts a slot's ears on its pup's head (again after a level swap rebuilt the model). */
+  private wearEars(slot: PupEars): void {
+    const owner = slot.owner as UnitView;
+    slot.root = owner.model.root;
+    slot.source = null;
+    const head = owner.model.root.getObjectByName('head');
+    if (!head) return;
     // On top of its head, as modelled: the head's own boxes (the parts on it left out).
     const top = PUP_BOX.makeEmpty();
     for (const child of head.children) {
-      const g = (child as Mesh).geometry;
-      if (!(child as Mesh).isMesh || !g) continue;
-      if (g.boundingBox === null) g.computeBoundingBox();
-      top.union(g.boundingBox as Box3);
+      const mesh = child as Mesh;
+      if (!mesh.isMesh || !mesh.geometry) continue;
+      if (mesh.geometry.boundingBox === null) mesh.geometry.computeBoundingBox();
+      top.union(mesh.geometry.boundingBox as Box3);
+      slot.source ??= mesh; // its flash is copied from here
     }
     if (top.isEmpty()) return;
     slot.mesh.position.set((top.min.x + top.max.x) / 2, top.max.y, (top.min.z + top.max.z) / 2);
     slot.mesh.scale.setScalar(PUP_EAR_SCALE);
     head.add(slot.mesh);
+  }
+
+  /** Each pup's ears: freed once it has left the lawn, put back after a level swap, flashing with its hits. */
+  private updateEars(): void {
+    for (let i = 0; i < this.ears.length; i++) {
+      const slot = this.ears[i] as PupEars;
+      const owner = slot.owner;
+      if (owner === null) continue;
+      if (owner.wrapper.parent === null) {
+        slot.owner = null;
+        slot.root = slot.source = null;
+        slot.mesh.removeFromParent();
+        continue;
+      }
+      if (owner.model.root !== slot.root) this.wearEars(slot);
+      const from = slot.source?.material as MeshStandardMaterial | undefined;
+      if (from !== undefined) {
+        slot.material.emissive.copy(from.emissive);
+        slot.material.emissiveIntensity = from.emissiveIntensity;
+      }
+    }
   }
 
   /** A shot bounced off the dome: a ping of sparks where it hit. */
@@ -585,6 +640,7 @@ export class BossFx {
       for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = on;
     }
     if (this.barkSparkIn > 0) this.barkSparkIn -= dt;
+    if (this.ears.length > 0) this.updateEars();
     for (let i = 0; i < this.marks.length; i++) {
       const m = this.marks[i] as AcornMark;
       if (m.id === -1) continue;
@@ -654,9 +710,11 @@ export class BossFx {
     this.markMaterial.dispose();
     this.strikeFrameMaterial.dispose();
     this.strikeFillMaterial.dispose();
-    for (const e of this.ears) e.mesh.removeFromParent();
+    for (const e of this.ears) {
+      e.mesh.removeFromParent();
+      e.material.dispose();
+    }
     this.earGeometry?.dispose();
-    this.earMaterial.dispose();
     this.boss = null;
   }
 
@@ -939,8 +997,7 @@ function firstStrikeStatus(list: readonly BossPattern[]): StatusKind | 'none' {
   return 'none';
 }
 
-/** At most this many pups a summon, and pairs of ears in all (a pup's are reused once it is gone). */
-const PUPS_MAX = 4;
+/** Pairs of ears in all (a pup's are reused once it has left the lawn). */
 const PUPS_POOL = 12;
 const PUP_BOX = new Box3();
 /** Ears a little bigger than the Howler's voxels, so they read on a small zombie from the lawn camera. */
