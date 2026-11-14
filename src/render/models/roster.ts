@@ -25,8 +25,8 @@ export const ZOMBIES = [
 /** Units that are raised in battle rather than fielded: the Necromancer's Bone Minion. */
 export const RAISED = ['boneMinion'] as const;
 
-/** The bosses (never fielded, never merged): the Brain Titan and the Elder Oak. */
-export const BOSSES = ['brainTitan', 'elderOak'] as const;
+/** The bosses (never fielded, never merged): the Brain Titan, the Elder Oak, the Moon Howler and the Frost Melon. */
+export const BOSSES = ['brainTitan', 'elderOak', 'moonHowler', 'frostMelon'] as const;
 
 /** Every unit, in the order the registry lists them. */
 export const UNITS = [...PLANTS, ...ZOMBIES, ...RAISED, ...BOSSES] as const;

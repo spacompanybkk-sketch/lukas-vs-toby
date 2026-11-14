@@ -2,11 +2,18 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { lawnOf, nextLevel } from '../../src/adventure/campaign';
 import { flag, garden, regrow, trickle } from '../../src/adventure/levels/helpers';
-import { LEVELS, levelsFor } from '../../src/adventure/levels';
+import { LEVELS, levelById, levelsFor } from '../../src/adventure/levels';
 import { P2 } from '../../src/adventure/levels/p2';
 import { Z2 } from '../../src/adventure/levels/z2';
-import type { LevelDef, LevelTwist } from '../../src/adventure/types';
+import type { LevelDef, LevelTwist, TutorialStep } from '../../src/adventure/types';
+import { BattleController } from '../../src/app/BattleController';
+import { levelOptions, prepareLevel } from '../../src/app/levelSession';
 import { BALANCE } from '../../src/data/balance';
+import { factionOf } from '../../src/data/units';
+import { BOSS_LOOK } from '../../src/data/bossLooks';
+import { BOSS_MODELS } from '../../src/render/models/registry';
+import { bossDemoMatch } from '../../src/scenes/bossScript';
+import { BOSS_HALF_WIDTH } from '../../src/sim/types';
 import { newSave, parseSave } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
 import { mapIslands, mapStones, openingWorld, twistKinds } from '../../src/ui/screens/mapModel';
@@ -108,5 +115,72 @@ describe('a save from before world 2', () => {
     const save = oldSave();
     expect(nextLevel(save, side, LEVELS)).toBeNull();
     expect(openingWorld(save, side, LEVELS)).toBe(1);
+  });
+});
+
+describe('the twist step (until Task 3 shows it)', () => {
+  it('is skipped: nothing held, no glove for it, and the next step goes on', () => {
+    const def = levelById('p1-1')!;
+    const twist: TutorialStep = { id: 'p1-1.fog', show: 'twist', until: 'tapped' };
+    const teach = [twist, ...(def.teaches ?? [])];
+    const c = new BattleController(levelOptions({ ...prepareLevel(def, newSave('p01', 'Kid', 'peashooter', 0), 3), teach }));
+    expect(c.tutorial?.current?.id).toBe('p1-1.card');
+    const alone = new BattleController(levelOptions({ ...prepareLevel(def, newSave('p01', 'Kid', 'peashooter', 0), 3), teach: [twist] }));
+    for (let i = 0; i < 60; i++) alone.step();
+    expect(alone.tutorial?.current ?? null).toBeNull();
+    expect(alone.tutorial?.holding ?? false).toBe(false);
+    expect(alone.match.state.tick).toBeGreaterThan(0);
+  });
+});
+
+describe('the world-2 bosses (stub rows until Tasks 2 and 4)', () => {
+  it('stand on their sides at their widths', () => {
+    expect(BOSS_HALF_WIDTH.moonHowler).toBe(0);
+    expect(BOSS_HALF_WIDTH.frostMelon).toBe(1);
+    expect(factionOf('moonHowler')).toBe('zombies');
+    expect(factionOf('frostMelon')).toBe('plants');
+  });
+
+  it('the Moon Howler: phase 1 slams and summons Very Fast Walkers, a straight-bouncing shield at half', () => {
+    const b = BALANCE.bosses.moonHowler;
+    expect(b.hp).toBe(5500);
+    expect(b.speed).toBe(0.1);
+    expect(b.col).toBeUndefined();
+    expect(b.phases).toHaveLength(2);
+    expect(b.phases![0]).toEqual([
+      { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+      { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+    ]);
+    expect(b.patterns.filter((p) => p.kind === 'shield')).toEqual([
+      { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 1, bouncesStraight: true },
+    ]);
+  });
+
+  it('the Frost Melon: phase 1 barrages and grows Peashooters, ice plates at half', () => {
+    const b = BALANCE.bosses.frostMelon;
+    expect(b.hp).toBe(6000);
+    expect(b.speed).toBe(0);
+    expect(b.col).toBe(0);
+    expect(b.guardFactor).toBe(0.5);
+    expect(b.phases).toHaveLength(2);
+    expect(b.phases![0]).toEqual([
+      { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+      { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+    ]);
+    expect(b.patterns.filter((p) => p.kind === 'shield')).toEqual([
+      { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
+    ]);
+  });
+
+  it.each(['moonHowler', 'frostMelon'] as const)('%s: a look, a model under its own key, and a demo fight the sim accepts', (key) => {
+    expect(BOSS_LOOK[key]).toBeDefined();
+    expect(BOSS_MODELS[key].key).toBe(key);
+    const m = bossDemoMatch(key, 1);
+    for (let i = 0; i < 600; i++) m.step();
+    expect(m.state.units.some((u) => u.key === key)).toBe(true);
+  });
+
+  it('no level uses them yet', () => {
+    expect(LEVELS.filter((l) => l.boss !== null).map((l) => l.boss!.key).sort()).toEqual(['brainTitan', 'elderOak']);
   });
 });

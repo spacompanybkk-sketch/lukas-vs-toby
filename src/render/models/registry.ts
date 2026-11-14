@@ -64,6 +64,12 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
 }
 
 /** Each boss's model, by its key (its looks and sounds are its row in `data/bossLooks.ts`). */
-export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = { brainTitan, elderOak };
+export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
+  brainTitan,
+  elderOak,
+  // stub: Task 2. The world-2 bosses stand in the Titan's and the Oak's models (under their own keys).
+  moonHowler: { ...brainTitan, key: 'moonHowler' },
+  frostMelon: { ...elderOak, key: 'frostMelon' },
+};
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

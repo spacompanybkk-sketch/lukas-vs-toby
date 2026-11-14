@@ -54,7 +54,7 @@ describe('BOSS_LOOK', () => {
   });
 
   it('the shipped bosses keep their sizes', () => {
-    expect(BOSS_SCALE).toEqual({ brainTitan: 2.4, elderOak: 4 });
+    expect({ brainTitan: BOSS_SCALE.brainTitan, elderOak: BOSS_SCALE.elderOak }).toEqual({ brainTitan: 2.4, elderOak: 4 });
   });
 
   it('the Brain Titan\'s row is pinned: face, bar, sounds and shows as shipped', () => {

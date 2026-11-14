@@ -34,7 +34,7 @@ const SHIPPED_OAK: BossStats = {
 
 function shippedBosses(): Balance {
   const b = classicBalance();
-  b.bosses = { brainTitan: structuredClone(SHIPPED_TITAN), elderOak: structuredClone(SHIPPED_OAK) };
+  b.bosses = { ...b.bosses, brainTitan: structuredClone(SHIPPED_TITAN), elderOak: structuredClone(SHIPPED_OAK) };
   return b;
 }
 

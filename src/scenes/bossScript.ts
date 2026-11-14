@@ -17,6 +17,9 @@ import type { BossConfig, BossKey, MatchConfig, PreparedUnit, ScriptEntry, Statu
 export const BOSS_DEMO: Record<BossKey, BossConfig> = {
   brainTitan: { key: 'brainTitan', faction: 'zombies', lane: 2 },
   elderOak: { key: 'elderOak', faction: 'plants', lane: 2 },
+  // stub: Task 2. The world-2 bosses fight the Titan's and the Oak's demo levels (by their side).
+  moonHowler: { key: 'moonHowler', faction: 'zombies', lane: 2 },
+  frostMelon: { key: 'frostMelon', faction: 'plants', lane: 2 },
 };
 
 const plant = (unit: PreparedUnit['unit'], lane: number, col: number, level = 1): PreparedUnit =>
@@ -49,7 +52,7 @@ function oakLevel(): Pick<MatchConfig, 'prepared' | 'script'> {
 
 /** The demo's setup: mode 'boss' with `boss`, the plain opponent above, no energy to spend, sudden death off. */
 export function bossDemoConfig(boss: BossKey, seed: number): MatchConfig {
-  const level = boss === 'brainTitan' ? titanLevel() : oakLevel();
+  const level = BOSS_DEMO[boss].faction === 'zombies' ? titanLevel() : oakLevel();
   return {
     ...defaultConfig(seed),
     mode: 'boss',

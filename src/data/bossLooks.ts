@@ -39,7 +39,8 @@ export interface BossLook {
   fx: BossShows;
 }
 
-export const BOSS_LOOK: Record<BossKey, BossLook> = {
+/** The shipped bosses' rows (world 1). */
+const SHIPPED = {
   brainTitan: {
     // The model is a unit's voxels.
     scale: 2.4,
@@ -82,4 +83,11 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
     defeat: 'oakDefeat',
     fx: { roar: 'ability', summon: 'sparkles', shield: 'bark', defeat: 'leaves', eyes: 'follow' },
   },
+} satisfies Record<'brainTitan' | 'elderOak', BossLook>;
+
+export const BOSS_LOOK: Record<BossKey, BossLook> = {
+  ...SHIPPED,
+  // stub: Task 2. The world-2 bosses wear the Titan's and the Oak's rows until their own are drawn.
+  moonHowler: { ...SHIPPED.brainTitan },
+  frostMelon: { ...SHIPPED.elderOak },
 };

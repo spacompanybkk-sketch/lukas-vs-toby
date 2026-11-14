@@ -55,6 +55,8 @@ const TRIANGLE_OVERRIDES: Record<string, number> = {
   // The bosses: one on the lawn at a time, two to four times a unit's size (phase 3 Task 3 allows 6,000).
   brainTitan: 6000,
   elderOak: 6000,
+  moonHowler: 6000,
+  frostMelon: 6000,
 };
 
 describe('the registry', () => {

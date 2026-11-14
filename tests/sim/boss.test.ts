@@ -18,6 +18,7 @@ import { eventsOf, merge, place, remove } from './helpers';
 function bossBalance(): Balance {
   const b = cloneBalance(BALANCE);
   b.bosses = {
+    ...b.bosses, // the world-2 bosses keep their shipped rows; these tests are the Titan's and the Oak's
     brainTitan: {
       recharge: 0, hp: 6000, armor: 0, speed: 0.12,
       melee: { damage: 120, interval: 1.5, reach: 0.6 },

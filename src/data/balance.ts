@@ -427,6 +427,49 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
       ],
     },
+    // stub: Task 4. The Moon Howler (p2-8): content design §2's starting numbers for phase 1 and
+    // its shield; phase 2 repeats phase 1 until Task 4 writes it (strike with blind, slam, summon).
+    moonHowler: {
+      recharge: 0, hp: 5500, armor: 0, speed: 0.1,
+      melee: { damage: 40, interval: 1.5, reach: 0.6 },
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
+      patterns: [
+        { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+        { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 1, bouncesStraight: true },
+      ],
+      phases: [
+        [
+          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+          { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+        ],
+        [
+          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
+          { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+        ],
+      ],
+    },
+    // stub: Task 4. The Frost Melon (z2-8): content design §2's starting numbers for phase 1 and
+    // its shield; phase 2 repeats phase 1 until Task 4 writes it (strike with stun, barrage, summon).
+    frostMelon: {
+      recharge: 0, hp: 6000, armor: 0, speed: 0,
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
+      patterns: [
+        { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+        { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
+      ],
+      phases: [
+        [
+          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        ],
+        [
+          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        ],
+      ],
+    },
   },
   endless: {
     // Task 8, measured (tools/levels.ts --free, 200 seeds, four blocks): survive, the wave reached
