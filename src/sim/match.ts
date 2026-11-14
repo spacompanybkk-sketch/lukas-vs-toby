@@ -13,6 +13,7 @@ import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
 import { levelUp } from './levelUp';
+import { cloneLawn, isRock, NO_TWIST, tickLava } from './lawn';
 import { inLane, isBoss, isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { checkLevel, tickScript } from './script';
@@ -46,7 +47,7 @@ export function defaultConfig(seed: number, balance: Balance = BALANCE): MatchCo
     spells: { plants: 2, zombies: 2 },
     upgrades: { plants: {}, zombies: {} },
     mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null,
-    boss: null, endless: null,
+    boss: null, endless: null, lawn: cloneLawn(NO_TWIST),
   };
 }
 
@@ -70,6 +71,8 @@ function cloneConfig(c: MatchConfig): MatchConfig {
     invulnerableBase: c.invulnerableBase,
     boss: c.boss === null || c.boss === undefined ? (c.boss as null) : { ...c.boss },
     endless: c.endless === null || c.endless === undefined ? (c.endless as null) : { ...c.endless, cards: [...c.endless.cards] },
+    // A setup from before the twists has none: NO_TWIST. Null is kept for `checkLawn` to refuse.
+    lawn: c.lawn === undefined ? cloneLawn(NO_TWIST) : c.lawn === null ? c.lawn : cloneLawn(c.lawn),
   };
 }
 
@@ -131,15 +134,15 @@ export class Match {
    * this same method before carrying out any command, so the two can never disagree.
    *
    * Every command: `match-over` once a winner is set.
-   * - place: `wrong-side`, `not-in-hand`, `bad-lane`, `bad-column` and `occupied` (plants only),
+   * - place: `wrong-side`, `not-in-hand`, `bad-lane`, `bad-column`, `rock` and `occupied` (plants only),
    *   `recharging`, `no-energy`.
    * - merge: `wrong-side`, `not-in-hand`, `no-target` (no living unit has that id), `not-yours`,
    *   `wrong-type`, `max-level`, `recharging`, `no-energy`.
    * - remove: `plants-only`, `no-target`, `not-yours`, `boss`.
    * - hero: `hero-off`, `bad-lane`, `hero-charging` (see `checkHero`).
-   * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `occupied`, `spell-charging`
+   * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `rock`, `occupied`, `spell-charging`
    *   (see `checkSpell`).
-   * - belt: `no-belt`, `bad-slot`, `bad-lane`, `bad-column`, `occupied`, `max-level` (see `checkBelt`).
+   * - belt: `no-belt`, `bad-slot`, `bad-lane`, `bad-column`, `rock`, `occupied`, `max-level` (see `checkBelt`).
    * With the level's `noEnergy`, place and merge are refused `no-energy` once the card, lane and
    * tile (place) or target (merge) checks have passed.
    */
@@ -169,7 +172,7 @@ export class Match {
    * Advances the match by one tick and returns what happened, in this fixed order:
    * the level's script (prepared units on tick 0, then waves; `tickScript`), Free Play's waves
    * (`tickEndless`), the belt's arrival
-   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, the boss (`tickBoss`), projectiles, hazards, statuses, deaths,
+   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, the boss (`tickBoss`), projectiles, hazards, lava (`tickLava`), statuses, deaths,
    * Free Play's broken garden (`tickEndlessGarden`), endgame, Free Play's clock (`endlessClockOut`), then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
@@ -223,6 +226,7 @@ export class Match {
     tickBoss(s, b, events);
     tickProjectiles(s, b, events);
     tickHazards(s, b, events);
+    tickLava(s, b, events);
     tickStatuses(s, b, events);
     resolveDeaths(s, b, events, felled);
     tickEndlessGarden(s, b, events); // Free Play breakthrough: a fallen plant base breaks the garden instead of ending the match
@@ -246,6 +250,7 @@ export class Match {
     if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
     if (cmd.faction === 'plants') {
       if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
+      if (isRock(this.state.config, cmd.lane, cmd.col)) return 'rock';
       const taken = this.state.units.some(
         (u) => u.faction === 'plants' && inLane(u, cmd.lane) && Math.floor(u.x) === cmd.col,
       );

@@ -228,7 +228,7 @@ describe('a piercing shot', () => {
     const p: Projectile = {
       id: m.state.nextId, kind: 'trident', faction: 'zombies', lane: 1, x: 5.8, speed: 0.2, damage: 70,
       ownerId: 0, spawnTick: m.state.tick - 1, flight: 'piercing', sourceKey: 'tridentZombie', level: 1,
-      targetId: null, targetX: null, pierceLeft: 2, hitIds: [already.id], burning: false, burnDps: 0, burnTicks: 0,
+      targetId: null, targetX: null, pierceLeft: 2, hitIds: [already.id], burning: false, burnDps: 0, burnTicks: 0, fadeX: null,
     };
     m.state.nextId += 1;
     m.state.projectiles.push(p);

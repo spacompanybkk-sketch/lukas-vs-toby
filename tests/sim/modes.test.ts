@@ -32,8 +32,8 @@ function runOut(m: Match, limit: number): SimEvent[] {
 describe('a default battle', () => {
   it('has every level field at its neutral value', () => {
     const c = defaultConfig(1);
-    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase, c.boss, c.endless]).toEqual([
-      'battle', [], [], null, null, false, null, null, null,
+    expect([c.mode, c.script, c.prepared, c.goalTicks, c.belt, c.noEnergy, c.invulnerableBase, c.boss, c.endless, c.lawn]).toEqual([
+      'battle', [], [], null, null, false, null, null, null, { rocks: [], fog: null, ice: null, lava: null },
     ]);
     const m = new Match(c);
     expect([m.state.scriptIndex, m.state.belt]).toEqual([0, []]);
@@ -52,12 +52,15 @@ describe('a default battle', () => {
    * at the end once the new fields (all 0 / null / empty) were taken out. Re-pinned in Task 8
    * (levels), when every unit gained `stunFatigue` (a boss's stun resistance): a scratch replay at
    * 4726149 and with it gave equal events on every step and equal snapshots at tick 1000 and at the
-   * end once `stunFatigue` (always 0 outside a boss) was taken out.
+   * end once `stunFatigue` (always 0 outside a boss) was taken out. Re-pinned in the worlds
+   * machinery plan, Task 2 (lawn twists), when the setup gained `lawn` and projectiles `fadeX`: a
+   * scratch replay at 7d26921 and with the twists gave equal events on every step and equal
+   * snapshots at tick 1000 and at the end once `lawn` (NO_TWIST) and `fadeX` (null) were taken out.
    */
   const BEFORE: Array<[number, number, number]> = [ // seed, checksum at tick 1000, checksum at the end (tick 6880)
-    [1, 228950009, 4019655029],
-    [2, 3745210085, 497565829],
-    [3, 3742689830, 3612142098],
+    [1, 2620777555, 2065083975],
+    [2, 4235065335, 458641399],
+    [3, 3515231586, 2664504678],
   ];
   function commandsAt(tick: number): Command[] {
     const out: Command[] = [];

@@ -21,7 +21,9 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   | 'miss' | 'heroReady' | 'megaMower' | 'boneStorm' | 'spellReady' | 'thunderbolt' | 'vines' | 'sunShower'
   | 'healingRain' | 'rockWall' | 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise'
   // phase 3: the bosses, two each (a signature call for the entrance and the patterns, a defeat sting)
-  | 'titanRoar' | 'titanDefeat' | 'oakCreak' | 'oakDefeat';
+  | 'titanRoar' | 'titanDefeat' | 'oakCreak' | 'oakDefeat'
+  // worlds machinery: any boss's strike (its warning, its blow)
+  | 'strikeWindup' | 'strikeImpact';
 
 export type Recipe = (v: Voice, t: number, p: number) => void;
 
@@ -647,13 +649,33 @@ function oakDefeat(v: Voice, t: number, p: number): void {
   });
 }
 
+/**
+ * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
+ * and filtered) and a rising whistle, like something about to fall on the marked tiles.
+ */
+function strikeWindup(v: Voice, t: number, p: number): void {
+  [660, 880, 660, 880].forEach((f, i) => {
+    tone(v, { type: 'square', freq: f * p, at: t + i * 0.11, attack: 0.004, peak: 0.08, hold: 0.04, decay: 0.06, lowpass: 1600 });
+  });
+  tone(v, { type: 'sine', freq: 500 * p, to: 1400 * p, glide: 0.45, at: t + 0.05, attack: 0.05, peak: 0.12, hold: 0.3, decay: 0.12 });
+}
+
+/** A boss's strike lands: a heavy crash (a low thump under a burst of noise) and a ring of glassy chips. */
+function strikeImpact(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 130 * p, to: 40 * p, glide: 0.3, at: t, attack: 0.003, peak: 0.5, decay: 0.4 });
+  noise(v, { at: t, attack: 0.003, peak: 0.4, decay: 0.45, filter: 'lowpass', freq: 3000 * p, to: 300 * p, glide: 0.4, q: 0.8 });
+  [1760, 2350, 1980].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + 0.05 + i * 0.05, attack: 0.002, peak: 0.08, decay: 0.12 });
+  });
+}
+
 export const SFX: Record<SfxName, Recipe> = {
   place, spawnZombie, pea, brainThrow, hit, chomp, block, explode, merge, sun, bounty, baseHit,
   click, deny, suddenDeath, win: sting('win'), lose: sting('lose'), collapse, baseStrike,
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
-  titanRoar, titanDefeat, oakCreak, oakDefeat,
+  titanRoar, titanDefeat, oakCreak, oakDefeat, strikeWindup, strikeImpact,
 };
 
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];

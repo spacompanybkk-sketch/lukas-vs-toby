@@ -1,8 +1,10 @@
 import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
 import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
-import { slamCol } from '../../sim/boss';
-import { BOSS_HALF_WIDTH, LANES, TICKS_PER_SECOND } from '../../sim/types';
-import type { BossKey, SimEvent, SimState, Unit, UnitKey } from '../../sim/types';
+import { BOSS_LOOK } from '../../data/bossLooks';
+import type { BossLook } from '../../data/bossLooks';
+import { patternsOf, slamCol } from '../../sim/boss';
+import { BOSS_HALF_WIDTH, COLS, LANES, TICKS_PER_SECOND } from '../../sim/types';
+import type { BossKey, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
 import { SLAM_WINDUP } from '../models/bosses/brainTitan';
 import { makeProjectile } from '../models/props';
@@ -12,12 +14,19 @@ import type { Feel } from './types';
 import type { UnitView } from './UnitView';
 
 // The bosses' shows (phase 3 Task 3), for `BattleView`: the entrance, the slam's wind-up tiles and
-// its blow, the shield (the Titan's dome, the Oak's bark), the summons, the eyes that follow the
-// zombies, and the defeat (brain blocks; leaves and rolling acorns). Everything is made once and
-// pooled: nothing here allocates per frame. Read from events and the state only.
+// its blow, a strike's warning tiles and its blow, the shield (a dome, or bark), the summons, the
+// eyes that follow the enemies, and the defeat (brain blocks; leaves and rolling acorns). Which show
+// a boss gets is its row in `BOSS_LOOK` (data/bossLooks.ts); nothing here names a boss. Everything
+// is made once and pooled (a strike's tiles on its first strike): nothing here allocates per frame.
+// Read from events and the state only.
 
-/** How much bigger than a unit each boss is drawn (the models are a unit's voxels; the Oak's half-resolution, see elderOak.ts). */
-export const BOSS_SCALE: Record<BossKey, number> = { brainTitan: 2.4, elderOak: 4 };
+/** How much bigger than a unit each boss is drawn (from `BOSS_LOOK`). */
+export const BOSS_SCALE: Readonly<Record<BossKey, number>> = Object.fromEntries(
+  Object.entries(BOSS_LOOK).map(([key, look]) => [key, look.scale]),
+) as Record<BossKey, number>;
+
+/** A boss's look and shows. */
+const lookOf = (key: UnitKey): BossLook => BOSS_LOOK[key as BossKey];
 
 /** Whether a unit key is a boss's. */
 export function isBossKey(key: UnitKey): key is BossKey {
@@ -63,14 +72,25 @@ const PURPLE = hex('#9B6BFF');
 const LEAF = hex(PALETTE.leafLight);
 const DOME_SPARK = hex(DOME_COLOR);
 const BARK = [hex(PALETTE.walnut), hex(PALETTE.walnutDark), hex(PALETTE.walnutLight)];
+/**
+ * A strike's warning tiles and its blow are tinted by what it leaves: icy blue for a stun, grey for
+ * blindness, orange for a burn, white for none (the others in their own shot colours).
+ */
+export const STRIKE_TINT: Readonly<Record<StatusKind | 'none', string>> = {
+  stun: '#55CCFF', blind: '#8E8EA0', burn: '#FF6A00', none: '#FFFFFF',
+  poison: '#8BE05A', tied: '#58C13B', haste: '#FFD23D',
+};
+/** Every tile of the lawn can be struck at once (five whole lanes). */
+const STRIKE_TILES = LANES * COLS;
+const STRIKE_FILL_OPACITY = 0.38;
 
 interface Roller { object: Object3D; age: number; active: boolean; from: Vector3; dx: number; dz: number }
 /** An acorn's landing mark: which acorn (−1: free), how far it had to fly, how far it has come (0..1). */
 interface AcornMark { mesh: Mesh; id: number; from: number; progress: number }
 
-/** The boss's pattern number `pattern` if it is a slam (the view's only use of the rules: the wind-up of a late-joined slam). */
-function slamOf(b: DeepReadonly<Balance>, key: BossKey, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
-  const p = b.bosses[key].patterns[pattern];
+/** The boss's pattern number `pattern` of its phase `phase` if it is a slam (the view's only use of the rules: the wind-up of a late-joined slam). */
+function slamOf(b: DeepReadonly<Balance>, key: BossKey, phase: number, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
+  const p = patternsOf(b.bosses[key], phase)[pattern];
   return p !== undefined && p.kind === 'slam' ? (p as Extract<BossPattern, { kind: 'slam' }>) : null;
 }
 
@@ -108,6 +128,16 @@ export class BossFx {
   private readonly markGeometry = landingMark();
   private readonly markMaterial = new MeshBasicMaterial({ color: TILE_RED, transparent: true, opacity: 0.9, depthWrite: false });
   private readonly marks: AcornMark[] = [];
+  /** A strike's warning tiles (made on the first strike), tinted together (one strike at a time). */
+  private readonly strikeFrameMaterial = new MeshBasicMaterial({ color: '#FFFFFF', depthWrite: false });
+  private readonly strikeFillMaterial = new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: STRIKE_FILL_OPACITY, depthWrite: false });
+  private readonly strikeTiles: { frame: Mesh; fill: Mesh }[] = [];
+  /** How many of `strikeTiles` the strike being wound up uses. */
+  private strikeUsed = 0;
+  /** Seconds left of the strike's wind-up, or −1 (from the simulation each step, like the slam's). */
+  private strikeLeft = -1;
+  /** The tint of the strike being wound up (its blow is drawn in it too). */
+  private strikeTint = 0xffffff;
   private domeOn = false;
   private barkOn = false;
   private barkFor = -1;
@@ -176,7 +206,17 @@ export class BossFx {
     return this.windupLeft > 0;
   }
 
-  /** True while the shield shows (the Titan's dome or the Oak's bark). */
+  /** True while a strike's warning tiles are showing. */
+  get striking(): boolean {
+    return this.strikeLeft > 0;
+  }
+
+  /** How many tiles the strike being wound up warns of (0 when none). */
+  get strikeTileCount(): number {
+    return this.strikeLeft > 0 ? this.strikeUsed : 0;
+  }
+
+  /** True while the shield shows (a dome or bark). */
   get shielded(): boolean {
     return this.domeOn || this.barkOn;
   }
@@ -184,7 +224,7 @@ export class BossFx {
   /** A boss came on. `late`: the view joined a match already under way, so no entrance. */
   enter(view: UnitView, late: boolean): void {
     this.boss = view;
-    view.setBulk(BOSS_SCALE[view.key as BossKey]);
+    view.setBulk(lookOf(view.key).scale);
     view.wrapper.add(this.dome);
     if (late) return;
     this.entranceLeft = ENTRANCE_SECONDS;
@@ -200,30 +240,62 @@ export class BossFx {
     if (!this.roared) this.roar();
   }
 
-  /** The step's state for the boss: shield, wind-up tiles for a view that joined late, the Oak's eyes. */
+  /** The step's state for the boss: shield, wind-up tiles for a view that joined late, the eyes. */
   sync(view: UnitView, u: Unit, state: SimState): void {
     if (view.dying) return;
+    const shows = lookOf(view.key).fx;
     const shield = u.shieldLeft > 0;
-    if (view.key === 'brainTitan') {
+    if (shows.shield === 'dome') {
       if (shield !== this.domeOn) this.setDome(view, shield);
-      // The tiles follow the simulation's wind-up timer, so a stun (which stops it) holds them steady.
-      const slam = slamOf(this.balance, 'brainTitan', u.pattern);
-      const windup = slam === null ? 0 : slam.windupSeconds * TICKS_PER_SECOND;
-      if (slam !== null && u.patternTimer > 0 && u.patternTimer <= windup) {
-        const left = u.patternTimer / TICKS_PER_SECOND;
-        if (this.windupLeft <= 0) {
-          // Joined during a wind-up: the tiles, and the arm on its way up, timed to land with the blow.
-          this.showTiles(u.lane, slamCol(u, slam), left);
-          view.model.play('ability', { speed: SLAM_WINDUP / left });
-        }
-        this.windupLeft = left;
-      } else if (this.windupLeft > 0) {
-        this.hideTiles();
-      }
-    } else if (view.key === 'elderOak') {
-      if (shield !== this.barkOn) this.setBark(view, shield);
-      this.lookAt(view, u, state);
+    } else if (shield !== this.barkOn) {
+      this.setBark(view, shield);
     }
+    // The tiles follow the simulation's wind-up timer, so a stun (which stops it) holds them steady.
+    const slam = slamOf(this.balance, view.key as BossKey, u.phase, u.pattern);
+    const windup = slam === null ? 0 : slam.windupSeconds * TICKS_PER_SECOND;
+    if (slam !== null && u.patternTimer > 0 && u.patternTimer <= windup) {
+      const left = u.patternTimer / TICKS_PER_SECOND;
+      if (this.windupLeft <= 0) {
+        // Joined during a wind-up: the tiles, and the arm on its way up, timed to land with the blow.
+        this.showTiles(u.lane, slamCol(u, slam), left);
+        view.model.play('ability', { speed: SLAM_WINDUP / left });
+      }
+      this.windupLeft = left;
+    } else if (this.windupLeft > 0) {
+      this.hideTiles();
+    }
+    this.syncStrike(view.key as BossKey, u);
+    if (shows.eyes === 'follow') this.lookAt(view, u, state);
+  }
+
+  /**
+   * A boss's strike: its wind-up (`windup` true) puts a blinking warning on every tile it announced,
+   * tinted by the status it leaves; its blow (`windup` false) lands on those tiles in that tint.
+   */
+  strike(e: Extract<SimEvent, { type: 'bossStrike' }>, state: SimState): void {
+    const u = state.units.find((v) => v.id === e.unitId);
+    if (e.windup) {
+      if (u === undefined || !Object.hasOwn(BOSS_HALF_WIDTH, u.key)) return;
+      const p = patternsOf(this.balance.bosses[u.key as BossKey], u.phase)[u.pattern];
+      const strike = p !== undefined && p.kind === 'strike' ? p : null;
+      const windup = strike === null ? 0 : strike.windupSeconds;
+      this.showStrike(e.tiles, strikeTintOf(strike), windup);
+      return;
+    }
+    // The blow: the tint it was announced in (or, for a view that missed the wind-up, its list's).
+    if (this.strikeLeft <= 0 && u !== undefined && Object.hasOwn(BOSS_HALF_WIDTH, u.key)) {
+      this.strikeTint = hex(STRIKE_TINT[firstStrikeStatus(patternsOf(this.balance.bosses[u.key as BossKey], u.phase))]);
+    }
+    this.hideStrike();
+    const tint = this.strikeTint;
+    for (let i = 0; i < e.tiles.length; i++) {
+      const t = e.tiles[i] as { lane: number; col: number };
+      v1.set(t.col + 0.5, 0, t.lane + 0.5);
+      this.fx.ring(v1, tint, 0.6, true);
+      // A lane-wide blow throws sparkles on every other tile only: the rings carry it.
+      if (e.tiles.length <= 8 || i % 2 === 0) this.fx.burst(v1, [tint, tint, 0xffffff], 6, 1.8);
+    }
+    this.onFeel({ shake: 0.6, hitStop: 0.05 });
   }
 
   /** A boss's pattern event. */
@@ -240,7 +312,7 @@ export class BossFx {
         }
         break;
       case 'summon':
-        if (view.key === 'brainTitan') {
+        if (lookOf(view.key).fx.summon === 'ring') {
           view.playFor('cheer', 0.9);
           v1.set(view.currX, 0, view.lane + 0.5);
           this.fx.ring(v1, PURPLE, 1.4, true);
@@ -258,7 +330,7 @@ export class BossFx {
         // The look itself comes from the state (`sync`); here the moment it goes up.
         view.flash();
         v1.set(view.currX, 0, view.lane + 0.5);
-        this.fx.ring(v1, view.key === 'elderOak' ? BARK[1] as number : DOME_SPARK, 1.6, true);
+        this.fx.ring(v1, lookOf(view.key).fx.shield === 'bark' ? BARK[1] as number : DOME_SPARK, 1.6, true);
         this.onFeel({ shake: 0.3 });
         break;
       default: {
@@ -324,9 +396,10 @@ export class BossFx {
   /** The boss fell (its `unitDied`): it now plays its fall; `burst` follows when that is over. */
   fell(view: UnitView): void {
     this.hideTiles();
+    this.hideStrike();
     this.setDome(view, false);
     this.barkOn = false;
-    if (view.key === 'elderOak') {
+    if (lookOf(view.key).fx.defeat === 'leaves') {
       // The leaves start to drop at once.
       for (let i = -1; i <= 1; i++) {
         v1.set(view.currX, 2.2, view.lane + 0.5 + i);
@@ -340,7 +413,7 @@ export class BossFx {
   burst(view: UnitView): void {
     const x = view.wrapper.position.x;
     const z = view.lane + 0.5;
-    if (view.key === 'brainTitan') {
+    if (lookOf(view.key).fx.defeat === 'brains') {
       // Toppled backwards: the body lies along +X from its feet.
       for (let i = 0; i < BRAIN_HANDFULS; i++) {
         v1.set(x + 0.3 + i * 0.45, 0.4, z + (i % 2 === 0 ? 0.3 : -0.3));
@@ -397,6 +470,12 @@ export class BossFx {
         arrow.position.y = ARROW_HEIGHT + bob;
       }
     }
+    if (this.strikeLeft > 0) {
+      // As the slam's: the frames stay, the fills blink in hard steps, faster in the last half second.
+      const rate = this.strikeLeft < 0.5 ? BLINK_FAST : BLINK_PER_SECOND;
+      const on = Math.floor(this.time * rate * 2) % 2 === 0;
+      for (let i = 0; i < this.strikeUsed; i++) (this.strikeTiles[i] as { fill: Mesh }).fill.visible = on;
+    }
     if (this.barkSparkIn > 0) this.barkSparkIn -= dt;
     for (let i = 0; i < this.marks.length; i++) {
       const m = this.marks[i] as AcornMark;
@@ -414,7 +493,7 @@ export class BossFx {
       // The two halves slide in from the sides, faster and faster, and clap shut.
       this.barkFor += dt;
       const u = Math.min(1, this.barkFor / BARK_SECONDS);
-      const apart = (BARK_APART * (1 - u * u)) / BOSS_SCALE.elderOak;
+      const apart = (BARK_APART * (1 - u * u)) / lookOf(boss.key).scale;
       boss.shiftPart('barkL', 0, 0, -apart);
       boss.shiftPart('barkR', 0, 0, apart);
       if (u >= 1) {
@@ -465,6 +544,8 @@ export class BossFx {
     this.domeMaterial.dispose();
     this.markGeometry.dispose();
     this.markMaterial.dispose();
+    this.strikeFrameMaterial.dispose();
+    this.strikeFillMaterial.dispose();
     this.boss = null;
   }
 
@@ -475,7 +556,7 @@ export class BossFx {
     this.roared = true;
     const boss = this.boss;
     if (!boss || boss.dying) return;
-    boss.playFor(boss.key === 'brainTitan' ? 'cheer' : 'ability', 0.9);
+    boss.playFor(lookOf(boss.key).fx.roar, 0.9);
     this.onFeel({ shake: 0.7 });
     this.ground(boss.currX, boss.lane, 1.6);
   }
@@ -524,6 +605,65 @@ export class BossFx {
     }
   }
 
+  /**
+   * The strike's wind-up from the state: the timer of the boss's strike (held by a stun), its tiles
+   * for a view that joined during the wind-up, and none once the simulation dropped them (a new phase).
+   */
+  private syncStrike(key: BossKey, u: Unit): void {
+    if (u.strikeTiles.length === 0) {
+      if (this.strikeLeft > 0) this.hideStrike();
+      return;
+    }
+    const p = patternsOf(this.balance.bosses[key], u.phase)[u.pattern];
+    if (p === undefined || p.kind !== 'strike' || u.patternTimer <= 0) return;
+    const left = u.patternTimer / TICKS_PER_SECOND;
+    if (this.strikeLeft <= 0) {
+      const tiles: { lane: number; col: number }[] = [];
+      for (const t of u.strikeTiles) tiles.push({ lane: Math.floor(t / COLS), col: t % COLS });
+      this.showStrike(tiles, strikeTintOf(p), left);
+    }
+    this.strikeLeft = left;
+  }
+
+  /** Puts the warning on `tiles` in `tint` for `seconds` (the frames steady, the fills blinking). */
+  private showStrike(tiles: readonly { lane: number; col: number }[], tint: string, seconds: number): void {
+    while (this.strikeTiles.length < Math.min(tiles.length, STRIKE_TILES)) {
+      const frame = new Mesh(this.frameGeometry, this.strikeFrameMaterial);
+      const fill = new Mesh(this.fillGeometry, this.strikeFillMaterial);
+      frame.name = 'boss-strike-tile';
+      fill.name = 'boss-strike-fill';
+      frame.renderOrder = fill.renderOrder = 9;
+      frame.visible = fill.visible = false;
+      this.group.add(frame, fill);
+      this.strikeTiles.push({ frame, fill });
+    }
+    this.strikeTint = hex(tint);
+    this.strikeFrameMaterial.color.set(tint);
+    this.strikeFillMaterial.color.set(tint);
+    const n = Math.min(tiles.length, this.strikeTiles.length);
+    for (let i = 0; i < this.strikeTiles.length; i++) {
+      const s = this.strikeTiles[i] as { frame: Mesh; fill: Mesh };
+      const t = tiles[i];
+      const on = i < n && t !== undefined;
+      s.frame.visible = s.fill.visible = on;
+      if (on) {
+        s.frame.position.set(t.col + 0.5, 0, t.lane + 0.5);
+        s.fill.position.set(t.col + 0.5, 0, t.lane + 0.5);
+      }
+    }
+    this.strikeUsed = n;
+    this.strikeLeft = seconds > 0 ? seconds : 0.01;
+  }
+
+  private hideStrike(): void {
+    this.strikeLeft = -1;
+    this.strikeUsed = 0;
+    for (let i = 0; i < this.strikeTiles.length; i++) {
+      const s = this.strikeTiles[i] as { frame: Mesh; fill: Mesh };
+      s.frame.visible = s.fill.visible = false;
+    }
+  }
+
   /** The blow lands: soil and a ring on each of the three tiles, the camera shakes hard. */
   private slamDown(lane: number, col: number): void {
     for (let l = lane - 1; l <= lane + 1; l++) {
@@ -547,7 +687,7 @@ export class BossFx {
     view.showPart('barkL', on);
     view.showPart('barkR', on);
     this.barkFor = on ? 0 : -1;
-    const apart = on ? BARK_APART / BOSS_SCALE.elderOak : 0;
+    const apart = on ? BARK_APART / lookOf(view.key).scale : 0;
     view.shiftPart('barkL', 0, 0, -apart);
     view.shiftPart('barkR', 0, 0, apart);
   }
@@ -568,6 +708,17 @@ export class BossFx {
     const aside = Math.max(-1, Math.min(1, best / 2));
     view.shiftPart('pupils', 0, 0, aside * PUPIL_REACH);
   }
+}
+
+/** A strike's tint: that of the status it leaves, or white for none. */
+function strikeTintOf(p: Extract<BossPattern, { kind: 'strike' }> | null): string {
+  return STRIKE_TINT[p?.status?.kind ?? 'none'];
+}
+
+/** The status of the first strike in a pattern list ('none' when it has no strike or that leaves none). */
+function firstStrikeStatus(list: readonly BossPattern[]): StatusKind | 'none' {
+  for (const p of list) if (p.kind === 'strike') return p.status?.kind ?? 'none';
+  return 'none';
 }
 
 /** A tile's red frame: four bars round its edge, a little above the grass. */

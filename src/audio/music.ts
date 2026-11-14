@@ -1,9 +1,11 @@
 /**
- * The music as notes: two eight-bar themes and two stings, written in a small text notation and
- * turned into timed `NoteEvent`s. Pure: no audio here, nothing random, so it can be tested and
- * read on its own. The engine turns the events into sound (instruments.ts).
+ * The music as notes: six eight-bar themes (the menu's and one per world) and two stings, written
+ * in a small text notation and turned into timed `NoteEvent`s. Pure: no audio here, nothing random,
+ * so it can be tested and read on its own. The engine turns the events into sound (instruments.ts).
  *
- * 112 bpm, 4/4. `backyard` is in C major, `menu` in A minor. Three layers:
+ * 112 bpm, 4/4, every theme. `backyard` is in C major, `menu` in A minor, `meadow` a soft E minor
+ * lullaby, `desert` E Phrygian, `tundra` bright, sparse bells in A major, `citadel` low and driving
+ * in D minor. Three layers, the same in each:
  * - 0: bass and pad, always playing;
  * - 1: the melody, from intensity 0.35;
  * - 2: drums and a counter line, from intensity 0.7.
@@ -13,7 +15,10 @@
  * 38 snare, 41/43/45 toms, 42 closed hat, 46 open hat) and the rest the counter line.
  */
 
-export type Theme = 'menu' | 'backyard';
+import type { WorldKey } from '../data/worlds';
+
+/** A theme: the menu's, or a world's own (see `WORLDS[world].theme`). */
+export type Theme = 'menu' | WorldKey;
 export type Layer = 0 | 1 | 2;
 export interface NoteEvent { time: number; layer: Layer; midi: number; length: number; velocity: number }
 export type Instrument = 'bass' | 'pad' | 'lead' | 'counter' | 'kick' | 'snare' | 'hat' | 'openHat' | 'tom';
@@ -29,7 +34,7 @@ export const LAYER_OFF_THRESHOLDS: readonly [number, number, number] = [0, 0.3, 
 /** `setIntensity` moves the music's intensity to the new value over this many seconds. */
 export const INTENSITY_EASE_SECONDS = 2;
 /** The intensity a theme never drops below: the menu always has its tune. */
-const THEME_FLOOR: Record<Theme, number> = { menu: 0.5, backyard: 0 };
+const THEME_FLOOR: Record<Theme, number> = { menu: 0.5, backyard: 0, meadow: 0, desert: 0, tundra: 0, citadel: 0 };
 
 /** A note within its bar, in beats. */
 interface Note { layer: Layer; midi: number; beat: number; beats: number; velocity: number }
@@ -204,7 +209,209 @@ const MENU: readonly (readonly Note[])[] = MENU_PROGRESSION.map((name, i) => [
   ...menuDrums(),
 ]);
 
-const THEMES: Record<Theme, readonly (readonly Note[])[]> = { menu: MENU, backyard: BACKYARD };
+// ---------------------------------------------------------------------------------------------
+// Meadow: E minor, a soft rocking lullaby (half-note bass, a held pad, twinkles on the off beats),
+// i–VI–III–VII, i–iv–V7–i.
+
+const MEADOW_CHORDS = {
+  Em: 'E3 G3 B3', C: 'E3 G3 C4', G: 'D3 G3 B3', D: 'D3 F#3 A3', Am: 'E3 A3 C4', B7: 'D#3 F#3 B3',
+} as const;
+const MEADOW_PROGRESSION = ['Em', 'C', 'G', 'D', 'Em', 'Am', 'B7', 'Em'] as const;
+
+const MEADOW_BASS = [
+  'E2:2 B1:2', 'C2:2 G1:2', 'G1:2 D2:2', 'D2:2 A1:2', 'E2:2 B1:2', 'A1:2 E2:2', 'B1:2 F#2:2', 'E2:3 r:1',
+] as const;
+
+const MEADOW_TUNE = [
+  'B4:1.5 A4:0.5 G4:1 E4:1',
+  'G4:1.5 F#4:0.5 E4:2',
+  'D4:1 G4:1 B4:1.5 A4:0.5',
+  'A4:2 F#4:1 D4:1',
+  'B4:1.5 C5:0.5 B4:1 G4:1',
+  'A4:1.5 G4:0.5 E4:1 C5:1',
+  'B4:1 A4:1 F#4:1 D#4:1',
+  'E4:3 r:1',
+] as const;
+
+const MEADOW_COUNTER = [
+  'r:1 B5:1 r:1 E6:1', 'r:1 G5:1 r:1 C6:1', 'r:1 B5:1 r:1 D6:1', 'r:1 A5:1 r:1 F#5:1',
+  'r:1 G5:1 r:1 B5:1', 'r:1 C6:1 r:1 E6:1', 'r:1 D#6:1 r:1 F#5:1', 'r:1 E6:1 r:1 B5:1',
+] as const;
+
+function meadowDrums(bar: number): Note[] {
+  return [...hits(KICK, [0, 2], 0.45), ...hits(HAT, [1, 3], 0.2), ...(bar === 7 ? hits(TOM_LOW, [3], 0.4) : [])];
+}
+
+const MEADOW: readonly (readonly Note[])[] = MEADOW_PROGRESSION.map((name, i) => [
+  ...line(0, 0.7, MEADOW_BASS[i]!, 0.9),
+  ...chord(0.45, MEADOW_CHORDS[name], [0], 3.8),
+  ...line(1, 0.7, MEADOW_TUNE[i]!, 0.9),
+  ...line(2, 0.4, MEADOW_COUNTER[i]!, 0.6),
+  ...meadowDrums(i),
+]);
+
+// ---------------------------------------------------------------------------------------------
+// Desert: E Phrygian (the F a half step over E), a snaking tune over a drone-like bass and hand
+// drums, falling home each time through the Phrygian cadence F → Em.
+
+const DESERT_CHORDS = { Em: 'E3 G3 B3', F: 'F3 A3 C4', G: 'D3 G3 B3', Dm: 'D3 F3 A3' } as const;
+const DESERT_PROGRESSION = ['Em', 'F', 'Em', 'F', 'Dm', 'F', 'G', 'F'] as const;
+
+const DESERT_BASS: Record<keyof typeof DESERT_CHORDS, string> = {
+  Em: 'E2:1 r:0.5 E2:0.5 B1:1 E2:1',
+  F: 'F2:1 r:0.5 F2:0.5 C2:1 F2:1',
+  G: 'G1:1 r:0.5 G1:0.5 D2:1 G1:1',
+  Dm: 'D2:1 r:0.5 D2:0.5 A1:1 D2:1',
+};
+
+const DESERT_TUNE = [
+  'E5:0.5 F5:0.5 E5:0.5 D5:0.5 E5:1 B4:1',
+  'C5:0.5 D5:0.5 C5:0.5 B4:0.5 A4:2',
+  'E5:0.5 F5:0.5 G5:0.5 F5:0.5 E5:1 D5:0.5 E5:0.5',
+  'F5:1.5 E5:0.5 C5:1 A4:1',
+  'D5:0.5 E5:0.5 F5:0.5 E5:0.5 D5:1 A4:1',
+  'C5:0.5 D5:0.5 E5:0.5 F5:0.5 A5:1 F5:1',
+  'G5:0.5 F5:0.5 E5:0.5 D5:0.5 B4:1 D5:1',
+  'F5:1 E5:0.5 F5:0.5 E5:2',
+] as const;
+
+const DESERT_COUNTER: Record<keyof typeof DESERT_CHORDS, string> = {
+  Em: 'r:0.5 B5:0.5 r:0.5 E6:0.5 r:0.5 B5:0.5 r:0.5 G5:0.5',
+  F: 'r:0.5 C6:0.5 r:0.5 F6:0.5 r:0.5 C6:0.5 r:0.5 A5:0.5',
+  G: 'r:0.5 B5:0.5 r:0.5 D6:0.5 r:0.5 B5:0.5 r:0.5 G5:0.5',
+  Dm: 'r:0.5 A5:0.5 r:0.5 D6:0.5 r:0.5 A5:0.5 r:0.5 F5:0.5',
+};
+
+function desertDrums(bar: number): Note[] {
+  if (bar === 7) {
+    return [
+      ...hits(KICK, [0], 0.8), ...hits(TOM_LOW, [1], 0.55), ...hits(TOM_HIGH, [2, 2.5], 0.55),
+      ...hits(TOM_MID, [3], 0.6), ...hits(TOM_LOW, [3.5], 0.65),
+    ];
+  }
+  return [
+    ...hits(KICK, [0, 1.5], 0.75), ...hits(TOM_HIGH, [1, 2.5, 3], 0.5), ...hits(TOM_LOW, [2], 0.55),
+    ...hits(HAT, [0.5, 1.5, 3.5], 0.25),
+  ];
+}
+
+const DESERT: readonly (readonly Note[])[] = DESERT_PROGRESSION.map((name, i) => [
+  ...line(0, 0.8, DESERT_BASS[name], 0.8),
+  ...chord(0.4, DESERT_CHORDS[name], [0, 2], 1.6),
+  ...line(1, 0.75, DESERT_TUNE[i]!, 0.85),
+  ...line(2, 0.4, DESERT_COUNTER[name], 0.7),
+  ...desertDrums(i),
+]);
+
+// ---------------------------------------------------------------------------------------------
+// Tundra: A major, bright and sparse: a few high notes with room between them, ringing bells
+// above, a quiet bass on 1 and 3, I–V–vi–IV, I–V–IV–V.
+
+const TUNDRA_CHORDS = { A: 'A3 C#4 E4', E: 'G#3 B3 E4', 'F#m': 'A3 C#4 F#4', D: 'A3 D4 F#4' } as const;
+const TUNDRA_PROGRESSION = ['A', 'E', 'F#m', 'D', 'A', 'E', 'D', 'E'] as const;
+
+const TUNDRA_BASS = [
+  'A1:2 E2:2', 'E2:2 B1:2', 'F#2:2 C#2:2', 'D2:2 A1:2', 'A1:2 E2:2', 'E2:2 B1:2', 'D2:2 A1:2', 'E2:2 G#2:2',
+] as const;
+
+const TUNDRA_TUNE = [
+  'E5:1 r:1 A5:1 r:1',
+  'G#5:1.5 r:0.5 E5:2',
+  'F#5:1 r:1 C#6:1 A5:1',
+  'F#5:2 r:2',
+  'E5:1 r:1 A5:1 C#6:1',
+  'B5:1.5 r:0.5 G#5:2',
+  'A5:1 F#5:1 D5:1 F#5:1',
+  'E5:3 r:1',
+] as const;
+
+/** Bells: three notes a bar, far apart, high up. */
+const TUNDRA_COUNTER: Record<keyof typeof TUNDRA_CHORDS, string> = {
+  A: 'A6:0.5 r:1 E6:0.5 r:1 C#7:0.5 r:0.5',
+  E: 'G#6:0.5 r:1 E6:0.5 r:1 B6:0.5 r:0.5',
+  'F#m': 'F#6:0.5 r:1 C#6:0.5 r:1 A6:0.5 r:0.5',
+  D: 'F#6:0.5 r:1 D6:0.5 r:1 A6:0.5 r:0.5',
+};
+
+function tundraDrums(bar: number): Note[] {
+  return [...hits(KICK, [0], 0.5), ...hits(HAT, [1, 2, 3], 0.22), ...(bar === 7 ? hits(OPEN_HAT, [3.5], 0.3, 0.5) : [])];
+}
+
+const TUNDRA: readonly (readonly Note[])[] = TUNDRA_PROGRESSION.map((name, i) => [
+  ...line(0, 0.7, TUNDRA_BASS[i]!, 0.5),
+  ...chord(0.35, TUNDRA_CHORDS[name], [0], 3.5),
+  ...line(1, 0.75, TUNDRA_TUNE[i]!, 0.9),
+  ...line(2, 0.45, TUNDRA_COUNTER[name], 1),
+  ...tundraDrums(i),
+]);
+
+// ---------------------------------------------------------------------------------------------
+// Citadel: D minor, low and driving: a pumping eighth-note bass, low pad stabs, a heroic tune,
+// a kick on every beat, i–i–VI–VII, i–iv–VI–V.
+
+const CITADEL_CHORDS = {
+  Dm: 'D3 F3 A3', Bb: 'D3 F3 Bb3', C: 'C3 E3 G3', Gm: 'D3 G3 Bb3', A: 'C#3 E3 A3',
+} as const;
+const CITADEL_PROGRESSION = ['Dm', 'Dm', 'Bb', 'C', 'Dm', 'Gm', 'Bb', 'A'] as const;
+
+const CITADEL_BASS = [
+  'D2:0.5 D2:0.5 A1:0.5 D2:0.5 D2:0.5 A1:0.5 D2:0.5 F2:0.5',
+  'D2:0.5 D2:0.5 A1:0.5 D2:0.5 D2:0.5 A1:0.5 E2:0.5 F2:0.5',
+  'Bb1:0.5 Bb1:0.5 F1:0.5 Bb1:0.5 Bb1:0.5 F1:0.5 Bb1:0.5 D2:0.5',
+  'C2:0.5 C2:0.5 G1:0.5 C2:0.5 C2:0.5 G1:0.5 C2:0.5 E2:0.5',
+  'D2:0.5 D2:0.5 A1:0.5 D2:0.5 D2:0.5 A1:0.5 D2:0.5 F2:0.5',
+  'G1:0.5 G1:0.5 D2:0.5 G1:0.5 G1:0.5 D2:0.5 G1:0.5 Bb1:0.5',
+  'Bb1:0.5 Bb1:0.5 F1:0.5 Bb1:0.5 Bb1:0.5 F1:0.5 Bb1:0.5 D2:0.5',
+  'A1:0.5 A1:0.5 E2:0.5 A1:0.5 C#2:0.5 E2:0.5 A1:0.5 C#2:0.5',
+] as const;
+
+const CITADEL_TUNE = [
+  'D4:1 F4:0.5 A4:0.5 D5:1.5 C5:0.5',
+  'A4:1 F4:0.5 G4:0.5 A4:2',
+  'Bb4:1 A4:0.5 G4:0.5 F4:1 D4:1',
+  'E4:1 G4:0.5 C5:0.5 E5:1.5 r:0.5',
+  'D5:1 C5:0.5 A4:0.5 F4:1 A4:1',
+  'G4:1 Bb4:0.5 D5:0.5 G5:1.5 F5:0.5',
+  'F5:1 D5:0.5 Bb4:0.5 F4:1 D4:1',
+  'E4:0.5 A4:0.5 C#5:1 A4:2',
+] as const;
+
+const CITADEL_COUNTER: Record<keyof typeof CITADEL_CHORDS, string> = {
+  Dm: 'r:0.5 A4:0.5 r:0.5 D5:0.5 r:0.5 A4:0.5 r:0.5 F5:0.5',
+  Bb: 'r:0.5 F4:0.5 r:0.5 Bb4:0.5 r:0.5 F4:0.5 r:0.5 D5:0.5',
+  C: 'r:0.5 G4:0.5 r:0.5 C5:0.5 r:0.5 G4:0.5 r:0.5 E5:0.5',
+  Gm: 'r:0.5 G4:0.5 r:0.5 Bb4:0.5 r:0.5 D5:0.5 r:0.5 G5:0.5',
+  A: 'r:0.5 E4:0.5 r:0.5 A4:0.5 r:0.5 C#5:0.5 r:0.5 E5:0.5',
+};
+
+function citadelDrums(bar: number): Note[] {
+  if (bar === 7) {
+    return [
+      ...hits(KICK, [0, 1, 2], 0.9), ...hits(SNARE, [1], 0.65), ...hits(HAT, [0, 0.5, 1, 1.5, 2, 2.5], 0.3),
+      ...hits(TOM_HIGH, [3], 0.7), ...hits(TOM_MID, [3.25], 0.7), ...hits(TOM_LOW, [3.5], 0.75), ...hits(SNARE, [3.75], 0.6),
+    ];
+  }
+  return [
+    ...hits(KICK, bar === 3 ? [0, 1, 2, 3, 3.5] : [0, 1, 2, 3], 0.85),
+    ...hits(SNARE, [1, 3], 0.65),
+    ...EIGHTHS.flatMap((b) => hits(HAT, [b], b % 1 === 0 ? 0.35 : 0.25)),
+  ];
+}
+
+const CITADEL: readonly (readonly Note[])[] = CITADEL_PROGRESSION.map((name, i) => [
+  ...line(0, 0.85, CITADEL_BASS[i]!, 0.7),
+  ...chord(0.45, CITADEL_CHORDS[name], [0, 2], 1.8),
+  ...line(1, 0.8, CITADEL_TUNE[i]!, 0.9),
+  ...line(2, 0.4, CITADEL_COUNTER[name], 0.6),
+  ...citadelDrums(i),
+]);
+
+const THEMES: Record<Theme, readonly (readonly Note[])[]> = {
+  menu: MENU, backyard: BACKYARD, meadow: MEADOW, desert: DESERT, tundra: TUNDRA, citadel: CITADEL,
+};
+
+/** Every theme, the menu's first. */
+export const THEME_KEYS = Object.keys(THEMES) as Theme[];
 
 // ---------------------------------------------------------------------------------------------
 // Stings: four bars of 2/4 at the same 112 bpm (4.3 s), played as one effect each.

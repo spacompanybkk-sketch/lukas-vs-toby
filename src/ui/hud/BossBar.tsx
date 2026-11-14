@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { BOSS_BAR_BLOCKS } from '../../app/BattleController';
 import type { BossVM } from '../../app/BattleController';
+import { BOSS_LOOK } from '../../data/bossLooks';
 import type { BossKey } from '../../sim/types';
 import './bossBar.css';
 
@@ -55,6 +56,7 @@ export function BossBar({ boss, onSkip, intro: withIntro = true }: BossBarProps)
       <div
         data-hud="boss"
         class={`hud-boss hud-boss--${boss.key}${boss.shield ? ' is-shielded' : ''}${down ? ' is-down' : ''}`}
+        style={{ '--boss-fill': BOSS_LOOK[boss.key].bar.fill, '--boss-fill-hi': BOSS_LOOK[boss.key].bar.hi }}
       >
         <span class="hud-boss__face px pal-bone" aria-hidden="true">
           <BossFace boss={boss.key} down={down} />
@@ -96,7 +98,7 @@ function ShieldIcon() {
   );
 }
 
-/** The boss's face, 12 pixels square, crisp: the Titan's green head with its brain crown, the Oak's bark face under leaves. */
+/** The boss's face, 12 pixels square, crisp, drawn from its row in `BOSS_LOOK` (its eyes knocked out once it is beaten). */
 export function BossFace({ boss, down = false }: { boss: BossKey; down?: boolean }) {
   const eye = (x: number, y: number, w: number, h: number) =>
     down ? (
@@ -113,34 +115,9 @@ export function BossFace({ boss, down = false }: { boss: BossKey; down?: boolean
         <rect x={x} y={y} width="1" height="1" fill="#FFFFFF" />
       </>
     );
-  if (boss === 'brainTitan') {
-    return (
-      <svg viewBox="0 0 12 12" shape-rendering="crispEdges" class="hud-boss__face-art">
-        <rect x="1" y="3" width="10" height="7" fill="#9ACD8A" />
-        <rect x="1" y="2" width="10" height="1" fill="#FFC83D" />
-        <rect x="1" y="0" width="3" height="2" fill="#FF8FB1" />
-        <rect x="4.5" y="0" width="3" height="2" fill="#FF8FB1" />
-        <rect x="8" y="0" width="3" height="2" fill="#FF8FB1" />
-        {eye(2, 4, 3, 3)}
-        {eye(7, 5, 2, 2)}
-        <rect x="0" y="8" width="12" height="4" fill="#6FA364" />
-        <rect x="2" y="7" width="2" height="2" fill="#F4EBDD" />
-        <rect x="8" y="7" width="2" height="2" fill="#F4EBDD" />
-      </svg>
-    );
-  }
   return (
     <svg viewBox="0 0 12 12" shape-rendering="crispEdges" class="hud-boss__face-art">
-      <rect x="0" y="0" width="12" height="4" fill="#3E9A2E" />
-      <rect x="1" y="0" width="10" height="2" fill="#58C13B" />
-      <rect x="2" y="4" width="8" height="8" fill="#A8703A" />
-      <rect x="3" y="5" width="6" height="6" fill="#C98F55" />
-      <rect x="3" y="4" width="2" height="1" fill="#3E9A2E" />
-      <rect x="7" y="4" width="2" height="1" fill="#3E9A2E" />
-      {eye(3, 5, 2, 2)}
-      {eye(7, 5, 2, 2)}
-      <rect x="4" y="8" width="4" height="1" fill="#8BE05A" />
-      <rect x="4" y="9" width="4" height="1" fill="#24140A" />
+      {BOSS_LOOK[boss].face.map(([x, y, w, h, fill]) => (fill === 'eye' ? eye(x, y, w, h) : <rect x={x} y={y} width={w} height={h} fill={fill} />))}
     </svg>
   );
 }
