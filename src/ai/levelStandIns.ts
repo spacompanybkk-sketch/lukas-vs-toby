@@ -11,9 +11,10 @@
  * - **average** (Lukas, 8, on Normal): the Medium computer's choices, a little slow and careless
  *   (one decision every 3 s, 15% of them random, no powers before 20 s, at most 4 Sunflowers); Marketplace upgrades as the campaign's rewards allow
  *   (`averageUpgrades` in `levelChecks.ts`: the coins of his stars, spent at the real prices on his favourites).
- * - **expert** (on Normal, no upgrades): the Hard computer's choices. Against the Brain Titan it
- *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane (the
- *   average player puts Peashooters there: he shoots at the giant).
+ * - **expert** (on Normal, no upgrades): the Hard computer's choices. He knows the bosses
+ *   (`BOSS_ANSWER`): lobbing pults in the Brain Titan's and the Moon Howler's lane, where the average
+ *   player puts Peashooters (he shoots at the giant); as the zombies he never sends into a lane
+ *   whose strike is winding up (`strikeLanes`). The average player and the beginner are unaware.
  *
  * In a Breakthrough (a garden to break: z1-3, z1-6, Free Play's gardens) the average player and the
  * expert push one lane with every zombie (`breakthroughLane`): the expert reads which lane gives as
@@ -25,11 +26,11 @@
  */
 
 import type { Balance } from '../data/balance';
-import { isStanding } from '../sim/lookup';
+import { isBoss, isStanding } from '../sim/lookup';
 import type { Match } from '../sim/match';
 import { randomInt } from '../sim/rng';
 import { COLS, LANES, PLANT_COLS } from '../sim/types';
-import type { CardKey, Command, Faction, SpellKey, Unit } from '../sim/types';
+import type { BossKey, CardKey, Command, Faction, SpellKey, Unit } from '../sim/types';
 import { createBasicBot, SKILLS, POWER_PACING } from './basicBot';
 import type { SkillTable } from './basicBot';
 import type { Bot, Skill } from './bot';
@@ -297,38 +298,87 @@ function createBeginner(side: Faction, seed: number, hero: boolean): Bot {
   };
 }
 
-/** The Brain Titan's lane while it stands (a plants level), or -1. */
-function titanLane(match: Match): number {
+/**
+ * What a sensible plant player puts in a zombie boss's lane (`BOSS_ANSWER`): up to `want` plants of
+ * `cards` in all, the first of `cards` he holds that a tile takes, on `cols` (lo..hi, free tiles
+ * short of the nearest zombie) or wherever `sensibleCols` says.
+ */
+export interface BossAnswer { readonly cards: readonly CardKey[]; readonly want: number; readonly cols?: readonly [number, number] }
+
+/**
+ * What each sensible player knows about each zombie boss (a plants level; plant bosses have no entry).
+ * - Brain Titan: the expert knows its shield bounces straight shots and plants lobbing Kernel-pults;
+ *   the average player just shoots at the giant.
+ * - Moon Howler: its dome bounces straight shots and the fog caps every shot at 5 tiles, so the
+ *   expert plants two pults (the Mango-pult first) on columns 3-4 of its lane; the average player
+ *   puts three Peashooters at the usual columns. The beginner knows nothing of either.
+ */
+export const BOSS_ANSWER: Readonly<Partial<Record<BossKey, Readonly<Record<'average' | 'expert', BossAnswer>>>>> = {
+  brainTitan: { expert: { cards: ['kernelPult'], want: 2 }, average: { cards: ['peashooter'], want: 3 } },
+  moonHowler: { expert: { cards: ['mangoPult', 'kernelPult'], want: 2, cols: [3, 4] }, average: { cards: ['peashooter'], want: 3 } },
+};
+
+/** The level's zombie boss with an answer, and its lane while it stands (a plants level), or null. */
+function answeredBoss(match: Match, kind: 'average' | 'expert'): { lane: number; answer: BossAnswer } | null {
   const boss = match.state.config.boss;
-  if (boss?.key !== 'brainTitan') return -1;
-  return match.state.units.some((u) => u.key === 'brainTitan' && isStanding(u)) ? boss.lane : -1;
+  if (boss === null) return null;
+  const answer = BOSS_ANSWER[boss.key]?.[kind];
+  if (answer === undefined) return null;
+  return match.state.units.some((u) => u.key === boss.key && isStanding(u)) ? { lane: boss.lane, answer } : null;
+}
+
+/** The free tiles of `view` on columns lo..hi short of its nearest zombie. */
+function colsBetween(view: LaneView, lo: number, hi: number): number[] {
+  const zombie = nearestZombie(view);
+  const zx = zombie === undefined ? COLS : zombie.x;
+  const out: number[] = [];
+  for (let c = Math.max(0, lo); c <= Math.min(PLANT_COLS - 1, hi); c++) if (freeTile(view, c) && c + 0.5 < zx) out.push(c);
+  return out;
 }
 
 /**
- * Shooters of `card` in the Titan's lane, up to `want` of them (null when there are enough, the
- * card is not held, or no tile takes one).
+ * The sensible player's next answer to the boss (`BOSS_ANSWER`), or null when there is no boss with
+ * an answer, there are enough already, he holds none of its cards, or no tile takes one.
  */
-function titanAnswer(match: Match, card: CardKey, want: number): Command | null {
-  const lane = titanLane(match);
-  if (lane < 0 || !match.state.config.cards.plants.includes(card)) return null;
+function bossAnswer(match: Match, kind: 'average' | 'expert'): Command | null {
+  const found = answeredBoss(match, kind);
+  if (found === null) return null;
+  const { lane, answer } = found;
+  const held = answer.cards.filter((c) => match.state.config.cards.plants.includes(c));
+  if (held.length === 0) return null;
   const view = readLawn(match.state)[lane];
   if (view === undefined) return null;
-  if (view.plants.filter((p) => p.key === card).length >= want) return null;
-  for (const col of sensibleCols(view, card)) {
-    const cmd = placeCommand('plants', card, lane, col);
-    if (match.check(cmd) === null) return cmd;
+  if (view.plants.filter((p) => answer.cards.includes(p.key as CardKey)).length >= answer.want) return null;
+  for (const card of held) {
+    const cols = answer.cols === undefined ? sensibleCols(view, card) : colsBetween(view, answer.cols[0], answer.cols[1]);
+    for (const col of cols) {
+      const cmd = placeCommand('plants', card, lane, col);
+      if (match.check(cmd) === null) return cmd;
+    }
   }
   return null;
 }
 
 /**
- * What each sensible player puts in the Titan's lane: the expert knows its shield bounces straight
- * shots and plants lobbing Kernel-pults; the average player just shoots at the giant.
+ * The lanes a boss's strike is winding up on (its `strikeTiles`, which the child sees blink), or
+ * an empty set.
  */
-export const TITAN_ANSWER: Readonly<Record<'average' | 'expert', { card: CardKey; want: number }>> = {
-  expert: { card: 'kernelPult', want: 2 },
-  average: { card: 'peashooter', want: 3 },
-};
+export function strikeLanes(match: Match): ReadonlySet<number> {
+  const lanes = new Set<number>();
+  if (match.state.config.boss === null) return lanes;
+  for (const u of match.state.units) {
+    if (!isBoss(u.key) || !isStanding(u)) continue;
+    for (const t of u.strikeTiles) lanes.add(Math.floor(t / COLS));
+  }
+  return lanes;
+}
+
+/** The zombie expert's dodge: no zombie into a lane whose strike is winding up (the computer's choice is dropped; he looks again). */
+function dodgeStrikes(match: Match, cmds: Command[]): Command[] {
+  const lanes = strikeLanes(match);
+  if (lanes.size === 0) return cmds;
+  return cmds.filter((c) => !((c.type === 'place' || c.type === 'belt') && lanes.has(c.lane)));
+}
 
 /**
  * A Breakthrough (a garden to break, nobody rebuilding it): the lane a sensible zombie player pushes
@@ -365,42 +415,41 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
   // Without the hero's button, the computer's hero presses are never made.
   const powerOk = (c: Command): boolean => c.type === 'spell' || (hero && c.type === 'hero');
   const own = (cmds: Command[]): Command[] => (hero ? cmds : cmds.filter((c) => c.type !== 'hero'));
-  return {
-    faction: side,
-    think(match) {
-      const s = match.state;
-      if (s.winner !== null) return [];
-      if (s.config.belt !== null && s.config.belt.side === side) {
-        // No energy: the hero and spells as the computer would fire them, and the belt.
-        const out: Command[] = card.think(match).filter(powerOk);
-        if (s.tick % beltEvery === 0) {
-          // The average player's mistakes: now and then a random belt card to a random sensible tile.
-          const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
-          const cmd = careless ? beginnerBelt(match, side, rng) : sensibleBelt(match, side, rng, lane);
-          if (cmd !== null) out.push(cmd);
-        }
-        return out;
+  const think = (match: Match): Command[] => {
+    const s = match.state;
+    if (s.winner !== null) return [];
+    if (s.config.belt !== null && s.config.belt.side === side) {
+      // No energy: the hero and spells as the computer would fire them, and the belt.
+      const out: Command[] = card.think(match).filter(powerOk);
+      if (s.tick % beltEvery === 0) {
+        // The average player's mistakes: now and then a random belt card to a random sensible tile.
+        const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
+        const cmd = careless ? beginnerBelt(match, side, rng) : sensibleBelt(match, side, rng, lane);
+        if (cmd !== null) out.push(cmd);
       }
-      if (side === 'zombies' && (s.config.mode === 'breakthrough' || (strong?.stack === true && s.config.mode === 'battle'))) {
-        // The hero and spells as the computer fires them; the cards all down the lane that gives.
-        const out: Command[] = card.think(match).filter(powerOk);
-        if (s.tick % table.thinkEvery === 0) {
-          const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
-          const cmd = careless ? randomLegal(match, side, rng) : breakthroughMove(match, kind, table, rng, memory);
-          if (cmd !== null) out.push(cmd);
-        }
-        return out;
+      return out;
+    }
+    if (side === 'zombies' && (s.config.mode === 'breakthrough' || (strong?.stack === true && s.config.mode === 'battle'))) {
+      // The hero and spells as the computer fires them; the cards all down the lane that gives.
+      const out: Command[] = card.think(match).filter(powerOk);
+      if (s.tick % table.thinkEvery === 0) {
+        const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
+        const cmd = careless ? randomLegal(match, side, rng) : breakthroughMove(match, kind, table, rng, memory);
+        if (cmd !== null) out.push(cmd);
       }
-      if (side === 'plants' && s.tick % table.thinkEvery === 0) {
-        const answer = titanAnswer(match, TITAN_ANSWER[kind].card, TITAN_ANSWER[kind].want);
-        if (answer !== null) {
-          const powers = card.think(match).filter(powerOk);
-          return [...powers, answer];
-        }
+      return out;
+    }
+    if (side === 'plants' && s.tick % table.thinkEvery === 0) {
+      const answer = bossAnswer(match, kind);
+      if (answer !== null) {
+        const powers = card.think(match).filter(powerOk);
+        return [...powers, answer];
       }
-      return own(card.think(match));
-    },
+    }
+    return own(card.think(match));
   };
+  if (kind === 'expert' && side === 'zombies') return { faction: side, think: (match) => dodgeStrikes(match, think(match)) };
+  return { faction: side, think };
 }
 
 /**
