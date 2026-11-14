@@ -33,6 +33,32 @@ export function dressWorld(parts: Dressable, world: WorldKey, lawn: LawnConfig =
 }
 
 /**
+ * The world a stage is asked to show, put on only when it changes: `want` compares by identity
+ * (no work when a battle passes the stage's own config back), and `apply` dresses the parts at
+ * most once per change, where the lawn compares the twists by value. A frame with nothing new
+ * costs one boolean test and allocates nothing.
+ */
+export class WorldWanted {
+  private world: WorldKey = 'backyard';
+  private lawn: LawnConfig = NO_TWIST;
+  private pending = false;
+
+  want(world: WorldKey, lawn: LawnConfig): void {
+    if (world === this.world && lawn === this.lawn) return;
+    this.world = world;
+    this.lawn = lawn;
+    this.pending = true;
+  }
+
+  /** Dresses `parts` as the world last wanted when that changed since the last call, or always when `force`. */
+  apply(parts: Dressable, force = false): void {
+    if (!this.pending && !force) return;
+    this.pending = false;
+    dressWorld(parts, this.world, this.lawn);
+  }
+}
+
+/**
  * Whatever is playing on the stage: the title's demo battle, or the player's battle. The stage's
  * loop calls `step` 30 times a second of game time and `frame` once per animation frame.
  */
@@ -119,7 +145,7 @@ export class Stage implements StageLike {
   private time = 0;
   private disposed = false;
   /** The world asked for, put on at the next frame (so a hand-over and a new battle's world cost one rebuild at most). */
-  private wanted: { world: WorldKey; lawn: LawnConfig } = { world: 'backyard', lawn: NO_TWIST };
+  private readonly wanted = new WorldWanted();
 
   /** Throws `Error('webgl2-unavailable')` when the browser cannot draw. */
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
@@ -185,12 +211,12 @@ export class Stage implements StageLike {
   }
 
   setWorld(world: WorldKey, lawn: LawnConfig): void {
-    this.wanted = { world, lawn };
+    this.wanted.want(world, lawn);
   }
 
   /** Puts the world asked for on now rather than at the next frame (tools and tests). */
   applyWorld(): void {
-    dressWorld(this, this.wanted.world, this.wanted.lawn);
+    this.wanted.apply(this, true);
   }
 
   /** Stops the loop and frees everything; the director on stage is detached first. */
@@ -219,11 +245,11 @@ export class Stage implements StageLike {
     this.rig.reset();
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
-    this.wanted = { world: 'backyard', lawn: NO_TWIST };
+    this.wanted.want('backyard', NO_TWIST);
   }
 
   private draw(alpha: number, realDt: number, gameDt: number): void {
-    this.applyWorld();
+    this.wanted.apply(this);
     this.time += gameDt;
     this.current?.frame(alpha, realDt, gameDt);
     this.fx.update(gameDt, this.renderer.camera);
