@@ -1,0 +1,513 @@
+import type { BufferGeometry, ColorRepresentation } from 'three';
+import { GRAVE_FROM_COL, LAWN_COLS, LAWN_LANES } from '../coords';
+import { PALETTE } from '../palette';
+import { BoxBatch, seededRandom, shade } from './boxes';
+import { at, bone, bush, crack, deadTree, flower, gravestone, rock, tileCorner, tree } from './props';
+
+// The props of the worlds after the Backyard. Same rules as `props.ts`: everything is boxes,
+// sizes in tiles, nothing on a playable tile taller than 0.25, nothing on the front rim tall
+// enough to hide lane 4. Each world keeps the zombies' end a graveyard in its own materials,
+// so the two ends of the lawn read as the two sides in every world.
+
+type Props = { solid: BufferGeometry; glow: BufferGeometry };
+
+/** A glowing mushroom: stem in `solid`, cap in `glow`. About 0.14 tall at scale 1. */
+function glowShroom(solid: BoxBatch, glow: BoxBatch, x: number, z: number, s: number): void {
+  at(solid, x, z, 0, 0, () => solid.boxOn(0, 0, 0, 0.035 * s, 0.08 * s, 0.035 * s, PALETTE.bone, PALETTE.boneShadow));
+  at(glow, x, z, 0, 0, () => {
+    glow.boxOn(0, 0.08 * s, 0, 0.12 * s, 0.04 * s, 0.12 * s, '#8FE9FF', '#C8F6FF');
+    glow.boxOn(0, 0.12 * s, 0, 0.07 * s, 0.03 * s, 0.07 * s, '#C8F6FF');
+  });
+}
+
+/** A clump of tall grass blades, `h` tall. */
+function tallGrass(batch: BoxBatch, x: number, z: number, h: number, color: ColorRepresentation, random: () => number): void {
+  for (let i = 0; i < 5; i++) {
+    const dx = (random() - 0.5) * 0.18;
+    const dz = (random() - 0.5) * 0.12;
+    const bh = h * (0.55 + random() * 0.45);
+    at(batch, x + dx, z + dz, random() * 1.5, (random() - 0.5) * 0.3, () => {
+      batch.boxOn(0, 0, 0, 0.035, bh, 0.035, shade(color, -0.04), shade(color, 0.05));
+    });
+  }
+}
+
+/** A run of dry-stone wall along +X from `x0` to `x1` at depth `z`. */
+function stoneWall(batch: BoxBatch, x0: number, x1: number, z: number, stone: string, random: () => number): void {
+  let x = x0;
+  let row = 0;
+  for (const y of [0, 0.1, 0.2]) {
+    x = x0 + (row % 2) * 0.12;
+    while (x < x1 - 0.05) {
+      const w = Math.min(0.18 + random() * 0.14, x1 - x);
+      batch.box(x, y, z - 0.07, w - 0.012, 0.1 - 0.008, 0.14, shade(stone, (random() - 0.5) * 0.08), shade(stone, 0.05 + (random() - 0.5) * 0.05));
+      x += w;
+    }
+    row++;
+  }
+}
+
+/** A lamp post: a wooden post, a little roof and a glowing lamp (in `glow`). */
+function lantern(solid: BoxBatch, glow: BoxBatch, x: number, z: number, h: number): void {
+  const { walnut, walnutDark } = PALETTE;
+  at(solid, x, z, 0, 0, () => {
+    solid.boxOn(0, 0, 0, 0.07, h, 0.07, walnutDark, walnut);
+    solid.boxOn(0, h, 0, 0.18, 0.03, 0.18, walnutDark, walnut);
+    solid.boxOn(0, h + 0.17, 0, 0.2, 0.035, 0.2, walnutDark, walnut);
+  });
+  at(glow, x, z, 0, 0, () => glow.boxOn(0, h + 0.03, 0, 0.12, 0.14, 0.12, '#C8F6FF'));
+}
+
+/** Flat bones, cracks and pebbles near the corners of the zombies' tiles, as in the Backyard. */
+function graveTiles(solid: BoxBatch, random: () => number, crackColor: ColorRepresentation, pebble: [string, string]): void {
+  for (let lane = 0; lane < LAWN_LANES; lane++) {
+    for (let col = GRAVE_FROM_COL; col < LAWN_COLS; col++) {
+      const [dx, dz] = tileCorner(random);
+      if (random() < 0.6) bone(solid, col + dx, lane + dz, random() * 3, 0.95);
+      const [cx, cz] = tileCorner(random);
+      crack(solid, col + cx, lane + cz, random() * 3, 0.9 + random() * 0.6, crackColor);
+      if (random() < 0.5) {
+        const [px, pz] = tileCorner(random);
+        solid.boxOn(col + px, 0, lane + pz, 0.045, 0.03, 0.04, pebble[0], pebble[1]);
+      }
+    }
+  }
+}
+
+/** The Meadow at night: a dry-stone wall, tall grass, pale flowers, glowing mushrooms and lamps. */
+export function buildMeadowProps(): Props {
+  const random = seededRandom(20261202);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const wall = '#7C86A8';
+  const reeds = '#3F8F76';
+  const petals = ['#FFFFFF', '#C9DCFF', '#9DB8FF', '#FFF2B0'];
+  const anyPetal = (): string => petals[Math.floor(random() * petals.length)] as string;
+
+  // --- Lukas's end: the wall along the back, tall grass and two trees behind it.
+  stoneWall(solid, 0.15, 7.55, -0.46, wall, random);
+  for (let i = 0; i < 9; i++) tallGrass(solid, 0.4 + i * 0.85 + random() * 0.3, -0.8 - random() * 0.12, 0.34, reeds, random);
+  tree(solid, 2.4, -0.95, 1.1, 0.3);
+  tree(solid, 5.6, -0.9, 0.9, -0.2);
+  tree(solid, -2.0, -0.45, 1.15, 0.2);
+  bush(solid, -2.2, 4.3, 1.0, random);
+  bush(solid, -2.15, 0.5, 0.8, random);
+  lantern(solid, glow, -0.55, -0.45, 0.62);
+  lantern(solid, glow, -1.1, 5.4, 0.5);
+  for (const [x, z, s] of [[1.3, -0.72, 1.3], [1.45, -0.62, 0.9], [4.4, -0.75, 1.1], [6.9, -0.7, 1.2], [-2.3, 2.1, 1.3], [-2.05, 2.3, 0.9], [-2.4, 3.3, 1.0]] as const) {
+    glowShroom(solid, glow, x, z, s);
+  }
+  for (let i = 0; i < 6; i++) flower(solid, -2.2 + random() * 0.3, 1.2 + random() * 2.6, anyPetal(), 1.2);
+
+  // Front rim: low things only.
+  for (let i = 0; i < 16; i++) flower(solid, -1.6 + random() * 9.2, 5.2 + random() * 0.45, anyPetal(), 1.1 + random() * 0.3);
+  rock(solid, 1.9, 5.5, 0.9, wall, 0.3);
+  rock(solid, 5.7, 5.62, 1.1, wall, 2.2);
+  for (const [x, z, s] of [[3.3, 5.48, 1.0], [3.47, 5.58, 0.7], [6.9, 5.42, 0.9]] as const) glowShroom(solid, glow, x, z, s);
+
+  // Pale flowers on the first two columns, tucked into the tile corners.
+  for (let lane = 0; lane < LAWN_LANES; lane++) {
+    for (let col = 0; col < 2; col++) {
+      const [dx, dz] = tileCorner(random);
+      flower(solid, col + dx, lane + dz, anyPetal(), 0.95);
+    }
+  }
+
+  // --- Toby's end: gravestones, a dead tree, bones; mushrooms glow among the graves.
+  gravestone(solid, 8.55, -0.5, 0.62, 0.1, 0.06);
+  gravestone(solid, 9.35, -0.62, 0.56, -0.15, -0.09, true);
+  gravestone(solid, 10.6, -0.5, 0.44, 0.25, 0.1);
+  deadTree(solid, 12.05, -0.4, 1.25, 0.15);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.1, 0.34, -1.2, 0.08, true);
+  gravestone(solid, 12.15, 3.9, 0.3, -1.4, -0.1);
+  for (let i = 0; i < 6; i++) bone(solid, 8.3 + random() * 3.6, -0.28 + random() * 0.12, random() * 3, 1.1);
+  for (let i = 0; i < 6; i++) bone(solid, 8.3 + random() * 3.4, 5.2 + random() * 0.35, random() * 3, 1.1);
+  for (const [x, z, s] of [[9.9, -0.45, 1.2], [11.4, -0.6, 1.0], [12.3, 2.5, 1.1], [10.4, 5.5, 1.0]] as const) glowShroom(solid, glow, x, z, s);
+  graveTiles(solid, random, shade('#33295A', -0.09), [PALETTE.stoneDark, PALETTE.stone]);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Meadow islet: tall grass and a glowing mushroom, or a gravestone. */
+export function meadowIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    bone(batch, 0.4, 0.35, 0.8, 1.3);
+    return;
+  }
+  tallGrass(batch, -0.2, -0.1, 0.4, '#3F8F76', random);
+  bush(batch, 0.3, 0.1, 0.7, random);
+  flower(batch, 0.45, 0.35, '#C9DCFF', 1.6);
+}
+
+/** A flat-topped mesa of stepped sandstone layers, `h` tall and `w` wide. */
+function mesa(batch: BoxBatch, x: number, z: number, w: number, d: number, h: number, random: () => number): void {
+  const bands = ['#D2864A', '#C4743E', '#DE9858', '#B86A38'];
+  const layers = Math.max(3, Math.round(h / 0.18));
+  let width = w;
+  let depth = d;
+  for (let i = 0; i < layers; i++) {
+    const y = (i * h) / layers;
+    const band = bands[i % bands.length] as string;
+    // Wider at the foot, a ledge now and then.
+    const step = i < 2 ? 0.92 : random() < 0.3 ? 0.9 : 0.985;
+    batch.boxOn(x + (random() - 0.5) * 0.04, y, z, width, h / layers + 0.001, depth, shade(band, (random() - 0.5) * 0.04), shade('#E8A868', 0.02));
+    width *= step;
+    depth *= step;
+  }
+}
+
+/** A boxy saguaro cactus, `h` tall, with an arm or two. */
+function cactus(batch: BoxBatch, x: number, z: number, h: number, yaw: number, random: () => number): void {
+  const green = '#4F9A4A';
+  const dark = '#3B7A3A';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.12 * h, h, 0.12 * h, dark, green);
+    const arms = random() < 0.5 ? [-1, 1] : [random() < 0.5 ? -1 : 1];
+    for (const side of arms) {
+      const y = h * (0.35 + random() * 0.2);
+      batch.boxOn(side * 0.11 * h, y, 0, 0.12 * h, 0.08 * h, 0.08 * h, dark, green);
+      batch.boxOn(side * 0.17 * h, y, 0, 0.08 * h, h * (0.28 + random() * 0.12), 0.08 * h, dark, green);
+    }
+    // A pink flower on top.
+    batch.boxOn(0, h, 0, 0.06 * h, 0.04 * h, 0.06 * h, '#FF8FB1');
+  });
+}
+
+/** A boxy animal skull lying on the sand (goofy, not frightening). */
+function skull(batch: BoxBatch, x: number, z: number, yaw: number, s: number): void {
+  const { bone: b, boneShadow } = PALETTE;
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.16 * s, 0.09 * s, 0.12 * s, boneShadow, b);
+    batch.boxOn(0.1 * s, 0, 0, 0.08 * s, 0.06 * s, 0.08 * s, boneShadow, b);
+    batch.boxOn(-0.03 * s, 0.06 * s, 0.062 * s, 0.03 * s, 0.025 * s, 0.004, PALETTE.socket);
+    batch.boxOn(-0.03 * s, 0.06 * s, -0.062 * s, 0.03 * s, 0.025 * s, 0.004, PALETTE.socket);
+    for (const side of [-1, 1]) batch.boxOn(-0.06 * s, 0.07 * s, side * 0.09 * s, 0.03 * s, 0.03 * s, 0.08 * s, boneShadow, b);
+  });
+}
+
+/** A broken sandstone pillar, `h` tall. */
+function pillar(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+  const stone = '#C9A06A';
+  const dark = '#A57E4E';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.26, 0.06, 0.26, dark, stone);
+    batch.boxOn(0, 0.06, 0, 0.18, h - 0.06, 0.18, dark, stone);
+    batch.boxOn(0.04, h, 0.02, 0.1, 0.05, 0.12, dark, stone);
+  });
+}
+
+/** The Desert: mesas behind the island, cacti, skulls and a broken colonnade by the graves. */
+export function buildDesertProps(): Props {
+  const random = seededRandom(20261203);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const sandRock = '#B8875A';
+
+  // --- Lukas's end: mesas along the back, cacti and boulders before them.
+  mesa(solid, -2.0, -0.9, 1.3, 0.9, 1.3, random);
+  mesa(solid, 3.2, -1.15, 1.6, 0.7, 0.9, random);
+  mesa(solid, 6.6, -1.05, 1.0, 0.6, 0.62, random);
+  cactus(solid, 0.6, -0.62, 0.75, 0.2, random);
+  cactus(solid, 1.9, -0.82, 0.55, -0.4, random);
+  cactus(solid, 5.2, -0.7, 0.8, 0.5, random);
+  cactus(solid, -2.15, 2.6, 0.9, 0.1, random);
+  cactus(solid, -2.3, 4.4, 0.6, 0.6, random);
+  rock(solid, 2.6, -0.62, 1.3, sandRock, 0.4);
+  rock(solid, 4.3, -0.55, 0.8, sandRock, 1.1);
+  rock(solid, -2.1, 1.0, 1.1, sandRock, 0.7);
+  skull(solid, -1.4, -0.5, 0.6, 1.4);
+
+  // Front rim: low things only.
+  for (const [x, z, s, yaw] of [[1.9, 5.5, 0.9, 0.3], [5.7, 5.62, 1.1, 2.2], [-0.7, 5.5, 0.7, 1.4], [3.6, 5.45, 0.6, 0.8]] as const) rock(solid, x, z, s, sandRock, yaw);
+  skull(solid, 4.6, 5.5, -0.4, 1.1);
+  for (let i = 0; i < 7; i++) bone(solid, -1.5 + random() * 8.6, 5.25 + random() * 0.35, random() * 3, 1.0);
+  // Pebbles in the corners of the first columns.
+  for (let lane = 0; lane < LAWN_LANES; lane++) {
+    const [dx, dz] = tileCorner(random);
+    solid.boxOn(dx, 0, lane + dz, 0.05, 0.03, 0.045, shade(sandRock, -0.05), sandRock);
+  }
+
+  // --- Toby's end: a broken colonnade, sandstone graves, skulls and bones.
+  pillar(solid, 8.6, -0.55, 0.7, 0.1);
+  pillar(solid, 9.6, -0.6, 0.42, -0.1);
+  pillar(solid, 11.0, -0.55, 0.85, 0.2);
+  mesa(solid, 12.4, -0.85, 1.0, 0.7, 1.1, random);
+  gravestone(solid, 10.3, -0.5, 0.48, 0.2, 0.08);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.1, 0.34, -1.2, 0.08, true);
+  gravestone(solid, 12.15, 3.9, 0.3, -1.4, -0.1);
+  skull(solid, 9.9, 5.5, 0.4, 1.2);
+  for (let i = 0; i < 6; i++) bone(solid, 8.3 + random() * 3.6, -0.28 + random() * 0.12, random() * 3, 1.1);
+  graveTiles(solid, random, shade('#6E4E62', -0.09), ['#8C6A72', '#A88690']);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Desert islet: a small mesa or a cactus, or a sandstone grave. */
+export function desertIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    skull(batch, 0.4, 0.35, 0.8, 1.1);
+    return;
+  }
+  cactus(batch, -0.1, 0, 0.7, 0.3, random);
+  rock(batch, 0.4, 0.3, 1.1, '#B8875A', 0.5);
+}
+
+/** A snowy pine: stepped tiers of dark green, each capped with snow, `h` tall. */
+function pine(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+  const needles = '#2F6B4A';
+  const snow = '#F2F8FF';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.1 * h, 0.22 * h, 0.1 * h, PALETTE.barkDark, PALETTE.bark);
+    const tiers = 4;
+    for (let i = 0; i < tiers; i++) {
+      const w = (0.62 - i * 0.13) * h;
+      const y = (0.18 + i * 0.19) * h;
+      batch.boxOn(0, y, 0, w, 0.13 * h, w, shade(needles, -0.03), needles);
+      batch.boxOn(0, y + 0.13 * h, 0, w * 0.8, 0.04 * h, w * 0.8, shade(snow, -0.06), snow);
+    }
+  });
+}
+
+/** A low drift of snow, `w` long. */
+function drift(batch: BoxBatch, x: number, z: number, w: number, random: () => number): void {
+  const snow = '#EEF5FC';
+  batch.boxOn(x, 0, z, w, 0.07, 0.3, shade(snow, -0.07), snow);
+  batch.boxOn(x + (random() - 0.5) * w * 0.3, 0.07, z, w * 0.55, 0.05, 0.22, shade(snow, -0.05), snow);
+}
+
+/** A goofy snowman with a carrot nose and a pot for a hat, `h` tall. */
+function snowman(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+  const snow = '#F4F9FF';
+  const shadow = '#D2E0EE';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.42 * h, 0.36 * h, 0.42 * h, shadow, snow);
+    batch.boxOn(0, 0.36 * h, 0, 0.32 * h, 0.28 * h, 0.32 * h, shadow, snow);
+    batch.boxOn(0, 0.64 * h, 0, 0.24 * h, 0.22 * h, 0.24 * h, shadow, snow);
+    batch.boxOn(0, 0.86 * h, 0, 0.2 * h, 0.1 * h, 0.2 * h, PALETTE.terracotta, shade(PALETTE.terracotta, 0.05));
+    batch.boxOn(0, 0.72 * h, 0.15 * h, 0.04 * h, 0.04 * h, 0.12 * h, PALETTE.mango);
+    batch.boxOn(-0.05 * h, 0.78 * h, 0.121 * h, 0.035 * h, 0.035 * h, 0.01, PALETTE.eye);
+    batch.boxOn(0.05 * h, 0.78 * h, 0.121 * h, 0.035 * h, 0.035 * h, 0.01, PALETTE.eye);
+    batch.boxOn(0, 0.58 * h, 0.161 * h, 0.04 * h, 0.04 * h, 0.01, PALETTE.eye);
+    batch.boxOn(0, 0.48 * h, 0.161 * h, 0.04 * h, 0.04 * h, 0.01, PALETTE.eye);
+  });
+}
+
+/** A cluster of ice shards (the glowing mesh). */
+function iceShards(glow: BoxBatch, x: number, z: number, s: number, random: () => number): void {
+  const shard = (dx: number, dz: number, w: number, h: number, lean: number): void => {
+    at(glow, x + dx * s, z + dz * s, random() * 1.5, lean, () => {
+      glow.boxOn(0, 0, 0, w * s, h * s, w * s, '#9EE6FF', '#D6F6FF');
+      glow.boxOn(0, h * s, 0, w * 0.55 * s, w * 0.6 * s, w * 0.55 * s, '#D6F6FF');
+    });
+  };
+  shard(0, 0, 0.09, 0.32, 0.1);
+  shard(0.1, 0.03, 0.065, 0.2, -0.32);
+  shard(-0.09, 0.04, 0.055, 0.16, 0.38);
+}
+
+/** The Tundra: snowy pines and drifts, a snowman, ice shards, frosted graves. */
+export function buildTundraProps(): Props {
+  const random = seededRandom(20261204);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const stone = '#8E96B4';
+
+  // --- Lukas's end: a row of pines along the back with drifts before them.
+  for (const [x, z, h, yaw] of [[0.6, -0.9, 0.95, 0.2], [2.1, -1.05, 1.2, -0.3], [3.6, -0.85, 0.85, 0.5], [5.3, -1.0, 1.1, 0.1], [6.8, -0.9, 0.8, -0.4], [-2.1, -0.4, 1.25, 0.3], [-2.25, 3.9, 0.9, -0.2]] as const) {
+    pine(solid, x, z, h, yaw);
+  }
+  for (let i = 0; i < 6; i++) drift(solid, 0.5 + i * 1.25 + random() * 0.3, -0.5, 0.7 + random() * 0.4, random);
+  snowman(solid, -1.3, -0.45, 0.6, 0.4);
+  iceShards(glow, -2.15, 1.9, 1.1, random);
+  iceShards(glow, 4.4, -0.62, 0.8, random);
+  rock(solid, -2.1, 1.0, 1.0, stone, 0.7);
+
+  // Front rim: low drifts and stones.
+  for (let i = 0; i < 5; i++) drift(solid, -1.2 + i * 2.0 + random() * 0.4, 5.5, 0.6 + random() * 0.5, random);
+  rock(solid, 1.9, 5.5, 0.9, stone, 0.3);
+  rock(solid, 5.7, 5.62, 1.1, stone, 2.2);
+  iceShards(glow, 3.3, 5.5, 0.6, random);
+
+  // --- Toby's end: frosted graves, a frozen dead tree, bones and ice.
+  gravestone(solid, 8.55, -0.5, 0.62, 0.1, 0.06);
+  gravestone(solid, 9.35, -0.62, 0.56, -0.15, -0.09, true);
+  gravestone(solid, 11.1, -0.55, 0.5, -0.2, 0.05);
+  deadTree(solid, 12.05, -0.4, 1.2, 0.15);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.1, 0.34, -1.2, 0.08, true);
+  gravestone(solid, 12.15, 3.9, 0.3, -1.4, -0.1);
+  // Snow caps on the back graves.
+  for (const [x, z, w] of [[8.55, -0.5, 0.3], [9.35, -0.62, 0.14], [11.1, -0.55, 0.26]] as const) {
+    solid.boxOn(x, 0, z + 0.12, w + 0.12, 0.05, 0.16, '#D8E4F0', '#F2F8FF');
+  }
+  drift(solid, 10.0, -0.3, 0.8, random);
+  drift(solid, 10.6, 5.5, 0.9, random);
+  iceShards(glow, 10.65, -0.62, 1.0, random);
+  iceShards(glow, 12.25, 2.5, 0.9, random);
+  iceShards(glow, 11.55, 5.5, 0.9, random);
+  for (let i = 0; i < 6; i++) bone(solid, 8.3 + random() * 3.4, 5.2 + random() * 0.35, random() * 3, 1.1);
+  graveTiles(solid, random, shade('#5E5A86', -0.09), ['#7E86A6', '#A8B0CC']);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Tundra islet: a pine, or a frosted grave. */
+export function tundraIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    bone(batch, 0.4, 0.35, 0.8, 1.3);
+    return;
+  }
+  pine(batch, -0.15, -0.1, 0.8, random());
+  drift(batch, 0.3, 0.35, 0.5, random);
+}
+
+/** A run of castle wall with battlements along +X from `x0` to `x1` at depth `z`, `h` tall. */
+function battlements(batch: BoxBatch, x0: number, x1: number, z: number, h: number, random: () => number): void {
+  const stone = '#5E5870';
+  const top = '#736C86';
+  const w = x1 - x0;
+  let x = x0;
+  // Blocks of slightly different greys, so it reads as masonry.
+  for (const y of [0, h / 3, (2 * h) / 3]) {
+    x = x0 + (y > 0 && y < h / 2 ? 0.15 : 0);
+    while (x < x1 - 0.02) {
+      const bw = Math.min(0.3 + random() * 0.12, x1 - x);
+      batch.box(x, y, z - 0.12, bw - 0.01, h / 3 - 0.006, 0.24, shade(stone, (random() - 0.5) * 0.06), shade(top, (random() - 0.5) * 0.04));
+      x += bw;
+    }
+  }
+  const merlons = Math.round(w / 0.36);
+  for (let i = 0; i < merlons; i += 1) {
+    if (i % 2 === 1) continue;
+    batch.box(x0 + (i * w) / merlons, h, z - 0.12, w / merlons, 0.12, 0.24, stone, top);
+  }
+}
+
+/** A square tower with battlements and a purple banner, `h` tall. */
+function tower(batch: BoxBatch, x: number, z: number, h: number): void {
+  const stone = '#5A546C';
+  const top = '#6E6882';
+  batch.boxOn(x, 0, z, 0.7, h, 0.7, stone, top);
+  for (const [dx, dz] of [[-0.27, -0.27], [0.27, -0.27], [-0.27, 0.27], [0.27, 0.27]]) {
+    batch.boxOn(x + (dx as number), h, z + (dz as number), 0.16, 0.14, 0.16, stone, top);
+  }
+  batch.boxOn(x, h * 0.45, z + 0.36, 0.3, h * 0.4, 0.02, PALETTE.clothDark, PALETTE.clothPurple);
+  batch.boxOn(x, h * 0.6, z + 0.371, 0.12, 0.12, 0.01, PALETTE.bone);
+  // A dark window slit.
+  batch.boxOn(x, h * 0.72, z + 0.351, 0.07, 0.16, 0.01, '#1E1828');
+}
+
+/** A brazier: an iron bowl on a post with a fire in it (the fire in `glow`). */
+function brazier(solid: BoxBatch, glow: BoxBatch, x: number, z: number, h: number): void {
+  at(solid, x, z, 0, 0, () => {
+    solid.boxOn(0, 0, 0, 0.1, h, 0.1, PALETTE.armourDark, PALETTE.armour);
+    solid.boxOn(0, h, 0, 0.22, 0.07, 0.22, PALETTE.armourDark, PALETTE.armour);
+  });
+  at(glow, x, z, 0, 0, () => {
+    glow.boxOn(0, h + 0.07, 0, 0.16, 0.08, 0.16, '#FF7A1A');
+    glow.boxOn(0.02, h + 0.15, -0.01, 0.09, 0.08, 0.09, '#FFD23F');
+  });
+}
+
+/**
+ * Cooled lava on the rim: a raised slab of dark basalt crust, a few blocks stepped on it, and
+ * only hair-thin glowing seams in its cracks. Plainly rock, never a hazard: only real lava tiles
+ * on the lawn glow bright.
+ */
+function cooledLava(solid: BoxBatch, glow: BoxBatch, x: number, z: number, w: number, d: number, random: () => number): void {
+  const crust = '#221C2A';
+  const crustTop = '#2C2536';
+  solid.boxOn(x, 0, z, w + 0.12, 0.05, d + 0.12, crust, crustTop);
+  for (let i = 0; i < 3; i++) {
+    const bx = x + (random() - 0.5) * w * 0.7;
+    const bz = z + (random() - 0.5) * d * 0.6;
+    solid.boxOn(bx, 0.05, bz, 0.12 + random() * 0.1, 0.02, 0.1 + random() * 0.06, crust, shade(crustTop, 0.04));
+  }
+  // Seams: two short zig-zags of pixel-thin glow along the slab, just proud of its top.
+  const along = w >= d;
+  const length = along ? w : d;
+  for (let seam = 0; seam < 2; seam++) {
+    let u = -length / 2 + 0.06 + random() * 0.08;
+    let v = (seam === 0 ? -1 : 1) * (along ? d : w) * 0.18;
+    while (u < length / 2 - 0.12) {
+      const run = 0.08 + random() * 0.1;
+      const [cx, cz, sx, sz] = along ? [x + u + run / 2, z + v, run, 0.018] : [x + v, z + u + run / 2, 0.018, run];
+      glow.boxOn(cx, 0.05, cz, sx, 0.004, sz, '#E2541A');
+      u += run;
+      v += (random() < 0.5 ? -1 : 1) * 0.018;
+    }
+  }
+}
+
+/** An obsidian spike, `h` tall, leaning a little. */
+function spike(batch: BoxBatch, x: number, z: number, h: number, yaw: number, lean: number): void {
+  const black = '#2A2236';
+  const sheen = '#4A3E5E';
+  at(batch, x, z, yaw, lean, () => {
+    batch.boxOn(0, 0, 0, 0.16 * h, 0.5 * h, 0.16 * h, black, sheen);
+    batch.boxOn(0, 0.5 * h, 0, 0.1 * h, 0.32 * h, 0.1 * h, black, sheen);
+    batch.boxOn(0, 0.82 * h, 0, 0.05 * h, 0.18 * h, 0.05 * h, black, sheen);
+  });
+}
+
+/** The Citadel: Toby's home of dark stone, battlements and towers, braziers, lava and obsidian. */
+export function buildCitadelProps(): Props {
+  const random = seededRandom(20261205);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const rubble = '#6A6478';
+
+  // --- Lukas's end: a ruined stretch of wall, braziers and cooled lava on the rim.
+  battlements(solid, 0.2, 3.4, -0.62, 0.42, random);
+  battlements(solid, 4.4, 7.6, -0.62, 0.36, random);
+  for (let i = 0; i < 5; i++) rock(solid, 3.55 + random() * 0.7, -0.6 + random() * 0.2, 0.9 + random() * 0.5, rubble, random() * 3);
+  tower(solid, -2.0, -0.4, 1.3);
+  brazier(solid, glow, -0.6, -0.45, 0.4);
+  brazier(solid, glow, -1.15, 5.4, 0.32);
+  cooledLava(solid, glow, -2.2, 2.4, 0.5, 1.1, random);
+  spike(solid, -2.3, 4.3, 0.8, 0.3, 0.12);
+  spike(solid, -2.05, 1.2, 0.6, -0.4, -0.1);
+
+  // Front rim: low rubble, slabs of cooled lava and bones.
+  cooledLava(solid, glow, 2.6, 5.55, 0.7, 0.3, random);
+  cooledLava(solid, glow, 6.4, 5.5, 0.5, 0.3, random);
+  for (const [x, z, s, yaw] of [[1.4, 5.5, 0.9, 0.3], [4.6, 5.6, 1.1, 2.2], [-0.7, 5.5, 0.7, 1.4]] as const) rock(solid, x, z, s, rubble, yaw);
+  for (let i = 0; i < 6; i++) bone(solid, -1.5 + random() * 8.6, 5.25 + random() * 0.35, random() * 3, 1.0);
+  // Cracks across the first columns' corners.
+  for (let lane = 0; lane < LAWN_LANES; lane++) {
+    const [dx, dz] = tileCorner(random);
+    crack(solid, dx, lane + dz, random() * 3, 1.0, '#3A3446');
+  }
+
+  // --- Toby's end: his gate towers, spikes, gravestones, bone piles and cooled lava.
+  tower(solid, 12.3, -0.45, 1.6);
+  tower(solid, 12.4, 5.3, 1.0);
+  spike(solid, 8.6, -0.6, 0.9, 0.2, 0.08);
+  spike(solid, 9.2, -0.5, 0.6, -0.3, -0.12);
+  gravestone(solid, 9.9, -0.55, 0.56, -0.15, -0.09, true);
+  gravestone(solid, 11.0, -0.5, 0.5, 0.2, 0.06);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.6, 0.34, -1.2, 0.08, true);
+  brazier(solid, glow, 12.2, 3.1, 0.42);
+  cooledLava(solid, glow, 10.4, 5.55, 0.8, 0.3, random);
+  for (let i = 0; i < 8; i++) bone(solid, 8.3 + random() * 3.6, -0.28 + random() * 0.12, random() * 3, 1.1);
+  graveTiles(solid, random, shade('#2E2440', -0.04), ['#4A4258', '#625A72']);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Citadel islet: an obsidian spike and rubble, or a grave by a brazier-less bone pile. */
+export function citadelIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    bone(batch, 0.4, 0.35, 0.8, 1.3);
+    return;
+  }
+  spike(batch, -0.15, -0.1, 0.8, random(), 0.1);
+  rock(batch, 0.35, 0.3, 1.0, '#6A6478', random());
+}

@@ -8,6 +8,8 @@ import { spawnUnit } from '../../src/sim/spawn';
 import { COLS, LANES, PLANT_COLS } from '../../src/sim/types';
 import type { Faction } from '../../src/sim/types';
 import { allocationsIn } from '../render/allocations';
+import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
+import { cloneLawn } from '../../src/sim/lawn';
 
 // UX fix A: while a card is picked, the tiles (zombies: the lanes' spawn end) a tap would be
 // accepted on light up, worked out by the match's own `check`, again only when the pick or the
@@ -47,6 +49,16 @@ describe('where the picked card may go', () => {
     expect(now).not.toContain('2,3');
     expect(now).toContain('1,0');
     expect(now).toHaveLength(LANES * PLANT_COLS - 1);
+  });
+
+  it('never lights a rock tile of a Desert lawn (the match refuses rocks)', () => {
+    const c = quick('plants');
+    (c.match.state.config as { lawn: unknown }).lawn = cloneLawn(SAMPLE_LAWNS.desert);
+    c.select('peashooter');
+    const rocks = SAMPLE_LAWNS.desert.rocks.map((t) => `${Math.floor(t / PLANT_COLS)},${t % PLANT_COLS}`);
+    const now = lit(c);
+    for (const r of rocks) expect(now).not.toContain(r);
+    expect(now).toHaveLength(LANES * PLANT_COLS - rocks.length);
   });
 
   it('agrees with the match: each lit tile is a tap the controller accepts, each dark one a tap it refuses', () => {

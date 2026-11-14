@@ -3,6 +3,8 @@ import { GameLoop } from '../game/GameLoop';
 import { Renderer, type Quality } from '../render/Renderer';
 import { Lawn } from '../render/world/Lawn';
 import { Sky } from '../render/world/Sky';
+import { dressWorld } from '../app/Stage';
+import { worldParams } from './worldParams';
 
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
 
@@ -21,6 +23,8 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   const lawn = new Lawn();
   const sky = new Sky();
   renderer.scene.add(sky.group, lawn.group);
+  const { world, lawn: twist } = worldParams(params);
+  dressWorld({ lawn, sky, renderer }, world, twist);
 
   const lvt = installDebug();
   lvt.renderer = renderer;

@@ -344,6 +344,15 @@ describe('Players', () => {
     expect(need('[data-sync]').getAttribute('data-sync')).toBe('offline');
   });
 
+  it('Home: the big Play tile and the three place tiles each show their name', async () => {
+    await makeLukas();
+    const names: Record<string, string> = { play: 'Play', marketplace: 'Marketplace', almanac: 'Almanac', leaderboard: 'Leaderboard' };
+    for (const [id, name] of Object.entries(names)) {
+      expect(need(`[data-home="${id}"]`).getAttribute('aria-label')).toBe(name);
+      expect(need(`[data-home="${id}"] [data-home-name]`).textContent).toBe(name);
+    }
+  });
+
   it('Home: Play → Quick Battle goes to the side pick preset from the save; a changed difficulty is saved; back to the Play menu and Home', async () => {
     await makeLukas();
     tap('[data-home="play"]');

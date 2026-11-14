@@ -14,6 +14,7 @@ import { PlayerPicture } from './PlayerPicture';
 import { RankBlock, TABLE_ART } from './RankBlock';
 import './players.css';
 import './progress.css';
+import { BackButton } from '../BackButton';
 
 const TABLE_LABEL: Readonly<Record<Table, string>> = Object.freeze({
   stars: 'Adventure stars', wave: 'Best wave', versus: 'Versus wins', computer: 'Wins against the computer',
@@ -86,12 +87,7 @@ export function Leaderboard({ portraits = {} }: { portraits?: Record<string, str
 
   return (
     <div data-screen="leaderboard" class="layer layer--menu board" data-table={table}>
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => go({ name: session.player.peek() !== null ? 'home' : 'title' })}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => go({ name: session.player.peek() !== null ? 'home' : 'title' })} />
       {view !== null && !view.online && (
         <span class="board__offline px pal-stone" data-offline aria-label="No connection">
           <PixelIcon art={CLOUD_OFF} />

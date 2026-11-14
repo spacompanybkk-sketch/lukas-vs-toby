@@ -138,6 +138,19 @@ describe('a boss\'s strike on the lawn', () => {
     expect(s.feels.length).toBeGreaterThan(feelsBefore); // the blow shakes the camera
   });
 
+  it('a match that ends mid wind-up takes the strike warning away, and it stays away', () => {
+    const s = strikeStage('stun');
+    s.play(3.5);
+    expect(s.view.bossFx.striking).toBe(true);
+    s.view.applyEvents([{ type: 'matchEnded', winner: 'plants' }], s.match.state);
+    for (let f = 0; f < 30; f++) {
+      s.view.applyEvents([], s.match.state);
+      s.view.frame(s.match.state, 0.5, DT, 10 + f * DT);
+    }
+    expect(s.view.bossFx.striking).toBe(false);
+    expect(shownTiles(s.scene)).toHaveLength(0);
+  });
+
   it('a lane strike warns of the whole lane (ten tiles)', () => {
     const s = strikeStage('blind');
     s.play(9.1);

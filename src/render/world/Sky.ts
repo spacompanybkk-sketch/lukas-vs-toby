@@ -1,7 +1,7 @@
 import { BackSide, Color, Group, Mesh, ShaderMaterial, SphereGeometry } from 'three';
 import { DISPLAY_TO_SCENE_GLSL, SUN_TRAVEL } from '../look';
-import { PALETTE } from '../palette';
 import { BoxBatch, seededRandom } from './boxes';
+import { LOOKS, type SkyLook } from './looks';
 
 const DOME_VERTEX = /* glsl */ `
   varying vec3 vWorld;
@@ -21,18 +21,70 @@ const DOME_FRAGMENT = /* glsl */ `
   uniform vec3 uHorizon;
   uniform vec3 uHaze;
   uniform vec3 uDeep;
+  uniform float uStars;
   varying vec3 vWorld;
   ${DISPLAY_TO_SCENE_GLSL}
   void main() {
-    float h = normalize(vWorld - cameraPosition).y;
+    vec3 dir = normalize(vWorld - cameraPosition);
+    float h = dir.y;
     vec3 above = mix(uHorizon, uTop, pow(clamp(h, 0.0, 1.0), 0.5));
     float down = clamp(-h, 0.0, 1.0);
     vec3 below = mix(uHorizon, uHaze, smoothstep(0.0, 0.3, down));
     below = mix(below, uTop, smoothstep(0.3, 0.86, down));
     below = mix(below, uDeep, smoothstep(0.84, 1.0, down));
-    gl_FragColor = vec4(displayToScene(h >= 0.0 ? above : below), 1.0);
+    vec3 sky = h >= 0.0 ? above : below;
+    if (uStars > 0.0) {
+      // Square pixel stars on a grid over the dome, a few of them brighter.
+      vec2 cell = floor(vec2(atan(dir.z, dir.x), asin(clamp(dir.y, -1.0, 1.0))) * 420.0);
+      float n = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+      float star = step(1.0 - 0.006 * uStars, n);
+      sky = mix(sky, vec3(n > 1.0 - 0.0015 * uStars ? 1.0 : 0.62), star);
+    }
+    gl_FragColor = vec4(displayToScene(sky), 1.0);
   }
 `;
+
+/** The moon's lit face in scene luminance, as a multiple of its painted colour: a little over `BLOOM_THRESHOLD`. */
+export const MOON_GLOW = 1.36;
+
+const MOON_VERTEX = /* glsl */ `
+  attribute vec3 color;
+  varying vec3 vColor;
+  void main() {
+    vColor = color;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+// Painted, and only just over the bloom threshold (the craters under it), so it keeps a tight
+// glow while its voxel steps and craters still read as hard pixels.
+const MOON_FRAGMENT = /* glsl */ `
+  varying vec3 vColor;
+  ${DISPLAY_TO_SCENE_GLSL}
+  void main() {
+    gl_FragColor = vec4(displayToScene(vColor) * MOON_GLOW, 1.0);
+  }
+`.replace('MOON_GLOW', MOON_GLOW.toFixed(2));
+
+/** Where the moon hangs: far out beyond the island's back edge, low enough that the framed camera (looking steeply down) sees it near the top of the picture. */
+const MOON_AT: [number, number, number] = [1, -9, -15];
+
+/** A stepped voxel disc facing the camera, with a few darker craters. */
+function buildMoon(): BoxBatch {
+  const batch = new BoxBatch();
+  const r = 6.5;
+  const lit = new Color('#FFF6D8');
+  const crater = new Color('#D9D2BC');
+  const holes = [[-2, 2, 1.6], [2, -1, 1.2], [1, 3, 0.9], [-2, -3, 1.0]];
+  batch.voxels(
+    0.22,
+    [-7, -7, 0],
+    [6, 6, 0],
+    (i, j) => (i + 0.5) * (i + 0.5) + (j + 0.5) * (j + 0.5) < r * r,
+    (i, j) => (holes.some(([x, y, s]) => Math.hypot(i + 0.5 - (x as number), j + 0.5 - (y as number)) < (s as number)) ? crater : lit),
+  );
+  return batch;
+}
 
 const CLOUD_VERTEX = /* glsl */ `
   attribute vec3 color;
@@ -162,22 +214,34 @@ function buildCloud(spec: CloudSpec): BoxBatch {
 export class Sky {
   readonly group = new Group();
   private readonly clouds: { mesh: Mesh; spec: CloudSpec }[] = [];
+  private readonly domeUniforms: Record<'uTop' | 'uHorizon' | 'uHaze' | 'uDeep', { value: Color }> & { uStars: { value: number } };
+  /** Made the first time a look asks for it. */
+  private moon: Mesh | null = null;
+  private readonly cloudUniforms: Record<'uLit' | 'uSide' | 'uUnder' | 'uFar', { value: Color }>;
 
-  constructor() {
+  constructor(look: SkyLook = LOOKS.backyard.sky) {
     this.group.name = 'sky';
+    this.domeUniforms = {
+      uTop: { value: new Color(look.top) },
+      uHorizon: { value: new Color(look.horizon) },
+      // Between the two, for the part of the lower sky the camera sees most.
+      uHaze: { value: new Color(look.haze) },
+      uDeep: { value: new Color(look.deep) },
+      uStars: { value: look.stars },
+    };
+    this.cloudUniforms = {
+      uLit: { value: new Color(look.cloud) },
+      uSide: { value: new Color(look.cloudSide) },
+      uUnder: { value: new Color(look.cloudUnder) },
+      uFar: { value: new Color(look.cloudFar) },
+    };
 
     const dome = new Mesh(
       new SphereGeometry(400, 32, 16),
       new ShaderMaterial({
         vertexShader: DOME_VERTEX,
         fragmentShader: DOME_FRAGMENT,
-        uniforms: {
-          uTop: { value: new Color(PALETTE.skyTop) },
-          uHorizon: { value: new Color(PALETTE.skyHorizon) },
-          // Between the two, for the part of the lower sky the camera sees most.
-          uHaze: { value: new Color(PALETTE.skyHaze) },
-          uDeep: { value: new Color(PALETTE.skyDeep) },
-        },
+        uniforms: { ...this.domeUniforms },
         side: BackSide,
         depthWrite: false,
         depthTest: false,
@@ -194,10 +258,7 @@ export class Sky {
       fragmentShader: CLOUD_FRAGMENT,
       uniforms: {
         uToSun: { value: SUN_TRAVEL.clone().negate() },
-        uLit: { value: new Color(PALETTE.cloud) },
-        uSide: { value: new Color(PALETTE.cloudSide) },
-        uUnder: { value: new Color(PALETTE.cloudUnder) },
-        uFar: { value: new Color(PALETTE.cloudFar) },
+        ...this.cloudUniforms,
       },
     });
     for (const spec of CLOUDS) {
@@ -206,7 +267,32 @@ export class Sky {
       this.group.add(mesh);
       this.clouds.push({ mesh, spec });
     }
+    if (look.moon) this.setLook(look);
     this.update(0);
+  }
+
+  /** Repaints the dome and the clouds in another world's colours (nothing is rebuilt). */
+  setLook(look: SkyLook): void {
+    const d = this.domeUniforms;
+    d.uTop.value.set(look.top);
+    d.uHorizon.value.set(look.horizon);
+    d.uHaze.value.set(look.haze);
+    d.uDeep.value.set(look.deep);
+    const c = this.cloudUniforms;
+    c.uLit.value.set(look.cloud);
+    c.uSide.value.set(look.cloudSide);
+    c.uUnder.value.set(look.cloudUnder);
+    c.uFar.value.set(look.cloudFar);
+    d.uStars.value = look.stars;
+    if (look.moon && !this.moon) {
+      const moon = new Mesh(buildMoon().build(), new ShaderMaterial({ vertexShader: MOON_VERTEX, fragmentShader: MOON_FRAGMENT }));
+      moon.name = 'moon';
+      moon.position.set(...MOON_AT);
+      moon.lookAt(5, 17.6, 16.4); // where the framed camera stands
+      this.group.add(moon);
+      this.moon = moon;
+    }
+    if (this.moon) this.moon.visible = look.moon;
   }
 
   /** Frees every geometry and material the sky made. Take `group` out of the scene first. */

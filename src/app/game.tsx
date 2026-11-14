@@ -20,6 +20,8 @@ import { announceCloudMode } from './cloudMode';
 import { session } from './session';
 import { watchPending } from './levelSession';
 import { Stage } from './Stage';
+import { SAMPLE_LAWNS } from '../render/world/TwistTiles';
+import { NO_TWIST } from '../sim/lawn';
 import { defaultCloud, pageCloudMode } from '../cloud/restClient';
 import { modeStorage } from '../cloud/modeStorage';
 import { go, screen } from './store';
@@ -144,6 +146,12 @@ export function mountGame(
     lvt.renderer = s.renderer;
     lvt.lawn = s.lawn;
     lvt.stage = s;
+    // Any world's look and twist tiles on the lawn now, until the next hand-over (the levels of
+    // worlds 2–5 do not exist yet). `lawn` defaults to that world's sample twist.
+    lvt.setWorld = (world, lawn) => {
+      s.setWorld(world, lawn === undefined ? SAMPLE_LAWNS[world] : { ...NO_TWIST, ...lawn });
+      s.applyWorld();
+    };
   } else {
     lvt.portraits = Promise.resolve();
     requestAnimationFrame(() => markReady());

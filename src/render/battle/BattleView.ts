@@ -54,6 +54,9 @@ const STACK_X = 0.14;
 const LATE_FLIGHT = 0.08;
 /** A finger may miss a unit by this many CSS pixels and still pick it. */
 export const PICK_TOLERANCE_PX = 28;
+/** A shot fading in the fog leaves a puff of this pale mist blue. */
+const FADE_PUFF = 0xdde6ff;
+
 /** The placement ghost draws after the lawn's highlight marks. */
 export const GHOST_RENDER_ORDER = 10;
 const GHOST_OPACITY = 0.85;
@@ -1022,6 +1025,7 @@ export class BattleView {
         break;
       case 'matchEnded':
         this.onFeel({ slowMo: 1.5 });
+        this.bossFx.clear(); // a slam or strike wound up when the match ended never lands: its warnings go
         break;
       case 'statusApplied':
       case 'statusEnded': {
@@ -1072,6 +1076,9 @@ export class BattleView {
         this.onFeel({ slowMo: 2.5 });
         break;
       case 'bossStrike': this.bossFx.strike(e, state); break;
+      case 'projectileFaded': // fog: a puff where the shot gave out; its object leaves with it
+        this.fadeProjectile(e.id, e.x, e.lane);
+        break;
       case 'commandRejected':
       case 'heroReady': // the HUD's button pulses; the call is a sound
       case 'spellReady':
@@ -1083,7 +1090,6 @@ export class BattleView {
       case 'waveStarted': // Free Play: the HUD shows the wave number
       case 'gardenBroken':
       case 'bossPhase': // the shield's pattern event and the HUD's notches show it
-      case 'projectileFaded': // fog: the projectile leaves with the state; its puff is the looks task's
         break;
       default: {
         const unhandled: never = e;
@@ -1470,6 +1476,15 @@ export class BattleView {
       return;
     }
     this.impact(v1, blocked, target);
+    if (view) this.release(view);
+  }
+
+  /** A shot has flown as far as the fog lets it: it melts into a puff of mist where it is. */
+  private fadeProjectile(id: number, x: number, lane: number): void {
+    const view = this.projectiles.get(id);
+    if (view && view.shown && !view.doomed) v1.copy(view.object.position);
+    else v1.set(x, 0.55, lane + 0.5);
+    this.fx.puff(v1, FADE_PUFF);
     if (view) this.release(view);
   }
 

@@ -12,8 +12,16 @@ import { ROBOT, SWORDS } from './boardPictures';
 import { LOCK } from './pictures';
 import './players.css';
 import './adventure.css';
+import { BackButton } from '../BackButton';
 
 type Mode = 'adventure' | 'quick' | 'free';
+
+/** The names under the three pictures (also each tile's aria-label); shown in capitals by the stylesheet. */
+const MODE_NAME: Record<Mode, string> = { adventure: 'Adventure', quick: 'Quick Battle', free: 'Free Play' };
+
+function ModeName({ mode }: { mode: Mode }) {
+  return <span class="play__name inked" data-play-name={mode}>{MODE_NAME[mode]}</span>;
+}
 
 /** A small "needs a player" badge: a player's silhouette with a padlock on it. */
 function PlayerLock() {
@@ -47,34 +55,32 @@ export function PlayMenu() {
   const hop = (mode: Mode): string => (nudge?.mode === mode ? (nudge.n % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b') : '');
   return (
     <div data-screen="play" class="layer layer--menu play">
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: guest ? 'title' : 'home' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: guest ? 'title' : 'home' }); }} />
       <div class="play__modes">
         <button
-          type="button" data-play="adventure" aria-label="Adventure" data-locked={guest ? '' : undefined}
+          type="button" data-play="adventure" aria-label={MODE_NAME.adventure} data-locked={guest ? '' : undefined}
           class={`btn play__mode pal-leaf${guest ? ' is-locked' : ''}${hop('adventure')}`} onClick={() => choose('adventure')}
         >
-          <PixelIcon art={PATH_FLAG} class="play__art" />
+          <span class="play__pic"><PixelIcon art={PATH_FLAG} class="play__art" /></span>
+          <ModeName mode="adventure" />
           {guest && <PlayerLock />}
         </button>
         <button
-          type="button" data-play="quick" aria-label="Quick Battle"
+          type="button" data-play="quick" aria-label={MODE_NAME.quick}
           class="btn play__mode pal-wood" onClick={() => choose('quick')}
         >
-          <span class="play__duo">
+          <span class="play__pic play__duo">
             <PixelIcon art={SWORDS} class="play__art" />
             <PixelIcon art={ROBOT} class="play__corner" />
           </span>
+          <ModeName mode="quick" />
         </button>
         <button
-          type="button" data-play="free" aria-label="Free Play" data-locked={guest ? '' : undefined}
+          type="button" data-play="free" aria-label={MODE_NAME.free} data-locked={guest ? '' : undefined}
           class={`btn play__mode pal-slate${guest ? ' is-locked' : ''}${hop('free')}`} onClick={() => choose('free')}
         >
-          <PixelIcon art={ENDLESS} class="play__art" />
+          <span class="play__pic"><PixelIcon art={ENDLESS} class="play__art" /></span>
+          <ModeName mode="free" />
           {guest && <PlayerLock />}
         </button>
       </div>
@@ -121,12 +127,7 @@ export function PlaySide({ mode, boys = {}, portraits = {} }: { mode: 'adventure
   };
   return (
     <div data-screen="side" data-mode={mode} class="layer layer--menu play">
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: 'play' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: 'play' }); }} />
       <span class="play__mode-mark px pal-cream" aria-hidden="true">
         <PixelIcon art={mode === 'adventure' ? PATH_FLAG : ENDLESS} />
       </span>

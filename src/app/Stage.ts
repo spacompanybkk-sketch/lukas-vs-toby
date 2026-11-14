@@ -1,4 +1,5 @@
 import type { PerspectiveCamera, Scene } from 'three';
+import type { WorldKey } from '../data/worlds';
 import { GameLoop } from '../game/GameLoop';
 import type { CameraRig } from '../render/CameraRig';
 import { Effects } from '../render/fx/Effects';
@@ -8,7 +9,54 @@ import type { Feel } from '../render/battle/types';
 import { disposeModels } from '../render/voxel/build';
 import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
+import { LOOKS } from '../render/world/looks';
 import { Sky } from '../render/world/Sky';
+import { NO_TWIST } from '../sim/lawn';
+import type { LawnConfig } from '../sim/types';
+
+/** The parts of a 3D scene a world's look dresses. */
+export interface Dressable {
+  readonly lawn: Pick<Lawn, 'setWorld'>;
+  readonly sky: Pick<Sky, 'setLook'>;
+  readonly renderer: Pick<Renderer, 'setLook'>;
+}
+
+/**
+ * Dresses a scene as `world` with `lawn`'s twist tiles: island, props, grass and weather (the
+ * lawn), sky colours, lights and grade. Does nothing when the lawn already shows it.
+ */
+export function dressWorld(parts: Dressable, world: WorldKey, lawn: LawnConfig = NO_TWIST): void {
+  if (!parts.lawn.setWorld(world, lawn)) return;
+  const look = LOOKS[world];
+  parts.sky.setLook(look.sky);
+  parts.renderer.setLook(look);
+}
+
+/**
+ * The world a stage is asked to show, put on only when it changes: `want` compares by identity
+ * (no work when a battle passes the stage's own config back), and `apply` dresses the parts at
+ * most once per change, where the lawn compares the twists by value. A frame with nothing new
+ * costs one boolean test and allocates nothing.
+ */
+export class WorldWanted {
+  private world: WorldKey = 'backyard';
+  private lawn: LawnConfig = NO_TWIST;
+  private pending = false;
+
+  want(world: WorldKey, lawn: LawnConfig): void {
+    if (world === this.world && lawn === this.lawn) return;
+    this.world = world;
+    this.lawn = lawn;
+    this.pending = true;
+  }
+
+  /** Dresses `parts` as the world last wanted when that changed since the last call, or always when `force`. */
+  apply(parts: Dressable, force = false): void {
+    if (!this.pending && !force) return;
+    this.pending = false;
+    dressWorld(parts, this.world, this.lawn);
+  }
+}
 
 /**
  * Whatever is playing on the stage: the title's demo battle, or the player's battle. The stage's
@@ -40,6 +88,11 @@ export interface StageLike {
   show(director: Director | null): void;
   /** Detaches `director` if it is the one on stage; does nothing otherwise. */
   release(director: Director): void;
+  /**
+   * Dresses the stage as `world` with `lawn`'s twist tiles from the next frame on. Every hand-over
+   * goes back to the Backyard with no twist, so only a battle in another world calls this.
+   */
+  setWorld(world: WorldKey, lawn: LawnConfig): void;
 }
 
 /**
@@ -91,6 +144,8 @@ export class Stage implements StageLike {
   private current: Director | null = null;
   private time = 0;
   private disposed = false;
+  /** The world asked for, put on at the next frame (so a hand-over and a new battle's world cost one rebuild at most). */
+  private readonly wanted = new WorldWanted();
 
   /** Throws `Error('webgl2-unavailable')` when the browser cannot draw. */
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
@@ -155,6 +210,15 @@ export class Stage implements StageLike {
     this.renderer.setQuality(q);
   }
 
+  setWorld(world: WorldKey, lawn: LawnConfig): void {
+    this.wanted.want(world, lawn);
+  }
+
+  /** Puts the world asked for on now rather than at the next frame (tools and tests). */
+  applyWorld(): void {
+    this.wanted.apply(this, true);
+  }
+
   /** Stops the loop and frees everything; the director on stage is detached first. */
   dispose(): void {
     if (this.disposed) return;
@@ -181,9 +245,11 @@ export class Stage implements StageLike {
     this.rig.reset();
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
+    this.wanted.want('backyard', NO_TWIST);
   }
 
   private draw(alpha: number, realDt: number, gameDt: number): void {
+    this.wanted.apply(this);
     this.time += gameDt;
     this.current?.frame(alpha, realDt, gameDt);
     this.fx.update(gameDt, this.renderer.camera);

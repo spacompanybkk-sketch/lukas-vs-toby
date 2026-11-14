@@ -147,6 +147,8 @@ export class BossFx {
   private roared = false;
   private readonly rollers: Roller[] = [];
   private time = 0;
+  /** The match ended (`clear`): no warning shows again. */
+  private ended = false;
 
   private readonly balance: DeepReadonly<Balance>;
 
@@ -242,7 +244,7 @@ export class BossFx {
 
   /** The step's state for the boss: shield, wind-up tiles for a view that joined late, the eyes. */
   sync(view: UnitView, u: Unit, state: SimState): void {
-    if (view.dying) return;
+    if (view.dying || this.ended) return;
     const shows = lookOf(view.key).fx;
     const shield = u.shieldLeft > 0;
     if (shows.shield === 'dome') {
@@ -273,6 +275,7 @@ export class BossFx {
    * tinted by the status it leaves; its blow (`windup` false) lands on those tiles in that tint.
    */
   strike(e: Extract<SimEvent, { type: 'bossStrike' }>, state: SimState): void {
+    if (this.ended) return;
     const u = state.units.find((v) => v.id === e.unitId);
     if (e.windup) {
       if (u === undefined || !Object.hasOwn(BOSS_HALF_WIDTH, u.key)) return;
@@ -442,6 +445,21 @@ export class BossFx {
       this.onFeel({ shake: 0.8, hitStop: 0.08 });
     }
     this.boss = null;
+  }
+
+  /**
+   * The match is over: every warning goes (the slam's tiles and arrows, a strike's tiles, the acorn
+   * landing marks) and none comes back, even when the state still holds a wind-up it ended in.
+   */
+  clear(): void {
+    this.ended = true;
+    this.hideTiles();
+    this.hideStrike();
+    for (let i = 0; i < this.marks.length; i++) {
+      const m = this.marks[i] as AcornMark;
+      m.id = -1;
+      m.mesh.visible = false;
+    }
   }
 
   /** Moves the shows on by `dt`. Allocates nothing. */

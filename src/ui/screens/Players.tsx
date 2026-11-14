@@ -13,6 +13,7 @@ import { FakeBadge } from './FakeBadge';
 import { GuestPlay, PlayerPicture } from './PlayerPicture';
 import { CLOUD_OFF, HOURGLASS, LOCK, PLUS } from './pictures';
 import './players.css';
+import { BackButton } from '../BackButton';
 
 /** Hold the small lock this long to reach the grown-up gate. */
 export const GROWN_UP_HOLD_MS = 2000;
@@ -119,9 +120,7 @@ function PlayerGrid({ roster, portraits }: { roster: Roster | null; portraits: R
 
   return (
     <div data-screen="players" class={`layer layer--menu players${offline ? ' players--offline' : ''}`}>
-      <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={() => go({ name: 'title' })}>
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => go({ name: 'title' })} />
       {offline && (
         <span class="players__offline px pal-stone" data-offline aria-label="No connection">
           <PixelIcon art={CLOUD_OFF} class="players__offline-icon" />

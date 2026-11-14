@@ -1,5 +1,7 @@
+import type { WorldKey } from '../data/worlds';
 import type { Renderer } from '../render/Renderer';
 import type { Lawn } from '../render/world/Lawn';
+import type { LawnConfig } from '../sim/types';
 
 /** Test hooks exposed on `window.__lvt`; later tasks add fields to it. */
 export interface LvtDebug {
@@ -9,6 +11,11 @@ export interface LvtDebug {
   renderer?: Renderer;
   /** The lawn of the current 3D scene, if it has one. */
   lawn?: Lawn;
+  /**
+   * Dresses the game's stage as `world` with `lawn`'s twist tiles (missing fields: none; no
+   * `lawn`: the world's sample twist), until the next hand-over. Only behind the debug gate.
+   */
+  setWorld?: (world: WorldKey, lawn?: Partial<LawnConfig>) => void;
   /** True: a boss's entrance card stays up until it is tapped (its 1.5 s timer does nothing). */
   holdBossIntro?: boolean;
   [key: string]: unknown;

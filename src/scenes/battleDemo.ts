@@ -11,6 +11,8 @@ import { disposeModels } from '../render/voxel/build';
 import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
 import { Sky } from '../render/world/Sky';
+import { dressWorld } from '../app/Stage';
+import { worldParams } from './worldParams';
 import { Match, defaultConfig, spawnUnit } from '../sim/match';
 import { BALANCE } from '../data/balance';
 import type { Command, SimEvent, UnitKey } from '../sim/types';
@@ -23,6 +25,7 @@ import type { Command, SimEvent, UnitKey } from '../sim/types';
 //   &t=<seconds>                  fast-forwards to that time and freezes there
 //   &setup=stack                  no bots: a few plants and two stacks of zombies walking into
 //                                 them, for judging stacks and their health bars
+//   &world=<key>                  a world's look with its sample twist tiles (&twist=0: none)
 //   &quality=low|medium|high
 //
 // `window.__lvt.battle` holds `{ match, view }`, plus `advance(seconds)` (moves a frozen
@@ -49,6 +52,8 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const lawn = new Lawn();
   const sky = new Sky();
   renderer.scene.add(sky.group, lawn.group);
+  const { world, lawn: twist } = worldParams(params);
+  dressWorld({ lawn, sky, renderer }, world, twist);
   await document.fonts?.load("22px 'Lilita One'").catch(() => undefined);
 
   const particles = new Particles();

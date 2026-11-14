@@ -22,6 +22,7 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uLine;
   uniform vec3 uInk;
   uniform float uStrength;
+  uniform float uGamma;
   varying vec2 vUv;
   const vec2 GRID = vec2(${LAWN_COLS}.0, ${LAWN_LANES}.0);
   const float PX = 10.0;
@@ -36,7 +37,8 @@ const FRAGMENT = /* glsl */ `
     bool edge = p.x == 0.0 || p.x == 9.0 || p.y == 0.0 || p.y == 9.0;
     // The blend happens in linear light, which brightens a thin white a lot once shown on screen:
     // a strength of 0.35 needs about 5% cover to look like 35% (measured on the iPad-size shots).
-    float a = pow(uStrength, 2.8);
+    // (A dark line on pale ground blends without that brightening: its look sets uGamma lower.)
+    float a = pow(uStrength, uGamma);
     if (corner && ring) gl_FragColor = vec4(uLine, 0.95 * a);
     else if (corner && edge) gl_FragColor = vec4(uInk, 0.55 * a);
     else discard;
@@ -47,6 +49,20 @@ const FRAGMENT = /* glsl */ `
 export const MARKS_QUIET = 0.35;
 /** The brackets while a card is dragged, or just after one is tapped. */
 export const MARKS_LOUD = 1;
+
+/**
+ * The brackets' colours on a world's ground: `line` (times `lineGain`) inked with `ink` on the
+ * outside, and the strength curve `gamma` (see the shader). White inked in brown on every ground but
+ * pale snow, where the line turns dark and the ink white.
+ */
+export interface MarksLook {
+  line: string;
+  lineGain: number;
+  ink: string;
+  gamma: number;
+}
+
+export const MARKS_BACKYARD: MarksLook = { line: '#FFFFFF', lineGain: 1.3, ink: '#2A1B0E', gamma: 2.8 };
 
 /** The tiles a picked card may go on, all at once (see the note at the top). */
 export class PlaceMarks {
@@ -66,9 +82,10 @@ export class PlaceMarks {
       fragmentShader: FRAGMENT,
       uniforms: {
         uMask: { value: this.texture },
-        uLine: { value: new Color('#FFFFFF').multiplyScalar(1.3) },
-        uInk: { value: new Color('#2A1B0E') },
+        uLine: { value: new Color(MARKS_BACKYARD.line).multiplyScalar(MARKS_BACKYARD.lineGain) },
+        uInk: { value: new Color(MARKS_BACKYARD.ink) },
         uStrength: { value: MARKS_QUIET },
+        uGamma: { value: MARKS_BACKYARD.gamma },
       },
       transparent: true,
       depthWrite: false,
@@ -101,6 +118,14 @@ export class PlaceMarks {
   /** How strongly the brackets show, 0..1 (`MARKS_QUIET`, `MARKS_LOUD`). */
   setStrength(strength: number): void {
     (this.material.uniforms.uStrength as { value: number }).value = strength;
+  }
+
+  /** Recolours the brackets for a world's ground (uniforms only). */
+  setLook(look: MarksLook): void {
+    const u = this.material.uniforms;
+    (u.uLine as { value: Color }).value.set(look.line).multiplyScalar(look.lineGain);
+    (u.uInk as { value: Color }).value.set(look.ink);
+    (u.uGamma as { value: number }).value = look.gamma;
   }
 
   dispose(): void {

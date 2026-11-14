@@ -151,6 +151,30 @@ describe('BattleView', () => {
     expect(countNamed(scene, 'projectile-')).toBe(0);
   });
 
+  it('melts a shot that fades in the fog into a puff of mist where it is, and leaves no projectile object', () => {
+    const { scene, view, match, run, fx } = setUp();
+    const events: SimEvent[] = [];
+    const shooter = spawnUnit(match.state, BALANCE, 'peashooter', 2, 1.5, events);
+    view.applyEvents(events, match.state);
+    run(0.4);
+    match.state.projectiles.push({
+      id: 98, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: shooter.id, spawnTick: 0, flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0, fadeX: 6.5
+    });
+    view.applyEvents([
+      { type: 'unitAttacked', unitId: shooter.id, attack: 'shot', targetId: null, targetBase: 'zombies' },
+      { type: 'projectileSpawned', projectileId: 98, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, ownerId: shooter.id, flight: 'straight', targetX: null },
+    ], match.state);
+    run(0.3);
+    expect(countNamed(scene, 'projectile-')).toBe(1);
+    const puff = vi.spyOn(fx, 'puff');
+    match.state.projectiles.length = 0;
+    view.applyEvents([{ type: 'projectileFaded', id: 98, x: 6.5, lane: 2 }], match.state);
+    run(DT);
+    expect(countNamed(scene, 'projectile-')).toBe(0);
+    expect(puff).toHaveBeenCalledTimes(1);
+    expect(puff.mock.calls[0]?.[0].z).toBeCloseTo(2.5, 1);
+  });
+
   it('replays a 3,000-tick bot match without throwing and ends with the state’s units', { timeout: 20_000 }, () => {
     const { scene, view, match, run } = setUp();
     const bots = [createBasicBot('plants', 'medium', 7), createBasicBot('zombies', 'medium', 7)];

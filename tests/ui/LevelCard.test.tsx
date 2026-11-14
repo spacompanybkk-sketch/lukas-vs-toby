@@ -72,7 +72,8 @@ describe('Level card', () => {
       await openCard(id, { [side]: { stars: all8, unlocked: [] } });
       expect(need('[data-screen="level-card"]').dataset.level).toBe(id);
       expect(all('.lcard__head [data-twist]').map((t) => t.dataset.twist)).toEqual([twist]);
-      expect(need('[data-screen="level-card"]').textContent?.trim()).toBe(''); // pictures only
+      // The twist is a picture only: no word joins the small buttons' names (no tutorial on these copies).
+      expect(need('.lcard__twists').textContent?.trim()).toBe('');
     },
   );
 
@@ -89,7 +90,7 @@ describe('Level card', () => {
       'win 1', `base ${ADVENTURE.baseStars.two}`, `base ${ADVENTURE.baseStars.three}`,
     ]);
     expect(q('[data-reward]')).toBeNull();
-    expect(card.textContent?.trim()).toBe(''); // pictures only
+    expect(card.textContent?.trim()).toBe('EasyNormalHardHelp'); // pictures, and only the four small buttons' names
   });
 
   it('a won level shows its stars filled', async () => {
@@ -133,6 +134,16 @@ describe('Level card', () => {
     expect(session.player.value!.difficulty).toEqual(quick);
     expect(pressed()).toEqual(['hard']);
     expect(sounds.at(-1)).toBe('click');
+  });
+
+  it('each small button names itself under its picture: EASY, NORMAL, HARD and the glove HELP', async () => {
+    await openCard('p1-1');
+    const names = (sel: string): string | undefined => need(`${sel} [data-btn-name]`).textContent ?? undefined;
+    expect(names('[data-skill="easy"]')).toBe('Easy');
+    expect(names('[data-skill="medium"]')).toBe('Normal');
+    expect(names('[data-skill="hard"]')).toBe('Hard');
+    expect(names('[data-action="replay-tutorial"]')).toBe('Help');
+    for (const el of all('[data-btn-name]')) expect(el.classList.contains('inked')).toBe(true);
   });
 
   it('the difficulty is drawn as one, two, three skulls (not moods); the chosen one ringed, the others greyed', async () => {
