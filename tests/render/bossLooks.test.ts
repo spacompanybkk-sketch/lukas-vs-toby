@@ -184,6 +184,24 @@ describe('a boss\'s strike on the lawn', () => {
     expect(shownTiles(s.scene)).toHaveLength(0);
   });
 
+  it('a boss that dies mid wind-up takes its strike warning with it', () => {
+    const s = strikeStage('stun');
+    s.play(3.5);
+    expect(s.view.bossFx.striking).toBe(true);
+    expect(shownTiles(s.scene).length).toBeGreaterThan(0);
+    const titan = s.match.state.units.find((u) => u.key === 'brainTitan')!;
+    expect(titan.strikeTiles.length).toBeGreaterThan(0);
+    titan.hp = 0; // felled before the blow lands
+    const events = s.match.step();
+    expect(events.some((e) => e.type === 'unitDied' && e.unitId === titan.id)).toBe(true);
+    // Its fall alone takes the warning away: the match's end (which clears every warning) is held back.
+    s.view.applyEvents(events.filter((e) => e.type !== 'matchEnded'), s.match.state);
+    for (let f = 0; f < 30; f++) s.view.frame(s.match.state, 0.5, DT, 10 + f * DT);
+    expect(events.some((e) => e.type === 'bossStrike' && !e.windup)).toBe(false); // no blow from a dead boss
+    expect(s.view.bossFx.striking).toBe(false);
+    expect(shownTiles(s.scene)).toHaveLength(0);
+  });
+
   it('a lane strike warns of the whole lane (ten tiles)', () => {
     const s = strikeStage('blind');
     s.play(9.1);
