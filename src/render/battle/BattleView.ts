@@ -53,6 +53,9 @@ const STACK_X = 0.14;
 const LATE_FLIGHT = 0.08;
 /** A finger may miss a unit by this many CSS pixels and still pick it. */
 export const PICK_TOLERANCE_PX = 28;
+/** A shot fading in the fog leaves a puff of this pale mist blue. */
+const FADE_PUFF = 0xdde6ff;
+
 /** The placement ghost draws after the lawn's highlight marks. */
 export const GHOST_RENDER_ORDER = 10;
 const GHOST_OPACITY = 0.85;
@@ -877,6 +880,12 @@ export class BattleView {
   // ---- Events ----------------------------------------------------------------------------
 
   private apply(e: SimEvent, state: SimState): void {
+    // TODO(merge): a case of the switch once the sim's SimEvent has `projectileFaded` (fog).
+    if ((e as { type: string }).type === 'projectileFaded') {
+      const faded = e as unknown as { id: number; x: number; lane: number };
+      this.fadeProjectile(faded.id, faded.x, faded.lane);
+      return;
+    }
     switch (e.type) {
       case 'unitSpawned': {
         if (e.key === 'rock') {
@@ -1452,6 +1461,15 @@ export class BattleView {
       return;
     }
     this.impact(v1, blocked, target);
+    if (view) this.release(view);
+  }
+
+  /** A shot has flown as far as the fog lets it: it melts into a puff of mist where it is. */
+  private fadeProjectile(id: number, x: number, lane: number): void {
+    const view = this.projectiles.get(id);
+    if (view && view.shown && !view.doomed) v1.copy(view.object.position);
+    else v1.set(x, 0.55, lane + 0.5);
+    this.fx.puff(v1, FADE_PUFF);
     if (view) this.release(view);
   }
 

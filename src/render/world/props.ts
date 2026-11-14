@@ -11,7 +11,7 @@ const turn = new Matrix4();
 const place = new Matrix4();
 
 /** Runs `build` with the batch's origin moved to (x, 0, z), turned by `yaw` and leaning by `lean` radians. */
-function at(batch: BoxBatch, x: number, z: number, yaw: number, lean: number, build: () => void): void {
+export function at(batch: BoxBatch, x: number, z: number, yaw: number, lean: number, build: () => void): void {
   place.makeTranslation(x, 0, z).multiply(turn.makeRotationY(yaw)).multiply(turn.makeRotationZ(lean));
   batch.transformed(place.clone(), build);
 }
@@ -41,14 +41,14 @@ export function bush(batch: BoxBatch, x: number, z: number, s: number, random: (
   });
 }
 
-function rock(batch: BoxBatch, x: number, z: number, s: number, color: ColorRepresentation, yaw: number): void {
+export function rock(batch: BoxBatch, x: number, z: number, s: number, color: ColorRepresentation, yaw: number): void {
   at(batch, x, z, yaw, 0, () => {
     batch.boxOn(0, 0, 0, 0.2 * s, 0.1 * s, 0.16 * s, shade(color, -0.04), color);
     batch.boxOn(-0.02 * s, 0.1 * s, 0.01 * s, 0.11 * s, 0.05 * s, 0.1 * s, color, shade(color, 0.05));
   });
 }
 
-function mushroom(batch: BoxBatch, x: number, z: number, s: number): void {
+export function mushroom(batch: BoxBatch, x: number, z: number, s: number): void {
   const { bone: spot, boneShadow, terracotta } = PALETTE;
   at(batch, x, z, 0, 0, () => {
     batch.boxOn(0, 0, 0, 0.035 * s, 0.06 * s, 0.035 * s, boneShadow, spot);
@@ -81,7 +81,7 @@ export function gravestone(batch: BoxBatch, x: number, z: number, h: number, yaw
 }
 
 /** A small leafy tree, `h` tall. */
-function tree(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+export function tree(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
   const { leaf, leafDark, leafLight, walnut, walnutDark } = PALETTE;
   at(batch, x, z, yaw, 0, () => {
     batch.boxOn(0, 0, 0, 0.13 * h, 0.42 * h, 0.13 * h, walnutDark, walnut);
@@ -93,7 +93,7 @@ function tree(batch: BoxBatch, x: number, z: number, h: number, yaw: number): vo
 }
 
 /** A leafless, crooked tree for the graveyard, `h` tall. */
-function deadTree(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+export function deadTree(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
   const bark = PALETTE.deadBark;
   const pale = PALETTE.deadBarkLight;
   at(batch, x, z, yaw, 0, () => {
@@ -114,7 +114,7 @@ function deadTree(batch: BoxBatch, x: number, z: number, h: number, yaw: number)
 }
 
 /** A terracotta pot with a seedling. */
-function pot(batch: BoxBatch, x: number, z: number, s: number): void {
+export function pot(batch: BoxBatch, x: number, z: number, s: number): void {
   const { leaf, leafLight, soilDark, stem, terracotta } = PALETTE;
   at(batch, x, z, 0.3, 0, () => {
     batch.boxOn(0, 0, 0, 0.15 * s, 0.12 * s, 0.15 * s, shade(terracotta, -0.04), terracotta);
@@ -138,8 +138,7 @@ export function bone(batch: BoxBatch, x: number, z: number, yaw: number, s = 1):
 }
 
 /** A crack in the graveyard ground: a few hair-thin dark slabs. */
-function crack(batch: BoxBatch, x: number, z: number, yaw: number, s: number): void {
-  const dark = shade(PALETTE.graveDark, -0.09);
+export function crack(batch: BoxBatch, x: number, z: number, yaw: number, s: number, dark: ColorRepresentation = shade(PALETTE.graveDark, -0.09)): void {
   at(batch, x, z, yaw, 0, () => {
     batch.boxOn(0, 0, 0, 0.16 * s, 0.004, 0.022, dark);
     batch.boxOn(0.1 * s, 0, 0.035 * s, 0.1 * s, 0.004, 0.02, dark);
@@ -148,7 +147,7 @@ function crack(batch: BoxBatch, x: number, z: number, yaw: number, s: number): v
 }
 
 /** A cluster of crystal shards (goes in the glowing mesh). */
-function crystals(batch: BoxBatch, x: number, y: number, z: number, s: number, random: () => number): void {
+export function crystals(batch: BoxBatch, x: number, y: number, z: number, s: number, random: () => number): void {
   const crystal = PALETTE.crystal;
   const shard = (dx: number, dz: number, w: number, h: number, yaw: number, lean: number): void => {
     place
@@ -166,7 +165,7 @@ function crystals(batch: BoxBatch, x: number, y: number, z: number, s: number, r
 }
 
 /** A run of garden fence along +X from `x0` to `x1` at depth `z`. */
-function fence(batch: BoxBatch, x0: number, x1: number, z: number, random: () => number): void {
+export function fence(batch: BoxBatch, x0: number, x1: number, z: number, random: () => number): void {
   const gap = 0.26;
   const count = Math.round((x1 - x0) / gap);
   for (let i = 0; i <= count; i++) {
@@ -184,7 +183,7 @@ function fence(batch: BoxBatch, x0: number, x1: number, z: number, random: () =>
 }
 
 /** Where a small prop may stand on a tile: near a corner, clear of whoever stands in the middle. */
-function tileCorner(random: () => number): [number, number] {
+export function tileCorner(random: () => number): [number, number] {
   const near = (): number => (random() < 0.5 ? 0.07 + random() * 0.14 : 0.79 + random() * 0.14);
   return [near(), near()];
 }

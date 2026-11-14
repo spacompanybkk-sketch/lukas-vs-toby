@@ -8,6 +8,7 @@ import { buildGrass } from './grass';
 import { buildIsland, buildIslet } from './island';
 import { LOOKS, type Look } from './looks';
 import { TileMark, type MarkState } from './TileMark';
+import { Weather } from './Weather';
 import { NO_TWIST, TwistTiles, coveredTile, sameLawn, type LawnConfig } from './TwistTiles';
 
 /** A small rock adrift beside the island. */
@@ -43,6 +44,7 @@ export class Lawn {
   private grass!: InstancedMesh;
   private materials: Material[] = [];
   private twistTiles: TwistTiles | null = null;
+  private weather: Weather | null = null;
   private worldKey: WorldKey;
   private twist: LawnConfig;
   private time = 0;
@@ -127,6 +129,11 @@ export class Lawn {
       this.islets.push({ mesh, y, phase: random() * 6.28 });
     }
 
+    if (look.weather !== 'none') {
+      this.weather = new Weather(look.weather);
+      if (this.weather.mesh) this.dressing.add(this.weather.mesh);
+    }
+
     if (twist !== NO_TWIST && !sameLawn(twist, NO_TWIST)) {
       this.twistTiles = new TwistTiles(twist);
       this.dressing.add(this.twistTiles.group);
@@ -144,6 +151,8 @@ export class Lawn {
     this.grass.dispose();
     this.twistTiles?.dispose();
     this.twistTiles = null;
+    this.weather?.dispose();
+    this.weather = null;
     this.islets.length = 0;
     this.dressing.clear();
   }
@@ -153,6 +162,7 @@ export class Lawn {
     this.time = timeSeconds;
     this.wind.value = timeSeconds;
     this.twistTiles?.update(timeSeconds);
+    this.weather?.update(timeSeconds);
     for (const islet of this.islets) {
       islet.mesh.position.y = islet.y + Math.sin(timeSeconds * 0.55 + islet.phase) * 0.07;
     }

@@ -4,6 +4,7 @@ import { WORLDS } from '../../data/worlds';
 import { PALETTE } from '../palette';
 import type { BoxBatch } from './boxes';
 import { bush, buildProps, flower, gravestone, bone } from './props';
+import { buildMeadowProps, meadowIslet } from './worldProps';
 
 // The look of each Adventure world (art bible: a bright toy diorama; Michal: boxy, hard-edged,
 // pixelated). A look is data the island, grass, props, sky, lights and grade are built from;
@@ -144,10 +145,57 @@ const BACKYARD: Look = {
   weather: WORLDS.backyard.weather,
 };
 
+/** The Meadow at night: blue-green grass under a moon, stars, fireflies and glowing mushrooms. */
+const MEADOW: Look = {
+  key: 'meadow',
+  ground: {
+    grassLight: '#4C8A7E',
+    grassDark: '#3E786E',
+    graveLight: '#4A3F78',
+    graveDark: '#3D3366',
+    rimGrass: '#3A6E68',
+    rimGrave: '#382E5E',
+    lip: '#2E5E58',
+    soil: '#5A4A68',
+    soilDark: '#463954',
+    graveSoil: '#3A2F52',
+    islandRock: '#56607E',
+    graveRock: '#4A456A',
+  },
+  tufts: { base: '#4C9480', dark: '#2F6A62', light: '#7EC4AA' },
+  sky: {
+    top: '#22357A',
+    horizon: '#6A7FC4',
+    haze: '#3C519C',
+    deep: '#1B2A66',
+    cloud: '#6E80BC',
+    cloudSide: '#55679F',
+    cloudUnder: '#46578E',
+    cloudFar: '#34478A',
+    stars: 0.6,
+    moon: true,
+  },
+  lights: {
+    sun: '#D6E0FF',
+    sunIntensity: 1.35,
+    fillSky: '#8EA6FF',
+    fillGround: '#3F8676',
+    fillIntensity: 0.9,
+    bounce: '#B4C4FF',
+    bounceIntensity: 0.95,
+  },
+  grade: { saturation: 0.12, contrast: 0.05, brightness: -0.01, vignette: 0.42 },
+  backdrop: '#33468E',
+  glow: { color: '#7FE6FF', intensity: 3.2 },
+  props: buildMeadowProps,
+  islet: meadowIslet,
+  weather: WORLDS.meadow.weather,
+};
+
 /** Every world's look. */
 export const LOOKS: Record<WorldKey, Look> = {
   backyard: BACKYARD,
-  meadow: { ...BACKYARD, key: 'meadow', weather: WORLDS.meadow.weather },
+  meadow: MEADOW,
   desert: { ...BACKYARD, key: 'desert', weather: WORLDS.desert.weather },
   tundra: { ...BACKYARD, key: 'tundra', weather: WORLDS.tundra.weather },
   citadel: { ...BACKYARD, key: 'citadel', weather: WORLDS.citadel.weather },

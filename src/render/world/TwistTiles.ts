@@ -1,4 +1,5 @@
-import { Group, Mesh, type Material } from 'three';
+import { Color, Group, Mesh, PlaneGeometry, ShaderMaterial, type Material } from 'three';
+import { DISPLAY_TO_SCENE_GLSL } from '../look';
 import type { WorldKey } from '../../data/worlds';
 import { COLS, PLANT_COLS } from '../../sim/types';
 
@@ -65,18 +66,90 @@ export function lavaTile(index: number): { lane: number; col: number } {
   return { lane: Math.floor(index / COLS), col: index % COLS };
 }
 
+// ---- Fog: low sheets of blocky mist ----------------------------------------------------------
+
+const MIST_VERTEX = /* glsl */ `
+  varying vec2 vXZ;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vXZ = world.xz;
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+// Value noise sampled on an eighth-tile grid, so the mist is made of hard-edged pixels that
+// drift a cell at a time. Thin over the lawn's ends, where the bases stand.
+const MIST_FRAGMENT = /* glsl */ `
+  uniform float uTime;
+  uniform float uSeed;
+  uniform float uOpacity;
+  uniform vec3 uColor;
+  varying vec2 vXZ;
+  ${DISPLAY_TO_SCENE_GLSL}
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  void main() {
+    vec2 p = floor((vXZ + vec2(uTime * 0.18, uTime * 0.05)) * 8.0) / 8.0;
+    float n = noise(p * 0.7) * 0.65 + noise(p * 1.9 + 7.3) * 0.35;
+    float a = smoothstep(0.42, 0.78, n);
+    // Fades out past the lawn's edges.
+    float edge = smoothstep(-1.2, 0.4, vXZ.x) * (1.0 - smoothstep(9.6, 11.2, vXZ.x))
+               * smoothstep(-1.0, 0.2, vXZ.y) * (1.0 - smoothstep(4.8, 6.0, vXZ.y));
+    a *= edge * uOpacity;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(displayToScene(uColor), a);
+  }
+`;
+
+/** The mist sheets: height above the lawn and opacity, the low ones thicker. */
+const MIST_SHEETS: readonly [number, number][] = [
+  [0.08, 0.17],
+  [0.22, 0.12],
+  [0.4, 0.08],
+];
+const MIST_COLOR = '#BCCBF0';
+
 /** The twist visuals of one lawn config, as one group. */
 export class TwistTiles {
   readonly group = new Group();
   private readonly materials: Material[] = [];
+  private readonly time = { value: 0 };
 
   constructor(readonly config: LawnConfig) {
     this.group.name = 'twist-tiles';
+    if (config.fog !== null) this.buildMist();
   }
 
   /** Moves the mist and the lava's glow on to `timeSeconds`. Allocates nothing. */
   update(timeSeconds: number): void {
-    void timeSeconds;
+    this.time.value = timeSeconds % 3600;
+  }
+
+  private buildMist(): void {
+    const geometry = new PlaneGeometry(14, 8);
+    geometry.rotateX(-Math.PI / 2);
+    for (let i = 0; i < MIST_SHEETS.length; i++) {
+      const [y, opacity] = MIST_SHEETS[i] as [number, number];
+      const material = new ShaderMaterial({
+        vertexShader: MIST_VERTEX,
+        fragmentShader: MIST_FRAGMENT,
+        uniforms: { uTime: this.time, uSeed: { value: i * 3.7 }, uOpacity: { value: opacity }, uColor: { value: new Color(MIST_COLOR) } },
+        transparent: true,
+        depthWrite: false,
+      });
+      this.materials.push(material);
+      const sheet = new Mesh(i === 0 ? geometry : geometry.clone(), material);
+      sheet.name = 'mist';
+      sheet.position.set(5, y, 2.5);
+      // Under the placement marks (2) and the health bars (20).
+      sheet.renderOrder = 1;
+      this.group.add(sheet);
+    }
   }
 
   /** Frees every geometry and material it made. Take `group` out of the scene first. */
