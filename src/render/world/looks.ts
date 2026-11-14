@@ -4,7 +4,12 @@ import { WORLDS } from '../../data/worlds';
 import { PALETTE } from '../palette';
 import type { BoxBatch } from './boxes';
 import { bush, buildProps, flower, gravestone, bone } from './props';
-import { buildMeadowProps, meadowIslet } from './worldProps';
+import {
+  buildDesertProps,
+  buildMeadowProps,
+  desertIslet,
+  meadowIslet,
+} from './worldProps';
 
 // The look of each Adventure world (art bible: a bright toy diorama; Michal: boxy, hard-edged,
 // pixelated). A look is data the island, grass, props, sky, lights and grade are built from;
@@ -192,11 +197,58 @@ const MEADOW: Look = {
   weather: WORLDS.meadow.weather,
 };
 
+/** The Desert: warm sand under a hot sky, orange mesas, cacti, blown dust. */
+const DESERT: Look = {
+  key: 'desert',
+  ground: {
+    grassLight: '#D8A862',
+    grassDark: '#C79552',
+    graveLight: '#946A7E',
+    graveDark: '#7E586C',
+    rimGrass: '#CC9C5A',
+    rimGrave: '#82606F',
+    lip: '#B88444',
+    soil: '#C98A4C',
+    soilDark: '#A86C38',
+    graveSoil: '#6E4F5E',
+    islandRock: '#C27040',
+    graveRock: '#7C5A68',
+  },
+  tufts: { base: '#B4AC5C', dark: '#8E8844', light: '#D6CE86' },
+  sky: {
+    top: '#6EC0EE',
+    horizon: '#FFE4B6',
+    haze: '#F4CC96',
+    deep: '#5CB0E8',
+    cloud: '#FFF8EC',
+    cloudSide: '#F2DCC0',
+    cloudUnder: '#E8C8A4',
+    cloudFar: '#F0D2A8',
+    stars: 0,
+    moon: false,
+  },
+  lights: {
+    sun: '#FFE6BE',
+    sunIntensity: 1.3,
+    fillSky: '#FFE2BE',
+    fillGround: '#C79552',
+    fillIntensity: 0.75,
+    bounce: '#FFEAD2',
+    bounceIntensity: 0.95,
+  },
+  grade: { saturation: 0.12, contrast: 0.08, brightness: -0.02, vignette: 0.38 },
+  backdrop: '#F4CC96',
+  glow: { color: '#FFB23F', intensity: 3 },
+  props: buildDesertProps,
+  islet: desertIslet,
+  weather: WORLDS.desert.weather,
+};
+
 /** Every world's look. */
 export const LOOKS: Record<WorldKey, Look> = {
   backyard: BACKYARD,
   meadow: MEADOW,
-  desert: { ...BACKYARD, key: 'desert', weather: WORLDS.desert.weather },
+  desert: DESERT,
   tundra: { ...BACKYARD, key: 'tundra', weather: WORLDS.tundra.weather },
   citadel: { ...BACKYARD, key: 'citadel', weather: WORLDS.citadel.weather },
 };

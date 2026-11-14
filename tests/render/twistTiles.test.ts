@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Lawn } from '../../src/render/world/Lawn';
 import { NO_TWIST, SAMPLE_LAWNS, TwistTiles, coveredTile } from '../../src/render/world/TwistTiles';
 import { allocationsIn } from './allocations';
+import { PLANT_COLS } from '../../src/sim/types';
 
 const named = (tiles: TwistTiles, name: string): Mesh[] => {
   const found: Mesh[] = [];
@@ -29,6 +30,22 @@ describe('TwistTiles', () => {
       expect(sheet.renderOrder).toBeLessThan(2);
       expect((sheet.material as ShaderMaterial).depthWrite).toBe(false);
     }
+    tiles.dispose();
+  });
+
+  it('puts a boulder on every rock tile, inside its tile and low enough to see a zombie walk through', () => {
+    const tiles = new TwistTiles(SAMPLE_LAWNS.desert);
+    const [boulders] = named(tiles, 'boulders');
+    expect(boulders).toBeDefined();
+    const position = (boulders as Mesh).geometry.getAttribute('position');
+    const tilesHit = new Set<number>();
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i);
+      const z = position.getZ(i);
+      expect(position.getY(i)).toBeLessThanOrEqual(0.36);
+      tilesHit.add(Math.floor(z) * PLANT_COLS + Math.floor(x));
+    }
+    expect([...tilesHit].sort((a, b) => a - b)).toEqual([...SAMPLE_LAWNS.desert.rocks].sort((a, b) => a - b));
     tiles.dispose();
   });
 

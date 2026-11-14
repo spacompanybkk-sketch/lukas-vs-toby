@@ -140,3 +140,119 @@ export function meadowIslet(batch: BoxBatch, grave: boolean, random: () => numbe
   bush(batch, 0.3, 0.1, 0.7, random);
   flower(batch, 0.45, 0.35, '#C9DCFF', 1.6);
 }
+
+/** A flat-topped mesa of stepped sandstone layers, `h` tall and `w` wide. */
+function mesa(batch: BoxBatch, x: number, z: number, w: number, d: number, h: number, random: () => number): void {
+  const bands = ['#D2864A', '#C4743E', '#DE9858', '#B86A38'];
+  const layers = Math.max(3, Math.round(h / 0.18));
+  let width = w;
+  let depth = d;
+  for (let i = 0; i < layers; i++) {
+    const y = (i * h) / layers;
+    const band = bands[i % bands.length] as string;
+    // Wider at the foot, a ledge now and then.
+    const step = i < 2 ? 0.92 : random() < 0.3 ? 0.9 : 0.985;
+    batch.boxOn(x + (random() - 0.5) * 0.04, y, z, width, h / layers + 0.001, depth, shade(band, (random() - 0.5) * 0.04), shade('#E8A868', 0.02));
+    width *= step;
+    depth *= step;
+  }
+}
+
+/** A boxy saguaro cactus, `h` tall, with an arm or two. */
+function cactus(batch: BoxBatch, x: number, z: number, h: number, yaw: number, random: () => number): void {
+  const green = '#4F9A4A';
+  const dark = '#3B7A3A';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.12 * h, h, 0.12 * h, dark, green);
+    const arms = random() < 0.5 ? [-1, 1] : [random() < 0.5 ? -1 : 1];
+    for (const side of arms) {
+      const y = h * (0.35 + random() * 0.2);
+      batch.boxOn(side * 0.11 * h, y, 0, 0.12 * h, 0.08 * h, 0.08 * h, dark, green);
+      batch.boxOn(side * 0.17 * h, y, 0, 0.08 * h, h * (0.28 + random() * 0.12), 0.08 * h, dark, green);
+    }
+    // A pink flower on top.
+    batch.boxOn(0, h, 0, 0.06 * h, 0.04 * h, 0.06 * h, '#FF8FB1');
+  });
+}
+
+/** A boxy animal skull lying on the sand (goofy, not frightening). */
+function skull(batch: BoxBatch, x: number, z: number, yaw: number, s: number): void {
+  const { bone: b, boneShadow } = PALETTE;
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.16 * s, 0.09 * s, 0.12 * s, boneShadow, b);
+    batch.boxOn(0.1 * s, 0, 0, 0.08 * s, 0.06 * s, 0.08 * s, boneShadow, b);
+    batch.boxOn(-0.03 * s, 0.06 * s, 0.062 * s, 0.03 * s, 0.025 * s, 0.004, PALETTE.socket);
+    batch.boxOn(-0.03 * s, 0.06 * s, -0.062 * s, 0.03 * s, 0.025 * s, 0.004, PALETTE.socket);
+    for (const side of [-1, 1]) batch.boxOn(-0.06 * s, 0.07 * s, side * 0.09 * s, 0.03 * s, 0.03 * s, 0.08 * s, boneShadow, b);
+  });
+}
+
+/** A broken sandstone pillar, `h` tall. */
+function pillar(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+  const stone = '#C9A06A';
+  const dark = '#A57E4E';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.26, 0.06, 0.26, dark, stone);
+    batch.boxOn(0, 0.06, 0, 0.18, h - 0.06, 0.18, dark, stone);
+    batch.boxOn(0.04, h, 0.02, 0.1, 0.05, 0.12, dark, stone);
+  });
+}
+
+/** The Desert: mesas behind the island, cacti, skulls and a broken colonnade by the graves. */
+export function buildDesertProps(): Props {
+  const random = seededRandom(20261203);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const sandRock = '#B8875A';
+
+  // --- Lukas's end: mesas along the back, cacti and boulders before them.
+  mesa(solid, -2.0, -0.9, 1.3, 0.9, 1.3, random);
+  mesa(solid, 3.2, -1.15, 1.6, 0.7, 0.9, random);
+  mesa(solid, 6.6, -1.05, 1.0, 0.6, 0.62, random);
+  cactus(solid, 0.6, -0.62, 0.75, 0.2, random);
+  cactus(solid, 1.9, -0.82, 0.55, -0.4, random);
+  cactus(solid, 5.2, -0.7, 0.8, 0.5, random);
+  cactus(solid, -2.15, 2.6, 0.9, 0.1, random);
+  cactus(solid, -2.3, 4.4, 0.6, 0.6, random);
+  rock(solid, 2.6, -0.62, 1.3, sandRock, 0.4);
+  rock(solid, 4.3, -0.55, 0.8, sandRock, 1.1);
+  rock(solid, -2.1, 1.0, 1.1, sandRock, 0.7);
+  skull(solid, -1.4, -0.5, 0.6, 1.4);
+
+  // Front rim: low things only.
+  for (const [x, z, s, yaw] of [[1.9, 5.5, 0.9, 0.3], [5.7, 5.62, 1.1, 2.2], [-0.7, 5.5, 0.7, 1.4], [3.6, 5.45, 0.6, 0.8]] as const) rock(solid, x, z, s, sandRock, yaw);
+  skull(solid, 4.6, 5.5, -0.4, 1.1);
+  for (let i = 0; i < 7; i++) bone(solid, -1.5 + random() * 8.6, 5.25 + random() * 0.35, random() * 3, 1.0);
+  // Pebbles in the corners of the first columns.
+  for (let lane = 0; lane < LAWN_LANES; lane++) {
+    const [dx, dz] = tileCorner(random);
+    solid.boxOn(dx, 0, lane + dz, 0.05, 0.03, 0.045, shade(sandRock, -0.05), sandRock);
+  }
+
+  // --- Toby's end: a broken colonnade, sandstone graves, skulls and bones.
+  pillar(solid, 8.6, -0.55, 0.7, 0.1);
+  pillar(solid, 9.6, -0.6, 0.42, -0.1);
+  pillar(solid, 11.0, -0.55, 0.85, 0.2);
+  mesa(solid, 12.4, -0.85, 1.0, 0.7, 1.1, random);
+  gravestone(solid, 10.3, -0.5, 0.48, 0.2, 0.08);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.1, 0.34, -1.2, 0.08, true);
+  gravestone(solid, 12.15, 3.9, 0.3, -1.4, -0.1);
+  skull(solid, 9.9, 5.5, 0.4, 1.2);
+  for (let i = 0; i < 6; i++) bone(solid, 8.3 + random() * 3.6, -0.28 + random() * 0.12, random() * 3, 1.1);
+  graveTiles(solid, random, shade('#6E4E62', -0.09), ['#8C6A72', '#A88690']);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Desert islet: a small mesa or a cactus, or a sandstone grave. */
+export function desertIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    skull(batch, 0.4, 0.35, 0.8, 1.1);
+    return;
+  }
+  cactus(batch, -0.1, 0, 0.7, 0.3, random);
+  rock(batch, 0.4, 0.3, 1.1, '#B8875A', 0.5);
+}
+

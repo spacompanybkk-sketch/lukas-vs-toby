@@ -1,5 +1,6 @@
-import { Color, Group, Mesh, PlaneGeometry, ShaderMaterial, type Material } from 'three';
-import { DISPLAY_TO_SCENE_GLSL } from '../look';
+import { Color, Group, Mesh, MeshStandardMaterial, PlaneGeometry, ShaderMaterial, type Material } from 'three';
+import { DISPLAY_TO_SCENE_GLSL, MATTE_PLASTIC } from '../look';
+import { BoxBatch, seededRandom, shade } from './boxes';
 import type { WorldKey } from '../../data/worlds';
 import { COLS, PLANT_COLS } from '../../sim/types';
 
@@ -114,6 +115,27 @@ const MIST_SHEETS: readonly [number, number][] = [
 ];
 const MIST_COLOR = '#BCCBF0';
 
+// ---- Rocks: a boulder on each rock tile ---------------------------------------------
+
+const BOULDER = ['#8C7868', '#7C6858', '#9E8A78'];
+
+/** A boulder of a few stacked grey-brown blocks filling most of tile (lane, col), 0.34 tall: darker than the sand, so it reads. */
+function boulder(batch: BoxBatch, lane: number, col: number, random: () => number): void {
+  const cx = col + 0.5 + (random() - 0.5) * 0.08;
+  const cz = lane + 0.5 + (random() - 0.5) * 0.08;
+  const tone = (): string => BOULDER[Math.floor(random() * BOULDER.length)] as string;
+  const block = (dx: number, y: number, dz: number, w: number, h: number, d: number): void => {
+    const c = tone();
+    batch.boxOn(cx + dx, y, cz + dz, w, h, d, shade(c, -0.06), shade(c, 0.05));
+  };
+  block(0, 0, 0, 0.72, 0.14, 0.66);
+  block(-0.04 + (random() - 0.5) * 0.06, 0.14, 0.02, 0.58, 0.12, 0.52);
+  block(0.05, 0.26, -0.02 + (random() - 0.5) * 0.06, 0.36, 0.08, 0.32);
+  // A smaller stone at its foot, and a darker band of strata round the base.
+  block(0.34, 0, 0.26, 0.16, 0.09, 0.14);
+  batch.boxOn(cx, 0.06, cz, 0.732, 0.025, 0.672, shade('#5E4E44', 0));
+}
+
 /** The twist visuals of one lawn config, as one group. */
 export class TwistTiles {
   readonly group = new Group();
@@ -123,6 +145,23 @@ export class TwistTiles {
   constructor(readonly config: LawnConfig) {
     this.group.name = 'twist-tiles';
     if (config.fog !== null) this.buildMist();
+    if (config.rocks.length > 0) this.buildBoulders();
+  }
+
+  private buildBoulders(): void {
+    const batch = new BoxBatch();
+    const random = seededRandom(5150);
+    for (const index of this.config.rocks) {
+      const { lane, col } = rockTile(index);
+      boulder(batch, lane, col, random);
+    }
+    const material = new MeshStandardMaterial(MATTE_PLASTIC);
+    this.materials.push(material);
+    const mesh = new Mesh(batch.build(), material);
+    mesh.name = 'boulders';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
   }
 
   /** Moves the mist and the lava's glow on to `timeSeconds`. Allocates nothing. */
