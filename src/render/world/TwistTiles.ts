@@ -136,6 +136,37 @@ function boulder(batch: BoxBatch, lane: number, col: number, random: () => numbe
   batch.boxOn(cx, 0.06, cz, 0.732, 0.025, 0.672, shade('#5E4E44', 0));
 }
 
+// ---- Ice: glassy pale-blue tiles along each icy lane -----------------------------------------
+
+/** Ice lies this far above the ground: over the grass creases, under the placement marks (0.012). */
+const ICE_Y = 0.006;
+
+/** One lane of ice: a checker of two blues with white scratches, glossy so the sun glints on it. */
+function iceLane(batch: BoxBatch, lane: number, random: () => number): void {
+  const light = '#A6DAF4';
+  const dark = '#8CC8EC';
+  const scratch = shade('#F4FBFF', 0);
+  for (let col = 0; col < COLS; col++) {
+    const tint = shade((col + lane) % 2 === 0 ? light : dark, (random() - 0.5) * 0.02);
+    const x0 = col + 0.02;
+    const x1 = col + 0.98;
+    const z0 = lane + 0.02;
+    const z1 = lane + 0.98;
+    batch.quad([x0, ICE_Y, z1], [x1, ICE_Y, z1], [x1, ICE_Y, z0], [x0, ICE_Y, z0], [0, 1, 0], tint);
+    // Two or three skate scratches along the lane, a pixel-thin slab each.
+    const n = 2 + Math.floor(random() * 2);
+    for (let i = 0; i < n; i++) {
+      const sx = col + 0.08 + random() * 0.5;
+      const sz = lane + 0.12 + random() * 0.76;
+      batch.box(sx, ICE_Y, sz, 0.2 + random() * 0.25, 0.002, 0.025, scratch);
+    }
+  }
+  // A frosted rim on the lane's front and back edges.
+  const frost = shade('#E4F4FC', 0);
+  batch.box(0, ICE_Y, lane + 0.02, COLS, 0.003, 0.05, frost);
+  batch.box(0, ICE_Y, lane + 0.93, COLS, 0.003, 0.05, frost);
+}
+
 /** The twist visuals of one lawn config, as one group. */
 export class TwistTiles {
   readonly group = new Group();
@@ -146,6 +177,19 @@ export class TwistTiles {
     this.group.name = 'twist-tiles';
     if (config.fog !== null) this.buildMist();
     if (config.rocks.length > 0) this.buildBoulders();
+    if (config.ice !== null && config.ice.lanes.length > 0) this.buildIce(config.ice.lanes);
+  }
+
+  private buildIce(lanes: readonly number[]): void {
+    const batch = new BoxBatch();
+    const random = seededRandom(7310);
+    for (const lane of lanes) iceLane(batch, lane, random);
+    const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 0 });
+    this.materials.push(material);
+    const mesh = new Mesh(batch.build(), material);
+    mesh.name = 'ice';
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
   }
 
   private buildBoulders(): void {

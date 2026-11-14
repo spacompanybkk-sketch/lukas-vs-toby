@@ -256,3 +256,113 @@ export function desertIslet(batch: BoxBatch, grave: boolean, random: () => numbe
   rock(batch, 0.4, 0.3, 1.1, '#B8875A', 0.5);
 }
 
+/** A snowy pine: stepped tiers of dark green, each capped with snow, `h` tall. */
+function pine(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+  const needles = '#2F6B4A';
+  const snow = '#F2F8FF';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.1 * h, 0.22 * h, 0.1 * h, PALETTE.barkDark, PALETTE.bark);
+    const tiers = 4;
+    for (let i = 0; i < tiers; i++) {
+      const w = (0.62 - i * 0.13) * h;
+      const y = (0.18 + i * 0.19) * h;
+      batch.boxOn(0, y, 0, w, 0.13 * h, w, shade(needles, -0.03), needles);
+      batch.boxOn(0, y + 0.13 * h, 0, w * 0.8, 0.04 * h, w * 0.8, shade(snow, -0.06), snow);
+    }
+  });
+}
+
+/** A low drift of snow, `w` long. */
+function drift(batch: BoxBatch, x: number, z: number, w: number, random: () => number): void {
+  const snow = '#EEF5FC';
+  batch.boxOn(x, 0, z, w, 0.07, 0.3, shade(snow, -0.07), snow);
+  batch.boxOn(x + (random() - 0.5) * w * 0.3, 0.07, z, w * 0.55, 0.05, 0.22, shade(snow, -0.05), snow);
+}
+
+/** A goofy snowman with a carrot nose and a pot for a hat, `h` tall. */
+function snowman(batch: BoxBatch, x: number, z: number, h: number, yaw: number): void {
+  const snow = '#F4F9FF';
+  const shadow = '#D2E0EE';
+  at(batch, x, z, yaw, 0, () => {
+    batch.boxOn(0, 0, 0, 0.42 * h, 0.36 * h, 0.42 * h, shadow, snow);
+    batch.boxOn(0, 0.36 * h, 0, 0.32 * h, 0.28 * h, 0.32 * h, shadow, snow);
+    batch.boxOn(0, 0.64 * h, 0, 0.24 * h, 0.22 * h, 0.24 * h, shadow, snow);
+    batch.boxOn(0, 0.86 * h, 0, 0.2 * h, 0.1 * h, 0.2 * h, PALETTE.terracotta, shade(PALETTE.terracotta, 0.05));
+    batch.boxOn(0, 0.72 * h, 0.15 * h, 0.04 * h, 0.04 * h, 0.12 * h, PALETTE.mango);
+    batch.boxOn(-0.05 * h, 0.78 * h, 0.121 * h, 0.035 * h, 0.035 * h, 0.01, PALETTE.eye);
+    batch.boxOn(0.05 * h, 0.78 * h, 0.121 * h, 0.035 * h, 0.035 * h, 0.01, PALETTE.eye);
+    batch.boxOn(0, 0.58 * h, 0.161 * h, 0.04 * h, 0.04 * h, 0.01, PALETTE.eye);
+    batch.boxOn(0, 0.48 * h, 0.161 * h, 0.04 * h, 0.04 * h, 0.01, PALETTE.eye);
+  });
+}
+
+/** A cluster of ice shards (the glowing mesh). */
+function iceShards(glow: BoxBatch, x: number, z: number, s: number, random: () => number): void {
+  const shard = (dx: number, dz: number, w: number, h: number, lean: number): void => {
+    at(glow, x + dx * s, z + dz * s, random() * 1.5, lean, () => {
+      glow.boxOn(0, 0, 0, w * s, h * s, w * s, '#9EE6FF', '#D6F6FF');
+      glow.boxOn(0, h * s, 0, w * 0.55 * s, w * 0.6 * s, w * 0.55 * s, '#D6F6FF');
+    });
+  };
+  shard(0, 0, 0.09, 0.32, 0.1);
+  shard(0.1, 0.03, 0.065, 0.2, -0.32);
+  shard(-0.09, 0.04, 0.055, 0.16, 0.38);
+}
+
+/** The Tundra: snowy pines and drifts, a snowman, ice shards, frosted graves. */
+export function buildTundraProps(): Props {
+  const random = seededRandom(20261204);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const stone = '#8E96B4';
+
+  // --- Lukas's end: a row of pines along the back with drifts before them.
+  for (const [x, z, h, yaw] of [[0.6, -0.9, 0.95, 0.2], [2.1, -1.05, 1.2, -0.3], [3.6, -0.85, 0.85, 0.5], [5.3, -1.0, 1.1, 0.1], [6.8, -0.9, 0.8, -0.4], [-2.1, -0.4, 1.25, 0.3], [-2.25, 3.9, 0.9, -0.2]] as const) {
+    pine(solid, x, z, h, yaw);
+  }
+  for (let i = 0; i < 6; i++) drift(solid, 0.5 + i * 1.25 + random() * 0.3, -0.5, 0.7 + random() * 0.4, random);
+  snowman(solid, -1.3, -0.45, 0.6, 0.4);
+  iceShards(glow, -2.15, 1.9, 1.1, random);
+  iceShards(glow, 4.4, -0.62, 0.8, random);
+  rock(solid, -2.1, 1.0, 1.0, stone, 0.7);
+
+  // Front rim: low drifts and stones.
+  for (let i = 0; i < 5; i++) drift(solid, -1.2 + i * 2.0 + random() * 0.4, 5.5, 0.6 + random() * 0.5, random);
+  rock(solid, 1.9, 5.5, 0.9, stone, 0.3);
+  rock(solid, 5.7, 5.62, 1.1, stone, 2.2);
+  iceShards(glow, 3.3, 5.5, 0.6, random);
+
+  // --- Toby's end: frosted graves, a frozen dead tree, bones and ice.
+  gravestone(solid, 8.55, -0.5, 0.62, 0.1, 0.06);
+  gravestone(solid, 9.35, -0.62, 0.56, -0.15, -0.09, true);
+  gravestone(solid, 11.1, -0.55, 0.5, -0.2, 0.05);
+  deadTree(solid, 12.05, -0.4, 1.2, 0.15);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.1, 0.34, -1.2, 0.08, true);
+  gravestone(solid, 12.15, 3.9, 0.3, -1.4, -0.1);
+  // Snow caps on the back graves.
+  for (const [x, z, w] of [[8.55, -0.5, 0.3], [9.35, -0.62, 0.14], [11.1, -0.55, 0.26]] as const) {
+    solid.boxOn(x, 0, z + 0.12, w + 0.12, 0.05, 0.16, '#D8E4F0', '#F2F8FF');
+  }
+  drift(solid, 10.0, -0.3, 0.8, random);
+  drift(solid, 10.6, 5.5, 0.9, random);
+  iceShards(glow, 10.65, -0.62, 1.0, random);
+  iceShards(glow, 12.25, 2.5, 0.9, random);
+  iceShards(glow, 11.55, 5.5, 0.9, random);
+  for (let i = 0; i < 6; i++) bone(solid, 8.3 + random() * 3.4, 5.2 + random() * 0.35, random() * 3, 1.1);
+  graveTiles(solid, random, shade('#5E5A86', -0.09), ['#7E86A6', '#A8B0CC']);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Tundra islet: a pine, or a frosted grave. */
+export function tundraIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    bone(batch, 0.4, 0.35, 0.8, 1.3);
+    return;
+  }
+  pine(batch, -0.15, -0.1, 0.8, random());
+  drift(batch, 0.3, 0.35, 0.5, random);
+}
+

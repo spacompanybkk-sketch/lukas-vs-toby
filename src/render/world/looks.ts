@@ -7,8 +7,10 @@ import { bush, buildProps, flower, gravestone, bone } from './props';
 import {
   buildDesertProps,
   buildMeadowProps,
+  buildTundraProps,
   desertIslet,
   meadowIslet,
+  tundraIslet,
 } from './worldProps';
 
 // The look of each Adventure world (art bible: a bright toy diorama; Michal: boxy, hard-edged,
@@ -244,11 +246,58 @@ const DESERT: Look = {
   weather: WORLDS.desert.weather,
 };
 
+/** The Tundra: snow in white and pale blue under a cold sky, pines, ice shards, snowfall. */
+const TUNDRA: Look = {
+  key: 'tundra',
+  ground: {
+    grassLight: '#D4E2EE',
+    grassDark: '#BFD2E2',
+    graveLight: '#7A78A8',
+    graveDark: '#686594',
+    rimGrass: '#DCE8F2',
+    rimGrave: '#73709E',
+    lip: '#B4CADC',
+    soil: '#8A96B0',
+    soilDark: '#6E7A96',
+    graveSoil: '#5C5880',
+    islandRock: '#7E8AA6',
+    graveRock: '#605C86',
+  },
+  tufts: { base: '#9EBCBE', dark: '#789A9E', light: '#D8ECEE' },
+  sky: {
+    top: '#86C4EC',
+    horizon: '#EAF6FF',
+    haze: '#BEE0F6',
+    deep: '#74B6E6',
+    cloud: '#FFFFFF',
+    cloudSide: '#D2E4F4',
+    cloudUnder: '#BCD6EE',
+    cloudFar: '#A6CCEC',
+    stars: 0,
+    moon: false,
+  },
+  lights: {
+    sun: '#F4F8FF',
+    sunIntensity: 1.15,
+    fillSky: '#D2E8FF',
+    fillGround: '#BFD2E2',
+    fillIntensity: 0.75,
+    bounce: '#DCEBFF',
+    bounceIntensity: 0.9,
+  },
+  grade: { saturation: 0.14, contrast: 0.07, brightness: -0.02, vignette: 0.36 },
+  backdrop: '#BEE0F6',
+  glow: { color: '#8FE4FF', intensity: 2.6 },
+  props: buildTundraProps,
+  islet: tundraIslet,
+  weather: WORLDS.tundra.weather,
+};
+
 /** Every world's look. */
 export const LOOKS: Record<WorldKey, Look> = {
   backyard: BACKYARD,
   meadow: MEADOW,
   desert: DESERT,
-  tundra: { ...BACKYARD, key: 'tundra', weather: WORLDS.tundra.weather },
+  tundra: TUNDRA,
   citadel: { ...BACKYARD, key: 'citadel', weather: WORLDS.citadel.weather },
 };

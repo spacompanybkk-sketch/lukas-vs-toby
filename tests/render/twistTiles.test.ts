@@ -49,6 +49,25 @@ describe('TwistTiles', () => {
     tiles.dispose();
   });
 
+  it('covers each icy lane end to end, under the placement marks', () => {
+    const tiles = new TwistTiles(SAMPLE_LAWNS.tundra);
+    const [ice] = named(tiles, 'ice');
+    const position = (ice as Mesh).geometry.getAttribute('position');
+    const lanes = new Set<number>();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (let i = 0; i < position.count; i++) {
+      lanes.add(Math.floor(position.getZ(i) - 1e-6 + 0.0001));
+      minX = Math.min(minX, position.getX(i));
+      maxX = Math.max(maxX, position.getX(i));
+      expect(position.getY(i)).toBeLessThan(0.012);
+    }
+    expect([...lanes].sort()).toEqual([1, 3]);
+    expect(minX).toBeLessThanOrEqual(0.05);
+    expect(maxX).toBeGreaterThanOrEqual(9.95);
+    tiles.dispose();
+  });
+
   it('moves on without allocating', () => {
     const tiles = new TwistTiles({ ...SAMPLE_LAWNS.meadow, ...SAMPLE_LAWNS.citadel, fog: 5 });
     expect(allocationsIn(() => {
