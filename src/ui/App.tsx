@@ -223,7 +223,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       body = <PlaySide key={s.mode} mode={s.mode} boys={boys} portraits={portraits} />;
       break;
     case 'map':
-      body = <MapScreen side={s.side} card={s.card} portraits={portraits} boys={boys} host={map} />;
+      body = <MapScreen side={s.side} card={s.card} world={s.world} portraits={portraits} boys={boys} host={map} />;
       break;
     case 'battle':
       body = (

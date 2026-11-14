@@ -13,6 +13,9 @@ import { App } from '../../src/ui/App';
 import type { MapHost, MapHostView } from '../../src/ui/screens/Map';
 import { resetSeenStars } from '../../src/ui/screens/Map';
 import { mapStones } from '../../src/ui/screens/mapModel';
+import { LEVELS } from '../../src/adventure/levels';
+import { previewWorlds } from '../../src/app/previewWorlds';
+import { mapLevels } from '../../src/ui/screens/Map';
 import { setUiSound } from '../../src/ui/uiSound';
 import { MemoryStorage } from '../progress/memoryStorage';
 
@@ -65,6 +68,7 @@ afterEach(() => {
   act(() => render(null, root));
   root.remove();
   setUiSound(null);
+  mapLevels.value = LEVELS;
   session.dispose();
   go({ name: 'title' });
 });
@@ -160,7 +164,7 @@ describe('Map screen', () => {
     expect(sounds.at(-1)).toBe('click');
     expect(need('[data-screen="level-card"]').dataset.level).toBe('p1-1');
     tap('[data-action="close-card"]');
-    expect(screen.value).toEqual({ name: 'map', side: 'plants' });
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 1 });
     expect(q('[data-screen="level-card"]')).toBeNull();
   });
 
@@ -185,7 +189,11 @@ describe('Map screen', () => {
     act(() => go({ name: 'map', side: 'plants' }));
     expect(calls).toEqual(['open plants']);
     expect(host.views[0]).toEqual({
-      side: 'plants', frame: frameColor(session.player.value!.slot),
+      side: 'plants', arena: 'backyard', locked: false, frame: frameColor(session.player.value!.slot),
+      islands: [
+        { arena: 'backyard', locked: false }, { arena: 'meadow', locked: true }, { arena: 'desert', locked: true },
+        { arena: 'tundra', locked: true }, { arena: 'citadel', locked: true },
+      ],
       stones: [{ id: 'p1-1', state: 'done' }, { id: 'p1-2', state: 'next' }, ...['3', '4', '5', '6', '7', '8'].map((n) => ({ id: `p1-${n}`, state: 'closed' }))],
     });
     expect(at('[data-stone="p1-1"]')).toBe('translate3d(100px, 400px, 0)');
@@ -273,5 +281,102 @@ describe('Map screen', () => {
     mount();
     act(() => go({ name: 'map', side: 'plants' }));
     expect(screen.value.name).toBe('play');
+  });
+});
+
+describe('Map screen: one island per world', () => {
+  const won = (prefix: string): Record<string, 3> => Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`${prefix}-${i + 1}`, 3]));
+
+  it('shipped levels: world 1 has no arrow back; the arrow on goes to a locked island (grey, padlock, no stones) that refuses a tap', async () => {
+    await player({ 'p1-1': 1 });
+    const host = fakeHost();
+    mount(host);
+    act(() => go({ name: 'map', side: 'plants' }));
+    const map = need('[data-screen="map"]');
+    expect(map.dataset.world).toBe('1');
+    expect(map.dataset.arena).toBe('backyard');
+    expect(q('[data-action="world-prev"]')).toBeNull();
+    const on = need('[data-action="world-next"]');
+    expect(on.dataset.to).toBe('2');
+    expect(on.dataset.arena).toBe('meadow');
+    expect(on.hasAttribute('data-locked')).toBe(true);
+    expect(on.textContent?.trim()).toBe(''); // a picture only
+    tap('[data-action="world-next"]');
+    expect(sounds.at(-1)).toBe('click');
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 2 });
+    expect(need('[data-screen="map"]').dataset.arena).toBe('meadow');
+    expect(need('[data-screen="map"]').hasAttribute('data-locked')).toBe(true);
+    expect(all('[data-stone]')).toHaveLength(0);
+    expect(q('[data-marker]')).toBeNull();
+    expect(host.views.at(-1)).toMatchObject({ arena: 'meadow', locked: true, stones: [] });
+    // The padlock refuses: the deny sound and a shake, and nothing opens.
+    tap('[data-action="island-locked"]');
+    expect(sounds.at(-1)).toBe('deny');
+    expect(need('[data-action="island-locked"]').className).toContain('is-deny-a');
+    tap('[data-action="island-locked"]');
+    expect(need('[data-action="island-locked"]').className).toContain('is-deny-b');
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 2 });
+    expect(q('[data-screen="level-card"]')).toBeNull();
+    // Arrows step on to the last island and back to the first.
+    tap('[data-action="world-next"]');
+    tap('[data-action="world-next"]');
+    tap('[data-action="world-next"]');
+    expect(need('[data-screen="map"]').dataset.arena).toBe('citadel');
+    expect(q('[data-action="world-next"]')).toBeNull();
+    for (let i = 0; i < 4; i++) tap('[data-action="world-prev"]');
+    expect(need('[data-screen="map"]').dataset.arena).toBe('backyard');
+    expect(all('[data-stone]')).toHaveLength(8);
+  });
+
+  it('the zombies\' first island is the Citadel; their arrows walk citadel → tundra → desert → meadow → backyard', async () => {
+    await player();
+    mount();
+    act(() => go({ name: 'map', side: 'zombies' }));
+    expect(need('[data-screen="map"]').dataset.arena).toBe('citadel');
+    expect(all('[data-stone]').map((s) => s.dataset.stone)[0]).toBe('z1-1');
+    const seen: string[] = ['citadel'];
+    for (let i = 0; i < 4; i++) {
+      tap('[data-action="world-next"]');
+      seen.push(need('[data-screen="map"]').dataset.arena ?? '');
+    }
+    expect(seen).toEqual(['citadel', 'tundra', 'desert', 'meadow', 'backyard']);
+  });
+
+  it('with a world 2 to play (stand-in levels): the map opens on it, its stones are there, the arrow back is open', async () => {
+    mapLevels.value = previewWorlds(LEVELS);
+    await player(won('p1'));
+    const host = fakeHost();
+    mount(host);
+    act(() => go({ name: 'map', side: 'plants' }));
+    expect(need('[data-screen="map"]').dataset.world).toBe('2');
+    expect(need('[data-screen="map"]').hasAttribute('data-locked')).toBe(false);
+    expect(all('[data-stone]').map((s) => s.dataset.stone)).toEqual(Array.from({ length: 8 }, (_, i) => `p2-${i + 1}`));
+    expect(state('p2-1')).toBe('next');
+    expect(host.views.at(-1)).toMatchObject({ arena: 'meadow', locked: false });
+    expect(host.views.at(-1)!.islands.map((i) => i.locked)).toEqual([false, false, true, true, true]);
+    const back = need('[data-action="world-prev"]');
+    expect(back.hasAttribute('data-locked')).toBe(false);
+    tap('[data-action="world-prev"]');
+    expect(all('[data-stone]').map((s) => s.dataset.stone)[0]).toBe('p1-1');
+    expect(state('p1-8')).toBe('done');
+    // A card keeps its island: open p1-2 and close it, still on world 1.
+    tap('[data-stone="p1-2"]');
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 1, card: 'p1-2' });
+    tap('[data-action="close-card"]');
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 1 });
+    expect(need('[data-screen="map"]').dataset.world).toBe('1');
+  });
+
+  it('a card asked for by id opens on its own island; a closed stone\'s arrow leads to the level to play now', async () => {
+    mapLevels.value = previewWorlds(LEVELS);
+    await player(won('p1'));
+    mount();
+    act(() => go({ name: 'map', side: 'plants', card: 'p2-1' }));
+    expect(need('[data-screen="map"]').dataset.world).toBe('2');
+    expect(need('[data-screen="level-card"]').dataset.level).toBe('p2-1');
+    act(() => go({ name: 'map', side: 'plants', world: 1 }));
+    act(() => go({ name: 'map', side: 'plants', world: 2, card: 'p2-5' }));
+    expect(need('[data-screen="level-card"]').hasAttribute('data-locked')).toBe(true);
+    expect(need('[data-action="go-next"]').dataset.next).toBe('p2-1');
   });
 });

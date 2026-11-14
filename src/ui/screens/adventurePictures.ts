@@ -1,7 +1,7 @@
 import type { LevelKind } from '../../adventure/types';
 import type { PixelArt } from '../hud/PixelIcon';
 import { SWORDS, art } from './boardPictures';
-import { outlined } from './pictures';
+import { outlined, overlay } from './pictures';
 
 /**
  * Pictures of the Play menu, the map and the level card, as pixel grids (see PixelIcon), in the
@@ -251,6 +251,103 @@ export const BOW = art(outlined([
   '................',
 ]));
 
+/**
+ * The lawn twists, drawn small on the level card (only when the level has one): a fog cloud over
+ * mist, a boulder, an ice crystal, a drop of lava.
+ */
+export const TWIST_FOG = art(overlay(outlined([
+  '................',
+  '.....ssss.......',
+  '....swwwws.ss...',
+  '..sswwwwwwswws..',
+  '.swwwwwwwwwwwws.',
+  '.swwwwwwwwwwwws.',
+  '.smmmmmmmmmmmms.',
+  '..ssssssssssss..',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+]), [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '.mmmmmmmm..mmmm.',
+  '................',
+  '...mmmmm.mmmmmm.',
+  '................',
+  '.mmmm..mmmmmm...',
+  '................',
+]));
+
+export const TWIST_ROCK = art(outlined([
+  '................',
+  '................',
+  '................',
+  '......mmmm......',
+  '....mmssssmm....',
+  '...msswwsssmm...',
+  '..msswwssssssm..',
+  '..mssssssssmsm..',
+  '.mssssssssmmssm.',
+  '.msssmsssssssSm.',
+  '.mmssssssssSSSm.',
+  '.SmmssssSSSSSSS.',
+  '..SSSSSSSSSSSS..',
+  '................',
+  '................',
+  '................',
+]));
+
+export const TWIST_ICE = art(outlined([
+  '................',
+  '.......w........',
+  '......wck.......',
+  '.....wcckK......',
+  '....wccckKK.....',
+  '...wcccckKKK....',
+  '..wccccckKKKK...',
+  '..cccccckKKKK...',
+  '..kkkkkkKKKKK...',
+  '...kkkkkKKKK....',
+  '....kkkkKKK.....',
+  '.....kkkKK......',
+  '......kkK.......',
+  '.......K........',
+  '................',
+  '................',
+]));
+
+export const TWIST_LAVA = art(outlined([
+  '................',
+  '.......y........',
+  '.......y........',
+  '......yyY.......',
+  '......yyY.......',
+  '.....yyyYY......',
+  '....yyyyYYY.....',
+  '....ylyyYYr.....',
+  '...yllyyYYrr....',
+  '...ylyyyYrrr....',
+  '...yyyyYYrrR....',
+  '...YyyyYrrrR....',
+  '....YYrrrrR.....',
+  '.....rrrRR......',
+  '................',
+  '................',
+]));
+
 /** A level kind's picture: one, or a main one with a smaller one on its corner. */
 export const KIND_ART: Readonly<Record<LevelKind, readonly PixelArt[]>> = Object.freeze({
   battle: [SWORDS],
@@ -263,4 +360,5 @@ export const KIND_ART: Readonly<Record<LevelKind, readonly PixelArt[]>> = Object
 /** Every picture here, for the tests. */
 export const ADVENTURE_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({
   PATH_FLAG, SHIELD, HAMMER, CLOCK, BELT, SKULL_CROWN, TOWER, FLAG, QUESTION, BOW, DIFF_EASY, DIFF_NORMAL, DIFF_HARD,
+  TWIST_FOG, TWIST_ROCK, TWIST_ICE, TWIST_LAVA,
 });

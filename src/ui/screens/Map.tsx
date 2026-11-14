@@ -1,7 +1,10 @@
+import { signal } from '@preact/signals';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { levelById } from '../../adventure/levels';
+import { LEVELS, levelById } from '../../adventure/levels';
+import type { LevelDef } from '../../adventure/types';
 import { session } from '../../app/session';
 import { go, startLevel } from '../../app/store';
+import type { WorldKey } from '../../data/worlds';
 import type { Save } from '../../progress/save';
 import type { Faction } from '../../sim/types';
 import { frameColor } from '../frameColor';
@@ -11,9 +14,9 @@ import { uiSound } from '../uiSound';
 import { QUESTION } from './adventurePictures';
 import { STAR } from './boardPictures';
 import { Digits, KindPicture, LevelCard, LockedCard, UnitPic } from './LevelCard';
-import { HOP_MS, mapStones } from './mapModel';
-import type { Stone } from './mapModel';
-import { LOCK } from './pictures';
+import { HOP_MS, mapIslands, mapStones, openingWorld } from './mapModel';
+import type { Island, Stone, World } from './mapModel';
+import { ARROW, LOCK } from './pictures';
 import { PlayerPicture } from './PlayerPicture';
 import './players.css';
 import './adventure.css';
@@ -38,9 +41,20 @@ export interface MapHost {
 
 export interface MapHostView {
   side: Faction;
+  /** The island shown: its arena (the look) and whether it is locked (grey, a padlock, no stones). */
+  arena: WorldKey;
+  locked: boolean;
+  /** All five islands in the side's order, the shown one among them (the others hang in the sky). */
+  islands: { arena: WorldKey; locked: boolean }[];
   stones: { id: string; state: Stone['state'] }[];
   frame: string;
 }
+
+/**
+ * The levels the map shows: the shipped ones. A test (or the debug hook of the map e2e) may put
+ * a longer list here to see later worlds before their level files exist.
+ */
+export const mapLevels = signal<readonly LevelDef[]>(LEVELS);
 
 /**
  * Where the stones go without a 3D map (tests, no WebGL): the plants' path laid out in shares of
@@ -58,9 +72,9 @@ export function resetSeenStars(): void {
   seenStars.clear();
 }
 
-/** The stones whose stars went up since `slot` last looked at `side`'s map; then remembers them. */
-function freshStars(save: Save, side: Faction, stones: Stone[]): Set<string> {
-  const key = `${save.slot}:${side}`;
+/** The stones whose stars went up since `slot` last looked at `side`'s `world`; then remembers them. */
+function freshStars(save: Save, side: Faction, world: World, stones: Stone[]): Set<string> {
+  const key = `${save.slot}:${side}:${world}`;
   const seen = seenStars.get(key);
   const now: Record<string, number> = {};
   for (const s of stones) now[s.def.id] = s.stars;
@@ -116,16 +130,35 @@ function StoneButton({ stone, fresh, portraits, onTap, place }: {
   );
 }
 
+/** The big arrow picture to the island before (left) or after (right), with a padlock when that one is locked. */
+function WorldArrow({ dir, to, onTap }: { dir: 'prev' | 'next'; to: Island; onTap(): void }) {
+  return (
+    <button
+      type="button" data-action={`world-${dir}`} data-to={to.world} data-arena={to.arena} data-locked={to.locked ? '' : undefined}
+      aria-label={dir === 'prev' ? 'The island before' : 'The next island'}
+      class={`btn btn--square pal-wood map__arrow map__arrow--${dir}`} onClick={onTap}
+    >
+      <PixelIcon art={ARROW} class="map__arrow-icon" />
+      {to.locked && <span class="map__arrow-lock" aria-hidden="true"><PixelIcon art={LOCK} /></span>}
+    </button>
+  );
+}
+
 /**
- * The Adventure map of one side: the Backyard's eight level stones over the 3D map (the host);
- * each shows its kind, number and stars, a padlock while closed, the silhouette of the unit it
- * unlocks; the next one hops with the player's picture on a flag of their frame colour. Two
- * portrait tabs switch between Lukas's plants and Toby's zombies (anyone may play either; each
- * side has its own progress). A tap on a stone opens its card (`card`). Without a host the stones
- * are laid out flat.
+ * The Adventure map of one side: one island per world in the side's order (the zombies travel
+ * the worlds in reverse), the shown one big in its world's colours with that world's eight level
+ * stones over the 3D map (the host), the others small in the sky. Each stone shows its kind,
+ * number and stars, a padlock while closed, the silhouette of the unit it unlocks; the next one
+ * hops with the player's picture on a flag of their frame colour. Arrow pictures step to the
+ * island before or after; a locked island (no levels yet, or not reached) is grey with a big
+ * padlock that refuses a tap. The map opens on the world of the next level (`world` keeps the
+ * island an arrow went to). Two portrait tabs switch between Lukas's plants and Toby's zombies
+ * (anyone may play either; each side has its own progress). A tap on a stone opens its card
+ * (`card`). Without a host the stones are laid out flat.
  */
-export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
-  side: Faction; card?: string; portraits?: Record<string, string>; boys?: BoyPortraits; host?: MapHost;
+export function MapScreen({ side, card, world: asked, portraits = {}, boys = {}, host, levels = mapLevels.value }: {
+  side: Faction; card?: string; world?: World; portraits?: Record<string, string>; boys?: BoyPortraits; host?: MapHost;
+  levels?: readonly LevelDef[];
 }) {
   const me = session.player.value;
   const loggedOut = me === null;
@@ -133,11 +166,17 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
     if (loggedOut) go({ name: 'play' });
   }, [loggedOut]);
 
-  const stones = me === null ? [] : mapStones(me, side);
-  const view: MapHostView | null = me === null ? null : {
-    side, frame: frameColor(me.slot), stones: stones.map((s) => ({ id: s.def.id, state: s.state })),
+  const shown = card === undefined ? null : levelById(card, levels);
+  const world: World = asked ?? (shown !== null && shown.side === side ? shown.world : me === null ? 1 : openingWorld(me, side, levels));
+  const islands = me === null ? [] : mapIslands(me, side, levels);
+  const island = islands[world - 1] ?? null;
+  const stones = me === null || island === null || island.locked ? [] : mapStones(me, side, world, levels);
+  const view: MapHostView | null = me === null || island === null ? null : {
+    side, arena: island.arena, locked: island.locked,
+    islands: islands.map((i) => ({ arena: i.arena, locked: i.locked })),
+    frame: frameColor(me.slot), stones: stones.map((s) => ({ id: s.def.id, state: s.state })),
   };
-  const viewKey = view === null ? '' : `${view.side}|${view.frame}|${view.stones.map((s) => s.state).join(',')}`;
+  const viewKey = view === null ? '' : `${view.side}|${view.arena}|${view.islands.map((i) => Number(i.locked)).join('')}|${view.frame}|${view.stones.map((s) => s.state).join(',')}`;
 
   // The 3D map: open once a player is there, kept in step with the stones, closed when the screen goes.
   const viewRef = useRef(view);
@@ -220,11 +259,14 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
   // A star won since the last look pops in, with the merge sound.
   const fresh = useRef<Set<string>>(new Set());
   const freshFor = useRef('');
-  const key = me === null ? '' : `${me.slot}:${side}:${stones.map((s) => s.stars).join('')}`;
+  const key = me === null ? '' : `${me.slot}:${side}:${world}:${stones.map((s) => s.stars).join('')}`;
   if (me !== null && freshFor.current !== key) {
     freshFor.current = key;
-    fresh.current = freshStars(me, side, stones);
+    fresh.current = freshStars(me, side, world, stones);
   }
+
+  // A tap on a locked island's padlock: the deny sound and a shake (two names, so each tap restarts it).
+  const [denied, setDenied] = useState(0);
   useEffect(() => {
     if (fresh.current.size > 0) uiSound('merge');
   }, [key]);
@@ -233,16 +275,22 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
 
   const tap = (s: Stone): void => {
     uiSound(s.state === 'closed' ? 'deny' : 'click');
-    go({ name: 'map', side, card: s.def.id });
+    go({ name: 'map', side, world, card: s.def.id });
   };
   const next = stones.find((s) => s.state === 'next') ?? null;
-  const shown = card === undefined ? null : levelById(card);
   const open = shown !== null && shown.side === side ? stones.find((s) => s.def.id === shown.id) ?? null : null;
-  const close = (): void => { uiSound('click'); go({ name: 'map', side }); };
+  const close = (): void => { uiSound('click'); go({ name: 'map', side, world }); };
+  const before = islands[world - 2];
+  const after = islands[world];
+  const step = (to: Island): void => { uiSound('click'); go({ name: 'map', side, world: to.world }); };
+  // The level to play now, on whichever island it is (for a closed stone's card).
+  const playNow = mapStones(me, side, openingWorld(me, side, levels), levels).find((s) => s.state === 'next') ?? null;
 
   return (
     <div
-      ref={root} data-screen="map" data-side={side} class={`layer map${host === undefined ? ' map--flat' : ''}`}
+      ref={root} data-screen="map" data-side={side} data-world={world} data-arena={island?.arena}
+      data-locked={island?.locked === true ? '' : undefined}
+      class={`layer map${host === undefined ? ' map--flat' : ''}`}
       style={{ '--hop-ms': `${HOP_MS}ms`, '--hop-delay': hopDelay }}
     >
       <button
@@ -265,6 +313,17 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
           </button>
         ))}
       </div>
+      {before !== undefined && <WorldArrow dir="prev" to={before} onTap={() => step(before)} />}
+      {after !== undefined && <WorldArrow dir="next" to={after} onTap={() => step(after)} />}
+      {island?.locked === true && (
+        <button
+          type="button" data-action="island-locked" aria-label="Locked"
+          class={`map__island-lock${denied > 0 ? ` is-deny-${denied % 2 === 0 ? 'b' : 'a'}` : ''}`}
+          onClick={() => { uiSound('deny'); setDenied((n) => n + 1); }}
+        >
+          <PixelIcon art={LOCK} />
+        </button>
+      )}
       <div class="map__stones">
         {stones.map((s, i) => {
           const [fx, fy] = FALLBACK[i] ?? [0.5, 0.5];
@@ -300,15 +359,15 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
       {open !== null && open.state !== 'closed' && (
         <LevelCard
           def={open.def} save={me} portraits={portraits} onClose={close}
-          onPlay={() => { uiSound('click'); startLevel(open.def, me); }}
+          onPlay={() => { uiSound('click'); startLevel(open.def, me, undefined, levels); }}
           onTutorial={() => { uiSound('click'); startLevel(open.def, me, undefined, undefined, undefined, { replayTutorial: true }); }}
           onSkill={(skill) => { uiSound('click'); session.update((s) => ({ ...s, adventureDifficulty: { ...s.adventureDifficulty, [side]: skill } })); }}
         />
       )}
       {open !== null && open.state === 'closed' && (
         <LockedCard
-          def={open.def} next={next?.def ?? null} onClose={close}
-          onNext={() => { if (next !== null) { uiSound('click'); go({ name: 'map', side, card: next.def.id }); } }}
+          def={open.def} next={playNow?.def ?? null} onClose={close}
+          onNext={() => { if (playNow !== null) { uiSound('click'); go({ name: 'map', side, card: playNow.def.id }); } }}
         />
       )}
     </div>

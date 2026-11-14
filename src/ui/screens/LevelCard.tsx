@@ -9,10 +9,10 @@ import { SILHOUETTES } from '../hud/CardTray';
 import { GLOVE } from '../hud/PointingHand';
 import { PixelIcon } from '../hud/PixelIcon';
 import type { PixelArt } from '../hud/PixelIcon';
-import { BOW, CLOCK, DIFF_EASY, DIFF_HARD, DIFF_NORMAL, FLAG, KIND_ART, SKULL_CROWN, TOWER } from './adventurePictures';
+import { BOW, CLOCK, DIFF_EASY, DIFF_HARD, DIFF_NORMAL, FLAG, KIND_ART, SKULL_CROWN, TOWER, TWIST_FOG, TWIST_ICE, TWIST_LAVA, TWIST_ROCK } from './adventurePictures';
 import { STAR, SWORDS } from './boardPictures';
-import { dealtCards, enemyUnits, starGoals } from './mapModel';
-import type { StarGoal } from './mapModel';
+import { dealtCards, enemyUnits, starGoals, twistKinds } from './mapModel';
+import type { StarGoal, TwistPicture } from './mapModel';
 import { ARROW, CROSS, DIGITS, LOCK, PLUS } from './pictures';
 
 /** A level kind's picture: the main one, and a smaller one (the clock) on its corner. */
@@ -47,6 +47,9 @@ export function UnitPic({ unit, portraits, class: cls = '' }: { unit: UnitKey; p
     </span>
   );
 }
+
+/** Each lawn twist's small picture on the card. */
+const TWIST_ART: Record<TwistPicture, PixelArt> = { fog: TWIST_FOG, rocks: TWIST_ROCK, ice: TWIST_ICE, lava: TWIST_LAVA };
 
 const FACES: { skill: Skill; art: PixelArt; label: string }[] = [
   { skill: 'easy', art: DIFF_EASY, label: 'Easy' },
@@ -87,8 +90,9 @@ export interface LevelCardProps {
 /**
  * An open level's card: its kind and number, the cards to be dealt (portraits), the enemy's
  * pictures, the three stars with what each asks drawn under it (filled as won), a reward
- * silhouette when the level unlocks a unit, a big play button and three skull pictures for the difficulty
- * (the player's saved one ringed). No words needed.
+ * silhouette when the level unlocks a unit, a small picture of the lawn's twist when it has one, a
+ * big play button and three skull pictures for the Adventure difficulty (the player's saved one
+ * ringed). No words needed.
  */
 export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, onClose }: LevelCardProps) {
   const stars = save[def.side].stars[def.id] ?? 0;
@@ -97,6 +101,7 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
   const enemies = enemyUnits(def);
   const skill = save.adventureDifficulty[def.side];
   const reward = def.unlocks !== null && stars === 0 ? def.unlocks : null;
+  const twists = twistKinds(def);
   return (
     <div class="card-veil" data-veil onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -109,6 +114,14 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
         <div class="lcard__head">
           <span class="lcard__kind px pal-cream"><KindPicture kind={def.kind} /></span>
           <Digits n={def.n} class="lcard__n" />
+          {twists.length > 0 && (
+            // The lawn's twist (fog, rocks, ice, lava), drawn small beside the number.
+            <span class="lcard__twists" data-twists aria-label="The lawn">
+              {twists.map((t) => (
+                <span key={t} class="lcard__twist px pal-cream" data-twist={t}><PixelIcon art={TWIST_ART[t]} /></span>
+              ))}
+            </span>
+          )}
         </div>
         <div class="lcard__sides">
           <div class="lcard__row" data-dealt aria-label="Your cards">

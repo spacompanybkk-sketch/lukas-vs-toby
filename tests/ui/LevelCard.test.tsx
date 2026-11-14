@@ -10,7 +10,9 @@ import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import type { Save } from '../../src/progress/save';
 import { App } from '../../src/ui/App';
-import { resetSeenStars } from '../../src/ui/screens/Map';
+import { mapLevels, resetSeenStars } from '../../src/ui/screens/Map';
+import { LEVELS } from '../../src/adventure/levels';
+import { previewWorlds } from '../../src/app/previewWorlds';
 import { DIFF_EASY, DIFF_HARD, DIFF_NORMAL } from '../../src/ui/screens/adventurePictures';
 import { pixelPaths } from '../../src/ui/hud/PixelIcon';
 import type { PixelArt } from '../../src/ui/hud/PixelIcon';
@@ -30,6 +32,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => render(null, root));
   root.remove();
+  mapLevels.value = LEVELS;
   session.dispose();
   go({ name: 'title' });
 });
@@ -55,6 +58,24 @@ async function openCard(id: string, progress: Partial<Pick<Save, 'plants' | 'zom
 const pictures = (sel: string): string[] => all(`${sel} [data-picture]`).map((p) => p.dataset.picture ?? '');
 
 describe('Level card', () => {
+  it('a level without a twist shows no twist picture', async () => {
+    await openCard('p1-1');
+    expect(q('[data-twists]')).toBeNull();
+  });
+
+  it.each<[string, string, string]>([['p2-1', 'p1', 'fog'], ['z2-1', 'z1', 'ice'], ['p3-1', 'p2', 'rocks']])(
+    'a level with a twist (%s, stand-in levels) shows its picture beside the number: %s won before, %s', async (id, before, twist) => {
+      mapLevels.value = previewWorlds(LEVELS);
+      const stars = (p: string): Record<string, 1> => Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`${p}-${i + 1}`, 1]));
+      const side = id.startsWith('p') ? 'plants' : 'zombies';
+      const all8 = before === 'p2' ? { ...stars('p1'), ...stars('p2') } : stars(before);
+      await openCard(id, { [side]: { stars: all8, unlocked: [] } });
+      expect(need('[data-screen="level-card"]').dataset.level).toBe(id);
+      expect(all('.lcard__head [data-twist]').map((t) => t.dataset.twist)).toEqual([twist]);
+      expect(need('[data-screen="level-card"]').textContent?.trim()).toBe(''); // pictures only
+    },
+  );
+
   it('a first battle: its kind and number, the one card dealt, the enemy, three empty stars (win, base at half, nearly full)', async () => {
     await openCard('p1-1');
     const card = need('[data-screen="level-card"]');
@@ -175,7 +196,7 @@ describe('Level card', () => {
   it('a tap on the dim around the card closes it', async () => {
     await openCard('p1-1');
     act(() => { need('[data-veil]').click(); });
-    expect(screen.value).toEqual({ name: 'map', side: 'plants' });
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 1 });
   });
 
   it('every target is a button (tap only), and the card of a level of the other side does not open', async () => {
