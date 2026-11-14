@@ -383,12 +383,13 @@ const FOLLOW_RATE = 3;
 const FOG_WINDOW = 5.2;
 const ICE_WINDOW = 6.4;
 /** The glowing steps of an icy lane's pulse (blocky, never smooth). */
-const PULSE_STEPS = [0.06, 0.18, 0.3, 0.18];
+const PULSE_STEPS = [0.08, 0.25, 0.42, 0.25];
 
-const GHOST_ICE = '#BFE8FF';
+/** The pulse is a white glow over the deep blue ice; the ghosts are see-through but in their own colours (a zombie green and blue), so they read on snow and on grass. */
+const GHOST_ICE = '#FFFFFF';
 const GHOST_PEA = '#8BE04E';
-const GHOST_BODY = '#DDF1FF';
-const GHOST_DARK = '#9CC4E4';
+const GHOST_BODY = '#8FC46A';
+const GHOST_DARK = '#4E6FAE';
 
 /** A boxy ghost zombie, arms out towards the plants (−x), feet at its origin. */
 function ghostZombie(): BoxBatch {
@@ -397,10 +398,11 @@ function ghostZombie(): BoxBatch {
   const dark = shade(GHOST_DARK, 0);
   b.boxOn(0, 0, -0.08, 0.12, 0.26, 0.12, dark);
   b.boxOn(0, 0, 0.08, 0.12, 0.26, 0.12, dark);
-  b.boxOn(0, 0.26, 0, 0.2, 0.3, 0.32, body);
+  b.boxOn(0, 0.26, 0, 0.2, 0.3, 0.32, dark);
   b.boxOn(0, 0.56, 0, 0.26, 0.26, 0.26, body);
-  b.boxOn(-0.14, 0.62, 0.06, 0.03, 0.05, 0.05, dark); // eyes
-  b.boxOn(-0.14, 0.62, -0.06, 0.03, 0.05, 0.05, dark);
+  const eye = shade('#1E2A16', 0);
+  b.boxOn(-0.14, 0.62, 0.06, 0.03, 0.05, 0.05, eye); // eyes
+  b.boxOn(-0.14, 0.62, -0.06, 0.03, 0.05, 0.05, eye);
   b.boxOn(-0.2, 0.44, -0.2, 0.3, 0.08, 0.08, body); // arms out front
   b.boxOn(-0.2, 0.44, 0.2, 0.3, 0.08, 0.08, body);
   return b;
@@ -591,7 +593,7 @@ export class TwistShow {
   }
 
   private ghost(lane: number): Object3D {
-    const material = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false });
+    const material = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.78, depthWrite: false });
     this.materials.push(material);
     const mesh = new Mesh(ghostZombie().build(), material);
     mesh.name = 'ghost-zombie';

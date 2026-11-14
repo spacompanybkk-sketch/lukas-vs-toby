@@ -274,26 +274,14 @@ function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySigna
 
 /**
  * A twist pan holding the match: a clear catcher over the whole screen, so a tap anywhere (the lawn,
- * the sky, the dimmed cards) ends it; the battle gets `is-twist`, which dims the cards and keeps the
- * Pause button above the catcher. Gone under the pause menu (Pause is no tap on the pan).
+ * the sky, the dimmed cards) ends it. While it is up the cards and powers dim and the Pause button
+ * sits above it (CSS: `.battle:has(.tut-twist)`; no class is put on the battle's root, which
+ * re-renders). Gone under the pause menu (Pause is no tap on the pan) and at the result.
  */
 function LiveTwist({ ctl, twist }: { ctl: Controller; twist: ReadonlySignal<TwistVM | null> }) {
   const vm = twist.value;
-  const on = vm !== null && vm.holding && !ctl.hud.paused.value && ctl.hud.result.value === null;
-  const ref = useRef<HTMLDivElement>(null);
-  const shown = vm !== null && vm.holding && ctl.hud.result.value === null;
-  useEffect(() => {
-    const battle = ref.current?.closest('[data-screen="battle"]') ?? document.querySelector('[data-screen="battle"]');
-    battle?.classList.toggle('is-twist', shown);
-    return () => battle?.classList.remove('is-twist');
-  }, [shown]);
-  return (
-    <div ref={ref} class="tut-twist-anchor" aria-hidden="true">
-      {on && (
-        <div class="tut-twist" data-twist={vm.kind} data-twist-step={vm.step} onClick={() => ctl.tapTwist?.()} />
-      )}
-    </div>
-  );
+  if (vm === null || !vm.holding || ctl.hud.paused.value || ctl.hud.result.value !== null) return null;
+  return <div class="tut-twist" data-twist={vm.kind} data-twist-step={vm.step} aria-hidden="true" onClick={() => ctl.tapTwist?.()} />;
 }
 
 /** A Free Play run's bank on the armed Quit: its score and the coins ending now would pay. */

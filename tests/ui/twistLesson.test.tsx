@@ -82,7 +82,6 @@ describe('the twist pan through the app', () => {
     steps(c, 3);
     const catcher = need('[data-twist="fog"]');
     expect(catcher.dataset.twistStep).toBe('p2-1.fog');
-    expect(need('[data-screen="battle"]').classList.contains('is-twist')).toBe(true);
     expect(q('[data-glove]')).toBeNull();
     steps(c, seconds(TWIST_HINT_SECONDS));
     expect(need('[data-tutorial] [data-glove]').dataset.glove).toBe('tap');
@@ -91,7 +90,6 @@ describe('the twist pan through the app', () => {
     expect(me().teached).toEqual(['p2-1.fog']);
     expect(q('[data-twist]')).toBeNull();
     expect(q('[data-tutorial]')).toBeNull();
-    expect(need('[data-screen="battle"]').classList.contains('is-twist')).toBe(false);
     steps(c, 10);
     expect(c.match.state.tick).toBe(11);
     // Started again: shown once only.
