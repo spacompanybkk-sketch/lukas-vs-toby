@@ -71,6 +71,11 @@ export function zombieShotDps(b: Balance, u: Unit): number {
  * Zombies that shoot wear the plants down from range: their shots count with their bites once
  * the zombies arrive, and those that reach the front plant from where they stand (a Trident, an
  * Archer, a Brain Rot) already shoot during the walk, so the plants have less health to chew.
+ *
+ * The lawn's twists (all no-ops without one): on ice the zombies walk `view.ice` times as fast, so
+ * the walk is shorter; in fog every shot reaches only `view.fog` tiles, so the plants start firing
+ * later and the zombies snipe from nearer; lava burns each zombie on its way to the front plant
+ * (`lavaCost`), which counts as stopping.
  */
 export function reckonLane(
   b: Balance, view: LaneView, minX: number,
@@ -99,17 +104,35 @@ export function reckonLane(
     plantHp += p.hp;
     frontPlantX = Math.max(frontPlantX, p.x);
   }
-  const speed = front !== undefined ? (b.units[front.key]?.speed ?? 1) : (probe?.speed ?? 1);
+  const speed = (front !== undefined ? (b.units[front.key]?.speed ?? 1) : (probe?.speed ?? 1)) * view.ice;
   const startX = front !== undefined ? front.x : 9.5;
-  const walk = Math.max(0, startX - frontPlantX - 0.6) / speed;
+  const from = view.fog === null ? startX : Math.min(startX, frontPlantX + view.fog);
+  const walk = Math.max(0, from - frontPlantX - 0.6) / speed;
   let sniping = 0;
+  let burning = 0;
   for (const z of view.zombies) {
-    const range = b.units[z.key]?.shot?.range ?? 0;
+    const shot = b.units[z.key]?.shot?.range ?? 0;
+    const range = view.fog === null ? shot : Math.min(shot, view.fog);
     if (z.x >= minX && z.x - frontPlantX <= range) sniping += zombieShotDps(b, z);
+    if (z.x >= minX && view.lava !== null) burning += Math.min(z.hp, lavaCost(view, z.x, frontPlantX, (b.units[z.key]?.speed ?? 1) * view.ice));
   }
+  if (front === undefined && probe !== undefined && view.lava !== null) burning += lavaCost(view, startX, frontPlantX, speed);
   const biting = probe !== undefined && front === undefined ? probe.bite : bite;
   const left = Math.max(0, plantHp - sniping * walk);
   const chew = biting > 0 ? left / biting : 0;
   const lasts = sniping > 0 ? Math.min(walk, plantHp / sniping) : walk;
-  return { stopping: dps * (lasts + chew), zombieHp };
+  const stopping = dps * (lasts + chew);
+  return { stopping: view.lava === null ? stopping : stopping + burning, zombieHp };
+}
+
+/**
+ * The health lava takes off a zombie walking from `x` to the front plant at `frontX` at `speed`:
+ * the lava's dps for the time it stands on each lava tile in between, plus one burn after the last.
+ */
+export function lavaCost(view: LaneView, x: number, frontX: number, speed: number): number {
+  const lava = view.lava;
+  if (lava === null || speed <= 0) return 0;
+  let tiles = 0;
+  for (let col = Math.max(0, Math.floor(frontX + 0.6)); col < lava.cols.length && col <= Math.floor(x); col++) if (lava.cols[col] === true) tiles += 1;
+  return tiles === 0 ? 0 : lava.dps * (tiles / speed + lava.burnSeconds);
 }

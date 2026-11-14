@@ -4,7 +4,7 @@ import { levelById } from '../../src/adventure/levels';
 import { SKILLS } from '../../src/ai/basicBot';
 import { playLevel, standInFor, standInSave } from '../../src/ai/levelChecks';
 import {
-  AVERAGE, BEGINNER_TAP, LEVEL_STAND_INS, STAND_IN_DIFFICULTY, averageUpgrade, createLevelStandIn, standInTable,
+  AVERAGE, BEGINNER_TAP, LEVEL_STAND_INS, STAND_IN_DIFFICULTY, createLevelStandIn, standInTable,
 } from '../../src/ai/levelStandIns';
 import { Match } from '../../src/sim/match';
 import type { Command } from '../../src/sim/types';
@@ -93,12 +93,26 @@ describe('the level stand-ins', () => {
     expect(standInTable('expert', 'plants')).toBe(SKILLS.plants.hard);
   });
 
-  it('difficulty: the beginner on Easy, the others on Normal; upgrades from coins (none in the Backyard)', () => {
+  it('difficulty: the beginner on Easy, the others on Normal; only the average player buys upgrades', () => {
     expect(STAND_IN_DIFFICULTY).toEqual({ beginner: 'easy', average: 'medium', expert: 'medium' });
-    expect([0, 1499, 1500, 4600, 99999].map(averageUpgrade)).toEqual([0, 0, 1, 3, 10]);
     const z8 = levelById('z1-8')!;
-    expect(standInSave('average', z8).upgrades).toEqual({});
+    expect(Object.keys(standInSave('average', z8).upgrades).length).toBeGreaterThan(0);
+    expect(standInSave('expert', z8).upgrades).toEqual({});
     expect(standInSave('beginner', z8).zombies.unlocked).toEqual(['desertZombie', 'skeletonArcher']);
+  });
+
+  it('Breakthrough: the expert stacks one lane (the one that gives), the average player spreads by plant count', () => {
+    // z1-6: a Walnut Bomb in every lane, Peashooters behind lanes 0, 2 and 4: lanes 1 and 3 give.
+    const lanesOf = (who: 'average' | 'expert'): number[] =>
+      // From the second step on: the garden is laid on the first.
+      sent('z1-6', who, 40).filter((c) => c.tick > 0 && c.cmd.type === 'place' && !c.refused).map((c) => (c.cmd as { lane: number }).lane);
+    const expert = lanesOf('expert');
+    expect(expert.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(expert).size, `expert lanes ${expert.join(',')}`).toBe(1);
+    expect([1, 3]).toContain(expert[0]);
+    // The average player: the lanes with the fewest plants, but for his careless plays (15%).
+    const average = lanesOf('average');
+    expect(average.filter((l) => l === 1 || l === 3).length, `average lanes ${average.join(',')}`).toBeGreaterThanOrEqual(Math.ceil(average.length * 0.6));
   });
 
   it('the expert puts Kernel-pults in the Titan\'s lane; a whole boss level ends', () => {

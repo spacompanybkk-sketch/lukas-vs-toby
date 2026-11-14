@@ -10,10 +10,14 @@
  *   he takes a random card to a sensible tile.
  * - **average** (Lukas, 8, on Normal): the Medium computer's choices, a little slow and careless
  *   (one decision every 3 s, 15% of them random, no powers before 20 s, at most 4 Sunflowers); Marketplace upgrades as the campaign's rewards allow
- *   (`averageUpgrade`: `floor(coins earned so far / 1500)` on his three favourite units).
+ *   (`averageUpgrades` in `levelChecks.ts`: the coins of his stars, spent at the real prices on his favourites).
  * - **expert** (on Normal, no upgrades): the Hard computer's choices. Against the Brain Titan it
  *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane (the
  *   average player puts Peashooters there: he shoots at the giant).
+ *
+ * In a Breakthrough (a garden to break: z1-3, z1-6, Free Play's gardens) the average player and the
+ * expert push one lane with every zombie (`breakthroughLane`): the expert reads which lane gives as
+ * the computer reads a lane and stacks it, the average player takes the one with the fewest plants.
  *
  * Every stand-in handles the conveyor (no energy, cards from the belt): it takes the belt card that
  * fits best (the beginner a random one) to a sensible tile or lane. Each is a pure function of the
@@ -30,9 +34,12 @@ import { createBasicBot, SKILLS, POWER_PACING } from './basicBot';
 import type { SkillTable } from './basicBot';
 import type { Bot, Skill } from './bot';
 import { shotDps } from './laneModel';
-import { placeCommand, readLawn, sendCommand } from './lawn';
+import { freeTile, placeCommand, randomLegal, readLawn, sendCommand, shuffledLanes } from './lawn';
 import type { BotRng, LaneView } from './lawn';
 import { childPower } from './powers';
+import { choose } from './wants';
+import { cardsFor, laneSurplus, newZombieMemory } from './zombieStrategy';
+import type { ZombieMemory } from './zombieStrategy';
 
 export type LevelStandIn = 'beginner' | 'average' | 'expert';
 export const LEVEL_STAND_INS: readonly LevelStandIn[] = ['beginner', 'average', 'expert'];
@@ -52,18 +59,11 @@ export const AVERAGE = { every: 90, randomShare: 0.15, powerFirst: 20, sunflower
 /** How often the expert takes a belt card (ticks). */
 export const EXPERT_BELT_EVERY = 15;
 
-/** Coins that buy the average player one more upgrade level on each favourite. */
-export const COINS_PER_UPGRADE = 1500;
-/** The average player's three favourite units, per side: what he upgrades. */
+/** The average player's three first favourite units, per side (his newest unlocks join them: `favouritesAt`). */
 export const FAVOURITES: Readonly<Record<Faction, readonly CardKey[]>> = {
   plants: ['peashooter', 'sunflower', 'walnutBomb'],
   zombies: ['brainEater', 'veryFastWalker', 'skeletonWarrior'],
 };
-
-/** The average player's upgrade level on his favourites, having earned `coins` so far. */
-export function averageUpgrade(coins: number): number {
-  return Math.min(10, Math.floor(coins / COINS_PER_UPGRADE));
-}
 
 /** The skill table each stand-in decides with (the beginner has none: he taps). */
 export function standInTable(kind: Exclude<LevelStandIn, 'beginner'>, side: Faction): SkillTable {
@@ -105,7 +105,7 @@ function frontCol(view: LaneView, keys?: ReadonlySet<string>): number {
  * other plant in the middle. Free tiles only; the match still has the last word.
  */
 function sensibleCols(view: LaneView, card: CardKey): number[] {
-  const free = (col: number): boolean => col >= 0 && col < PLANT_COLS && view.tiles[col] === undefined;
+  const free = (col: number): boolean => col >= 0 && col < PLANT_COLS && freeTile(view, col);
   const zombie = nearestZombie(view);
   const zx = zombie === undefined ? COLS : zombie.x;
   const range = (lo: number, hi: number): number[] => {
@@ -215,12 +215,14 @@ function sensibleBelt(match: Match, side: Faction, rng: BotRng, lane: { current:
   return cmd;
 }
 
-/** A belt card from `slot` onto any tile (lane for zombies) the match takes, from a random start. */
+/** A belt card from `slot` onto any tile (lane for zombies) the match takes, from a random start; never on lava. */
 function anyBeltTile(match: Match, side: Faction, slot: number, rng: BotRng): Command | null {
   const start = randomInt(rng, LANES);
+  const lawn = readLawn(match.state);
   for (let i = 0; i < LANES; i++) {
     const lane = (start + i) % LANES;
-    const cols = side === 'zombies' ? [COLS - 1] : Array.from({ length: PLANT_COLS }, (_, c) => c);
+    const lava = lawn[lane]?.lava?.cols;
+    const cols = side === 'zombies' ? [COLS - 1] : Array.from({ length: PLANT_COLS }, (_, c) => c).filter((c) => lava?.[c] !== true);
     for (const col of cols) {
       const cmd: Command = { type: 'belt', faction: side, slot, lane, col };
       if (match.check(cmd) === null) return cmd;
@@ -328,13 +330,38 @@ export const TITAN_ANSWER: Readonly<Record<'average' | 'expert', { card: CardKey
   average: { card: 'peashooter', want: 3 },
 };
 
-/** The average player and the expert: the computer's choices at their pace, plus the belt and the Titan. */
-function createSensible(kind: 'average' | 'expert', side: Faction, seed: number, hero: boolean): Bot {
-  const table = standInTable(kind, side);
+/**
+ * A Breakthrough (a garden to break, nobody rebuilding it): the lane a sensible zombie player pushes
+ * with everything he sends. The expert reads it as the computer reads a lane (`laneSurplus`: where
+ * a fresh Brain Eater, behind the zombies he already has there, gets furthest past the plants' fire),
+ * so he keeps stacking the lane that gives; the average player just takes the lane with the fewest
+ * plants, read afresh each time. Ties from a random start.
+ */
+export function breakthroughLane(match: Match, kind: 'average' | 'expert', rng: BotRng): LaneView {
+  const lawn = readLawn(match.state);
+  const order = shuffledLanes(rng).map((l) => lawn[l] as LaneView);
+  const score = (v: LaneView): number => (kind === 'expert' ? laneSurplus(match.balance, v, true) : -v.plants.length);
+  let best = order[0] as LaneView;
+  for (const v of order) if (score(v) > score(best)) best = v;
+  return best;
+}
+
+/** The sensible player's Breakthrough move: the best answer for `breakthroughLane` (as the computer picks cards), waiting for its energy. */
+function breakthroughMove(match: Match, kind: 'average' | 'expert', table: SkillTable, rng: BotRng, memory: ZombieMemory): Command | null {
+  const view = breakthroughLane(match, kind, rng);
+  return choose(match, cardsFor(view, table, rng, memory).map((card) => ({
+    cmd: sendCommand(card, view.lane), wait: 'energy' as const, onChosen: () => { memory.lastLane = view.lane; },
+  })));
+}
+
+/** The average player and the expert: the computer's choices at their pace, plus the belt, the Titan and the Breakthrough push. */
+function createSensible(kind: 'average' | 'expert', side: Faction, seed: number, hero: boolean, strong: StrongExpert | null): Bot {
+  const table = strong === null ? standInTable(kind, side) : { ...standInTable(kind, side), ...strong.table };
   const card = createBasicBot(side, kind === 'expert' ? 'hard' : 'medium', seed ^ SALT[kind], table);
   const rng = rngFor(seed, kind, side);
   const beltEvery = kind === 'expert' ? EXPERT_BELT_EVERY : AVERAGE.every;
   const lane = { current: -1, sent: 0 };
+  const memory = newZombieMemory();
   // Without the hero's button, the computer's hero presses are never made.
   const powerOk = (c: Command): boolean => c.type === 'spell' || (hero && c.type === 'hero');
   const own = (cmds: Command[]): Command[] => (hero ? cmds : cmds.filter((c) => c.type !== 'hero'));
@@ -354,6 +381,16 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
         }
         return out;
       }
+      if (side === 'zombies' && (s.config.mode === 'breakthrough' || (strong?.stack === true && s.config.mode === 'battle'))) {
+        // The hero and spells as the computer fires them; the cards all down the lane that gives.
+        const out: Command[] = card.think(match).filter(powerOk);
+        if (s.tick % table.thinkEvery === 0) {
+          const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
+          const cmd = careless ? randomLegal(match, side, rng) : breakthroughMove(match, kind, table, rng, memory);
+          if (cmd !== null) out.push(cmd);
+        }
+        return out;
+      }
       if (side === 'plants' && s.tick % table.thinkEvery === 0) {
         const answer = titanAnswer(match, TITAN_ANSWER[kind].card, TITAN_ANSWER[kind].want);
         if (answer !== null) {
@@ -367,10 +404,21 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
 }
 
 /**
+ * A stronger expert, for probes (worlds plan Task 8 review): `table` changes his skill table (e.g.
+ * a faster look or a wider defence margin); `stack` (zombies) plays a battle as he plays a
+ * Breakthrough, every zombie down the lane that gives.
+ */
+export interface StrongExpert { readonly table?: Partial<SkillTable>; readonly stack?: boolean }
+
+/**
  * A stand-in of `kind` for `side` in one match (see the note at the top). `hero` false: a level
  * where the child has no hero button yet (`heroHidden`); the stand-in never fires the hero.
+ * `strong` (the expert only, probes): see `StrongExpert`.
  */
-export function createLevelStandIn(kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean } = {}): Bot {
+export function createLevelStandIn(
+  kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean; strong?: StrongExpert } = {},
+): Bot {
   const hero = opts.hero ?? true;
-  return kind === 'beginner' ? createBeginner(side, seed, hero) : createSensible(kind, side, seed, hero);
+  if (kind === 'beginner') return createBeginner(side, seed, hero);
+  return createSensible(kind, side, seed, hero, kind === 'expert' ? opts.strong ?? null : null);
 }

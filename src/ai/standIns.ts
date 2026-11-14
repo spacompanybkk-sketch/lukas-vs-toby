@@ -34,11 +34,11 @@ import { UNIT_INFO } from '../data/units';
 import { isStanding } from '../sim/lookup';
 import type { Match } from '../sim/match';
 import { randomInt } from '../sim/rng';
-import { LANES, MAX_LEVEL, PLANT_COLS } from '../sim/types';
+import { COLS, LANES, MAX_LEVEL, PLANT_COLS } from '../sim/types';
 import type { CardKey, Command, Faction, Unit } from '../sim/types';
 import type { Bot } from './bot';
 import { shotDps } from './laneModel';
-import { mergeCommand, placeCommand, readLawn, sendCommand } from './lawn';
+import { freeTile, mergeCommand, placeCommand, readLawn, sendCommand } from './lawn';
 import type { BotRng } from './lawn';
 import { childPower, newPowerMemory, powerMove } from './powers';
 
@@ -62,12 +62,15 @@ function rngFor(seed: number, salt: number, faction: Faction): BotRng {
   return { rng: (seed ^ salt ^ (faction === 'plants' ? 0x0100_0000 : 0x0200_0000)) >>> 0 };
 }
 
-/** One placement of `unit` into `lane`: zombies are sent, a plant goes on the rearmost free tile. */
+/** One placement of `unit` into `lane`: zombies are sent, a plant goes on the rearmost free tile (no rock, no lava). */
 function placeIn(match: Match, faction: Faction, unit: CardKey, lane: number): Command | null {
   if (faction === 'zombies') return sendCommand(unit, lane);
+  const lava = match.state.config.lawn.lava?.tiles;
   for (let col = 0; col < PLANT_COLS; col++) {
     const cmd = placeCommand(faction, unit, lane, col);
-    if (match.check(cmd) !== 'occupied') return cmd;
+    const why = match.check(cmd);
+    // A rock or lava is no tile for a plant either (only a twisted lawn has them).
+    if (why !== 'occupied' && why !== 'rock' && lava?.includes(lane * COLS + col) !== true) return cmd;
   }
   return null;
 }
@@ -210,12 +213,12 @@ export function createFortressPlants(seed: number, every = ADULT_EVERY): Bot {
           const view = lawn[lane];
           if (view === undefined) continue;
           for (const [col, unit] of FORTRESS_LANE) {
-            const plant = view.tiles[col];
-            if (plant === undefined) return placeCommand('plants', unit, lane, col);
+            if (freeTile(view, col)) return placeCommand('plants', unit, lane, col);
           }
         }
         for (const lane of lanes) {
-          if (lawn[lane]?.tiles[FORTRESS_EXTRA[0]] === undefined) return placeCommand('plants', FORTRESS_EXTRA[1], lane, FORTRESS_EXTRA[0]);
+          const view = lawn[lane];
+          if (view === undefined || freeTile(view, FORTRESS_EXTRA[0])) return placeCommand('plants', FORTRESS_EXTRA[1], lane, FORTRESS_EXTRA[0]);
         }
         let weakest: Unit | undefined;
         for (const u of s.units) {

@@ -177,7 +177,7 @@ function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng): LaneVi
 }
 
 /** The zombies to try for a lane, best answer first, a Brain Eater last (see the note at the top). */
-function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng, memory: ZombieMemory): CardKey[] {
+export function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng, memory: ZombieMemory): CardKey[] {
   const out: CardKey[] = [];
   const plants = view.plants.filter((p) => isCard(p.key));
   const tank = view.zombies.some((z) => TANKS.has(z.key) && z.x > 2 && z.hp >= 250);
@@ -217,13 +217,14 @@ function rotated(items: readonly CardKey[], rng: BotRng): CardKey[] {
 }
 
 /**
- * A Very Fast Walker down a lane with no shooter (at most Sunflowers, which it eats) and nobody of
- * its own, ties in a random order.
+ * A Very Fast Walker down a lane with no shooter (at most Sunflowers, which it eats), nobody of
+ * its own and no lava, ties in a random order.
  */
 function rushLane(lawn: readonly LaneView[], rng: BotRng): number | undefined {
   return shuffledLanes(rng).find((lane) => {
     const view = laneOf(lawn, lane);
-    return view.zombies.length === 0 && !view.plants.some((p) => SHOOTERS.has(p.key));
+    // Not through lava: a Very Fast Walker is too frail to cross it.
+    return view.zombies.length === 0 && !view.plants.some((p) => SHOOTERS.has(p.key)) && view.lava === null;
   });
 }
 

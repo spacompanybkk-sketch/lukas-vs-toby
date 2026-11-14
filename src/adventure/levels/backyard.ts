@@ -64,10 +64,11 @@ const PLANTS: LevelDef[] = [
   },
   {
     // Teaches: no energy, take what the belt brings - a shooter where they come, a wall in front,
-    // a mine for the next one. Scripted waves in all five lanes for two minutes.
+    // a mine for the next one. Scripted waves in all five lanes for two minutes. The base (4400)
+    // falls to the waves unaided (they deal 4535), so waiting does not win it (worlds plan, Task 8c).
     ...base('p1-5', 5), side: 'plants', kind: 'conveyor', cards: ['peashooter', 'walnutBomb', 'potatoMine'],
     belt: { everySeconds: 5, cards: ['peashooter', 'walnutBomb', 'potatoMine'] },
-    seconds: 120, baseHp: { plants: 6000 },
+    seconds: 120, baseHp: { plants: 4400 },
     waves: [...trickle('brainEater', 15, 7, 12, [2, 0, 4, 1, 3]), ...trickle('veryFastWalker', 55, 14, 3, [1, 3, 0]), ...flag('brainEater', 100, [0, 2, 4])],
     spells: true,
   },

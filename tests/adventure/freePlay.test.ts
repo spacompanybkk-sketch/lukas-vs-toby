@@ -6,7 +6,7 @@ import { ALL_CARDS } from '../../src/data/units';
 import { newSave } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
 import { Match } from '../../src/sim/match';
-import { freePlayConfig as checksFreePlayConfig } from '../../src/ai/levelChecks';
+import { freePlayCards, freePlayConfigFor } from '../../src/ai/levelChecks';
 import { prepareFreePlay } from '../../src/app/levelSession';
 
 // Task 7b: Free Play as the adventure layer sees it — the setup, the score, the reward.
@@ -96,16 +96,37 @@ describe('the score and the reward', () => {
 });
 
 describe('the shipped Free Play is the measured one', () => {
-  it('the screen\'s match equals the level checks\' freePlayConfig for the same player (five cards a side, his difficulty\'s income)', () => {
+  it('the screen\'s match equals the level checks\' Free Play for a graduate of every level (five cards a side after the Backyard, his difficulty\'s income)', () => {
+    expect(freePlayCards()).toEqual({
+      plants: ['peashooter', 'sunflower', 'walnutBomb', 'potatoMine', 'kernelPult'],
+      zombies: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'],
+    });
     const save: Save = {
-      ...fresh(), adventureDifficulty: { plants: 'easy', zombies: 'hard' },
+      ...fresh(), difficulty: { plants: 'easy', zombies: 'easy' }, adventureDifficulty: { plants: 'easy', zombies: 'easy' },
       plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
       zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
     };
     for (const seed of [1, 7, 99]) {
-      expect(freePlayConfig(save, 'plants', seed)).toEqual(checksFreePlayConfig('plants', seed, 1.25));
-      expect(freePlayConfig(save, 'zombies', seed)).toEqual(checksFreePlayConfig('zombies', seed, 0.75));
-      expect(prepareFreePlay(save, 'plants', seed).config).toEqual(checksFreePlayConfig('plants', seed, 1.25));
+      expect(freePlayConfig(save, 'plants', seed)).toEqual(freePlayConfigFor('beginner', 'plants', seed));
+      expect(freePlayConfig(save, 'zombies', seed)).toEqual(freePlayConfigFor('beginner', 'zombies', seed));
+      expect(prepareFreePlay(save, 'plants', seed).config).toEqual(freePlayConfigFor('beginner', 'plants', seed));
+    }
+  });
+
+  it('a player on Hard: the same match as the measured one but for his income (×0.75)', () => {
+    const save: Save = {
+      ...fresh(), difficulty: { plants: 'hard', zombies: 'hard' }, adventureDifficulty: { plants: 'hard', zombies: 'hard' },
+      plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
+      zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
+    };
+    for (const side of ['plants', 'zombies'] as const) {
+      for (const seed of [1, 7, 99]) {
+        const shipped = freePlayConfig(save, side, seed);
+        const measured = freePlayConfigFor('expert', side, seed); // the expert: Normal (×1), no upgrades
+        expect(shipped.incomeMultiplier[side], side).toBe(0.75);
+        expect(measured.incomeMultiplier[side], side).toBe(1);
+        expect({ ...shipped, incomeMultiplier: measured.incomeMultiplier }, side).toEqual(measured);
+      }
     }
   });
 });
