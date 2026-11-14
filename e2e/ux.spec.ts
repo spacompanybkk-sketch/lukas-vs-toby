@@ -117,8 +117,12 @@ test('C: the conveyor level teaches the belt - the glove on the front belt card,
   await expect(glove).toHaveAttribute('data-glove-x', /\d+/);
   // Only the lesson's tile is lit while the glove holds.
   await expect.poll(async () => (await marks(page)).lit).toEqual(['2,1']);
+  // The glove moves from the card to the tile on its next frame: wait until it stands on the tile.
+  const tile = await page.evaluate(() => (window.__lvt as any).tileToClient(2, 1) as { x: number; y: number });
+  const aimAt = async (): Promise<{ x: number; y: number }> => ({ x: Number(await glove.getAttribute('data-glove-x')), y: Number(await glove.getAttribute('data-glove-y')) });
+  await expect.poll(async () => { const a = await aimAt(); return Math.abs(a.x - tile.x) + Math.abs(a.y - tile.y); }).toBeLessThan(3);
   await shot(page, 'C-belt-lesson-2-tile');
-  const at = { x: Number(await glove.getAttribute('data-glove-x')), y: Number(await glove.getAttribute('data-glove-y')) };
+  const at = await aimAt();
   if (test.info().project.name === 'ipad') await page.touchscreen.tap(at.x, at.y);
   else await page.mouse.click(at.x, at.y);
   await expect.poll(() => page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
