@@ -45,6 +45,11 @@ export interface Cloud {
   deletePlayer(slot: Slot, grownUpHash: string): Promise<'ok' | CloudError>;
   /** A new pin for a player, behind the grown-up code; `save` becomes the player's save. */
   resetPin(slot: Slot, grownUpHash: string, newHash: string, save: Save, ver?: string): Promise<'ok' | CloudError>;
+  /**
+   * Whether the last read of this player's save found one stored that this build cannot read
+   * (that read said `refused`). Optional: clouds that cannot tell leave it out.
+   */
+  unreadableSave?(slot: Slot, hash: string): Promise<boolean>;
 }
 
 export const isCloudError = (v: unknown): v is CloudError =>

@@ -71,15 +71,7 @@ export function mountGame(
   // be moved on by tests (`__lvt.skipClock(ms)`), so a 30 s lock-out need not be waited out.
   let skew = 0;
   // The leaderboard reads the same cloud (one fake database for the page).
-  // A save this (older, cached) build cannot read: reload once for the current build, at the pin pad only.
-  const cloud = defaultCloud({
-    onUnreadableSave: () => {
-      reloadForUnreadableSave({
-        session: browserSession(), online: () => navigator.onLine !== false,
-        loggedIn: () => session.player.peek() !== null, reload: () => location.reload(),
-      });
-    },
-  });
+  const cloud = defaultCloud();
   // Each cloud keeps its own device keys (lvt2_ live, lvt2f_ fake, lvt2t_ test).
   const mode = pageCloudMode();
   announceCloudMode(mode);
@@ -89,7 +81,12 @@ export function mountGame(
   } catch {
     local = undefined;
   }
-  session.configure({ cloud, mode, now: () => Date.now() + skew });
+  // A save this (older, cached) build cannot read, at the pin pad of a device with no copy of the
+  // player: reload once for the current build.
+  session.configure({
+    cloud, mode, now: () => Date.now() + skew,
+    staleBuild: () => { reloadForUnreadableSave({ session: browserSession(), online: () => navigator.onLine !== false, reload: () => location.reload() }); },
+  });
   board.configure({ cloud, ...(local ? { storage: modeStorage(local, mode) as Storage } : {}) });
   lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };

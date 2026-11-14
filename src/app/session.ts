@@ -75,6 +75,12 @@ export interface SessionDeps {
    * their own prefix (see modeStorage), and only the live one marks the boys' old saves as used.
    */
   mode?: CloudMode;
+  /**
+   * Called when a log-in at the pin pad meets a save in the cloud this build cannot read and the
+   * device has no copy of that player (the child would be stuck): the game reloads once for the
+   * current build (`reloadForUnreadableSave`). Left out, nothing happens (the refusal stands).
+   */
+  staleBuild?: () => void;
 }
 
 function defaultStorage(): Storage | undefined {
@@ -85,7 +91,7 @@ function defaultStorage(): Storage | undefined {
   }
 }
 
-interface Live { cloud: Cloud; storage: Storage | undefined; now: () => number; sync: SaveSync; mode: CloudMode }
+interface Live { cloud: Cloud; storage: Storage | undefined; now: () => number; sync: SaveSync; mode: CloudMode; staleBuild: (() => void) | undefined }
 
 /**
  * Who is playing: logging in by picture and number, making a player, the lock-out, the grown-up
@@ -115,7 +121,7 @@ export class PlayerSession {
       ...(deps.document !== undefined ? { document: deps.document } : {}),
     });
     this.pending = null;
-    this.live.value = { cloud: deps.cloud, storage, now, sync, mode };
+    this.live.value = { cloud: deps.cloud, storage, now, sync, mode, staleBuild: deps.staleBuild };
   }
 
   private get d(): Live {
@@ -223,6 +229,7 @@ export class PlayerSession {
     // The right number, but no save anywhere the device can read (only a console edit causes
     // it): this device's copy if it has one, else a fresh save with the player's name and picture.
     let r = first === 'no-save' ? await this.adoptFresh(slot, pin) : first;
+    if (r === 'refused') await this.maybeStaleBuild(slot, pin);
     // Offline, a device that knows this player checks the number against its own copy's hash.
     if (r === 'offline' && loadLocal(slot, storage) !== null) {
       const known = readKey(storage, hashKey(slot));
@@ -243,6 +250,23 @@ export class PlayerSession {
     this.clearWrong(slot);
     this.importOld(slot);
     return this.player.peek() ?? r;
+  }
+
+  /**
+   * A refused log-in on a device with no copy of the player, because the cloud's save is one this
+   * build cannot read (an older build cached here, a newer one wrote it): ask for the reload.
+   * Only from here, the pin pad; never from a sync, a grown-up reset or a device with its own copy.
+   */
+  private async maybeStaleBuild(slot: Slot, pin: string): Promise<void> {
+    const { cloud, storage, staleBuild } = this.d;
+    if (staleBuild === undefined || cloud.unreadableSave === undefined || loadLocal(slot, storage) !== null) return;
+    let unreadable = false;
+    try {
+      unreadable = await cloud.unreadableSave(slot, await pinHash(slot, pin));
+    } catch {
+      unreadable = false;
+    }
+    if (unreadable) staleBuild();
   }
 
   private async adoptFresh(slot: Slot, pin: string): Promise<Save | CloudError> {
