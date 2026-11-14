@@ -116,6 +116,7 @@ export class Renderer {
   private hueSaturation: HueSaturationEffect | null = null;
   private brightnessContrast: BrightnessContrastEffect | null = null;
   private vignette: VignetteEffect | null = null;
+  private bloom: BloomEffect | null = null;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.canvas = canvas;
@@ -248,6 +249,10 @@ export class Renderer {
       this.brightnessContrast.contrast = g.contrast;
     }
     if (this.vignette) this.vignette.darkness = g.vignette;
+    if (this.bloom) {
+      this.bloom.intensity = g.bloom.intensity;
+      this.bloom.mipmapBlurPass.radius = g.bloom.radius;
+    }
   }
 
   /** `low`: no ambient occlusion, no bloom, 1024 shadows. `medium`: bloom, 2048 shadows. `high`: everything. */
@@ -411,15 +416,17 @@ export class Renderer {
     if (quality !== 'low') {
       // The threshold sits above anything sunlight alone can reach, so only glowing parts bloom.
       effects.push(
-        new BloomEffect({
+        (this.bloom = new BloomEffect({
           luminanceThreshold: BLOOM_THRESHOLD,
           luminanceSmoothing: 0.35,
           mipmapBlur: true,
-          intensity: 0.9,
-          radius: 0.7,
+          intensity: this.grade.bloom.intensity,
+          radius: this.grade.bloom.radius,
           levels: 6,
-        }),
+        })),
       );
+    } else {
+      this.bloom = null;
     }
     effects.push(
       // "Cineon" is postprocessing's name for the Hejl and Burgess-Dawson filmic curve. It

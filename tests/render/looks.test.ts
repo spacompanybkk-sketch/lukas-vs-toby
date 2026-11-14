@@ -1,4 +1,5 @@
-import { BufferGeometry, Material, Mesh, Texture, type Object3D } from 'three';
+import { BufferGeometry, Color, Material, Mesh, Texture, type Object3D } from 'three';
+import { BLOOM_THRESHOLD } from '../../src/render/look';
 import { describe, expect, it } from 'vitest';
 import { battleWorld } from '../../src/app/BattleSession';
 import { dressWorld } from '../../src/app/Stage';
@@ -6,7 +7,7 @@ import { levelById } from '../../src/adventure/levels';
 import { WORLD_ORDER, type WorldKey } from '../../src/data/worlds';
 import { Lawn } from '../../src/render/world/Lawn';
 import { LOOKS } from '../../src/render/world/looks';
-import { Sky } from '../../src/render/world/Sky';
+import { MOON_GLOW, Sky } from '../../src/render/world/Sky';
 import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
 import { NO_TWIST } from '../../src/sim/lawn';
 import type { LawnConfig } from '../../src/sim/types';
@@ -107,6 +108,23 @@ describe('world looks', () => {
     expect(looks).toHaveLength(1);
     lawn.dispose();
     sky.dispose();
+  });
+});
+
+describe('Meadow glow', () => {
+  it('keeps the Backyard bloom as it was and gives the Meadow a tighter, weaker one', () => {
+    expect(LOOKS.backyard.grade.bloom).toEqual({ intensity: 0.9, radius: 0.7 });
+    expect(LOOKS.meadow.grade.bloom.radius).toBeLessThan(LOOKS.backyard.grade.bloom.radius * 0.6);
+    expect(LOOKS.meadow.grade.bloom.intensity).toBeLessThan(LOOKS.backyard.grade.bloom.intensity);
+  });
+
+  it('lights the moon only a little past the bloom threshold, its craters under it', () => {
+    const lit = new Color('#FFF6D8');
+    const crater = new Color('#D9D2BC');
+    const lum = (c: Color): number => (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) * MOON_GLOW;
+    expect(lum(lit)).toBeGreaterThan(BLOOM_THRESHOLD);
+    expect(lum(lit)).toBeLessThan(BLOOM_THRESHOLD * 1.15);
+    expect(lum(crater)).toBeLessThan(BLOOM_THRESHOLD);
   });
 });
 

@@ -44,6 +44,9 @@ const DOME_FRAGMENT = /* glsl */ `
   }
 `;
 
+/** The moon's lit face in scene luminance, as a multiple of its painted colour: a little over `BLOOM_THRESHOLD`. */
+export const MOON_GLOW = 1.36;
+
 const MOON_VERTEX = /* glsl */ `
   attribute vec3 color;
   varying vec3 vColor;
@@ -53,14 +56,15 @@ const MOON_VERTEX = /* glsl */ `
   }
 `;
 
-// Painted, and a little over the bloom threshold, so it wears a soft halo.
+// Painted, and only just over the bloom threshold (the craters under it), so it keeps a tight
+// glow while its voxel steps and craters still read as hard pixels.
 const MOON_FRAGMENT = /* glsl */ `
   varying vec3 vColor;
   ${DISPLAY_TO_SCENE_GLSL}
   void main() {
-    gl_FragColor = vec4(displayToScene(vColor) * 1.55, 1.0);
+    gl_FragColor = vec4(displayToScene(vColor) * MOON_GLOW, 1.0);
   }
-`;
+`.replace('MOON_GLOW', MOON_GLOW.toFixed(2));
 
 /** Where the moon hangs: far out beyond the island's back edge, low enough that the framed camera (looking steeply down) sees it near the top of the picture. */
 const MOON_AT: [number, number, number] = [1, -9, -15];

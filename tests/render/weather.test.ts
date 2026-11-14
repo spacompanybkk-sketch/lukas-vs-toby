@@ -36,4 +36,13 @@ describe('Weather', () => {
     expect(uniform.value).toBeCloseTo(99 / 60, 6);
     weather.dispose();
   });
+
+  it('blinks fireflies hard on and off (square pixels, never a soft fade) with a glow that stays tight', () => {
+    const weather = new Weather('fireflies');
+    const material = (weather.mesh as Mesh).material as ShaderMaterial;
+    expect(material.vertexShader).toContain('step(0.35, blink)');
+    expect(material.vertexShader).not.toContain('smoothstep(0.15, 0.6, blink)');
+    expect(material.uniforms.uGlow!.value).toBeLessThanOrEqual(2);
+    weather.dispose();
+  });
 });

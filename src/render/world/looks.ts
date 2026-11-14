@@ -79,6 +79,11 @@ export interface Grade {
   contrast: number;
   brightness: number;
   vignette: number;
+  /**
+   * Bloom on the glowing parts: strength and spread. The Meadow keeps both low so its moon and
+   * fireflies read as hard pixels with a tight glow rather than soft round halos.
+   */
+  bloom: { intensity: number; radius: number };
 }
 
 export interface Look {
@@ -98,6 +103,9 @@ export interface Look {
   islet: (batch: BoxBatch, grave: boolean, random: () => number) => void;
   weather: (typeof WORLDS)[WorldKey]['weather'];
 }
+
+/** The bloom every world but the Meadow has (the Backyard's, as it always was). */
+const BLOOM = { intensity: 0.9, radius: 0.7 };
 
 const BACKYARD: Look = {
   key: 'backyard',
@@ -137,7 +145,7 @@ const BACKYARD: Look = {
     bounce: PALETTE.bounceLight,
     bounceIntensity: 1,
   },
-  grade: { saturation: 0.1, contrast: 0.04, brightness: 0, vignette: 0.34 },
+  grade: { saturation: 0.1, contrast: 0.04, brightness: 0, vignette: 0.34, bloom: BLOOM },
   backdrop: PALETTE.skyBackdrop,
   glow: { color: PALETTE.crystalGlow, intensity: 5 },
   props: buildProps,
@@ -193,7 +201,7 @@ const MEADOW: Look = {
     bounce: '#B4C4FF',
     bounceIntensity: 0.95,
   },
-  grade: { saturation: 0.12, contrast: 0.05, brightness: -0.01, vignette: 0.42 },
+  grade: { saturation: 0.12, contrast: 0.05, brightness: -0.01, vignette: 0.42, bloom: { intensity: 0.55, radius: 0.32 } },
   backdrop: '#33468E',
   glow: { color: '#7FE6FF', intensity: 3.2 },
   props: buildMeadowProps,
@@ -240,7 +248,7 @@ const DESERT: Look = {
     bounce: '#FFEAD2',
     bounceIntensity: 0.95,
   },
-  grade: { saturation: 0.12, contrast: 0.08, brightness: -0.02, vignette: 0.38 },
+  grade: { saturation: 0.12, contrast: 0.08, brightness: -0.02, vignette: 0.38, bloom: BLOOM },
   backdrop: '#F4CC96',
   glow: { color: '#FFB23F', intensity: 3 },
   props: buildDesertProps,
@@ -287,7 +295,7 @@ const TUNDRA: Look = {
     bounce: '#DCEBFF',
     bounceIntensity: 0.9,
   },
-  grade: { saturation: 0.14, contrast: 0.07, brightness: -0.02, vignette: 0.36 },
+  grade: { saturation: 0.14, contrast: 0.07, brightness: -0.02, vignette: 0.36, bloom: BLOOM },
   backdrop: '#BEE0F6',
   glow: { color: '#8FE4FF', intensity: 2.6 },
   props: buildTundraProps,
@@ -334,7 +342,7 @@ const CITADEL: Look = {
     bounce: '#FFC0A0',
     bounceIntensity: 0.95,
   },
-  grade: { saturation: 0.12, contrast: 0.07, brightness: -0.01, vignette: 0.44 },
+  grade: { saturation: 0.12, contrast: 0.07, brightness: -0.01, vignette: 0.44, bloom: BLOOM },
   backdrop: '#8E3A48',
   glow: { color: '#FF5A12', intensity: 2.2 },
   props: buildCitadelProps,

@@ -32,7 +32,7 @@ interface WeatherSpec {
   /** How far a cube wanders either side of its path, and how fast. */
   sway: number;
   swaySpeed: number;
-  /** Fireflies blink; embers shrink as they rise. */
+  /** Fireflies blink on and off; embers shrink as they rise. */
   blink: boolean;
   shrink: boolean;
   /** Share of a cube's own opacity (dust is thin). */
@@ -43,7 +43,8 @@ const BOX = { x: [-3.2, 13.2] as [number, number], z: [-1.4, 6.4] as [number, nu
 
 const SPECS: Record<Exclude<WeatherKind, 'none'>, WeatherSpec> = {
   fireflies: {
-    count: 46, size: [0.045, 0.06], colors: ['#E8FF7A', '#C8FF5A', '#FFF59A'], glow: 3.2,
+    // Big enough to read as a square pixel, bright enough for a tight glow but not a round halo.
+    count: 46, size: [0.06, 0.075], colors: ['#E8FF7A', '#C8FF5A', '#FFF59A'], glow: 2,
     box: { x: BOX.x, y: [0.25, 1.8], z: BOX.z }, drift: [0.05, 0.02], sway: 0.45, swaySpeed: 0.55,
     blink: true, shrink: false, opacity: 1,
   },
@@ -94,7 +95,8 @@ const VERTEX = /* glsl */ `
     // Embers burn out as they rise; fireflies glow on and off.
     edge *= mix(1.0, 1.0 - rise * rise, uShrink);
     float blink = 0.5 + 0.5 * sin(uTime * 2.1 * speed + phase);
-    vAlpha = mix(1.0, smoothstep(0.15, 0.6, blink), uBlink);
+    // A firefly is on or off, never half-faded, so it stays a hard pixel.
+    vAlpha = mix(1.0, step(0.35, blink), uBlink);
     // Thin out at the top and bottom of the box, so a cube never pops into view.
     vAlpha *= smoothstep(0.0, 0.08, rise) * (1.0 - smoothstep(0.86, 1.0, rise));
     vColor = aColor;
