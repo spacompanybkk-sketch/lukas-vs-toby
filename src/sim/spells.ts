@@ -11,6 +11,7 @@ import { seconds } from '../data/balance';
 import type { Balance, SpellStats } from '../data/balance';
 import { capHit, damageUnit } from './damage';
 import { energyOff } from './endless';
+import { isRock } from './lawn';
 import { inLane, isBoss, isStanding } from './lookup';
 import { randomInt } from './rng';
 import { spawnMinion, spawnUnit } from './spawn';
@@ -82,7 +83,8 @@ export function spellArea(faction: Faction, size: SpellSize, lane: number, col: 
 /**
  * Why a spell command would be refused, or null: `spells-off` (the setup deals this side none),
  * `spell-not-dealt`, then for an aimed spell (size above 0) `bad-lane`, `bad-column` (Rock Wall:
- * plant columns only; any spell with `minCol`: not below it) and, for Rock Wall, `occupied`; then
+ * plant columns only; any spell with `minCol`: not below it) and, for Rock Wall, `rock` (a rock of
+ * the lawn lies there) and `occupied`; then
  * `spell-charging`. An un-aimed spell's
  * lane and column are not looked at.
  */
@@ -94,6 +96,7 @@ export function checkSpell(s: SimState, b: Balance, cmd: SpellCommand): CommandR
     if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
     const lastCol = cmd.spell === 'rockWall' ? PLANT_COLS - 1 : COLS - 1;
     if (!isWholeBetween(cmd.col, b.spells[cmd.spell].minCol ?? 0, lastCol)) return 'bad-column';
+    if (cmd.spell === 'rockWall' && isRock(s.config, cmd.lane, cmd.col)) return 'rock';
     if (cmd.spell === 'rockWall' && plantOn(s, cmd.lane, cmd.col)) return 'occupied';
   }
   if (slot.timer > 0) return 'spell-charging';

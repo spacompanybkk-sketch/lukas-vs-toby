@@ -36,6 +36,14 @@ export type LevelKind = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'bo
 /** A unit arriving (`waves`) or standing at the start (`prepared`). `at` = seconds; `col` only for plants. */
 export interface Spawn { at: number; unit: UnitKey; lane: number; level?: number; col?: number }
 
+/**
+ * Which tiles of a level's lawn carry its world's twist; the numbers come from `Balance.twists`.
+ * `iceLanes` are lane indices, `fog` is on or absent. The two tile lists count differently:
+ * - `rocks` index the plant tiles, `lane * PLANT_COLS + col` (8 plant columns: rock 13 = lane 1, col 5);
+ * - `lavaTiles` index the whole lawn, `lane * COLS + col` (10 columns: lava 13 = lane 1, col 3).
+ */
+export interface LevelTwist { rocks?: number[]; fog?: true; iceLanes?: number[]; lavaTiles?: number[] }
+
 /** One Adventure level: data only (spec 8). Its id is `<p|z><world>-<n>`. */
 export interface LevelDef {
   id: string; side: Faction; world: 1 | 2 | 3 | 4 | 5; n: number; kind: LevelKind;
@@ -52,6 +60,8 @@ export interface LevelDef {
   /** Conveyor only. */
   belt: { everySeconds: number; cards: CardKey[] } | null;
   boss: { key: BossKey; lane: number } | null;
+  /** The lawn's twist for this level; left out = none. */
+  twist?: LevelTwist;
   /**
    * The bases' health where the level wants other than the balance's (a short tutorial battle, a
    * small garden). Left out (or a side left out) = the balance default.

@@ -43,7 +43,7 @@ function launch(m: Match, flight: Flight): Projectile {
   const p: Projectile = {
     ...flight, id: m.state.nextId, ownerId: 0, spawnTick: m.state.tick - 1,
     flight: 'straight', sourceKey: flight.faction === 'plants' ? 'peashooter' : 'brainEater', level: 1,
-    targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0,
+    targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0, fadeX: null,
   };
   m.state.nextId += 1;
   m.state.projectiles.push(p);

@@ -16,6 +16,8 @@ const SHORT: SfxName[] = [
 const LONG: SfxName[] = ['megaMower', 'boneStorm', 'thunderbolt', 'meteor'];
 /** Phase 3's boss sounds: checked in bossSounds.test.ts. */
 const BOSS: SfxName[] = ['titanRoar', 'titanDefeat', 'oakCreak', 'oakDefeat'];
+/** Any boss's strike: checked in bossLooks.test.ts. */
+const STRIKE: SfxName[] = ['strikeWindup', 'strikeImpact'];
 
 interface Render { length: number; peak: number; layered: number; sources: number }
 
@@ -39,7 +41,7 @@ function render(name: SfxName, pitch = 1): Render {
 
 describe('phase 2 sound effects', () => {
   it('the name list is exactly the phase 1 names plus the new ones', () => {
-    expect([...SFX_NAMES].sort()).toEqual([...PHASE1, ...SHORT, ...LONG, ...BOSS].sort());
+    expect([...SFX_NAMES].sort()).toEqual([...PHASE1, ...SHORT, ...LONG, ...BOSS, ...STRIKE].sort());
     expect(new Set(SFX_NAMES).size).toBe(SFX_NAMES.length);
     expect(SHORT).toHaveLength(32);
   });

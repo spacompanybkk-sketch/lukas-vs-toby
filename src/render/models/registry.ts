@@ -1,6 +1,7 @@
 import { prewarmModel } from '../voxel/build';
 import { brainTitan } from './bosses/brainTitan';
 import { elderOak } from './bosses/elderOak';
+import type { BossKey } from '../../sim/types';
 import type { ModelDef } from '../voxel/types';
 import { avocadoBunker } from './plants/avocadoBunker';
 import { cherryBomber } from './plants/cherryBomber';
@@ -62,4 +63,7 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
   }
 }
 
-for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, brainTitan, elderOak]) registerModel(def);
+/** Each boss's model, by its key (its looks and sounds are its row in `data/bossLooks.ts`). */
+export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = { brainTitan, elderOak };
+
+for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

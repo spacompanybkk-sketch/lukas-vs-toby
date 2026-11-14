@@ -147,7 +147,7 @@ function fire(mix: Mix, kind: ProjectileKind, events: SimEvent[], burn = false):
     spawnTick: s.tick, flight: shooter.flight, sourceKey: shooter.key, level: owner ? owner.level : 1,
     targetId: target ? target.id : null, targetX: target ? target.x : null,
     pierceLeft: shooter.flight === 'piercing' ? shooter.pierce : 0, hitIds: [],
-    burning, burnDps: burning ? 1 : 0, burnTicks: burning ? 60 : 0,
+    burning, burnDps: burning ? 1 : 0, burnTicks: burning ? 60 : 0, fadeX: null,
   };
   s.projectiles.push(p);
   events.push({

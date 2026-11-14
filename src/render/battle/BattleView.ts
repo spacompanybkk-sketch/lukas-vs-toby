@@ -1071,6 +1071,7 @@ export class BattleView {
         // The winning blow: a long slow motion while it falls (the fall and burst are its unitDied's).
         this.onFeel({ slowMo: 2.5 });
         break;
+      case 'bossStrike': this.bossFx.strike(e, state); break;
       case 'commandRejected':
       case 'heroReady': // the HUD's button pulses; the call is a sound
       case 'spellReady':
@@ -1082,6 +1083,7 @@ export class BattleView {
       case 'waveStarted': // Free Play: the HUD shows the wave number
       case 'gardenBroken':
       case 'bossPhase': // the shield's pattern event and the HUD's notches show it
+      case 'projectileFaded': // fog: the projectile leaves with the state; its puff is the looks task's
         break;
       default: {
         const unhandled: never = e;
