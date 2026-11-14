@@ -577,6 +577,8 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
       // A Free Play run has one way out, Quit, which banks it; a Restart would throw it away unpaid.
       onRestart={ctl.endless != null ? undefined : onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
       bank={ctl.endless != null ? <LiveBank endless={ctl.endless} /> : undefined}
+      // In a level Quit goes back to the map: its picture says so (elsewhere it is the house).
+      quitTo={ctl.level != null ? 'map' : 'home'}
     />
   );
 }

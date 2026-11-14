@@ -244,6 +244,12 @@ describe('the battle screen in a level', () => {
     act(() => { sess.controller.setPaused(true); });
     expect(q('[data-screen="pause"] [data-action="quit"]')).not.toBeNull();
     expect(q('[data-screen="pause"] [data-action="map"]')).toBeNull();
+    // In a level Quit leads to the map, and shows the map's picture, not the house.
+    expect(q('[data-screen="pause"] [data-action="quit"] [data-quit-to="map"]')).not.toBeNull();
+    const quick = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });
+    screen({ controller: quick, begin() {}, dispose() {}, skipIntro: true });
+    act(() => { quick.setPaused(true); });
+    expect(q('[data-screen="pause"] [data-action="quit"] [data-quit-to="home"]')).not.toBeNull();
   });
 });
 
