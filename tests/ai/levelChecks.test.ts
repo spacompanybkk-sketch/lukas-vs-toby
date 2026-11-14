@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { LEVELS, levelById } from '../../src/adventure/levels';
 import type { LevelDef } from '../../src/adventure/types';
 import {
-  AVERAGE_STARS, FAVOURITE_COUNT, averageCoinsOn, averageUpgrades, averageWinBand, beginnerWinMin, campaignIndex,
-  coinsBefore, EXPERT_WIN_MIN, favouritesAt, standInSave,
+  AVERAGE_STARS, BOSS_THREE_STARS, FAVOURITE_COUNT, STAR_LEVEL, averageCoinsOn, averageStarBand, averageUpgrades, averageWinBand,
+  beginnerWinMin, campaignIndex, coinsBefore, EXPERT_WIN_MIN, favouritesAt, playIdle, standInSave, worldTwoGate,
 } from '../../src/ai/levelChecks';
 import { FAVOURITES } from '../../src/ai/levelStandIns';
 import { upgradeCost } from '../../src/progress/upgrades';
@@ -94,5 +94,45 @@ describe('the average player\'s coins and upgrades (real Marketplace prices)', (
     expect(Math.max(...Object.values(ups))).toBeLessThanOrEqual(3);
     expect(ups.peashooter).toBeGreaterThanOrEqual(2);
     expect(standInSave('average', last, levels).plants.unlocked).toEqual(order);
+  });
+});
+
+describe('world 2\'s bands (step-2 plan rulings 5-6)', () => {
+  it('the win band at i = 9, 13, 16: 88 − 48·(i−9)/31 ± 8, the boss 5 lower', () => {
+    expect(averageWinBand(9, false)).toEqual({ target: 88, lo: 80, hi: 96 });
+    const at13 = averageWinBand(13, false);
+    expect(at13.target).toBeCloseTo(81.806, 3);
+    expect([at13.lo, at13.hi].map((v) => Number(v.toFixed(1)))).toEqual([73.8, 89.8]);
+    const at16 = averageWinBand(16, true);
+    expect(at16.target).toBeCloseTo(77.161, 3);
+    expect([at16.lo, at16.hi].map((v) => Number(v.toFixed(1)))).toEqual([64.2, 85.2]);
+  });
+
+  it('the star band at i = 9, 13, 16: 75 − 35·(i−9)/31 ± 10 (content design §4: z2-5 60.5-80.5, z2-7 58.2-78.2)', () => {
+    expect(averageStarBand(9)).toEqual({ target: 75, lo: 65, hi: 85 });
+    const at13 = averageStarBand(13);
+    expect([at13.target, at13.lo, at13.hi].map((v) => Number(v.toFixed(1)))).toEqual([70.5, 60.5, 80.5]);
+    expect(Number(averageStarBand(15).lo.toFixed(1))).toBe(58.2);
+    const at16 = averageStarBand(16);
+    expect(at16.target).toBeCloseTo(75 - (35 * 7) / 31, 10);
+    expect(at16.hi - at16.lo).toBe(20);
+    expect(averageStarBand(40)).toEqual({ target: 40, lo: 30, hi: 50 });
+    expect(() => averageStarBand(8)).toThrow(RangeError);
+    expect(() => averageStarBand(41)).toThrow(RangeError);
+  });
+
+  it('the gate: plants the win band on all eight; zombies the win band on 1-4, the star band on 5-7, world 1\'s boss band on 8', () => {
+    for (let n = 1; n <= 8; n++) expect(worldTwoGate({ side: 'plants', n, kind: n === 8 ? 'boss' : 'battle' })).toBe('win');
+    const zombies = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => worldTwoGate({ side: 'zombies', n, kind: n === 8 ? 'boss' : 'battle' }));
+    expect(zombies).toEqual(['win', 'win', 'win', 'win', 'stars', 'stars', 'stars', 'boss']);
+    expect(STAR_LEVEL).toEqual({ averageWinMin: 85, expertLead: 10 });
+    expect(BOSS_THREE_STARS).toEqual({ lo: 35, hi: 60 });
+    expect(beginnerWinMin(16)).toBe(70);
+  });
+
+  it('the idle-player hook: nobody in the seat loses a battle and wins p1-3, the hold-out where waiting is the point', () => {
+    expect(playIdle(levelById('p1-1')!, 1).won).toBe(false);
+    expect(playIdle(levelById('z1-2')!, 1).won).toBe(false);
+    expect(playIdle(levelById('p1-3')!, 1).won).toBe(true);
   });
 });

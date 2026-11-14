@@ -55,6 +55,33 @@ export function averageWinBand(i: number, boss: boolean): WinBand {
   return { target, lo: target - 8 - (boss ? 5 : 0), hi: target + 8 };
 }
 
+/**
+ * The average player's 3-star band on campaign level `i` (9..40; step-2 plan ruling 5, provisional
+ * until Michal's late-curve decision): `75 − 35·(i − 9)/31`, ±10. Held where a zombie level cannot
+ * reach the win band (`worldTwoGate`).
+ */
+export function averageStarBand(i: number): WinBand {
+  if (!Number.isInteger(i) || i <= LEVELS_PER_WORLD || i > LAST_LEVEL) throw new RangeError(`no star band on campaign level ${i}`);
+  const target = 75 - (35 * (i - 9)) / 31;
+  return { target, lo: target - 10, hi: target + 10 };
+}
+
+/**
+ * Which band holds the average player on a world-2 level (step-2 plan rulings 5-6): the plants the
+ * win band on all eight; the zombies the win band on z2-1..4, the star band on z2-5..7 (with
+ * `STAR_LEVEL`), and world 1's boss band on z2-8 (`BOSS_THREE_STARS`). Win numbers are recorded
+ * everywhere either way.
+ */
+export type WorldTwoGate = 'win' | 'stars' | 'boss';
+export function worldTwoGate(def: Pick<LevelDef, 'side' | 'n' | 'kind'>): WorldTwoGate {
+  if (def.side === 'plants' || def.n <= 4) return 'win';
+  return def.kind === 'boss' ? 'boss' : 'stars';
+}
+/** On a star-band level the average player still wins this share, %, and the expert three-stars this many points more often. */
+export const STAR_LEVEL = { averageWinMin: 85, expertLead: 10 } as const;
+/** World 1's boss band, kept for z2-8: the average player three-stars 35-60% of seeds. */
+export const BOSS_THREE_STARS = { lo: 35, hi: 60 } as const;
+
 /** The expert wins at least this share, %, of every level. */
 export const EXPERT_WIN_MIN = 95;
 /** The beginner on Easy wins at least 70% through world 2 (ruling 11); later he is not held to a band. */
@@ -213,6 +240,14 @@ export function playLevel(
     clockShareLeft: goal === null ? 0 : Math.max(0, goal - s.tick) / goal,
   });
   return { won, stars, ticks: s.tick, end };
+}
+
+/**
+ * One level, one seed, nobody in the child's seat (the idle-player check: a child who does nothing
+ * must lose, except where waiting is the lesson). The level's own opponent plays as usual.
+ */
+export function playIdle(def: LevelDef, seed: number, balance: Balance = BALANCE, levels: readonly LevelDef[] = LEVELS): LevelPlayed {
+  return playLevel(def, 'beginner', seed, balance, levels, (bot) => ({ faction: bot.faction, think: () => [] }));
 }
 
 /** What a series of one level and one stand-in comes to. */
