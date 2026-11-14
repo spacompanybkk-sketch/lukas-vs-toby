@@ -26,6 +26,8 @@ import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
 import { AlmanacStage } from '../scenes/almanacStage';
 import { MapStage } from '../scenes/mapStage';
+import { mapLevels } from '../ui/screens/Map';
+import { previewWorlds } from './previewWorlds';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
 export const PORTRAIT_SIZE = 120;
@@ -113,6 +115,8 @@ export function mountGame(
   // The Adventure map's board, on the same stage too.
   const map = stage ? new MapStage(stage) : null;
   lvt.map = map;
+  // The map e2e and screenshots: stand-in worlds 2 and 3 on the map (copies of world 1 with their twists).
+  lvt.previewWorlds = (on = true): void => { mapLevels.value = on ? previewWorlds(LEVELS) : LEVELS; };
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
