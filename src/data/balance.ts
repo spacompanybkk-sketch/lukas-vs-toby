@@ -126,10 +126,15 @@ export type BossPattern =
  * - `col`: a boss that stands still stands on this column's middle (the Elder Oak); a walker
  *   comes on at the spawn edge;
  * - `guardFactor`: while it stands, its side's base cannot be hurt; whatever would hurt the base
- *   (a bite, a shot, sudden death) hurts the boss instead, times this (the Oak's roots).
+ *   (a bite, a shot, sudden death) hurts the boss instead, times this (the Oak's roots);
+ * - `phases`: per-phase lists of timed patterns. Phase i (after i shield marks) takes turns through
+ *   `phases[i]`, or through `patterns` when there is none (see `patternsOf`); passing a mark starts
+ *   the new list from its first timed pattern. The shield itself (its marks) is always read from
+ *   `patterns`. A boss without phases (the Titan, the Oak) plays `patterns` throughout.
  */
 export type BossStats = UnitStats & {
   patterns: readonly BossPattern[];
+  phases?: readonly (readonly BossPattern[])[];
   maxStunSeconds: number; stunFalloff: number; stunWindowSeconds: number; hitCap: number;
   col?: number; guardFactor?: number;
 };

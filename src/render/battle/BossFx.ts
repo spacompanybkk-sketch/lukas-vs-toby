@@ -1,6 +1,6 @@
 import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
 import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
-import { slamCol } from '../../sim/boss';
+import { patternsOf, slamCol } from '../../sim/boss';
 import { BOSS_HALF_WIDTH, LANES, TICKS_PER_SECOND } from '../../sim/types';
 import type { BossKey, SimEvent, SimState, Unit, UnitKey } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
@@ -68,9 +68,9 @@ interface Roller { object: Object3D; age: number; active: boolean; from: Vector3
 /** An acorn's landing mark: which acorn (−1: free), how far it had to fly, how far it has come (0..1). */
 interface AcornMark { mesh: Mesh; id: number; from: number; progress: number }
 
-/** The boss's pattern number `pattern` if it is a slam (the view's only use of the rules: the wind-up of a late-joined slam). */
-function slamOf(b: DeepReadonly<Balance>, key: BossKey, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
-  const p = b.bosses[key].patterns[pattern];
+/** The boss's pattern number `pattern` of its phase `phase` if it is a slam (the view's only use of the rules: the wind-up of a late-joined slam). */
+function slamOf(b: DeepReadonly<Balance>, key: BossKey, phase: number, pattern: number): Extract<BossPattern, { kind: 'slam' }> | null {
+  const p = patternsOf(b.bosses[key], phase)[pattern];
   return p !== undefined && p.kind === 'slam' ? (p as Extract<BossPattern, { kind: 'slam' }>) : null;
 }
 
@@ -207,7 +207,7 @@ export class BossFx {
     if (view.key === 'brainTitan') {
       if (shield !== this.domeOn) this.setDome(view, shield);
       // The tiles follow the simulation's wind-up timer, so a stun (which stops it) holds them steady.
-      const slam = slamOf(this.balance, 'brainTitan', u.pattern);
+      const slam = slamOf(this.balance, 'brainTitan', u.phase, u.pattern);
       const windup = slam === null ? 0 : slam.windupSeconds * TICKS_PER_SECOND;
       if (slam !== null && u.patternTimer > 0 && u.patternTimer <= windup) {
         const left = u.patternTimer / TICKS_PER_SECOND;

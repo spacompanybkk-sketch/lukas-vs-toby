@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { seconds } from '../../src/data/balance';
 import type { Balance, BossStats } from '../../src/data/balance';
+import { isWindingUp, patternsOf } from '../../src/sim/boss';
 import { Match, defaultConfig } from '../../src/sim/match';
-import type { BossConfig, Command, MatchConfig } from '../../src/sim/types';
+import type { BossConfig, Command, MatchConfig, SimEvent, Unit } from '../../src/sim/types';
 import { classicBalance, place } from './helpers';
 
 /**
@@ -85,5 +87,129 @@ describe('the Titan and the Oak play and hash exactly as before boss phases', ()
     const { m, mid: midHash, phases } = scriptedFight(boss, seed);
     expect([seed, m.state.tick, midHash, m.hash(), m.state.winner]).toEqual([seed, tick, mid, end, winner]);
     expect(phases).toBe(boss.key === 'brainTitan' ? 2 : 1); // every shield mark passed, so every pattern of the table played
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// A test-only boss: the Titan's body with phases and a strike.
+
+type Pattern = BossStats['patterns'][number];
+const SUMMON_WALKER: Pattern = { kind: 'summon', everySeconds: 5, unit: 'veryFastWalker', count: 1, level: 1 };
+const SUMMON_WARRIOR: Pattern = { kind: 'summon', everySeconds: 3, unit: 'skeletonWarrior', count: 1, level: 1 };
+const SLAM: Pattern = { kind: 'slam', everySeconds: 4, windupSeconds: 1, damage: 50, sideDamage: 10, reach: 0.6 };
+const SHIELD: Pattern = { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 2, damageFactor: 1, bouncesStraight: false };
+
+function phasedBalance(stats: Partial<BossStats>): Balance {
+  const b = shippedBosses();
+  b.bosses.brainTitan = { ...b.bosses.brainTitan, speed: 0, ...stats };
+  return b;
+}
+
+/** A Titan fight with nobody playing; `prepared` plants on the lawn from the start. */
+function phasedFight(b: Balance, prepared: MatchConfig['prepared'] = [], seed = 1): { m: Match; boss: () => Unit } {
+  const c: MatchConfig = {
+    ...defaultConfig(seed, b), mode: 'boss', boss: { key: 'brainTitan', faction: 'zombies', lane: 2 },
+    cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 },
+    suddenDeath: false, prepared,
+  };
+  const m = new Match(c, b);
+  m.step();
+  return { m, boss: () => m.state.units.find((u) => u.key === 'brainTitan')! };
+}
+
+function summonedKeys(events: SimEvent[]): string[] {
+  return events.filter((e): e is Extract<SimEvent, { type: 'unitSpawned' }> => e.type === 'unitSpawned').map((e) => e.key);
+}
+
+describe('patternsOf', () => {
+  it('phase i uses phases[i], or the table patterns when there is none', () => {
+    const stats = { ...SHIPPED_TITAN, phases: [[SUMMON_WALKER], [SUMMON_WARRIOR]] };
+    expect(patternsOf(stats, 0)).toEqual([SUMMON_WALKER]);
+    expect(patternsOf(stats, 1)).toEqual([SUMMON_WARRIOR]);
+    expect(patternsOf(stats, 2)).toBe(stats.patterns);
+    expect(patternsOf(SHIPPED_TITAN, 0)).toBe(SHIPPED_TITAN.patterns);
+  });
+});
+
+describe('a boss with two phases', () => {
+  const b = phasedBalance({ patterns: [SLAM, SHIELD], phases: [[SUMMON_WALKER], [SUMMON_WARRIOR]] });
+
+  it('plays phase 0\'s list from the start, never the table\'s', () => {
+    const { m } = phasedFight(b);
+    const events: SimEvent[] = [];
+    for (let i = 0; i < 30 * 16; i++) events.push(...m.step());
+    expect(summonedKeys(events)).toEqual(['veryFastWalker', 'veryFastWalker', 'veryFastWalker']); // at 5, 10 and 15 s
+    expect(events.some((e) => e.type === 'bossPattern' && e.kind === 'slam')).toBe(false);
+  });
+
+  it('at its shield mark it switches lists and starts the new one from its first timed pattern', () => {
+    const { m, boss } = phasedFight(b);
+    for (let i = 0; i < 30 * 4; i++) m.step(); // phase 0's summon is due in 1 s
+    boss().hp = boss().maxHp * 0.5;
+    const events = m.step();
+    expect(events).toContainEqual({ type: 'bossPhase', unitId: boss().id, phase: 1 });
+    expect(boss().pattern).toBe(0);
+    expect(boss().patternTimer).toBe(seconds(3) - 1); // counted down once on the step of the mark
+    const after: SimEvent[] = [];
+    for (let i = 0; i < 30 * 7; i++) after.push(...m.step());
+    expect(summonedKeys(after)).toEqual(['skeletonWarrior', 'skeletonWarrior']); // at 3 and 6 s after the mark
+  });
+
+  it('winding up reads the current phase\'s list: a slam in phase 1 holds the boss, the table\'s slam does not count in phase 0', () => {
+    const slamLater = phasedBalance({ speed: 0.3, patterns: [SLAM, SHIELD], phases: [[SUMMON_WALKER], [SLAM]] });
+    const { m, boss } = phasedFight(slamLater);
+    for (let i = 0; i < 30 * 4; i++) {
+      m.step();
+      expect(isWindingUp(slamLater, boss())).toBe(false);
+    }
+    boss().hp = boss().maxHp * 0.4;
+    let wound = 0;
+    let slams = 0;
+    for (let i = 0; i < 30 * 5; i++) {
+      const x = boss().x;
+      const winding = isWindingUp(slamLater, boss()); // decided by the step before: it holds this whole step
+      for (const e of m.step()) if (e.type === 'bossPattern' && e.kind === 'slam' && !e.windup) slams += 1;
+      if (winding) {
+        wound += 1;
+        expect(boss().x).toBe(x);
+      }
+    }
+    expect(slams).toBe(1);
+    expect(wound).toBeGreaterThan(20);
+  });
+
+  it('an acorn splashes as the barrage of the thrower\'s current phase', () => {
+    const barrage = (splash: number): Pattern => ({ kind: 'barrage', everySeconds: 2, count: 1, damage: 30, splash, speed: 10 });
+    const twoBarrages = phasedBalance({ patterns: [SUMMON_WALKER, SHIELD], phases: [[barrage(0)], [barrage(2)]] });
+    const garden: MatchConfig['prepared'] = [
+      { unit: 'walnutBomb', faction: 'plants', lane: 0, x: 5.5, level: 1 },
+      { unit: 'walnutBomb', faction: 'plants', lane: 0, x: 4.5, level: 1 },
+    ];
+    const splashed = (phase1: boolean): boolean => {
+      const { m, boss } = phasedFight(twoBarrages, garden);
+      if (phase1) {
+        boss().hp = boss().maxHp * 0.5;
+        m.step();
+      }
+      for (let i = 0; i < 30 * 3; i++) m.step();
+      const behind = m.state.units.find((u) => u.key === 'walnutBomb' && u.x === 4.5)!;
+      return behind.hp < behind.maxHp;
+    };
+    expect([splashed(false), splashed(true)]).toEqual([false, true]);
+  });
+
+  it('a shield in a phase list is refused: the marks come from the table', () => {
+    expect(() => phasedFight(phasedBalance({ patterns: [SLAM, SHIELD], phases: [[SUMMON_WALKER], [SHIELD]] })))
+      .toThrow(/boss brainTitan: phase 1 lists a shield; its marks come from its patterns/);
+  });
+
+  it('a boss without phases does not reset its patterns at a mark (the Titan and the Oak)', () => {
+    const plain = phasedBalance({ patterns: [SUMMON_WALKER, SUMMON_WARRIOR, SHIELD] });
+    const { m, boss } = phasedFight(plain);
+    for (let i = 0; i < 30 * 4; i++) m.step();
+    const [pattern, timer] = [boss().pattern, boss().patternTimer];
+    boss().hp = boss().maxHp * 0.5;
+    m.step();
+    expect([boss().pattern, boss().patternTimer]).toEqual([pattern, timer - 1]);
   });
 });

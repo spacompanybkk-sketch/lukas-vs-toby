@@ -38,7 +38,7 @@ type Barrage = Extract<BossPattern, { kind: 'barrage' }>;
 /**
  * Refuses a boss setup that makes no sense, with a `RangeError`: a boss exactly in mode `'boss'`; a
  * boss key with numbers in `Balance.bosses`, on its own side, in a lane where all of it fits on the
- * lawn (the Elder Oak's middle lane 1..3).
+ * lawn (the Elder Oak's middle lane 1..3); no shield in a phase list (the marks are the table's).
  */
 export function checkBoss(c: MatchConfig, b: Balance): void {
   const boss = c.boss as MatchConfig['boss'] | undefined;
@@ -55,6 +55,10 @@ export function checkBoss(c: MatchConfig, b: Balance): void {
   if (!(Number.isInteger(boss.lane) && boss.lane - half >= 0 && boss.lane + half < LANES)) {
     throw new RangeError(`boss lane ${boss.lane}: ${boss.key} must stand on the lawn (lanes ${half}..${LANES - 1 - half})`);
   }
+  const stats = b.bosses[boss.key];
+  (stats.phases ?? []).forEach((list, i) => {
+    if (list.some((p) => p.kind === 'shield')) throw new RangeError(`boss ${boss.key}: phase ${i} lists a shield; its marks come from its patterns`);
+  });
 }
 
 /**
@@ -70,8 +74,21 @@ export function spawnBoss(s: SimState, b: Balance, events: SimEvent[]): void {
   const u = spawnUnit(s, b, boss.key, boss.lane, x, events);
   if (u.id !== bossIdOf(s.config)) throw new Error(`the boss came on as unit ${u.id}, not ${bossIdOf(s.config)}`);
   u.spent = 0;
-  u.pattern = nextTimed(stats, -1);
-  u.patternTimer = u.pattern < 0 ? 0 : seconds(stats.patterns[u.pattern]!.everySeconds);
+  startList(u, patternsOf(stats, 0));
+}
+
+/**
+ * The timed patterns a boss takes turns through in `phase` (shield marks passed): `phases[phase]`,
+ * or its table `patterns` when it has no list for that phase.
+ */
+export function patternsOf(stats: Pick<BossStats, 'patterns' | 'phases'>, phase: number): readonly BossPattern[] {
+  return stats.phases?.[phase] ?? stats.patterns;
+}
+
+/** Starts a pattern list from its first timed pattern, due its `everySeconds` from now. */
+function startList(u: Unit, list: readonly BossPattern[]): void {
+  u.pattern = nextTimed(list, -1);
+  u.patternTimer = u.pattern < 0 ? 0 : seconds(list[u.pattern]!.everySeconds);
 }
 
 /**
@@ -82,12 +99,12 @@ export function bossIdOf(c: MatchConfig): number {
   return c.prepared.length + 1;
 }
 
-/** The index of the timed pattern after `from` (round the table), or -1 when it has none. */
-function nextTimed(stats: BossStats, from: number): number {
-  const n = stats.patterns.length;
+/** The index of the timed pattern after `from` (round the list), or -1 when it has none. */
+function nextTimed(list: readonly BossPattern[], from: number): number {
+  const n = list.length;
   for (let i = 1; i <= n; i++) {
     const at = (((from + i) % n) + n) % n;
-    if (stats.patterns[at]!.everySeconds > 0) return at;
+    if (list[at]!.everySeconds > 0) return at;
   }
   return -1;
 }
@@ -97,8 +114,9 @@ function nextTimed(stats: BossStats, from: number): number {
  * 1. Its shield runs down (always).
  * 2. For each shield mark its health has fallen to (health ≤ max × mark, marks in table order) it
  *    passes the mark (`bossPhase`); if it passed any, the shield goes up for its full `seconds`
- *    (`bossPattern` shield).
- * 3. Unless it is stunned, the pattern timer counts down. A slam says it winds up (`bossPattern`,
+ *    (`bossPattern` shield), and a boss with `phases` starts its new phase's list (`patternsOf`)
+ *    from the first timed pattern, due its `everySeconds` from now.
+ * 3. Unless it is stunned, the pattern timer of the current phase's list counts down. A slam says it winds up (`bossPattern`,
  *    `windup` true) on the tick its timer reaches `windupSeconds`; on the tick it reaches 0 the
  *    pattern goes off and the next timed one is due its `everySeconds` later.
  */
@@ -110,15 +128,16 @@ export function tickBoss(s: SimState, b: Balance, events: SimEvent[]): void {
     const stats = b.bosses[u.key];
     tickShield(b, u, events);
     if (u.stun > 0 || u.pattern < 0) continue;
-    const p = stats.patterns[u.pattern]!;
+    const list = patternsOf(stats, u.phase);
+    const p = list[u.pattern]!;
     u.patternTimer = Math.max(0, u.patternTimer - 1);
     if (p.kind === 'slam' && u.patternTimer === seconds(p.windupSeconds)) {
       events.push({ type: 'bossPattern', unitId: u.id, kind: 'slam', lane: u.lane, col: slamCol(u, p), windup: true });
     }
     if (u.patternTimer > 0) continue;
     fire(s, b, u, p, events);
-    u.pattern = nextTimed(stats, u.pattern);
-    u.patternTimer = seconds(stats.patterns[u.pattern]!.everySeconds);
+    u.pattern = nextTimed(list, u.pattern);
+    u.patternTimer = seconds(list[u.pattern]!.everySeconds);
   }
 }
 
@@ -137,6 +156,8 @@ function tickShield(b: Balance, u: Unit, events: SimEvent[]): void {
   if (!passed) return;
   u.shieldLeft = seconds(shield.seconds);
   events.push({ type: 'bossPattern', unitId: u.id, kind: 'shield', lane: u.lane, col: null, windup: false });
+  const stats = b.bosses[u.key];
+  if (stats.phases !== undefined) startList(u, patternsOf(stats, u.phase)); // a new phase: its own list, from the top
 }
 
 function fire(s: SimState, b: Balance, u: Unit, p: BossPattern, events: SimEvent[]): void {
@@ -171,7 +192,7 @@ export function slamCol(u: Unit, slam: Slam): number {
  */
 export function isWindingUp(b: Balance, u: Unit): boolean {
   if (!isBoss(u.key) || u.pattern < 0) return false;
-  const p = b.bosses[u.key].patterns[u.pattern];
+  const p = patternsOf(b.bosses[u.key], u.phase)[u.pattern];
   return p !== undefined && p.kind === 'slam' && u.patternTimer <= seconds(p.windupSeconds);
 }
 
@@ -259,10 +280,17 @@ function barrage(s: SimState, u: Unit, p: Barrage, events: SimEvent[]): void {
   }
 }
 
-/** The splash of a boss's barrage (for its acorns' landing), or undefined for anything a boss did not throw. */
-export function bossSplash(b: Balance, p: Projectile): number | undefined {
+/**
+ * The splash of a boss's barrage (for its acorns' landing), or undefined for anything a boss did not
+ * throw: the first barrage of the thrower's current phase list (`patternsOf`), or of its table and
+ * then its phases in order when that list has none (or the thrower has fallen).
+ */
+export function bossSplash(s: SimState, b: Balance, p: Projectile): number | undefined {
   if (!isBoss(p.sourceKey)) return undefined;
-  for (const pattern of b.bosses[p.sourceKey].patterns) if (pattern.kind === 'barrage') return pattern.splash;
+  const stats = b.bosses[p.sourceKey];
+  const thrower = s.units.find((u) => u.id === p.ownerId);
+  const lists = [...(thrower === undefined ? [] : [patternsOf(stats, thrower.phase)]), stats.patterns, ...(stats.phases ?? [])];
+  for (const list of lists) for (const pattern of list) if (pattern.kind === 'barrage') return pattern.splash;
   return undefined;
 }
 

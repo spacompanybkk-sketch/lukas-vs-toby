@@ -330,7 +330,7 @@ function land(s: SimState, b: Balance, p: Projectile, primary: Unit | null, x: n
   });
   if (primary) wound(s, b, p, primary, events);
   const shot = b.units[p.sourceKey]?.shot;
-  const splash = bossSplash(b, p) ?? shot?.splash ?? 0;
+  const splash = bossSplash(s, b, p) ?? shot?.splash ?? 0;
   if (splash > 0) {
     for (const u of s.units) {
       if (u === primary || u.faction === p.faction || !inLane(u, p.lane) || !isStanding(u)) continue;
