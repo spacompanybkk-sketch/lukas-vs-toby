@@ -30,7 +30,7 @@ import { createBasicBot, SKILLS, POWER_PACING } from './basicBot';
 import type { SkillTable } from './basicBot';
 import type { Bot, Skill } from './bot';
 import { shotDps } from './laneModel';
-import { placeCommand, readLawn, sendCommand } from './lawn';
+import { freeTile, placeCommand, readLawn, sendCommand } from './lawn';
 import type { BotRng, LaneView } from './lawn';
 import { childPower } from './powers';
 
@@ -98,7 +98,7 @@ function frontCol(view: LaneView, keys?: ReadonlySet<string>): number {
  * other plant in the middle. Free tiles only; the match still has the last word.
  */
 function sensibleCols(view: LaneView, card: CardKey): number[] {
-  const free = (col: number): boolean => col >= 0 && col < PLANT_COLS && view.tiles[col] === undefined;
+  const free = (col: number): boolean => col >= 0 && col < PLANT_COLS && freeTile(view, col);
   const zombie = nearestZombie(view);
   const zx = zombie === undefined ? COLS : zombie.x;
   const range = (lo: number, hi: number): number[] => {
@@ -208,12 +208,14 @@ function sensibleBelt(match: Match, side: Faction, rng: BotRng, lane: { current:
   return cmd;
 }
 
-/** A belt card from `slot` onto any tile (lane for zombies) the match takes, from a random start. */
+/** A belt card from `slot` onto any tile (lane for zombies) the match takes, from a random start; never on lava. */
 function anyBeltTile(match: Match, side: Faction, slot: number, rng: BotRng): Command | null {
   const start = randomInt(rng, LANES);
+  const lawn = readLawn(match.state);
   for (let i = 0; i < LANES; i++) {
     const lane = (start + i) % LANES;
-    const cols = side === 'zombies' ? [COLS - 1] : Array.from({ length: PLANT_COLS }, (_, c) => c);
+    const lava = lawn[lane]?.lava?.cols;
+    const cols = side === 'zombies' ? [COLS - 1] : Array.from({ length: PLANT_COLS }, (_, c) => c).filter((c) => lava?.[c] !== true);
     for (const col of cols) {
       const cmd: Command = { type: 'belt', faction: side, slot, lane, col };
       if (match.check(cmd) === null) return cmd;

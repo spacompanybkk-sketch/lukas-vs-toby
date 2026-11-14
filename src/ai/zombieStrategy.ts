@@ -217,13 +217,14 @@ function rotated(items: readonly CardKey[], rng: BotRng): CardKey[] {
 }
 
 /**
- * A Very Fast Walker down a lane with no shooter (at most Sunflowers, which it eats) and nobody of
- * its own, ties in a random order.
+ * A Very Fast Walker down a lane with no shooter (at most Sunflowers, which it eats), nobody of
+ * its own and no lava, ties in a random order.
  */
 function rushLane(lawn: readonly LaneView[], rng: BotRng): number | undefined {
   return shuffledLanes(rng).find((lane) => {
     const view = laneOf(lawn, lane);
-    return view.zombies.length === 0 && !view.plants.some((p) => SHOOTERS.has(p.key));
+    // Not through lava: a Very Fast Walker is too frail to cross it.
+    return view.zombies.length === 0 && !view.plants.some((p) => SHOOTERS.has(p.key)) && view.lava === null;
   });
 }
 
