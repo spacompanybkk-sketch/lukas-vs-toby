@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { Lawn } from '../../src/render/world/Lawn';
 import { NO_TWIST, SAMPLE_LAWNS, TwistTiles, coveredTile } from '../../src/render/world/TwistTiles';
 import { allocationsIn } from './allocations';
-import { PLANT_COLS } from '../../src/sim/types';
+import { BLOOM_THRESHOLD } from '../../src/render/look';
+import { COLS, PLANT_COLS } from '../../src/sim/types';
 
 const named = (tiles: TwistTiles, name: string): Mesh[] => {
   const found: Mesh[] = [];
@@ -65,6 +66,23 @@ describe('TwistTiles', () => {
     expect([...lanes].sort()).toEqual([1, 3]);
     expect(minX).toBeLessThanOrEqual(0.05);
     expect(maxX).toBeGreaterThanOrEqual(9.95);
+    tiles.dispose();
+  });
+
+  it('makes each lava tile glow past the bloom threshold, in a basalt crust', () => {
+    const tiles = new TwistTiles(SAMPLE_LAWNS.citadel);
+    const [lava] = named(tiles, 'lava');
+    const [crust] = named(tiles, 'lava-crust');
+    expect(crust).toBeDefined();
+    const hot = ((lava as Mesh).material as ShaderMaterial).uniforms.uHot?.value as { r: number; g: number; b: number };
+    expect(0.2126 * hot.r + 0.7152 * hot.g + 0.0722 * hot.b).toBeGreaterThan(BLOOM_THRESHOLD);
+    // One quad per tile, inside that tile.
+    const position = (lava as Mesh).geometry.getAttribute('position');
+    expect(position.count).toBe(4 * SAMPLE_LAWNS.citadel.lava!.tiles.length);
+    for (let i = 0; i < position.count; i += 4) {
+      const index = Math.floor(position.getZ(i)) * COLS + Math.floor(position.getX(i));
+      expect(SAMPLE_LAWNS.citadel.lava!.tiles).toContain(index);
+    }
     tiles.dispose();
   });
 

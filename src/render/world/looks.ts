@@ -5,9 +5,11 @@ import { PALETTE } from '../palette';
 import type { BoxBatch } from './boxes';
 import { bush, buildProps, flower, gravestone, bone } from './props';
 import {
+  buildCitadelProps,
   buildDesertProps,
   buildMeadowProps,
   buildTundraProps,
+  citadelIslet,
   desertIslet,
   meadowIslet,
   tundraIslet,
@@ -293,11 +295,58 @@ const TUNDRA: Look = {
   weather: WORLDS.tundra.weather,
 };
 
+/** The Citadel, Toby's home: dark stone under a smouldering sky, lava glow and embers. */
+const CITADEL: Look = {
+  key: 'citadel',
+  ground: {
+    grassLight: '#7A7488',
+    grassDark: '#6A6478',
+    graveLight: '#55446E',
+    graveDark: '#48395E',
+    rimGrass: '#5E586C',
+    rimGrave: '#43365A',
+    lip: '#4C465A',
+    soil: '#3E3646',
+    soilDark: '#302A38',
+    graveSoil: '#33293F',
+    islandRock: '#4C4456',
+    graveRock: '#3C3248',
+  },
+  tufts: { base: '#7C7660', dark: '#5E5A4C', light: '#9A9276' },
+  sky: {
+    top: '#4A2448',
+    horizon: '#D8643E',
+    haze: '#8E3A48',
+    deep: '#341A3C',
+    cloud: '#9A7682',
+    cloudSide: '#78566A',
+    cloudUnder: '#5C3C52',
+    cloudFar: '#6A3448',
+    stars: 0,
+    moon: false,
+  },
+  lights: {
+    sun: '#FFD8BC',
+    sunIntensity: 1.4,
+    fillSky: '#B896D0',
+    fillGround: '#FF8A4A',
+    fillIntensity: 0.85,
+    bounce: '#FFC0A0',
+    bounceIntensity: 0.95,
+  },
+  grade: { saturation: 0.12, contrast: 0.07, brightness: -0.01, vignette: 0.44 },
+  backdrop: '#8E3A48',
+  glow: { color: '#FF5A12', intensity: 2.2 },
+  props: buildCitadelProps,
+  islet: citadelIslet,
+  weather: WORLDS.citadel.weather,
+};
+
 /** Every world's look. */
 export const LOOKS: Record<WorldKey, Look> = {
   backyard: BACKYARD,
   meadow: MEADOW,
   desert: DESERT,
   tundra: TUNDRA,
-  citadel: { ...BACKYARD, key: 'citadel', weather: WORLDS.citadel.weather },
+  citadel: CITADEL,
 };

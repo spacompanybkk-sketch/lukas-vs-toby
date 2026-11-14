@@ -366,3 +366,124 @@ export function tundraIslet(batch: BoxBatch, grave: boolean, random: () => numbe
   drift(batch, 0.3, 0.35, 0.5, random);
 }
 
+/** A run of castle wall with battlements along +X from `x0` to `x1` at depth `z`, `h` tall. */
+function battlements(batch: BoxBatch, x0: number, x1: number, z: number, h: number, random: () => number): void {
+  const stone = '#5E5870';
+  const top = '#736C86';
+  const w = x1 - x0;
+  let x = x0;
+  // Blocks of slightly different greys, so it reads as masonry.
+  for (const y of [0, h / 3, (2 * h) / 3]) {
+    x = x0 + (y > 0 && y < h / 2 ? 0.15 : 0);
+    while (x < x1 - 0.02) {
+      const bw = Math.min(0.3 + random() * 0.12, x1 - x);
+      batch.box(x, y, z - 0.12, bw - 0.01, h / 3 - 0.006, 0.24, shade(stone, (random() - 0.5) * 0.06), shade(top, (random() - 0.5) * 0.04));
+      x += bw;
+    }
+  }
+  const merlons = Math.round(w / 0.36);
+  for (let i = 0; i < merlons; i += 1) {
+    if (i % 2 === 1) continue;
+    batch.box(x0 + (i * w) / merlons, h, z - 0.12, w / merlons, 0.12, 0.24, stone, top);
+  }
+}
+
+/** A square tower with battlements and a purple banner, `h` tall. */
+function tower(batch: BoxBatch, x: number, z: number, h: number): void {
+  const stone = '#5A546C';
+  const top = '#6E6882';
+  batch.boxOn(x, 0, z, 0.7, h, 0.7, stone, top);
+  for (const [dx, dz] of [[-0.27, -0.27], [0.27, -0.27], [-0.27, 0.27], [0.27, 0.27]]) {
+    batch.boxOn(x + (dx as number), h, z + (dz as number), 0.16, 0.14, 0.16, stone, top);
+  }
+  batch.boxOn(x, h * 0.45, z + 0.36, 0.3, h * 0.4, 0.02, PALETTE.clothDark, PALETTE.clothPurple);
+  batch.boxOn(x, h * 0.6, z + 0.371, 0.12, 0.12, 0.01, PALETTE.bone);
+  // A dark window slit.
+  batch.boxOn(x, h * 0.72, z + 0.351, 0.07, 0.16, 0.01, '#1E1828');
+}
+
+/** A brazier: an iron bowl on a post with a fire in it (the fire in `glow`). */
+function brazier(solid: BoxBatch, glow: BoxBatch, x: number, z: number, h: number): void {
+  at(solid, x, z, 0, 0, () => {
+    solid.boxOn(0, 0, 0, 0.1, h, 0.1, PALETTE.armourDark, PALETTE.armour);
+    solid.boxOn(0, h, 0, 0.22, 0.07, 0.22, PALETTE.armourDark, PALETTE.armour);
+  });
+  at(glow, x, z, 0, 0, () => {
+    glow.boxOn(0, h + 0.07, 0, 0.16, 0.08, 0.16, '#FF7A1A');
+    glow.boxOn(0.02, h + 0.15, -0.01, 0.09, 0.08, 0.09, '#FFD23F');
+  });
+}
+
+/** A pool of lava on the rim (glow) inside a ring of dark rock. */
+function lavaPool(solid: BoxBatch, glow: BoxBatch, x: number, z: number, w: number, d: number): void {
+  solid.boxOn(x, 0, z, w + 0.16, 0.04, d + 0.16, '#2C2632', '#3A3242');
+  glow.boxOn(x, 0, z, w, 0.045, d, '#FF6A1A');
+}
+
+/** An obsidian spike, `h` tall, leaning a little. */
+function spike(batch: BoxBatch, x: number, z: number, h: number, yaw: number, lean: number): void {
+  const black = '#2A2236';
+  const sheen = '#4A3E5E';
+  at(batch, x, z, yaw, lean, () => {
+    batch.boxOn(0, 0, 0, 0.16 * h, 0.5 * h, 0.16 * h, black, sheen);
+    batch.boxOn(0, 0.5 * h, 0, 0.1 * h, 0.32 * h, 0.1 * h, black, sheen);
+    batch.boxOn(0, 0.82 * h, 0, 0.05 * h, 0.18 * h, 0.05 * h, black, sheen);
+  });
+}
+
+/** The Citadel: Toby's home of dark stone, battlements and towers, braziers, lava and obsidian. */
+export function buildCitadelProps(): Props {
+  const random = seededRandom(20261205);
+  const solid = new BoxBatch();
+  const glow = new BoxBatch();
+  const rubble = '#6A6478';
+
+  // --- Lukas's end: a ruined stretch of wall, braziers and lava pools on the rim.
+  battlements(solid, 0.2, 3.4, -0.62, 0.42, random);
+  battlements(solid, 4.4, 7.6, -0.62, 0.36, random);
+  for (let i = 0; i < 5; i++) rock(solid, 3.55 + random() * 0.7, -0.6 + random() * 0.2, 0.9 + random() * 0.5, rubble, random() * 3);
+  tower(solid, -2.0, -0.4, 1.3);
+  brazier(solid, glow, -0.6, -0.45, 0.4);
+  brazier(solid, glow, -1.15, 5.4, 0.32);
+  lavaPool(solid, glow, -2.2, 2.4, 0.5, 1.1);
+  spike(solid, -2.3, 4.3, 0.8, 0.3, 0.12);
+  spike(solid, -2.05, 1.2, 0.6, -0.4, -0.1);
+
+  // Front rim: low rubble, small lava pools and bones.
+  lavaPool(solid, glow, 2.6, 5.55, 0.7, 0.3);
+  lavaPool(solid, glow, 6.4, 5.5, 0.5, 0.3);
+  for (const [x, z, s, yaw] of [[1.4, 5.5, 0.9, 0.3], [4.6, 5.6, 1.1, 2.2], [-0.7, 5.5, 0.7, 1.4]] as const) rock(solid, x, z, s, rubble, yaw);
+  for (let i = 0; i < 6; i++) bone(solid, -1.5 + random() * 8.6, 5.25 + random() * 0.35, random() * 3, 1.0);
+  // Cracks across the first columns' corners.
+  for (let lane = 0; lane < LAWN_LANES; lane++) {
+    const [dx, dz] = tileCorner(random);
+    crack(solid, dx, lane + dz, random() * 3, 1.0, '#3A3446');
+  }
+
+  // --- Toby's end: his gate towers, spikes, gravestones, bone piles and lava.
+  tower(solid, 12.3, -0.45, 1.6);
+  tower(solid, 12.4, 5.3, 1.0);
+  spike(solid, 8.6, -0.6, 0.9, 0.2, 0.08);
+  spike(solid, 9.2, -0.5, 0.6, -0.3, -0.12);
+  gravestone(solid, 9.9, -0.55, 0.56, -0.15, -0.09, true);
+  gravestone(solid, 11.0, -0.5, 0.5, 0.2, 0.06);
+  gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
+  gravestone(solid, 12.1, 1.6, 0.34, -1.2, 0.08, true);
+  brazier(solid, glow, 12.2, 3.1, 0.42);
+  lavaPool(solid, glow, 10.4, 5.55, 0.8, 0.3);
+  for (let i = 0; i < 8; i++) bone(solid, 8.3 + random() * 3.6, -0.28 + random() * 0.12, random() * 3, 1.1);
+  graveTiles(solid, random, shade('#2E2440', -0.04), ['#4A4258', '#625A72']);
+
+  return { solid: solid.build(), glow: glow.build() };
+}
+
+/** What stands on a Citadel islet: an obsidian spike and rubble, or a grave by a brazier-less bone pile. */
+export function citadelIslet(batch: BoxBatch, grave: boolean, random: () => number): void {
+  if (grave) {
+    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
+    bone(batch, 0.4, 0.35, 0.8, 1.3);
+    return;
+  }
+  spike(batch, -0.15, -0.1, 0.8, random(), 0.1);
+  rock(batch, 0.35, 0.3, 1.0, '#6A6478', random());
+}

@@ -167,6 +167,45 @@ function iceLane(batch: BoxBatch, lane: number, random: () => number): void {
   batch.box(0, ICE_Y, lane + 0.93, COLS, 0.003, 0.05, frost);
 }
 
+// ---- Lava: glowing tiles of blocky molten rock in a crust of basalt ---------------------------
+
+const LAVA_VERTEX = /* glsl */ `
+  varying vec2 vXZ;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vXZ = world.xz;
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+// Molten rock in sixteenth-tile pixels that churn a step at a time, bright enough to bloom.
+const LAVA_FRAGMENT = /* glsl */ `
+  uniform float uTime;
+  uniform vec3 uDeep;
+  uniform vec3 uHot;
+  uniform vec3 uWhite;
+  varying vec2 vXZ;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  void main() {
+    vec2 p = floor(vXZ * 16.0) / 16.0;
+    float t = floor(uTime * 6.0) / 6.0;
+    float n = noise(p * 2.2 + vec2(t * 0.35, -t * 0.2)) * 0.6 + noise(p * 5.0 - vec2(t * 0.5, t * 0.3)) * 0.4;
+    vec3 c = mix(uDeep, uHot, smoothstep(0.3, 0.62, n));
+    c = mix(c, uWhite, smoothstep(0.76, 0.9, n));
+    float pulse = 0.9 + 0.1 * sin(uTime * 2.4);
+    gl_FragColor = vec4(c * pulse, 1.0);
+  }
+`;
+
+/** Lava lies just above the ground, like ice. */
+const LAVA_Y = 0.006;
+
 /** The twist visuals of one lawn config, as one group. */
 export class TwistTiles {
   readonly group = new Group();
@@ -178,6 +217,57 @@ export class TwistTiles {
     if (config.fog !== null) this.buildMist();
     if (config.rocks.length > 0) this.buildBoulders();
     if (config.ice !== null && config.ice.lanes.length > 0) this.buildIce(config.ice.lanes);
+    if (config.lava !== null && config.lava.tiles.length > 0) this.buildLava(config.lava.tiles);
+  }
+
+  private buildLava(tiles: readonly number[]): void {
+    const molten = new BoxBatch();
+    const crust = new BoxBatch();
+    const random = seededRandom(6660);
+    const white = shade('#FFFFFF', 0);
+    const basalt = '#2E2834';
+    const basaltTop = '#433A4C';
+    for (const index of tiles) {
+      const { lane, col } = lavaTile(index);
+      const x0 = col + 0.06;
+      const x1 = col + 0.94;
+      const z0 = lane + 0.06;
+      const z1 = lane + 0.94;
+      molten.quad([x0, LAVA_Y, z1], [x1, LAVA_Y, z1], [x1, LAVA_Y, z0], [x0, LAVA_Y, z0], [0, 1, 0], white);
+      // A ragged crust round the edge: low basalt blocks, a few stepping into the pool.
+      const edge = (x: number, z: number, w: number, d: number): void =>
+        crust.box(x, 0, z, w, 0.03 + random() * 0.025, d, basalt, basaltTop);
+      for (let i = 0; i < 5; i++) {
+        const a = col + i * 0.2;
+        edge(a, lane, 0.2, 0.08 + (random() < 0.3 ? 0.06 : 0));
+        edge(a, lane + 0.92 - (random() < 0.3 ? 0.06 : 0), 0.2, 0.08 + 0.06);
+        const b = lane + i * 0.2;
+        edge(col, b, 0.08 + (random() < 0.3 ? 0.06 : 0), 0.2);
+        edge(col + 0.92 - (random() < 0.3 ? 0.06 : 0), b, 0.14, 0.2);
+      }
+      // A floating crust island or two.
+      if (random() < 0.7) crust.box(col + 0.25 + random() * 0.4, LAVA_Y, lane + 0.25 + random() * 0.4, 0.12, 0.02, 0.1, basalt, basaltTop);
+    }
+    const lava = new ShaderMaterial({
+      vertexShader: LAVA_VERTEX,
+      fragmentShader: LAVA_FRAGMENT,
+      uniforms: {
+        uTime: this.time,
+        // Scene colours: the hot parts sit well over the bloom threshold.
+        uDeep: { value: new Color('#C4280A').multiplyScalar(1.1) },
+        uHot: { value: new Color('#FF7A1A').multiplyScalar(4) },
+        uWhite: { value: new Color('#FFD23F').multiplyScalar(2.6) },
+      },
+    });
+    const rock = new MeshStandardMaterial(MATTE_PLASTIC);
+    this.materials.push(lava, rock);
+    const pool = new Mesh(molten.build(), lava);
+    pool.name = 'lava';
+    const rim = new Mesh(crust.build(), rock);
+    rim.name = 'lava-crust';
+    rim.castShadow = true;
+    rim.receiveShadow = true;
+    this.group.add(pool, rim);
   }
 
   private buildIce(lanes: readonly number[]): void {
