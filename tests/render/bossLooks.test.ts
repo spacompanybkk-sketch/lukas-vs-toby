@@ -56,6 +56,39 @@ describe('BOSS_LOOK', () => {
   it('the shipped bosses keep their sizes', () => {
     expect(BOSS_SCALE).toEqual({ brainTitan: 2.4, elderOak: 4 });
   });
+
+  it('the Brain Titan\'s row is pinned: face, bar, sounds and shows as shipped', () => {
+    expect(BOSS_LOOK.brainTitan).toEqual({
+      scale: 2.4,
+      face: [
+        [1, 3, 10, 7, '#9ACD8A'], [1, 2, 10, 1, '#FFC83D'],
+        [1, 0, 3, 2, '#FF8FB1'], [4.5, 0, 3, 2, '#FF8FB1'], [8, 0, 3, 2, '#FF8FB1'],
+        [2, 4, 3, 3, 'eye'], [7, 5, 2, 2, 'eye'],
+        [0, 8, 12, 4, '#6FA364'], [2, 7, 2, 2, '#F4EBDD'], [8, 7, 2, 2, '#F4EBDD'],
+      ],
+      bar: { fill: 'var(--c-purple)', hi: 'var(--c-purple-hi)' },
+      call: 'titanRoar',
+      defeat: 'titanDefeat',
+      fx: { roar: 'cheer', summon: 'ring', shield: 'dome', defeat: 'brains', eyes: 'still' },
+    });
+  });
+
+  it('the Elder Oak\'s row is pinned: face, bar, sounds and shows as shipped', () => {
+    expect(BOSS_LOOK.elderOak).toEqual({
+      scale: 4,
+      face: [
+        [0, 0, 12, 4, '#3E9A2E'], [1, 0, 10, 2, '#58C13B'],
+        [2, 4, 8, 8, '#A8703A'], [3, 5, 6, 6, '#C98F55'],
+        [3, 4, 2, 1, '#3E9A2E'], [7, 4, 2, 1, '#3E9A2E'],
+        [3, 5, 2, 2, 'eye'], [7, 5, 2, 2, 'eye'],
+        [4, 8, 4, 1, '#8BE05A'], [4, 9, 4, 1, '#24140A'],
+      ],
+      bar: { fill: 'var(--c-wood)', hi: 'var(--c-wood-hi)' },
+      call: 'oakCreak',
+      defeat: 'oakDefeat',
+      fx: { roar: 'ability', summon: 'sparkles', shield: 'bark', defeat: 'leaves', eyes: 'follow' },
+    });
+  });
 });
 
 // ---- The strike (the demo's test-only Titan) ----------------------------------------------
