@@ -74,7 +74,7 @@ async function cardMiddle(page: Page, key: string): Promise<{ x: number; y: numb
   return { x: card.x + card.width / 2, y: card.y + card.height / 2 };
 }
 
-test('Lukas merges by touch: a tap on the Peashooter, and a drag of its card onto it', async ({ page }) => {
+test('Lukas merges by touch: a tap on the Peashooter\'s tile, and a drag of its card onto that tile', async ({ page }) => {
   await startBattle(page, 'plants');
   await recordMerges(page);
   const card = page.locator('[data-card="peashooter"]');
@@ -85,13 +85,12 @@ test('Lukas merges by touch: a tap on the Peashooter, and a drag of its card ont
   await expect.poll(async () => plantAt(await snapshot(page), 2, 3)?.key ?? null).toBe('peashooter');
   const plant = plantAt(await snapshot(page), 2, 3)!;
   await waitCardReady(page, 'peashooter');
-  const top = await unitPoint(page, plant.id, 0.85);
-  await page.touchscreen.tap(top.x, top.y);
+  await page.touchscreen.tap(tile.x, tile.y); // its feet: the ground tile decides, not the body
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 2 });
   await waitCardReady(page, 'peashooter');
   await card.tap(); // deselect: the drag starts from a card not yet selected
   await expect(card).toHaveAttribute('aria-pressed', 'false');
-  await dragTouch(page, await cardMiddle(page, 'peashooter'), () => unitPoint(page, plant.id, 0.6));
+  await dragTouch(page, await cardMiddle(page, 'peashooter'), () => tilePoint(page, 2, 3));
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 3 });
   expect((await snapshot(page)).units.filter((u) => u.key === 'peashooter'), 'no second Peashooter').toHaveLength(1);
 });
