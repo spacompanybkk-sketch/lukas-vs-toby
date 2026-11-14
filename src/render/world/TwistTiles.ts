@@ -1,4 +1,5 @@
-import { Color, Group, Mesh, MeshStandardMaterial, PlaneGeometry, ShaderMaterial, type Material } from 'three';
+import { BoxGeometry, Color, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, ShaderMaterial, Vector3, type Material, type Object3D } from 'three';
+import type { FrameBox, FrameView } from '../CameraRig';
 import { DISPLAY_TO_SCENE_GLSL, MATTE_PLASTIC } from '../look';
 import { BoxBatch, seededRandom, shade } from './boxes';
 import type { WorldKey } from '../../data/worlds';
@@ -349,5 +350,266 @@ export class TwistTiles {
     });
     for (const material of this.materials) material.dispose();
     this.materials.length = 0;
+  }
+}
+
+// ---- The twist lesson's show (plan step 2, Task 3) -------------------------------------------
+//
+// While a level's `twist` step holds the match, the camera pans over the twist and ghosts act it
+// out: in fog a ghost pea flies from a Peashooter's tile and puffs out at the level's reach; on
+// ice the icy lanes pulse and a ghost zombie slides down one, past one walking a plain lane. The
+// ghosts are pictures only: they are no units, the simulation never hears of them.
+
+/** The ghost pea's puff: the pale mist blue of a real shot fading in the fog (BattleView's fade puff). */
+export const GHOST_PUFF = 0xdde6ff;
+
+/** What the show needs from the effects: a puff of mist. */
+export interface PuffHost { puff(at: Vector3, color: number): void }
+
+/** The fog show's lane, and the plant column its pea leaves from (where the lessons put the first Peashooter). */
+const FOG_LANE = 2;
+const FOG_FROM_COL = 1;
+/** The ghost pea's height, speed (tiles a second) and the rest after each puff (seconds). */
+const PEA_Y = 0.55;
+const PEA_SPEED = 4;
+const SHOW_REST = 0.9;
+/** The ghost walker's pace on grass, tiles a second (on ice: times the ice's speed). */
+const GHOST_WALK = 1.4;
+/** Where a ghost zombie starts and stops along its lane. */
+const GHOST_FROM_X = 10.2;
+const GHOST_TO_X = 0.3;
+/** The camera follows the ghosts this fast (1/seconds), and frames this many tiles along the lane. */
+const FOLLOW_RATE = 3;
+const FOG_WINDOW = 5.2;
+const ICE_WINDOW = 6.4;
+/** The glowing steps of an icy lane's pulse (blocky, never smooth). */
+const PULSE_STEPS = [0.06, 0.18, 0.3, 0.18];
+
+const GHOST_ICE = '#BFE8FF';
+const GHOST_PEA = '#8BE04E';
+const GHOST_BODY = '#DDF1FF';
+const GHOST_DARK = '#9CC4E4';
+
+/** A boxy ghost zombie, arms out towards the plants (−x), feet at its origin. */
+function ghostZombie(): BoxBatch {
+  const b = new BoxBatch();
+  const body = shade(GHOST_BODY, 0);
+  const dark = shade(GHOST_DARK, 0);
+  b.boxOn(0, 0, -0.08, 0.12, 0.26, 0.12, dark);
+  b.boxOn(0, 0, 0.08, 0.12, 0.26, 0.12, dark);
+  b.boxOn(0, 0.26, 0, 0.2, 0.3, 0.32, body);
+  b.boxOn(0, 0.56, 0, 0.26, 0.26, 0.26, body);
+  b.boxOn(-0.14, 0.62, 0.06, 0.03, 0.05, 0.05, dark); // eyes
+  b.boxOn(-0.14, 0.62, -0.06, 0.03, 0.05, 0.05, dark);
+  b.boxOn(-0.2, 0.44, -0.2, 0.3, 0.08, 0.08, body); // arms out front
+  b.boxOn(-0.2, 0.44, 0.2, 0.3, 0.08, 0.08, body);
+  return b;
+}
+
+/** A boxy ghost Peashooter, facing the zombies (+x), on its tile. */
+function ghostShooter(): BoxBatch {
+  const b = new BoxBatch();
+  const leaf = shade(GHOST_PEA, -0.1);
+  const head = shade(GHOST_PEA, 0.05);
+  b.boxOn(0, 0, 0, 0.34, 0.06, 0.34, leaf);
+  b.boxOn(0, 0.06, 0, 0.08, 0.28, 0.08, leaf);
+  b.boxOn(0, 0.34, 0, 0.3, 0.3, 0.3, head);
+  b.boxOn(0.2, 0.42, 0, 0.14, 0.14, 0.14, head);
+  return b;
+}
+
+/** A ghost on a lane, for tests: which lane, and its object. */
+export interface Ghost { lane: number; object: Object3D }
+
+/**
+ * One twist lesson's show: its ghosts in `group` (add it to the scene), moved on by `update`, and
+ * the box the camera should frame now (`frameBox`, `view`). Loops until disposed.
+ */
+export class TwistShow {
+  readonly group = new Group();
+  /** Fog: where the pea leaves from and where it puffs out (the level's reach on). */
+  readonly startX: number = FOG_FROM_COL + 0.5;
+  readonly fadeX: number = Number.NaN;
+  readonly lane: number = FOG_LANE;
+  /** Ice: the ghost sliding down an icy lane, and the one walking a plain lane beside it (null: none plain). */
+  readonly slider: Ghost = { lane: 0, object: new Group() };
+  readonly walker: Ghost | null = null;
+  /** How the camera looks at `frameBox`. */
+  readonly view: FrameView;
+  /** Times the show has played through. */
+  loops = 0;
+  disposed = false;
+
+  private readonly materials: Material[] = [];
+  private readonly pulses: MeshBasicMaterial[] = [];
+  private pea: Mesh | null = null;
+  private strip: MeshBasicMaterial | null = null;
+  private readonly slideSpeed: number = GHOST_WALK;
+  private clock = 0;
+  private flying = true;
+  /** The middle of the camera's window along the lane. */
+  private follow: number;
+  private readonly puffAt = new Vector3();
+
+  constructor(readonly kind: 'fog' | 'ice', lawn: LawnConfig, private readonly fx: PuffHost) {
+    this.group.name = 'twist-show';
+    if (kind === 'fog') {
+      const reach = lawn.fog ?? 5;
+      this.fadeX = this.startX + reach;
+      this.buildFog(reach);
+      this.view = { pitchDeg: 44 };
+      this.follow = this.startX + 1;
+    } else {
+      const icy = [...(lawn.ice?.lanes ?? [FOG_LANE])];
+      const near = (lanes: number[], to: number): number | null =>
+        lanes.length === 0 ? null : lanes.reduce((a, b) => (Math.abs(b - to) < Math.abs(a - to) ? b : a));
+      const sliderLane = near(icy, FOG_LANE) as number;
+      const plain = [0, 1, 2, 3, 4].filter((l) => !icy.includes(l));
+      const walkerLane = near(plain, sliderLane);
+      this.lane = sliderLane;
+      this.slideSpeed = GHOST_WALK * (lawn.ice?.speed ?? 1.6);
+      this.buildIce(icy);
+      this.slider = { lane: sliderLane, object: this.ghost(sliderLane) };
+      this.walker = walkerLane === null ? null : { lane: walkerLane, object: this.ghost(walkerLane) };
+      this.view = { pitchDeg: 46 };
+      this.follow = GHOST_FROM_X - ICE_WINDOW / 2;
+    }
+    this.update(0);
+  }
+
+  /** Moves the show on by `dt` real seconds (loops for ever). Allocates nothing. */
+  update(dt: number): void {
+    if (this.disposed) return;
+    const step = dt > 0 ? Math.min(dt, 0.25) : 0;
+    this.clock += step;
+    if (this.kind === 'fog') this.updateFog();
+    else this.updateIce();
+    const target = this.kind === 'fog'
+      ? (this.flying && this.pea !== null ? this.pea.position.x : this.startX + 1)
+      : this.slider.object.position.x;
+    this.follow += (target - this.follow) * (1 - Math.exp(-step * FOLLOW_RATE));
+  }
+
+  /** The box the camera frames now: a window along the lane that follows the ghost. */
+  frameBox(): FrameBox {
+    if (this.kind === 'fog') {
+      const half = FOG_WINDOW / 2;
+      const c = Math.min(Math.max(this.follow, half - 0.5), 10.5 - half);
+      return { x: [c - half, c + half], y: [0, 1.2], z: [this.lane - 0.6, this.lane + 1.6] };
+    }
+    const half = ICE_WINDOW / 2;
+    const c = Math.min(Math.max(this.follow, half - 0.5), 10.5 - half);
+    const lanes = this.walker === null ? [this.slider.lane] : [this.slider.lane, this.walker.lane];
+    return { x: [c - half, c + half], y: [0, 1.4], z: [Math.min(...lanes) - 0.4, Math.max(...lanes) + 1.4] };
+  }
+
+  private updateFog(): void {
+    const pea = this.pea!;
+    const flight = (this.fadeX - this.startX) / PEA_SPEED;
+    if (this.flying) {
+      const u = Math.min(1, this.clock / flight);
+      pea.position.x = this.startX + 0.25 + (this.fadeX - this.startX - 0.25) * u;
+      pea.visible = true;
+      if (u >= 1) {
+        // Out of reach: it melts into the mist, where a real pea would.
+        this.puffAt.set(this.fadeX, PEA_Y, this.lane + 0.5);
+        this.fx.puff(this.puffAt, GHOST_PUFF);
+        pea.visible = false;
+        this.flying = false;
+        this.clock = 0;
+      }
+    } else if (this.clock >= SHOW_REST) {
+      this.flying = true;
+      this.clock = 0;
+      this.loops += 1;
+      pea.position.x = this.startX + 0.25;
+    }
+    if (this.strip !== null) this.strip.opacity = 0.1 + 0.1 * (Math.floor(this.clock * 3) % 2);
+  }
+
+  private updateIce(): void {
+    const run = (GHOST_FROM_X - GHOST_TO_X) / this.slideSpeed;
+    if (this.flying) {
+      const t = Math.min(this.clock, run);
+      this.slider.object.position.x = GHOST_FROM_X - this.slideSpeed * t;
+      if (this.walker !== null) {
+        const w = this.walker.object;
+        w.position.x = Math.max(GHOST_TO_X, GHOST_FROM_X - GHOST_WALK * t);
+        w.position.y = Math.floor(t * 6) % 2 === 0 ? 0 : 0.04; // stepping, where the icy one glides
+      }
+      if (this.clock >= run) {
+        this.flying = false;
+        this.clock = 0;
+      }
+    } else if (this.clock >= SHOW_REST) {
+      this.flying = true;
+      this.clock = 0;
+      this.loops += 1;
+    }
+    const level = PULSE_STEPS[Math.floor((this.clock + (this.flying ? 0 : 0.5)) * 6) % PULSE_STEPS.length] as number;
+    for (const m of this.pulses) m.opacity = level;
+  }
+
+  private buildFog(reach: number): void {
+    const z = this.lane + 0.5;
+    const peaMaterial = new MeshBasicMaterial({ color: GHOST_PEA, transparent: true, opacity: 0.9 });
+    const pea = new Mesh(new BoxGeometry(0.2, 0.2, 0.2), peaMaterial);
+    pea.name = 'ghost-pea';
+    pea.position.set(this.startX, PEA_Y, z);
+    pea.renderOrder = 12;
+    this.pea = pea;
+    const shooterMaterial = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false });
+    const shooter = new Mesh(ghostShooter().build(), shooterMaterial);
+    shooter.name = 'ghost-shooter';
+    shooter.position.set(this.startX, 0, z);
+    // How far a pea gets: a pale strip along the lane from the shooter to the puff.
+    const stripMaterial = new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0.15, depthWrite: false });
+    const stripGeometry = new PlaneGeometry(reach, 0.5);
+    stripGeometry.rotateX(-Math.PI / 2);
+    const strip = new Mesh(stripGeometry, stripMaterial);
+    strip.name = 'fog-reach';
+    strip.position.set(this.startX + reach / 2, 0.015, z);
+    strip.renderOrder = 3;
+    this.strip = stripMaterial;
+    this.materials.push(peaMaterial, shooterMaterial, stripMaterial);
+    this.group.add(strip, shooter, pea);
+  }
+
+  private buildIce(lanes: readonly number[]): void {
+    for (const lane of lanes) {
+      const material = new MeshBasicMaterial({ color: GHOST_ICE, transparent: true, opacity: PULSE_STEPS[0], depthWrite: false });
+      const geometry = new PlaneGeometry(COLS, 0.94);
+      geometry.rotateX(-Math.PI / 2);
+      const glow = new Mesh(geometry, material);
+      glow.name = 'ice-pulse';
+      glow.position.set(COLS / 2, 0.014, lane + 0.5);
+      glow.renderOrder = 3;
+      this.materials.push(material);
+      this.pulses.push(material);
+      this.group.add(glow);
+    }
+  }
+
+  private ghost(lane: number): Object3D {
+    const material = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false });
+    this.materials.push(material);
+    const mesh = new Mesh(ghostZombie().build(), material);
+    mesh.name = 'ghost-zombie';
+    mesh.position.set(GHOST_FROM_X, 0, lane + 0.5);
+    mesh.renderOrder = 12;
+    this.group.add(mesh);
+    return mesh;
+  }
+
+  /** Frees every geometry and material it made, and leaves the scene. Safe to call twice. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.group.removeFromParent();
+    this.group.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose(); });
+    for (const m of this.materials) m.dispose();
+    this.materials.length = 0;
+    this.pulses.length = 0;
+    this.group.clear();
   }
 }
