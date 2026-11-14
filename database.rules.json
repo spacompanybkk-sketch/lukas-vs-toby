@@ -1,17 +1,5 @@
 {
   "rules": {
-    "presence": {
-      ".read": true,
-      ".write": true
-    },
-    "rooms": {
-      ".read": true,
-      ".write": true
-    },
-    "challenges": {
-      ".read": true,
-      ".write": true
-    },
     "v2": {
       "players": {
         ".read": true,

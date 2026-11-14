@@ -41,6 +41,9 @@ async function world() {
   return { db, r: raw(db), h1, h2, clock };
 }
 
+/** A rules file with one open path, for the tests of the fake's own mechanics (not of the rules file). */
+const SANDBOX = { rules: { sandbox: { '.read': true, '.write': true } } };
+
 const row = (slot: 'p01' | 'p02', extra: Record<string, Json> = {}): Json =>
   ({ ...(boardRowFor(saveFor(slot)) as Record<string, Json>), ...extra });
 
@@ -169,37 +172,41 @@ describe('the fake database enforces the rules file', () => {
     expect((await r.put('elsewhere', 1)).status).toBe(401);
   });
 
-  it('leaves the old open paths open', async () => {
-    const { r } = await world();
-    for (const p of ['presence', 'rooms', 'challenges']) {
-      expect((await r.put(`${p}/x`, { a: 1 })).status, p).toBe(200);
-      expect((await r.get(p)).data, p).toEqual({ x: { a: 1 } });
+  it('refuses reads and writes on the retired old paths and on any unknown top-level path', async () => {
+    const { r, db } = await world();
+    for (const p of ['presence', 'rooms', 'challenges', 'somethingNew']) {
+      db.poke(`${p}/old`, { a: 1 });
+      expect((await r.get(`${p}/x`)).status, p).toBe(401);
+      expect((await r.get(p)).status, p).toBe(401);
+      expect((await r.put(`${p}/x`, { a: 1 })).status, p).toBe(401);
+      expect((await r.patch('', { [`${p}/x`]: 1 })).status, p).toBe(401);
+      expect((await r.del(`${p}/old`)).status, p).toBe(401);
+      expect(db.peek(p), p).toEqual({ old: { a: 1 } });
     }
   });
 
   it('applies a multi-path update atomically: one refused path writes nothing', async () => {
     const { r, db, h1 } = await world();
     const res = await r.patch('', {
-      'presence/lukas': true,
       [`v2/saves/p01/${h1}`]: { save: JSON.stringify(saveFor('p01', 'Lukas')), touch: SV, ver: NEW, prev: VA },
       'v2/board/p02': row('p02', { updatedAt: SV }),
     });
     expect(res.status).toBe(401);
-    expect(db.peek('presence')).toBeNull();
+    expect(db.peek(`v2/saves/p01/${h1}/ver`)).toBe(VA);
   });
 
   it('refuses overlapping paths in one update', async () => {
     const { r } = await world();
-    expect((await r.patch('', { 'presence/a': 1, 'presence/a/b': 2 })).status).toBe(400);
+    expect((await r.patch('', { 'v2/notes/a': 1, 'v2/notes/a/b': 2 })).status).toBe(400);
   });
 
   it('stores like the real database: no empty objects, arrays by index, server time', async () => {
     const clock = makeClock();
-    const db = new FakeDatabase({ now: clock.now });
+    const db = new FakeDatabase({ now: clock.now, rules: SANDBOX });
     const r = raw(db);
-    await r.put('rooms/a', { empty: {}, list: ['x', 'y'], when: SV, nested: { gone: {} } });
-    expect(db.peek('rooms/a')).toEqual({ list: ['x', 'y'], when: T0 });
-    expect(db.peek('rooms/a/list/1')).toBe('y');
+    await r.put('sandbox/a', { empty: {}, list: ['x', 'y'], when: SV, nested: { gone: {} } });
+    expect(db.peek('sandbox/a')).toEqual({ list: ['x', 'y'], when: T0 });
+    expect(db.peek('sandbox/a/list/1')).toBe('y');
   });
 });
 
@@ -215,14 +222,14 @@ describe('fake database controls', () => {
   });
 
   it('logs requests, fails while offline, and can apply a write but lose the answer', async () => {
-    const db = new FakeDatabase({ now: () => T0 });
+    const db = new FakeDatabase({ now: () => T0, rules: SANDBOX });
     const r = raw(db);
     db.offline = true;
-    await expect(r.get('presence')).rejects.toThrow(TypeError);
+    await expect(r.get('sandbox')).rejects.toThrow(TypeError);
     db.offline = false;
     db.loseResponses = 1;
-    await expect(r.put('presence/a', 1)).rejects.toThrow(TypeError);
-    expect(db.peek('presence/a')).toBe(1);
+    await expect(r.put('sandbox/a', 1)).rejects.toThrow(TypeError);
+    expect(db.peek('sandbox/a')).toBe(1);
     expect(db.requests.map((q) => q.status)).toEqual(['offline', 'lost']);
   });
 });

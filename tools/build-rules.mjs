@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Builds database.rules.json: the three old open paths exactly as they were, plus one block of
- * player rules written twice, under `v2` (live) and `v2test` (automated checks), from the same
- * function so the two can never differ.
+ * Builds database.rules.json: one block of player rules written twice, under `v2` (live) and
+ * `v2test` (automated checks), from the same function so the two can never differ. Nothing else
+ * is granted, so every other top-level path (including the retired `presence`, `rooms` and
+ * `challenges`, see RETIRED_PATHS) refuses all reads and writes.
  *
  *   node tools/build-rules.mjs          write database.rules.json
  *   node tools/build-rules.mjs --print  print it instead
@@ -39,12 +40,13 @@ export const PICTURE_KEYS = [
   'hotTopic', 'cowboyZombie', 'necromancer', 'tridentZombie', 'brainRot',
 ];
 
-/** The old game's paths, kept exactly as deployed. */
-export const OLD_PATHS = {
-  presence: { '.read': true, '.write': true },
-  rooms: { '.read': true, '.write': true },
-  challenges: { '.read': true, '.write': true },
-};
+/**
+ * The old game's paths, retired and closed: they are left out of the rules, and with no grant at
+ * the top a path that is not listed refuses every read and write. They were each
+ * `{ ".read": true, ".write": true }` (open to anyone); to restore them, put those three entries
+ * back in front of the roots in buildRules(). Closing them does not delete data stored there.
+ */
+export const RETIRED_PATHS = ['presence', 'rooms', 'challenges'];
 
 // Regexes avoid `{n}` quantifiers: the Realtime Database's regex dialect is a subset, and the
 // documented examples only use classes, groups, alternation, anchors and + * ?.
@@ -159,7 +161,7 @@ export function block(R) {
 }
 
 export function buildRules() {
-  const rules = { ...OLD_PATHS };
+  const rules = {};
   for (const R of ROOTS) rules[R] = block(R);
   return { rules };
 }
