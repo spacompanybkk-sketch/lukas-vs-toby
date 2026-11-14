@@ -17,6 +17,7 @@ import { LOCK } from './pictures';
 import { PlayerPicture } from './PlayerPicture';
 import './players.css';
 import './adventure.css';
+import { BackButton } from '../BackButton';
 
 /** A client point (CSS pixels). */
 export interface Pt { x: number; y: number }
@@ -245,12 +246,7 @@ export function MapScreen({ side, card, portraits = {}, boys = {}, host }: {
       ref={root} data-screen="map" data-side={side} class={`layer map${host === undefined ? ' map--flat' : ''}`}
       style={{ '--hop-ms': `${HOP_MS}ms`, '--hop-delay': hopDelay }}
     >
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: 'play' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: 'play' }); }} />
       <div class="map__tabs" role="tablist">
         {SIDE_TABS.map((t) => (
           <button

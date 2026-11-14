@@ -11,6 +11,26 @@ async function press(target: Locator): Promise<void> {
   else await target.click();
 }
 
+/** A name must be visible, on one line, and fully inside its tile. */
+async function nameFitsTile(page: Page, tile: string, name: string, word: string): Promise<void> {
+  const label = page.locator(`${tile} ${name}`);
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(new RegExp(`^${word}$`, 'i'));
+  const r = await page.evaluate(([t, n]) => {
+    const a = document.querySelector(t!)!.getBoundingClientRect();
+    const el = document.querySelector(`${t} ${n}`)! as HTMLElement;
+    const b = el.getBoundingClientRect();
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    return { l: b.left - a.left, r: a.right - b.right, t: b.top - a.top, b: a.bottom - b.bottom, h: b.height, lh, over: el.scrollWidth - el.clientWidth };
+  }, [tile, name]);
+  expect(r.l).toBeGreaterThanOrEqual(4);
+  expect(r.r).toBeGreaterThanOrEqual(4);
+  expect(r.t).toBeGreaterThanOrEqual(0);
+  expect(r.b).toBeGreaterThanOrEqual(4);
+  expect(r.h).toBeLessThanOrEqual(r.lh * 1.5); // one line
+  expect(r.over).toBeLessThanOrEqual(0);
+}
+
 /** Home → Play → Adventure → a side → the map, by taps only. */
 async function toMap(page: Page, side: 'plants' | 'zombies' = 'plants'): Promise<void> {
   await press(page.locator('[data-home="play"]'));
@@ -371,4 +391,99 @@ test('the tutorial of z1-1 by the glove: the Brain Eater, then its lane', async 
   await followGlove(page, ['z1-1.card', 'z1-1.lane'], wrong);
   expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.units
     .filter((u: any) => u.faction === 'zombies').map((u: any) => `${u.key} ${u.lane}`))).toEqual(['brainEater 2']);
+});
+
+test('the Play menu names its three tiles, each fully inside its tile, at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  await openTitle(page);
+  await logIn(page);
+  await press(page.locator('[data-home="play"]'));
+  await expect(page.locator('[data-screen="play"]')).toBeVisible();
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }]) {
+    await page.setViewportSize(size);
+    await expect(page.locator('[data-screen="play"]')).toBeVisible();
+    for (const [mode, word] of [['adventure', 'ADVENTURE'], ['quick', 'QUICK BATTLE'], ['free', 'FREE PLAY']] as const) {
+      await nameFitsTile(page, `[data-play="${mode}"]`, '[data-play-name]', word);
+      // The picture stays the main thing: taller than the name.
+      const pic = await page.locator(`[data-play="${mode}"] .play__art`).first().boundingBox();
+      const nm = await page.locator(`[data-play="${mode}"] [data-play-name]`).boundingBox();
+      expect(pic!.height).toBeGreaterThan(nm!.height * 2);
+    }
+  }
+});
+
+test('the Back button shows BACK and overlaps nothing beside it on the map, the Play menu, Marketplace, Almanac and Leaderboard at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  test.setTimeout(120_000);
+  await openTitle(page);
+  await logIn(page);
+  const sizes = [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }];
+  const check = async (screen: string): Promise<void> => {
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      await expect(page.locator(`[data-screen="${screen}"] [data-action="back"]`)).toBeVisible();
+      const r = await page.evaluate((sc) => {
+        const root = document.querySelector(`[data-screen="${sc}"]`)!;
+        const back = root.querySelector<HTMLElement>('[data-action="back"]')!;
+        const a = back.getBoundingClientRect();
+        const word = back.querySelector<HTMLElement>('.back__word')!.getBoundingClientRect();
+        const hits: string[] = [];
+        for (const el of root.querySelectorAll<HTMLElement>('button, [role="tab"], [role="tablist"], h1, h2, .px, .panel, [class*="__top"], [class*="__tabs"], [class*="__info"], [class*="offline"], [data-coins], [data-me]')) {
+          if (el === back || back.contains(el) || el.contains(back)) continue;
+          const b = el.getBoundingClientRect();
+          if (b.width === 0 || b.height === 0) continue;
+          if (b.left < a.right && b.right > a.left && b.top < a.bottom && b.bottom > a.top) hits.push(el.className || el.tagName);
+        }
+        return { w: a.width, h: a.height, wordInside: word.left >= a.left && word.right <= a.right && word.top >= a.top && word.bottom <= a.bottom, hits };
+      }, screen);
+      expect(r.hits).toEqual([]);
+      expect(r.wordInside).toBe(true);
+      expect(r.w).toBeGreaterThanOrEqual(44);
+      expect(r.h).toBeGreaterThanOrEqual(44);
+      await expect(page.locator(`[data-screen="${screen}"] [data-action="back"] .back__word`)).toHaveText('BACK');
+    }
+  };
+  await press(page.locator('[data-home="play"]'));
+  await check('play');
+  await press(page.locator('[data-play="adventure"]'));
+  await press(page.locator('[data-side="plants"]'));
+  await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  await check('map');
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await press(page.locator('[data-screen="play"] [data-action="back"]'));
+  for (const place of ['marketplace', 'almanac', 'leaderboard']) {
+    await press(page.locator(`[data-home="${place}"]`));
+    await check(place);
+    await press(page.locator(`[data-screen="${place}"] [data-action="back"]`));
+  }
+});
+
+test('the level card names its small buttons (EASY, NORMAL, HARD, HELP), inside the card and clear of the Play button, at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  test.setTimeout(90_000);
+  await openTitle(page);
+  await logIn(page);
+  await toMap(page);
+  await press(page.locator('[data-stone="p1-1"]'));
+  await expect(page.locator('[data-screen="level-card"]')).toBeVisible();
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }]) {
+    await page.setViewportSize(size);
+    for (const [sel, word] of [['[data-skill="easy"]', 'EASY'], ['[data-skill="medium"]', 'NORMAL'], ['[data-skill="hard"]', 'HARD'], ['[data-action="replay-tutorial"]', 'HELP']] as const) {
+      await nameFitsTile(page, `[data-screen="level-card"] ${sel}`, '[data-btn-name]', word);
+    }
+    const r = await page.evaluate(() => {
+      const box = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+      const card = box('[data-screen="level-card"]');
+      const play = box('[data-action="start-level"]');
+      const btns = ['[data-skill="easy"]', '[data-skill="medium"]', '[data-skill="hard"]', '[data-action="replay-tutorial"]'].map(box);
+      const stars = box('.lcard__stars');
+      return {
+        apart: btns.every((b) => b.right <= play.left || b.left >= play.right || b.bottom <= play.top || b.top >= play.bottom),
+        inCard: [...btns, play].every((b) => b.left >= card.left && b.right <= card.right && b.bottom <= card.bottom && b.top >= card.top),
+        belowStars: btns.every((b) => b.top >= stars.bottom - 1),
+        rowOrdered: btns.every((b, i) => i === 0 || b.left >= btns[i - 1]!.right - 1),
+      };
+    });
+    expect(r).toEqual({ apart: true, inCard: true, belowStars: true, rowOrdered: true });
+  }
 });

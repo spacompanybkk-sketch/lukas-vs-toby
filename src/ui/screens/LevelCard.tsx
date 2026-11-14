@@ -48,6 +48,9 @@ export function UnitPic({ unit, portraits, class: cls = '' }: { unit: UnitKey; p
   );
 }
 
+/** The glove button replays the level with its whole tutorial ("Show me how"); its short name. */
+const HELP_NAME = 'Help';
+
 const FACES: { skill: Skill; art: PixelArt; label: string }[] = [
   { skill: 'easy', art: DIFF_EASY, label: 'Easy' },
   { skill: 'medium', art: DIFF_NORMAL, label: 'Normal' },
@@ -151,13 +154,15 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
                 class={`btn lcard__face ${f.skill === skill ? 'pal-cream is-on' : 'pal-stone'}`}
                 onClick={() => { if (f.skill !== skill) onSkill(f.skill); }}
               >
-                <PixelIcon art={f.art} />
+                <span class="lcard__btn-pic"><PixelIcon art={f.art} /></span>
+                <span class="lcard__btn-name inked" data-btn-name={f.skill}>{f.label}</span>
               </button>
             ))}
           </div>}
           {onTutorial !== undefined && def.teaches !== null && def.teaches.length > 0 && (
             <button type="button" data-action="replay-tutorial" aria-label="Show me how" class="btn btn--square pal-cream lcard__teach" onClick={onTutorial}>
-              <PixelIcon art={GLOVE} />
+              <span class="lcard__btn-pic lcard__btn-pic--glove"><PixelIcon art={GLOVE} /></span>
+              <span class="lcard__btn-name inked" data-btn-name="help">{HELP_NAME}</span>
             </button>
           )}
           <button type="button" data-action="start-level" aria-label="Play" class="btn btn--big pal-leaf lcard__play" onClick={onPlay}>

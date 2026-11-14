@@ -15,6 +15,7 @@ import { ALMANAC_UNITS, statBars } from './almanacStats';
 import { DIGITS } from './pictures';
 import './players.css';
 import './progress.css';
+import { BackButton } from '../BackButton';
 
 /** What the Almanac needs from the 3D turntable (the game passes `AlmanacStage` on the shared stage). */
 export interface AlmanacHost {
@@ -116,12 +117,7 @@ export function Almanac({ portraits = {}, host }: { portraits?: Record<string, s
 
   return (
     <div data-screen="almanac" class="layer almanac" data-shown={unit} data-shown-level={level}>
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: session.player.peek() !== null ? 'home' : 'title' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: session.player.peek() !== null ? 'home' : 'title' }); }} />
       <div class={`almanac__info px pal-side side-${side}`} data-info={unit}>
         <div class="almanac__head">
           <span class="almanac__role px pal-cream" data-role={roleOf(unit)} aria-label={roleOf(unit)}><PixelIcon art={role} /></span>

@@ -13,6 +13,7 @@ import { PadHead } from './Players';
 import { GuestPlay, PlayerPicture } from './PlayerPicture';
 import { BACKSPACE, CHECK, CLOUD_OFF, CROSS, PLUS } from './pictures';
 import './players.css';
+import { BackButton } from '../BackButton';
 
 type Step = 'check' | 'picture' | 'name' | 'pin' | 'repeat' | 'offline' | 'full';
 
@@ -111,7 +112,7 @@ export function CreatePlayer({ portraits = {}, boy }: CreatePlayerProps) {
     case 'picture':
       return (
         <div data-screen="create" data-step="picture" class="layer layer--menu create">
-          <BackButton onBack={back} />
+          <BackButton data-action="back" class="screen-back" onClick={back} />
           <div class="pick-grid">
             {PICTURES.map((k) => (
               <button
@@ -155,19 +156,11 @@ export function CreatePlayer({ portraits = {}, boy }: CreatePlayerProps) {
   }
 }
 
-function BackButton({ onBack }: { onBack(): void }) {
-  return (
-    <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={onBack}>
-      <span class="ico ico--back" aria-hidden="true" />
-    </button>
-  );
-}
-
 /** A picture-only message (no connection, no room) with a back arrow and maybe a button. */
 function Problem({ step, art, cross = false, onBack, children }: { step: string; art: typeof PLUS; cross?: boolean; onBack(): void; children?: preact.ComponentChildren }) {
   return (
     <div data-screen="create" data-step={step} class="layer layer--menu create">
-      <BackButton onBack={onBack} />
+      <BackButton data-action="back" class="screen-back" onClick={onBack} />
       <div class="stack">
         <span class="problem px pal-slate" aria-label={step === 'offline' ? 'No connection' : 'No room'}>
           <PixelIcon art={art} class="problem__icon" />
@@ -229,7 +222,7 @@ function NameStep({ who, portraits, onBack, onName, onPicture, onDone }: NameSte
   }, []);
   return (
     <div data-screen="create" data-step="name" class="layer layer--menu create">
-      <BackButton onBack={onBack} />
+      <BackButton data-action="back" class="screen-back" onClick={onBack} />
       <div class="name-step">
         <div class="name-step__top">
           <button type="button" class="name-step__pic px" data-action="change-picture" aria-label="Change picture" onClick={onPicture}>

@@ -10,6 +10,7 @@ import { PlayerPicture } from './PlayerPicture';
 import { COIN, PLUS } from './pictures';
 import './players.css';
 import './progress.css';
+import { BackButton } from '../BackButton';
 
 const SIDES: readonly { side: Faction; icon: string; label: string }[] = [
   { side: 'plants', icon: 'sun', label: 'Plants' },
@@ -112,12 +113,7 @@ export function Marketplace({ portraits = {} }: { portraits?: Record<string, str
 
   return (
     <div data-screen="marketplace" data-side={side} class="layer layer--menu market">
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: 'home' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: 'home' }); }} />
       <div class="market__top">
         <div class="market__tabs" role="tablist">
           {SIDES.map((s) => (

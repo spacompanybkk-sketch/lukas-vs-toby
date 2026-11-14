@@ -68,7 +68,7 @@ describe('Level card', () => {
       'win 1', `base ${ADVENTURE.baseStars.two}`, `base ${ADVENTURE.baseStars.three}`,
     ]);
     expect(q('[data-reward]')).toBeNull();
-    expect(card.textContent?.trim()).toBe(''); // pictures only
+    expect(card.textContent?.trim()).toBe('EasyNormalHardHelp'); // pictures, and only the four small buttons' names
   });
 
   it('a won level shows its stars filled', async () => {
@@ -109,6 +109,16 @@ describe('Level card', () => {
     expect(session.player.value!.difficulty.zombies).toBe('hard');
     expect(pressed()).toEqual(['hard']);
     expect(sounds.at(-1)).toBe('click');
+  });
+
+  it('each small button names itself under its picture: EASY, NORMAL, HARD and the glove HELP', async () => {
+    await openCard('p1-1');
+    const names = (sel: string): string | undefined => need(`${sel} [data-btn-name]`).textContent ?? undefined;
+    expect(names('[data-skill="easy"]')).toBe('Easy');
+    expect(names('[data-skill="medium"]')).toBe('Normal');
+    expect(names('[data-skill="hard"]')).toBe('Hard');
+    expect(names('[data-action="replay-tutorial"]')).toBe('Help');
+    for (const el of all('[data-btn-name]')) expect(el.classList.contains('inked')).toBe(true);
   });
 
   it('the difficulty is drawn as one, two, three skulls (not moods); the chosen one ringed, the others greyed', async () => {

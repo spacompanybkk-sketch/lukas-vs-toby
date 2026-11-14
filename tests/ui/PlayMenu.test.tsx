@@ -47,6 +47,19 @@ async function player(picture: CardKey = 'peashooter'): Promise<void> {
 }
 
 describe('Play menu', () => {
+  it('each tile shows its name under the picture, from the same words as its aria-label', async () => {
+    await player();
+    mount();
+    act(() => go({ name: 'play' }));
+    const names: Record<string, string> = { adventure: 'Adventure', quick: 'Quick Battle', free: 'Free Play' };
+    for (const [mode, name] of Object.entries(names)) {
+      const tile = need(`[data-play="${mode}"]`);
+      expect(tile.getAttribute('aria-label')).toBe(name);
+      expect(need(`[data-play="${mode}"] [data-play-name]`).textContent).toBe(name);
+      expect(tile.querySelector('.play__name')?.classList.contains('inked')).toBe(true);
+    }
+  });
+
   it('Home\'s Play opens three big picture buttons: Adventure, Quick Battle, Free Play', async () => {
     await player();
     mount();
@@ -57,7 +70,7 @@ describe('Play menu', () => {
     expect(modes.map((m) => m.dataset.play)).toEqual(['adventure', 'quick', 'free']);
     for (const m of modes) {
       expect(m.querySelector('svg.pixel-icon')).not.toBeNull();
-      expect(m.textContent?.trim()).toBe(''); // pictures only
+      expect(m.textContent?.trim()).toBe(m.getAttribute('aria-label')); // the picture and its name
       expect(m.hasAttribute('data-locked')).toBe(false);
     }
   });
