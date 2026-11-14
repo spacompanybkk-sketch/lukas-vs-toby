@@ -21,3 +21,13 @@ export function levelsFor(side: Faction, world: number, levels: readonly LevelDe
 export function levelById(id: string, levels: readonly LevelDef[] = LEVELS): LevelDef | null {
   return levels.find((l) => l.id === id) ?? null;
 }
+
+/**
+ * The hero power is hidden in `def`: it comes before the level of its side and world whose lesson
+ * brings the hero (a child would find a lit button a level before being shown what it does).
+ * Read from the lessons themselves, so moving the lesson moves this too.
+ */
+export function heroHidden(def: LevelDef, levels: readonly LevelDef[] = LEVELS): boolean {
+  const teacher = levelsFor(def.side, def.world, levels).find((l) => l.teaches?.some((s) => s.show === 'hero') === true);
+  return teacher !== undefined && def.n < teacher.n;
+}

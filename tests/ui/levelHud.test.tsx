@@ -172,6 +172,14 @@ describe('the battle screen in a level', () => {
     expect(q('[data-hud="topbar"]')).not.toBeNull();
   });
 
+  it('no hero button before the level that teaches it (p1-1, z1-1); there from that level on', () => {
+    for (const [id, shown] of [['p1-1', false], ['z1-1', false], ['p1-2', true], ['z1-2', true]] as const) {
+      const { s } = levelSession(id);
+      screen(s);
+      expect(q('[data-hero]') !== null, id).toBe(shown);
+    }
+  });
+
   it('a boss level has no count-up clock (the boss comes at once: it would read 0:00 when he arrives)', () => {
     for (const id of ['p1-8', 'z1-8']) {
       const { s, c } = levelSession(id);

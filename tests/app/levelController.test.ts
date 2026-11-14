@@ -19,7 +19,7 @@ const units = (c: BattleController, side: Faction) => c.match.state.units.filter
 describe('a level\'s HUD info', () => {
   it('a battle has no clock, no waves, no belt', () => {
     // p1-4: a battle against a computer and nothing scripted (p1-1's and p1-2's Brain Eaters are scripted).
-    expect(level('p1-4').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false });
+    expect(level('p1-4').level).toEqual({ mode: 'battle', goalSeconds: null, clockStars: false, lastWave: 0, flags: [], enemy: 'zombies', belt: false, noEnergy: false, heroHidden: false });
   });
   it('survive: the clock and the waves with the big wave flagged', () => {
     const info = level('p1-6').level!;
@@ -32,6 +32,18 @@ describe('a level\'s HUD info', () => {
   it('conveyor: the belt is the player\'s', () => {
     expect(level('p1-5').level).toMatchObject({ mode: 'conveyor', belt: true, noEnergy: true });
     expect(level('z1-5').level).toMatchObject({ mode: 'conveyor', belt: true });
+  });
+  it('the hero button stays hidden before the level that teaches it (p1-1, z1-1): the H key does nothing either', () => {
+    for (const id of ['p1-1', 'z1-1']) {
+      const c = level(id);
+      expect(c.level!.heroHidden, id).toBe(true);
+      c.match.state.players[c.playerFaction].heroTimer = 0;
+      c.hotkey('h');
+      c.selectHero(true);
+      expect(c.hud.heroSelected.peek(), id).toBe(false);
+      expect(c.hud.denied.peek(), id).toBe(0);
+    }
+    for (const id of ['p1-2', 'z1-2', 'p1-5', 'p1-8']) expect(level(id).level!.heroHidden, id).toBe(false);
   });
   it('a Quick Battle has none', () => {
     const c = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });

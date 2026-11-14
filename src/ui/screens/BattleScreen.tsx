@@ -393,7 +393,8 @@ function LivePowers({ ctl, powers, portrait, powerDenied }: { ctl: Controller; p
   useEffect(() => () => clearTimeout(timer.current), []);
   if (ctl.hud.result.value !== null) return null;
   const side = ctl.playerFaction;
-  const hero = powers.hero?.value;
+  // Before the level that teaches the hero, its button is not there at all.
+  const hero = ctl.level?.heroHidden === true ? undefined : powers.hero?.value;
   const spells = powers.spells?.value ?? [];
   /** Presses a button; a press the controller refused shakes that button (and not the tray). */
   const press = (key: string, act: () => void): void => {

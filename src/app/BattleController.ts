@@ -17,6 +17,7 @@ import { bigWaveRuns, freePlayRecord, levelProblem, levelRecord } from './levelS
 import type { FreePlayPlay, LevelPlay, LevelRecord } from './levelSession';
 import type { FreePlayRecord } from '../adventure/freePlay';
 import { Tutorial } from './tutorial';
+import { heroHidden } from '../adventure/levels';
 import type { TutorialAction } from './tutorial';
 
 /**
@@ -164,6 +165,8 @@ export interface LevelHudInfo {
   belt: boolean;
   /** No energy in this level: the energy counter is not shown. */
   noEnergy: boolean;
+  /** The hero power is not shown yet (a level before the one that teaches it, `heroHidden`): no button, no H key. */
+  heroHidden: boolean;
 }
 
 /** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
@@ -277,6 +280,7 @@ export class BattleController {
         enemy: this.opponent,
         belt: config.belt !== null && config.belt.side === this.playerFaction,
         noEnergy: config.noEnergy,
+        heroHidden: heroHidden(def),
       };
     } else if (this.free !== null) {
       // Free Play: the endless source is the other side; nobody else plays.
@@ -444,10 +448,10 @@ export class BattleController {
   /**
    * Picks the hero power (it then waits for a lane: a tap goes to `heroLane`) or puts it down.
    * Picking it clears the card, the shovel and any spell; a hero still charging is refused
-   * (counted as a denial) and not picked.
+   * (counted as a denial) and not picked. Nothing at all in a level that hides the hero.
    */
   selectHero(on: boolean): void {
-    if (this.hud.paused.peek() || this.over()) return;
+    if (this.hud.paused.peek() || this.over() || this.level?.heroHidden === true) return;
     if (this.refused(on ? { kind: 'hero' } : { kind: 'other' })) return;
     if (!on) {
       if (this.hud.heroSelected.peek()) this.powerDone();
