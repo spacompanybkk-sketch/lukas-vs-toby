@@ -4,6 +4,8 @@
  */
 import type { AudioEngine, PlayOptions, SfxName } from './AudioEngine';
 import { BALANCE } from '../data/balance';
+import { BOSS_LOOK } from '../data/bossLooks';
+import { isBoss } from '../sim/lookup';
 import type { AbilityName, Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../sim/types';
 import { TICKS_PER_SECOND } from '../sim/types';
 
@@ -82,9 +84,6 @@ export interface SoundContext {
   gate?: SoundGate;
 }
 
-/** Each boss's signature call: its entrance and its patterns. */
-const BOSS_CALL = { brainTitan: 'titanRoar', elderOak: 'oakCreak' } as const;
-
 /** The key of unit `id` in the state, if it is there. */
 function unitKey(state: SimState | undefined, id: number): UnitKey | undefined {
   return state?.units.find((u) => u.id === id)?.key;
@@ -99,6 +98,13 @@ function unitX(state: SimState | undefined, id: number): number {
     if (u !== undefined && u.id === id) return u.x;
   }
   return Number.NaN;
+}
+
+/** The middle column of a strike's tiles (NaN, centred, for none). */
+function meanCol(tiles: readonly { col: number }[]): number {
+  let sum = 0;
+  for (let i = 0; i < tiles.length; i++) sum += (tiles[i] as { col: number }).col;
+  return tiles.length === 0 ? Number.NaN : sum / tiles.length;
 }
 
 /** x 0..10 → pan −0.6..+0.6 (clamped); anything that is not a number is centred. */
@@ -131,8 +137,8 @@ export function playEventSounds(
     switch (e.type) {
       case 'unitSpawned':
         if (e.key === 'rock') break; // heard as its Rock Wall
-        if (e.key === 'brainTitan' || e.key === 'elderOak') { // a boss's entrance: its signature call
-          audio.play(BOSS_CALL[e.key], at(e.x));
+        if (isBoss(e.key)) { // a boss's entrance: its signature call
+          audio.play(BOSS_LOOK[e.key].call, at(e.x));
           break;
         }
         audio.play(e.faction === 'plants' ? 'place' : 'spawnZombie', at(e.x));
@@ -212,11 +218,15 @@ export function playEventSounds(
         // The boss's call when it winds up, summons, throws or shields; the slam's blow is a thump.
         const key = unitKey(state, e.unitId);
         if (e.kind === 'slam' && !e.windup) audio.play('explode', at(unitX(state, e.unitId)));
-        else if (key === 'brainTitan' || key === 'elderOak') audio.play(BOSS_CALL[key], at(unitX(state, e.unitId)));
+        else if (key !== undefined && isBoss(key)) audio.play(BOSS_LOOK[key].call, at(unitX(state, e.unitId)));
         break;
       }
+      case 'bossStrike':
+        // Any boss's strike: a warning as it winds up, a crash as it lands, where its tiles are.
+        audio.play(e.windup ? 'strikeWindup' : 'strikeImpact', at(meanCol(e.tiles) + 0.5));
+        break;
       case 'bossDefeated':
-        audio.play(e.key === 'brainTitan' ? 'titanDefeat' : 'oakDefeat');
+        audio.play(BOSS_LOOK[e.key].defeat);
         break;
       case 'unitDamaged':
       case 'matchEnded': // the app plays win or lose
@@ -232,7 +242,6 @@ export function playEventSounds(
       case 'gardenBroken':
       case 'bossPhase': // its shield's bossPattern is the sound
       case 'projectileFaded': // fog: no sound of its own yet
-      case 'bossStrike': // no sound of its own yet
         break;
       default: {
         const unhandled: never = e;

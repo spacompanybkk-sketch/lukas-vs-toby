@@ -1,7 +1,8 @@
-import { seconds } from '../data/balance';
+import { BALANCE, seconds } from '../data/balance';
+import type { Balance, BossPattern } from '../data/balance';
 import { ALL_CARDS } from '../data/units';
 import { Match, defaultConfig } from '../sim/match';
-import type { BossConfig, BossKey, MatchConfig, PreparedUnit, ScriptEntry } from '../sim/types';
+import type { BossConfig, BossKey, MatchConfig, PreparedUnit, ScriptEntry, StatusKind } from '../sim/types';
 
 // The boss demo's match (`?scene=boss-demo`): a level in mode 'boss' where every pattern of the
 // boss shows within a minute and the boss falls a little after, against a plain opponent made
@@ -61,7 +62,28 @@ export function bossDemoConfig(boss: BossKey, seed: number): MatchConfig {
   };
 }
 
-/** The demo's match. */
-export function bossDemoMatch(boss: BossKey, seed: number): Match {
-  return new Match(bossDemoConfig(boss, seed));
+/** The demo's match; `balance` for a test-only boss (`strikeDemoBalance`). */
+export function bossDemoMatch(boss: BossKey, seed: number, balance: Balance = BALANCE as Balance): Match {
+  return new Match(bossDemoConfig(boss, seed), balance);
+}
+
+/** The statuses the strike demo can show (`&strike=`), 'none' for a plain blow. */
+export const STRIKE_DEMOS: readonly (StatusKind | 'none')[] = ['stun', 'blind', 'burn', 'none'];
+
+/**
+ * A test-only boss for the demo (`&strike=<status>`, no shipped boss strikes): the Brain Titan with
+ * two strikes leaving `status` in front of its own patterns: first four tiles where plants stand
+ * (wind-up from 3 s, the blow at 5 s), then one whole lane (wind-up from 9 s, the blow at 11 s).
+ * The shipped table (`Balance.bosses`) is not touched: this returns a copy.
+ */
+export function strikeDemoBalance(status: StatusKind | 'none'): Balance {
+  const b = structuredClone(BALANCE) as Balance;
+  const leaves = status === 'none' ? undefined
+    : status === 'burn' ? { kind: status, seconds: 3, dps: 15 }
+      : { kind: status, seconds: status === 'stun' ? 1.5 : 3 };
+  const strike = (target: 'tiles' | 'lanes', count: number, everySeconds: number): BossPattern =>
+    ({ kind: 'strike', everySeconds, windupSeconds: 2, target, count, damage: 60, ...(leaves ? { status: leaves } : {}) });
+  const titan = b.bosses.brainTitan;
+  b.bosses.brainTitan = { ...titan, patterns: [strike('tiles', 4, 5), strike('lanes', 1, 6), ...titan.patterns] };
+  return b;
 }

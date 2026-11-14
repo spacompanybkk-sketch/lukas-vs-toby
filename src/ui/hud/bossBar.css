@@ -13,7 +13,7 @@
   --boss-fill-hi: var(--c-purple-hi);
   pointer-events: none;
 }
-.hud-boss--elderOak { --boss-fill: var(--c-wood); --boss-fill-hi: var(--c-wood-hi); }
+/* Each boss's own fill comes from its row in BOSS_LOOK (src/data/bossLooks.ts), set on the element. */
 
 .hud-boss__face {
   flex: none;

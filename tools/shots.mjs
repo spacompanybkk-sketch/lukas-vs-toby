@@ -385,6 +385,17 @@ const SCENARIOS = [
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),
+  // A boss's strike (worlds machinery Task 5): the demo's test-only Titan (`&strike=`), its warning
+  // on four tiles (3.5 s), its blow (5.05 s), its warning on a whole lane (9.5 s), in each tint.
+  ...['stun', 'blind', 'burn', 'none'].map((status) => {
+    const url = (t) => `/?scene=boss-demo&strike=${status}&seed=1&t=${t}&cloud=fake`;
+    const times = [3.5, 5.05, 9.5];
+    return {
+      name: `boss-strike-${status}`,
+      url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
   // ---- The game: menus, HUD, pause and result (Tasks 14 and 15, wired) ----
   { name: 'title', url: '/', steps: (page) => demoAt(page, 45) },
   { name: 'portrait', url: '/', viewport: { width: 768, height: 1024 }, steps: (page) => demoAt(page, 20) },
