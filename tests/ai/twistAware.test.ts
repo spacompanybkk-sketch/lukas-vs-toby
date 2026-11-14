@@ -50,7 +50,10 @@ function heldAll(def: LevelDef, who: (typeof LEVEL_STAND_INS)[number]): ReturnTy
 
 interface Trip { who: string; tick: number; cmd: Command; why: string }
 
-/** Plays `def` on `seed` with a stand-in and the level's computer; every command refused, and every plant put on lava while its lane had a free plain tile. */
+/**
+ * Plays `def` on `seed` with a stand-in and the level's computer; every command the match refused
+ * (checked in order within each step), and every plant put on lava while its lane had a free plain tile.
+ */
 function play(def: LevelDef, seed: number, maxTicks: number): { refused: Trip[]; onLava: Trip[] } {
   const who = LEVEL_STAND_INS[seed % 3]!;
   const config = levelConfig(def, heldAll(def, who), seed);
@@ -64,21 +67,25 @@ function play(def: LevelDef, seed: number, maxTicks: number): { refused: Trip[];
   const refused: Trip[] = [];
   const onLava: Trip[] = [];
   const lava = config.lawn.lava?.tiles ?? [];
+  const nameOf = (f: Faction): string => bots.find((x) => x.bot.faction === f)?.name ?? f;
   while (m.state.winner === null && m.state.tick < maxTicks) {
     const all: Command[] = [];
-    for (const { name, bot } of bots) {
+    for (const { bot } of bots) {
       for (const cmd of bot.think(m)) {
-        const why = m.check(cmd);
-        if (why !== null) refused.push({ who: name, tick: m.state.tick, cmd, why });
         if ((cmd.type === 'place' || cmd.type === 'belt') && cmd.faction === 'plants' && lava.includes(cmd.lane * COLS + cmd.col)) {
           const view = readLawn(m.state)[cmd.lane]!;
           const plain = Array.from({ length: PLANT_COLS }, (_, c) => c).filter((c) => freeTile(view, c));
-          if (plain.length > 0) onLava.push({ who: name, tick: m.state.tick, cmd, why: `free plain columns ${plain.join(',')}` });
+          if (plain.length > 0) onLava.push({ who: nameOf(cmd.faction), tick: m.state.tick, cmd, why: `free plain columns ${plain.join(',')}` });
         }
         all.push(cmd);
       }
     }
-    m.step(all);
+    // The match checks each command after the ones before it in the step are applied (two plays for
+    // one tile in a step: the second is refused), and says so with `commandRejected`.
+    const tick = m.state.tick;
+    for (const e of m.step(all)) {
+      if (e.type === 'commandRejected') refused.push({ who: nameOf(e.command.faction), tick, cmd: e.command, why: e.reason });
+    }
   }
   return { refused, onLava };
 }

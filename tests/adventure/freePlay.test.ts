@@ -111,4 +111,21 @@ describe('the shipped Free Play is the measured one', () => {
       expect(prepareFreePlay(save, 'plants', seed).config).toEqual(freePlayConfigFor('beginner', 'plants', seed));
     }
   });
+
+  it('a player on Hard: the same match as the measured one but for his income (×0.75)', () => {
+    const save: Save = {
+      ...fresh(), difficulty: { plants: 'hard', zombies: 'hard' },
+      plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
+      zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
+    };
+    for (const side of ['plants', 'zombies'] as const) {
+      for (const seed of [1, 7, 99]) {
+        const shipped = freePlayConfig(save, side, seed);
+        const measured = freePlayConfigFor('expert', side, seed); // the expert: Normal (×1), no upgrades
+        expect(shipped.incomeMultiplier[side], side).toBe(0.75);
+        expect(measured.incomeMultiplier[side], side).toBe(1);
+        expect({ ...shipped, incomeMultiplier: measured.incomeMultiplier }, side).toEqual(measured);
+      }
+    }
+  });
 });

@@ -36,18 +36,21 @@ export function blocks(): number[] {
 
 const SHORT_BREAKTHROUGH = 'three stars need the garden broken within the first half of the clock (60 / 75 s), which the 3-star bands ask of most seeds: under 1.5 min by construction';
 const SHORT_CONVEYOR = 'the sensible players break the regrowing garden in about 1.25 min; a bigger plant base drops the beginner below the smooth curve (5500: 75%, 7000: 38%)';
+const NO_SKILL = 'since the Breakthrough stand-in stacks the lane that gives (Task 8c) the average player and the expert both crack the garden in under a minute on every seed, so the level no longer tells them apart; the z1 levels are not retuned in this task';
 const IDLE_P15 = 'worlds plan Task 8c: p1-5 must not be won by an idle player; every setting that makes its waves break an idle base (base 4000-4500, or added waves) costs the average player 3 stars there (68-75%, was 84%), so p1-7 (94%) is more than 15 points above p1-5; only p1-5 may change in this plan';
 
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
-  'z1-3 median length, beginner': `about 1.05 min: ${SHORT_BREAKTHROUGH}`,
-  'z1-3 median length, average': `about 0.86 min: ${SHORT_BREAKTHROUGH}`,
-  'z1-3 median length, expert': `0.70 min: ${SHORT_BREAKTHROUGH}`,
-  'z1-6 median length, beginner': `about 1.12 min: ${SHORT_BREAKTHROUGH}`,
-  'z1-6 median length, average': `about 1.23 min: ${SHORT_BREAKTHROUGH}`,
-  'z1-6 median length, expert': `about 1.21 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-3 median length, beginner': `about 1.02 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-3 median length, average': `about 0.69 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-3 median length, expert': `about 0.64 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-6 median length, beginner': `about 1.11 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-6 median length, average': `about 0.86 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-6 median length, expert': `about 0.77 min: ${SHORT_BREAKTHROUGH}`,
+  'z1-3 the expert three-stars at least 5 points more often than the average player': `both 100% in about 0.69 / 0.64 min: ${NO_SKILL}`,
+  'z1-6 the expert three-stars at least 5 points more often than the average player': `both 100% in about 0.86 / 0.77 min: ${NO_SKILL}`,
   'z1-5 median length, average': `about 1.25 min: ${SHORT_CONVEYOR}`,
   'z1-5 median length, expert': `about 1.12 min: ${SHORT_CONVEYOR}`,
-  'plants average 3 stars fall from level 1 to 8': `p1-7 v p1-5 about 94 v 73: ${IDLE_P15}`,
+  'plants average 3 stars: no level more than 15 points above the level two before it': `p1-7 v p1-5 about 94 v 73: ${IDLE_P15}`,
 };
 
 /** One test, or `it.fails` when the band is a known miss. */
@@ -138,16 +141,24 @@ function backyardBandTests(first: number): void {
         }
         band(`${def.id} expert 3 stars`, async () => within((await stats(def, 'expert')).threeStars, 50, 100, def.id));
         band(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, 20, 100, def.id));
+        if (def.kind === 'breakthrough') {
+          // Skill shows (Task 8 review): the expert breaks the garden in time more often than the average player.
+          band(`${def.id} the expert three-stars at least 5 points more often than the average player`, async () => {
+            expect((await stats(def, 'expert')).threeStars - (await stats(def, 'average')).threeStars).toBeGreaterThanOrEqual(5);
+          });
+        }
       }
       const all = (who: LevelStandIn, read: (s: LevelStats) => number): Promise<number[]> =>
         Promise.all(levels.map(async (d) => read(await stats(d, who))));
       band(`${side} boss: average 3 stars`, async () => within((await all('average', (s) => s.threeStars))[7]!, 35, 60, 'level 8'));
-      band(`${side} average 3 stars fall from level 1 to 8`, async () => {
-        // The trend: the second half of the side is three-starred less often than the first, and no
-        // level is three-starred more than 15 points more often than the level two before it.
+      // The trend of the average player's 3 stars, in two parts so each holds or misses on its own.
+      band(`${side} average 3 stars: the second half three-starred less often than the first`, async () => {
         const w = await all('average', (s) => s.threeStars);
         const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
         expect(mean(w.slice(4)), 'second half').toBeLessThan(mean(w.slice(0, 4)));
+      });
+      band(`${side} average 3 stars: no level more than 15 points above the level two before it`, async () => {
+        const w = await all('average', (s) => s.threeStars);
         for (let n = 2; n < w.length; n++) expect(w[n]!, `level ${n + 1} v ${n - 1}`).toBeLessThanOrEqual(w[n - 2]! + 15);
       });
       band(`${side} no level harder for the average player than the level two after it`, async () => {
