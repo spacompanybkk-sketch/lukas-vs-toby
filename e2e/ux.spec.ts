@@ -164,3 +164,75 @@ test('pictures of the other fixes: one clock (B, E), the map picture on Quit (D)
   await page.evaluate(() => (window.__lvt as any).fastForward(30 * 3));
   await shot(page, 'E-boss-no-clock');
 });
+
+test('H: the level card\'s difficulty is one, two, three skulls; a tap marks the chosen one; none on a conveyor level', async ({ page }) => {
+  test.setTimeout(90_000);
+  await setUp(page);
+  await press(page.locator('[data-home="play"]'));
+  await press(page.locator('[data-play="adventure"]'));
+  await press(page.locator('[data-side="zombies"]'));
+  await press(page.locator('[data-stone="z1-1"]'));
+  const skills = page.locator('[data-screen="level-card"] [data-skill]');
+  await expect(skills).toHaveCount(3);
+  for (const k of ['easy', 'medium', 'hard']) await expect(page.locator(`[data-skill="${k}"] svg.pixel-icon`)).toBeVisible();
+  await press(page.locator('[data-skill="hard"]'));
+  await expect(page.locator('[data-skill="hard"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.lcard__face.is-on')).toHaveCount(1);
+  await shot(page, 'H-difficulty-skulls');
+  await press(page.locator('[data-action="close-card"]'));
+  await press(page.locator('[data-stone="z1-5"]'));
+  await expect(page.locator('[data-screen="level-card"]')).toHaveAttribute('data-level', 'z1-5');
+  await expect(skills).toHaveCount(0);
+});
+
+/** Wins the running level with the player's base left at `kept` of its health (the clock for Breakthrough as it is). */
+async function winWith(page: Page, side: 'plants' | 'zombies', kept: number): Promise<void> {
+  await page.evaluate(([s, k]) => {
+    const lvt = window.__lvt as any;
+    const st = lvt.session.controller.match.state;
+    st.baseHp[s] = Math.round(st.baseMaxHp[s] * k);
+    lvt.damageBase(s === 'plants' ? 'zombies' : 'plants', 999999);
+    lvt.fastForward(1);
+  }, [side, kept] as const);
+  await expect(page.locator('[data-level-result]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-level-result]')).not.toHaveAttribute('data-step', 'stars', { timeout: 10_000 });
+}
+
+const overlap = (a: { x: number; y: number; width: number; height: number }, b: typeof a): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+test('I: the level result shows why a star was lost - the base bar short of the third star - at every iPad size, clear of the next-level button', async ({ page }) => {
+  test.setTimeout(150_000);
+  await setUp(page);
+  await level(page, 'p1-3');
+  await winWith(page, 'plants', 0.62);
+  await expect(page.locator('[data-level-result]')).toHaveAttribute('data-stars', '2');
+  const meter = page.locator('[data-star-meter]');
+  await expect(meter).toHaveAttribute('data-star-meter', 'base');
+  await expect(page.locator('[data-star-meter] [data-mark="2"]')).toHaveAttribute('data-reached', '');
+  await expect(page.locator('[data-star-meter] [data-mark="3"]')).not.toHaveAttribute('data-reached', '');
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }]) {
+    await page.setViewportSize(size);
+    await frames(page, 4);
+    const tag = `${size.width}x${size.height}`;
+    const m = (await meter.boundingBox())!;
+    const next = (await page.locator('[data-action="next-level"]').boundingBox())!;
+    for (const b of [m, next]) {
+      expect(b.y, `${tag}: on screen`).toBeGreaterThanOrEqual(0);
+      expect(b.y + b.height, `${tag}: on screen`).toBeLessThanOrEqual(size.height);
+      expect(b.x + b.width, `${tag}: on screen`).toBeLessThanOrEqual(size.width);
+    }
+    expect(overlap(m, next), `${tag}: the meter covers the next-level button`).toBe(false);
+    expect(next.height, `${tag}: next-level button tap size`).toBeGreaterThanOrEqual(44);
+    await shot(page, `I-result-meter-${tag}`);
+  }
+  await page.setViewportSize(IPAD);
+  await press(page.locator('[data-action="map"]'));
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await press(page.locator('[data-screen="play"] [data-action="back"]'));
+  // Breakthrough has no player base: its own rule, the clock left, drawn with the clock.
+  await level(page, 'z1-3');
+  await winWith(page, 'zombies', 1);
+  await expect(meter).toHaveAttribute('data-star-meter', 'clock');
+  await shot(page, 'I-result-meter-breakthrough');
+});
