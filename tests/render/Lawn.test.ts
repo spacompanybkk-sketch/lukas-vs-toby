@@ -2,6 +2,7 @@ import { Box3, Color, InstancedMesh, Matrix4, Mesh, Vector3, type ShaderMaterial
 import { describe, expect, it } from 'vitest';
 import { PALETTE } from '../../src/render/palette';
 import { Lawn } from '../../src/render/world/Lawn';
+import { GHOST_RENDER_ORDER } from '../../src/render/battle/BattleView';
 
 const lawn = new Lawn();
 
@@ -149,6 +150,17 @@ describe('Lawn', () => {
 
     fresh.highlightTile(4, 9, null);
     expect(mark.visible).toBe(false);
+  });
+
+  it('draws the tile mark over whatever stands in front of it when asked (a tall plant covering the tile), else depth-tested', () => {
+    const fresh = new Lawn();
+    const mark = mesh('tile-mark', fresh);
+    const material = mark.material as { depthTest: boolean };
+    fresh.highlightTile(2, 3, 'ok', 'plants', true);
+    expect(material.depthTest).toBe(false);
+    expect(mark.renderOrder).toBeLessThan(GHOST_RENDER_ORDER); // the ghost still draws over it
+    fresh.highlightTile(2, 3, 'ok');
+    expect(material.depthTest).toBe(true);
   });
 
   it('highlights a whole lane and clears it again', () => {

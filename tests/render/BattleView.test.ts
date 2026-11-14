@@ -266,12 +266,12 @@ describe('BattleView placement preview', () => {
     const ctx = setUp();
     const tile = vi.spyOn(ctx.lawn, 'highlightTile');
     ctx.view.setPreview({ unit: 'peashooter', lane: 1, col: 4, ok: true, mergeTargetId: null });
-    expect(tile).toHaveBeenLastCalledWith(1, 4, 'ok', 'plants');
+    expect(tile).toHaveBeenLastCalledWith(1, 4, 'ok', 'plants', true); // on top: a tall plant in front may cover it
     const ghost = ctx.scene.getObjectByName('ghost-peashooter') as Object3D;
     expect(ghost.visible).toBe(true);
     expect(ghost.position.toArray()).toEqual([4.5, 0, 1.5]);
     ctx.view.setPreview({ unit: 'peashooter', lane: 3, col: 2, ok: false, mergeTargetId: null });
-    expect(tile).toHaveBeenLastCalledWith(3, 2, 'bad', 'plants');
+    expect(tile).toHaveBeenLastCalledWith(3, 2, 'bad', 'plants', true);
     expect(ctx.scene.getObjectByName('ghost-peashooter')).toBe(ghost); // made once
     ctx.view.setPreview(null);
     expect(ghost.visible).toBe(false);

@@ -87,11 +87,13 @@ export class TileMark {
   /**
    * Shows the mark centred on (x, z). `ok` is a white outline round a 30% fill in the
    * colour of `side` (Sun yellow for plants, purple for zombies); `bad` is a red outline
-   * round red stripes, whoever is asking.
+   * round red stripes, whoever is asking. `onTop`: drawn over whatever stands in front of it
+   * (no depth test), so a tile hidden behind a tall plant still shows where a card will go.
    */
-  show(x: number, z: number, state: MarkState, side: Faction): void {
+  show(x: number, z: number, state: MarkState, side: Faction, onTop = false): void {
     this.mesh.position.x = x;
     this.mesh.position.z = z;
+    this.material.depthTest = !onTop;
     const bad = state === 'bad';
     // A vivid mark (a spell's area) on the zombies' side is brain pink with a pink rim, filled as
     // strongly as the plants' yellow: the lane purple washes out to grey on the grass.
