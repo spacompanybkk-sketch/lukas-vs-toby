@@ -30,7 +30,7 @@ import { PixelIcon } from '../hud/PixelIcon';
 import { TopBar } from '../hud/TopBar';
 import { PointingHand } from '../hud/PointingHand';
 import type { GloveHost } from '../hud/PointingHand';
-import type { GloveVM } from '../../app/tutorial';
+import type { GloveVM, TwistVM } from '../../app/tutorial';
 import type { EndlessSignals } from '../../app/BattleController';
 import type { FreePlayOutcome } from '../../app/levelSession';
 import { BALANCE } from '../../data/balance';
@@ -61,8 +61,10 @@ export interface BattleSessionLike {
     selectBelt?(slot: number | null): void;
     /** A Free Play run's HUD signals (none or null: no run). */
     endless?: EndlessSignals | null;
-    /** The level's tutorial: where its glove points (none or null: no tutorial). */
-    tutorial?: { glove: ReadonlySignal<GloveVM | null>; sunPulse?: ReadonlySignal<number> } | null;
+    /** The level's tutorial: where its glove points, and a twist pan (none or null: no tutorial). */
+    tutorial?: { glove: ReadonlySignal<GloveVM | null>; sunPulse?: ReadonlySignal<number>; twist?: ReadonlySignal<TwistVM | null> } | null;
+    /** A tap anywhere during a twist pan: it ends. */
+    tapTwist?(): void;
   };
   /** Client pixels of a tile's middle (the big-wave cue stands at a lane's end); none: no cue. */
   tileToClient?(lane: number, col: number): { x: number; y: number } | null;
@@ -209,6 +211,7 @@ export function BattleScreen(props: BattleScreenProps) {
       {ctl.levelHud !== undefined && session.tileToClient !== undefined && (
         <IncomingCues incoming={ctl.levelHud.incoming} at={(lane, side) => session.tileToClient?.(lane, side === 'zombies' ? 9 : 0) ?? null} />
       )}
+      {ctl.tutorial?.twist != null && <LiveTwist ctl={ctl} twist={ctl.tutorial.twist} />}
       {ctl.tutorial != null && <LiveGlove hud={hud} glove={ctl.tutorial.glove} host={session} />}
       {ctl.endless != null && (
         <WaveBanner banner={ctl.endless.banner} side={ctl.endless.mode === 'survive' ? 'zombies' : 'plants'} mode={ctl.endless.mode} big={bigOne(ctl.endless.cards)} portraits={portraits} />
@@ -267,6 +270,30 @@ function LiveLevel({ hud, info }: { hud: HudSignals; info: LevelHudInfo }) {
 /** The tutorial's glove; hidden under the pause menu and the result. */
 function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySignal<GloveVM | null>; host: GloveHost }) {
   return <PointingHand glove={glove} host={host} hidden={hud.paused.value || hud.result.value !== null} />;
+}
+
+/**
+ * A twist pan holding the match: a clear catcher over the whole screen, so a tap anywhere (the lawn,
+ * the sky, the dimmed cards) ends it; the battle gets `is-twist`, which dims the cards and keeps the
+ * Pause button above the catcher. Gone under the pause menu (Pause is no tap on the pan).
+ */
+function LiveTwist({ ctl, twist }: { ctl: Controller; twist: ReadonlySignal<TwistVM | null> }) {
+  const vm = twist.value;
+  const on = vm !== null && vm.holding && !ctl.hud.paused.value && ctl.hud.result.value === null;
+  const ref = useRef<HTMLDivElement>(null);
+  const shown = vm !== null && vm.holding && ctl.hud.result.value === null;
+  useEffect(() => {
+    const battle = ref.current?.closest('[data-screen="battle"]') ?? document.querySelector('[data-screen="battle"]');
+    battle?.classList.toggle('is-twist', shown);
+    return () => battle?.classList.remove('is-twist');
+  }, [shown]);
+  return (
+    <div ref={ref} class="tut-twist-anchor" aria-hidden="true">
+      {on && (
+        <div class="tut-twist" data-twist={vm.kind} data-twist-step={vm.step} onClick={() => ctl.tapTwist?.()} />
+      )}
+    </div>
+  );
 }
 
 /** A Free Play run's bank on the armed Quit: its score and the coins ending now would pay. */

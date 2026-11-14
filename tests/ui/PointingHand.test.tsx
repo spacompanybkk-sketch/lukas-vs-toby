@@ -51,4 +51,16 @@ describe('PointingHand', () => {
     frames(1);
     expect(reads).toBe(1);
   });
+
+  it('the twist pan\'s "tap" hint: the glove taps the middle of the lawn, with no target frame', () => {
+    const glove = signal<GloveVM | null>({ aim: { kind: 'tap' }, holding: true, step: 'p2-1.fog' });
+    const host = { tileToClient: (lane: number, col: number) => ({ x: 100 + col * 60, y: 200 + lane * 40 }) };
+    act(() => render(<PointingHand glove={glove} host={host} hidden={false} />, root.querySelector('#glove')!));
+    vi.advanceTimersToNextFrame();
+    const hand = root.querySelector<HTMLElement>('[data-glove]')!;
+    expect(hand.dataset.glove).toBe('tap');
+    expect(hand.dataset.gloveX).toBe(String(100 + 4.5 * 60));
+    expect(hand.dataset.gloveY).toBe('280');
+    expect(root.querySelector('.tut-mark')!.classList.contains('tut-mark--none')).toBe(true);
+  });
 });

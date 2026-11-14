@@ -91,6 +91,16 @@ function lawnBox(aim: GloveAim, host: GloveHost): Box | null {
       // From the side, at the body: the level-up arrow over the unit's head stays in sight.
       return { x: p.x, y: p.y, w, h: w * 1.1, ty: p.y, tx: p.x - w * 0.38 };
     }
+    case 'tap': {
+      // The middle of the lawn (between columns 4 and 5 of lane 2): any tap ends a twist pan.
+      const p = host.tileToClient?.(2, 4) ?? null;
+      const q = host.tileToClient?.(2, 5) ?? null;
+      if (p === null || q === null) return null;
+      const x = (p.x + q.x) / 2;
+      const y = (p.y + q.y) / 2;
+      const w = Math.max(40, Math.abs(q.x - p.x));
+      return { x, y, w, h: w * 0.72, ty: y };
+    }
     default: return null;
   }
 }
@@ -188,9 +198,10 @@ export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<Gl
 
   if (vm === null) return null;
   const lawn = vm.aim.kind === 'tile' || vm.aim.kind === 'unit';
+  const markless = vm.aim.kind === 'tap';
   return (
     <div class={`tut${vm.holding ? ' is-holding' : ''}${hidden ? ' is-hidden' : ''}`} data-tutorial aria-hidden="true">
-      <div ref={markRef} class={`tut-mark${lawn ? ' tut-mark--lawn' : ''}`} style={{ visibility: 'hidden' }} />
+      <div ref={markRef} class={`tut-mark${lawn ? ' tut-mark--lawn' : ''}${markless ? ' tut-mark--none' : ''}`} style={{ visibility: 'hidden' }} />
       <div
         ref={handRef} class="tut-hand" style={{ visibility: 'hidden' }}
         data-glove={vm.aim.kind} data-glove-step={vm.step} data-holding={vm.holding ? 'true' : 'false'}
