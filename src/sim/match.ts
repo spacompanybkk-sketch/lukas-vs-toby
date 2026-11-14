@@ -13,7 +13,7 @@ import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
 import { levelUp } from './levelUp';
-import { cloneLawn, isRock, NO_TWIST } from './lawn';
+import { cloneLawn, isRock, NO_TWIST, tickLava } from './lawn';
 import { inLane, isBoss, isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { checkLevel, tickScript } from './script';
@@ -172,7 +172,7 @@ export class Match {
    * Advances the match by one tick and returns what happened, in this fixed order:
    * the level's script (prepared units on tick 0, then waves; `tickScript`), Free Play's waves
    * (`tickEndless`), the belt's arrival
-   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, the boss (`tickBoss`), projectiles, hazards, statuses, deaths,
+   * (`tickBelt`), commands, economy, movement, attacks, the plant base's defence, abilities, the boss (`tickBoss`), projectiles, hazards, lava (`tickLava`), statuses, deaths,
    * Free Play's broken garden (`tickEndlessGarden`), endgame, Free Play's clock (`endlessClockOut`), then the tick count.
    * Once the match is over it does nothing at all: no events, no tick, commands ignored.
    */
@@ -226,6 +226,7 @@ export class Match {
     tickBoss(s, b, events);
     tickProjectiles(s, b, events);
     tickHazards(s, b, events);
+    tickLava(s, b, events);
     tickStatuses(s, b, events);
     resolveDeaths(s, b, events, felled);
     tickEndlessGarden(s, b, events); // Free Play breakthrough: a fallen plant base breaks the garden instead of ending the match

@@ -425,3 +425,74 @@ describe('ice: zombies in the listed lanes walk ×speed', () => {
     expect(walked[0]! / walked[1]!).toBeCloseTo(1.6, 9);
   });
 });
+
+describe('lava: whoever stands on a lava tile burns, either side, bosses too', () => {
+  const LAVA = (tiles: number[]) => ({ tiles, dps: 15, burnTicks: 60 });
+  const lavaTile = (lane: number, col: number): number => lane * 10 + col;
+
+  it('a plant on lava burns 15 a second, reported once, topped up while it stands there', () => {
+    const m = new Match(lawnConfig(1, { lava: LAVA([lavaTile(2, 3)]) }, {
+      ...quiet(), prepared: [
+        { unit: 'walnutBomb', faction: 'plants', lane: 2, x: 3.5, level: 1 },
+        { unit: 'walnutBomb', faction: 'plants', lane: 2, x: 4.5, level: 1 },
+      ],
+    }));
+    const applied: number[] = [];
+    for (let i = 0; i < 301; i++) for (const e of m.step()) if (e.type === 'statusApplied') applied.push(e.unitId);
+    const [onLava, beside] = m.state.units;
+    expect(applied).toEqual([onLava!.id]);
+    expect(onLava!.maxHp - onLava!.hp).toBe(15 * 11); // ticks 0, 30, …, 300: eleven whole seconds
+    expect(onLava!.burn).toBe(59);
+    expect(beside!.hp).toBe(beside!.maxHp);
+  });
+
+  it('a zombie walking over lava burns, and the burn stops burnTicks after it steps off', () => {
+    const m = new Match(lawnConfig(1, { lava: LAVA([lavaTile(1, 7)]) }, {
+      ...quiet(), prepared: [{ unit: 'veryFastWalker', faction: 'zombies', lane: 1, x: 8.2, level: 1 }],
+    }));
+    let lastOnLava = -1;
+    let ended = -1;
+    while (m.state.tick < 600 && ended < 0) {
+      const tick = m.state.tick;
+      const events = m.step();
+      const z = m.state.units[0]!;
+      if (Math.floor(z.x) === 7) lastOnLava = tick;
+      if (events.some((e) => e.type === 'statusEnded' && e.status === 'burn')) ended = tick;
+    }
+    expect(lastOnLava).toBeGreaterThan(0);
+    expect(ended - lastOnLava).toBe(60 - 1); // put on at 60 on its last tick there, then 59 ticks to run out
+    expect(m.state.units[0]!.hp).toBeLessThan(m.state.units[0]!.maxHp);
+  });
+
+  it('a unit that dies on lava leaves the lawn and nothing more is said of its burn', () => {
+    const m = new Match(lawnConfig(1, { lava: { tiles: [lavaTile(0, 2)], dps: 1000, burnTicks: 60 } }, {
+      ...quiet(), prepared: [{ unit: 'peashooter', faction: 'plants', lane: 0, x: 2.5, level: 1 }],
+    }));
+    const id = m.state.nextId;
+    const about: string[] = [];
+    for (let i = 0; i < 200; i++) {
+      for (const e of m.step()) if ('unitId' in e && e.unitId === id) about.push(e.type);
+    }
+    expect(about.slice(-1)).toEqual(['unitDied']);
+    expect(about.filter((t) => t === 'statusApplied')).toEqual(['statusApplied']);
+    expect(m.state.units).toEqual([]);
+  });
+
+  it('the Brain Titan burns walking over lava; the Elder Oak burns in any lane it stands in', () => {
+    const titan = new Match(lawnConfig(1, { lava: LAVA([lavaTile(2, 9)]) }, { ...quiet(), mode: 'boss', boss: { key: 'brainTitan', faction: 'zombies', lane: 2 } }));
+    for (let i = 0; i < 90; i++) titan.step();
+    expect(titan.state.units[0]!.burn).toBeGreaterThan(0);
+    expect(titan.state.units[0]!.hp).toBeLessThan(titan.state.units[0]!.maxHp);
+
+    const oak = new Match(lawnConfig(1, { lava: LAVA([lavaTile(3, 0)]) }, { ...quiet(), mode: 'boss', boss: { key: 'elderOak', faction: 'plants', lane: 2 } }));
+    for (let i = 0; i < 90; i++) oak.step();
+    expect(oak.state.units[0]!.key).toBe('elderOak');
+    expect(oak.state.units[0]!.burn).toBe(59);
+    expect(oak.state.units[0]!.maxHp - oak.state.units[0]!.hp).toBe(15 * 3);
+  });
+
+  it('plants may be put on lava', () => {
+    const m = new Match(lawnConfig(1, { lava: LAVA([lavaTile(2, 3)]) }));
+    expect(m.check({ type: 'place', faction: 'plants', unit: 'peashooter', lane: 2, col: 3 })).toBeNull();
+  });
+});

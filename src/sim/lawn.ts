@@ -16,8 +16,10 @@
 import { BALANCE } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { factionOf } from '../data/units';
+import { inLane, isStanding } from './lookup';
+import { inflictStatus } from './status';
 import { BOSS_HALF_WIDTH, COLS, LANES, PLANT_COLS } from './types';
-import type { LawnConfig, MatchConfig } from './types';
+import type { LawnConfig, MatchConfig, SimEvent, SimState } from './types';
 
 export type { LawnConfig } from './types';
 
@@ -109,5 +111,24 @@ export function checkLawn(c: MatchConfig, b: Balance = BALANCE as Balance): void
     if (col !== undefined) {
       for (let lane = boss.lane - half; lane <= boss.lane + half; lane++) onRock(`boss ${boss.key}`, lane, col + 0.5);
     }
+  }
+}
+
+/**
+ * Step stage, after the hazards and before the statuses: every standing unit, in ascending id,
+ * either side, a boss too, that stands on a lava tile (its lane, or any lane a wide boss stands in,
+ * and `floor(x)` the tile's column) burns for at least `burnTicks` at `dps` (the larger dps wins),
+ * through `inflictStatus`, as the rot puddle poisons: only the start of the burn is reported
+ * (`statusApplied`, no source); topping it up each tick it stands there is silent. Off it, the burn
+ * runs out on its own (`tickStatuses`). No lava: nothing at all.
+ */
+export function tickLava(s: SimState, b: Balance, events: SimEvent[]): void {
+  const lava = s.config.lawn.lava;
+  if (lava === null) return;
+  for (const u of s.units) {
+    if (!isStanding(u)) continue;
+    const col = Math.floor(u.x);
+    const onLava = lava.tiles.some((t) => t % COLS === col && inLane(u, Math.floor(t / COLS)));
+    if (onLava) inflictStatus(s, b, u, 'burn', lava.burnTicks, lava.dps, null, events, true);
   }
 }
