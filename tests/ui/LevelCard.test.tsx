@@ -11,6 +11,9 @@ import { createFakeCloud } from '../../src/cloud/restClient';
 import type { Save } from '../../src/progress/save';
 import { App } from '../../src/ui/App';
 import { resetSeenStars } from '../../src/ui/screens/Map';
+import { DIFF_EASY, DIFF_HARD, DIFF_NORMAL } from '../../src/ui/screens/adventurePictures';
+import { pixelPaths } from '../../src/ui/hud/PixelIcon';
+import type { PixelArt } from '../../src/ui/hud/PixelIcon';
 import { MemoryStorage } from '../progress/memoryStorage';
 
 let root: HTMLElement;
@@ -106,6 +109,22 @@ describe('Level card', () => {
     expect(session.player.value!.difficulty.zombies).toBe('hard');
     expect(pressed()).toEqual(['hard']);
     expect(sounds.at(-1)).toBe('click');
+  });
+
+  it('the difficulty is drawn as one, two, three skulls (not moods); the chosen one ringed, the others greyed', async () => {
+    await openCard('z1-1');
+    const drawn = (skill: string): string[] => [...need(`[data-skill="${skill}"] svg`).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+    expect(drawn('easy')).toEqual(pixelPaths(DIFF_EASY).map((p) => p.d));
+    expect(drawn('medium')).toEqual(pixelPaths(DIFF_NORMAL).map((p) => p.d));
+    expect(drawn('hard')).toEqual(pixelPaths(DIFF_HARD).map((p) => p.d));
+    tap('[data-skill="medium"]');
+    expect(need('[data-skill="medium"]').classList.contains('is-on')).toBe(true);
+    expect(all('.lcard__face.is-on')).toHaveLength(1);
+  });
+
+  it('each difficulty picture holds as many skulls as its step (eyes counted: two of four pixels a skull)', () => {
+    const eyes = (art: PixelArt): number => art.rows.join('').split('').filter((ch) => ch === 'P' || ch === 'r').length;
+    expect([DIFF_EASY, DIFF_NORMAL, DIFF_HARD].map((a) => eyes(a) / 4)).toEqual([1, 2, 3]);
   });
 
   it('a level with no energy (conveyor) shows no difficulty faces: they change only income', async () => {

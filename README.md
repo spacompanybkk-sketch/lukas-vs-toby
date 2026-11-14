@@ -97,7 +97,7 @@ Backyard (Lukas's plant levels `p1-1` â€¦ `p1-8`, Toby's zombie levels `z1-1` â€
 worlds show locked). A stone shows the level's kind, its number, the stars won and, when winning
 it brings a new unit, that unit's silhouette with a "?". The player's picture hops on the next
 stone. A tap on a stone opens the level card: the cards dealt, the enemies, what each star asks,
-the reward, a big play button, three faces for the difficulty, and a glove button that plays the
+the reward, a big play button, three skull pictures for the difficulty, and a glove button that plays the
 level's tutorial again. Guests get Quick Battle only. Levels are data:
 `src/adventure/levels/backyard.ts` (the lessons in `teaches.ts`), the rules in `src/adventure/`.
 
@@ -128,8 +128,8 @@ Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: De
 Skeleton Archer), shown turning on a turntable on the result screen. A level deals only the
 cards it lists that the player has. Quick Battle always has all ten.
 
-**Difficulty.** The three faces on the level card (kept per player and side; Toby starts on
-Easy) change only the player's income. A Conveyor level has no energy, so it shows no faces.
+**Difficulty.** One, two or three skulls on the level card (kept per player and side; Toby starts on
+Easy) change only the player's income. A Conveyor level has no energy, so it shows none.
 
 **The tutorial.** No words: a white glove points at one thing at a time (a card, then the tile
 or lane to put it on; the hero's button when it is first ready; a spell at level 4), the rest of
