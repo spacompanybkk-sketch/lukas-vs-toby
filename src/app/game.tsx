@@ -123,8 +123,9 @@ export function mountGame(
   // The Adventure map's board, on the same stage too.
   const map = stage ? new MapStage(stage) : null;
   lvt.map = map;
-  // The map e2e and screenshots: stand-in worlds 2 and 3 on the map (copies of world 1 with their twists).
-  lvt.previewWorlds = (on = true): void => { mapLevels.value = on ? previewWorlds(LEVELS) : LEVELS; };
+  // The map e2e and screenshots: stand-in worlds (2 and 3 unless `worlds` says) on the map, copies
+  // of world 1 with their arena's twist; the twist e2e plays them. Only on the debug hooks.
+  lvt.previewWorlds = (on = true, worlds?: (2 | 3 | 4 | 5)[]): void => { mapLevels.value = on ? previewWorlds(LEVELS, worlds) : LEVELS; };
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
