@@ -51,7 +51,7 @@ function spawnX(s: Spawn, faction: Faction): number {
 
 /**
  * The lawn of a level with `twist` (which tiles and lanes), its numbers from `Balance.twists`:
- * fog reaches `fog.reach` tiles, ice lanes walk `ice.speed` times as fast, lava burns `lava.dps`
+ * fog reaches the level's own number of tiles (`fog: 7`), or `fog.reach` (`fog: true`); ice lanes walk `ice.speed` times as fast, lava burns `lava.dps`
  * for `lava.burnSeconds`. No twist (or an empty list) is `NO_TWIST` for that part.
  */
 export function lawnOf(twist: LevelTwist | undefined, b: Balance = BALANCE): LawnConfig {
@@ -59,7 +59,7 @@ export function lawnOf(twist: LevelTwist | undefined, b: Balance = BALANCE): Law
   const { fog, ice, lava } = b.twists;
   return {
     rocks: [...(twist.rocks ?? [])],
-    fog: twist.fog === true ? fog.reach : null,
+    fog: twist.fog === true ? fog.reach : typeof twist.fog === 'number' ? twist.fog : null,
     ice: twist.iceLanes !== undefined && twist.iceLanes.length > 0 ? { lanes: [...twist.iceLanes], speed: ice.speed } : null,
     lava: twist.lavaTiles !== undefined && twist.lavaTiles.length > 0
       ? { tiles: [...twist.lavaTiles], dps: lava.dps, burnTicks: seconds(lava.burnSeconds) }

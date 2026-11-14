@@ -1,4 +1,5 @@
-import type { LevelDef, Spawn } from '../types';
+import type { LevelDef } from '../types';
+import { flag, garden, regrow, trickle } from './helpers';
 
 /**
  * The Backyard: eight plant levels (`p1-*`) and eight zombie levels (`z1-*`), both on the Backyard
@@ -13,24 +14,6 @@ const base = (id: string, n: number): Omit<LevelDef, 'kind' | 'cards' | 'side'> 
   id, world: 1, n, opponent: null, waves: [], prepared: [], seconds: null, belt: null, boss: null,
   startEnergy: null, spells: false, unlocks: null, teaches: null,
 });
-
-/** `count` arrivals of `unit`, `every` seconds apart from `from`, cycling through `lanes`. */
-function trickle(unit: Spawn['unit'], from: number, every: number, count: number, lanes: number[], level = 1): Spawn[] {
-  return Array.from({ length: count }, (_, i) => ({ at: from + i * every, unit, lane: lanes[i % lanes.length]!, level }));
-}
-
-/** A flag wave: `count` of `unit` at once (`gap` seconds apart), across `lanes`. */
-function flag(unit: Spawn['unit'], at: number, lanes: number[], gap = 0.5, level = 1): Spawn[] {
-  return lanes.map((lane, i) => ({ at: at + i * gap, unit, lane, level }));
-}
-
-/** Plants standing at the start: `[lane, col]` pairs of `unit`. */
-const garden = (unit: Spawn['unit'], tiles: [number, number][], level = 1): Spawn[] =>
-  tiles.map(([lane, col]) => ({ at: 0, unit, lane, col, level }));
-
-/** Plants arriving later on their tiles (a garden that regrows): `[at, lane, col]`. */
-const regrow = (unit: Spawn['unit'], at: [number, number, number][]): Spawn[] =>
-  at.map(([t, lane, col]) => ({ at: t, unit, lane, col }));
 
 const PLANTS: LevelDef[] = [
   {

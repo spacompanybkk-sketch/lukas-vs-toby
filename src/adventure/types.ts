@@ -17,6 +17,8 @@ import type { BossKey, CardKey, Faction, UnitKey } from '../sim/types';
  *   glove points at the card at the front of the belt, and picking any belt card ends the step.
  * - `belt-tile` … `placed`: the picked belt card is put on the tile (zombies: the lane). While no
  *   belt card is picked, the glove points at the front one first.
+ * - `twist` … `tapped`: the match holds while the camera shows the level's twist (fog, ice); any
+ *   tap ends the step. No glove points at anything (neither twist refuses a tap).
  *
  * `after`: the step waits (no glove, nothing held) until the hero, or the spell it points at, is
  * first ready. Steps run in order.
@@ -29,6 +31,7 @@ export type TutorialStep = { id: string; after?: 'hero' | 'spell' } & (
   | { show: 'spell'; index: number; until: 'fired' }
   | { show: 'belt'; until: 'selected' }
   | { show: 'belt-tile'; lane: number; col: number; until: 'placed' }
+  | { show: 'twist'; until: 'tapped' }
 );
 
 export type LevelKind = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';
@@ -38,11 +41,12 @@ export interface Spawn { at: number; unit: UnitKey; lane: number; level?: number
 
 /**
  * Which tiles of a level's lawn carry its world's twist; the numbers come from `Balance.twists`.
- * `iceLanes` are lane indices, `fog` is on or absent. The two tile lists count differently:
+ * `iceLanes` are lane indices. `fog` is on (`true`: `Balance.twists.fog.reach` tiles), a number
+ * (that level's own reach, tiles) or absent. The two tile lists count differently:
  * - `rocks` index the plant tiles, `lane * PLANT_COLS + col` (8 plant columns: rock 13 = lane 1, col 5);
  * - `lavaTiles` index the whole lawn, `lane * COLS + col` (10 columns: lava 13 = lane 1, col 3).
  */
-export interface LevelTwist { rocks?: number[]; fog?: true; iceLanes?: number[]; lavaTiles?: number[] }
+export interface LevelTwist { rocks?: number[]; fog?: true | number; iceLanes?: number[]; lavaTiles?: number[] }
 
 /** One Adventure level: data only (spec 8). Its id is `<p|z><world>-<n>`. */
 export interface LevelDef {

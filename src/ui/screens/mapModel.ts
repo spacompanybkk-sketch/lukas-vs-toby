@@ -74,7 +74,7 @@ export function twistKinds(def: LevelDef): TwistPicture[] {
   const t = def.twist;
   if (t === undefined) return [];
   const out: TwistPicture[] = [];
-  if (t.fog === true) out.push('fog');
+  if (t.fog !== undefined) out.push('fog'); // on (`true`) or its own reach (a number)
   if ((t.rocks?.length ?? 0) > 0) out.push('rocks');
   if ((t.iceLanes?.length ?? 0) > 0) out.push('ice');
   if ((t.lavaTiles?.length ?? 0) > 0) out.push('lava');

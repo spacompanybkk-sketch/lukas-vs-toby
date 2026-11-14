@@ -1,11 +1,13 @@
 import type { Faction } from '../../sim/types';
 import type { LevelDef } from '../types';
 import { BACKYARD } from './backyard';
+import { P2 } from './p2';
+import { Z2 } from './z2';
 
 import { TEACHES } from './teaches';
 
-/** The per-world level files, joined (the Backyard for now; worlds 2–5 join with their content plans). */
-const ALL: readonly LevelDef[] = [...BACKYARD];
+/** The per-world level files, joined (worlds 3–5 join with their content plans). */
+const ALL: readonly LevelDef[] = [...BACKYARD, ...P2, ...Z2];
 
 /** Every Adventure level there is, each with its tutorial from `TEACHES` (a level's own `teaches` when the map has none). */
 export const LEVELS: readonly LevelDef[] = ALL.map((def) => {

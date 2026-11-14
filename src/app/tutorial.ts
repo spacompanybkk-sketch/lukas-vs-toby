@@ -152,6 +152,8 @@ export class Tutorial {
         case 'hero': return s.config.heroes[me];
         case 'spell': return st.index < s.players[me].spells.length;
         case 'belt': case 'belt-tile': return s.config.belt?.side === me;
+        // Task 3 implements the pan: until then a twist step is skipped (never shown, nothing held).
+        case 'twist': return false;
       }
     });
     this.update();
@@ -237,6 +239,8 @@ export class Tutorial {
       case 'belt-tile':
         if (action.kind === 'select') return true;
         return action.kind === 'command' && this.host.selected() !== null && this.isStepTile(action.cmd);
+      case 'twist': // Task 3 implements the pan (the constructor skips twist steps until then)
+        return true;
     }
   }
 
@@ -420,6 +424,8 @@ export class Tutorial {
         this.ready = true; // placeTile checked the command
         break;
       }
+      case 'twist': // Task 3 implements the pan (the constructor skips twist steps until then)
+        break;
     }
     if (this.ready && !this.armed) {
       this.armed = true;
