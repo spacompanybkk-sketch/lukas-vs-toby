@@ -724,11 +724,12 @@ export class BattleController {
   /**
    * Fires the player's hero power down `lane`, answering as `click` does: null means queued for
    * the next tick, 'match-over' once decided, 'ignored' while paused or with a command already
-   * queued, and the match's own refusal (counted as a denial) otherwise.
+   * queued or in a level that hides the hero (`heroHidden`), and the match's own refusal (counted
+   * as a denial) otherwise.
    */
   heroLane(lane: number): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
-    if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.hud.paused.peek() || this.queued !== null || this.level?.heroHidden === true) return 'ignored';
     const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
     if (this.refused({ kind: 'command', cmd })) return 'ignored';
     const reason = this.match.check(cmd);

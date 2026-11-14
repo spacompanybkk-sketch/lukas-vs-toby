@@ -45,6 +45,18 @@ describe('a level\'s HUD info', () => {
     }
     for (const id of ['p1-2', 'z1-2', 'p1-5', 'p1-8']) expect(level(id).level!.heroHidden, id).toBe(false);
   });
+  it('heroLane (a lane tap with the hero picked) fires nothing either where the hero is hidden', () => {
+    for (const id of ['p1-1', 'z1-1']) {
+      const c = level(id);
+      c.match.state.players[c.playerFaction].heroTimer = 0;
+      expect(c.heroLane(2), id).toBe('ignored');
+      expect(c.step().some((e) => e.type === 'heroUsed'), id).toBe(false);
+      expect(c.hud.denied.peek(), id).toBe(0);
+    }
+    const shown = level('p1-2');
+    shown.match.state.players.plants.heroTimer = 0;
+    expect(shown.heroLane(2)).toBeNull();
+  });
   it('a Quick Battle has none', () => {
     const c = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });
     expect(c.level).toBeNull();
