@@ -172,6 +172,16 @@ describe('the battle screen in a level', () => {
     expect(q('[data-hud="topbar"]')).not.toBeNull();
   });
 
+  it('a boss level has no count-up clock (the boss comes at once: it would read 0:00 when he arrives)', () => {
+    for (const id of ['p1-8', 'z1-8']) {
+      const { s, c } = levelSession(id);
+      screen(s);
+      act(() => { c.step(); });
+      expect(q('[data-hud="topbar"]'), id).toBeNull();
+      expect(q('[data-hud="pause"]'), id).not.toBeNull();
+    }
+  });
+
   it('a script with no clock (the boss level): the wave bar alone', () => {
     const { s } = levelSession('p1-8');
     screen(s);

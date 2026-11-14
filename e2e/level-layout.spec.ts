@@ -161,7 +161,8 @@ test('both boss levels: the boss bar (and the wave bar) clear of the top bar and
     if (test.info().project.name === 'ipad') await intro.tap();
     else await intro.click();
     await expect(intro).toHaveCount(0);
-    await checkSizes(page, id === 'p1-8' ? ['boss', 'wave-bar', 'topbar'] : ['boss', 'topbar'], '[data-hud="tray"]');
+    // No count-up clock in a boss level (it read 0:00 as the boss came on).
+    await checkSizes(page, id === 'p1-8' ? ['boss', 'wave-bar'] : ['boss'], '[data-hud="tray"]', ['topbar']);
     await page.locator('[data-hud="pause"]').click();
     await page.locator('[data-screen="pause"] [data-action="quit"]').click();
     await page.locator('[data-screen="pause"] [data-action="quit"]').click();

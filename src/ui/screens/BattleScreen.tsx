@@ -236,10 +236,11 @@ function ResultClears({ hud, resultReady, clear, children }: { hud: HudSignals; 
 
 /**
  * Whether the count-up clock shows at the top: not in a level whose goal bar is a clock that drains
- * (two pictures of time that disagree), so a child sees one clock only.
+ * (two pictures of time that disagree), so a child sees one clock only; nor in a boss level, whose
+ * boss comes at once (the clock would read 0:00 as he arrives) and whose bar is the boss's health.
  */
 export function countsUp(info: LevelHudInfo | null): boolean {
-  return info === null || info.goalSeconds === null;
+  return info === null || (info.goalSeconds === null && info.mode !== 'boss');
 }
 
 /** A level's goal: the clock bar (with the star marks for Breakthrough) and the wave bar; gone at the end. */
