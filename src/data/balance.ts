@@ -427,46 +427,46 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
       ],
     },
-    // stub: Task 4. The Moon Howler (p2-8): content design §2's starting numbers for phase 1 and
-    // its shield; phase 2 repeats phase 1 until Task 4 writes it (strike with blind, slam, summon).
+    // The world-2 bosses (step-2 plan Task 4, content design §2). Tunable start values: the level
+    // tasks tune hp (Howler 4800-7000, Melon 5000-7500). `everySeconds` is the gap after the previous
+    // timed pattern and the timed patterns take turns, so the design's "slam every 11 s, summon every
+    // 8 s" is a two-pattern cycle of 11 s here (each attack back every 11 s, one every 5.5 s); phase 2
+    // runs three patterns on a 10 s cycle (one every 3.3 s). Each phase opens with its first pattern:
+    // the pups come first, and phase 2 opens with the howl / the freeze while the shield is still up.
     moonHowler: {
       recharge: 0, hp: 5500, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [
-        { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
-        { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
-        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 1, bouncesStraight: true },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 1, bouncesStraight: true }, // the moon dome: pults answer it
       ],
       phases: [
         [
-          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
-          { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+          { kind: 'summon', everySeconds: 5, unit: 'veryFastWalker', count: 2, level: 1 },
+          { kind: 'slam', everySeconds: 6, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
         ],
         [
-          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
-          { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+          { kind: 'strike', everySeconds: 4, windupSeconds: 2, target: 'lanes', count: 1, damage: 60, status: { kind: 'blind', seconds: 4 } }, // the howl
+          { kind: 'summon', everySeconds: 3, unit: 'brainEater', count: 2, level: 2 },
+          { kind: 'slam', everySeconds: 3, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
         ],
       ],
     },
-    // stub: Task 4. The Frost Melon (z2-8): content design §2's starting numbers for phase 1 and
-    // its shield; phase 2 repeats phase 1 until Task 4 writes it (strike with stun, barrage, summon).
     frostMelon: {
       recharge: 0, hp: 6000, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
-        { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
-        { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
-        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false }, // the ice plates
       ],
       phases: [
         [
-          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+          { kind: 'barrage', everySeconds: 4, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
         ],
         [
-          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+          { kind: 'strike', everySeconds: 4, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } }, // the freeze
+          { kind: 'barrage', everySeconds: 3, count: 4, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 3, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
         ],
       ],
     },

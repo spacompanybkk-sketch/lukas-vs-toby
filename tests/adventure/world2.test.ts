@@ -133,7 +133,7 @@ describe('the twist step (until Task 3 shows it)', () => {
   });
 });
 
-describe('the world-2 bosses (stub rows until Tasks 2 and 4)', () => {
+describe('the world-2 bosses (rows: Task 4, tests/sim/bossWorld2.test.ts; looks: Task 2)', () => {
   it('stand on their sides at their widths', () => {
     expect(BOSS_HALF_WIDTH.moonHowler).toBe(0);
     expect(BOSS_HALF_WIDTH.frostMelon).toBe(1);
@@ -148,8 +148,8 @@ describe('the world-2 bosses (stub rows until Tasks 2 and 4)', () => {
     expect(b.col).toBeUndefined();
     expect(b.phases).toHaveLength(2);
     expect(b.phases![0]).toEqual([
-      { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
-      { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 2, level: 1 },
+      { kind: 'summon', everySeconds: 5, unit: 'veryFastWalker', count: 2, level: 1 },
+      { kind: 'slam', everySeconds: 6, windupSeconds: 1.5, damage: 350, sideDamage: 150, reach: 0.6 },
     ]);
     expect(b.patterns.filter((p) => p.kind === 'shield')).toEqual([
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 1, bouncesStraight: true },
@@ -164,8 +164,8 @@ describe('the world-2 bosses (stub rows until Tasks 2 and 4)', () => {
     expect(b.guardFactor).toBe(0.5);
     expect(b.phases).toHaveLength(2);
     expect(b.phases![0]).toEqual([
-      { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
-      { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+      { kind: 'barrage', everySeconds: 4, count: 3, damage: 200, splash: 0.75, speed: 5 },
+      { kind: 'summon', everySeconds: 6, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
     ]);
     expect(b.patterns.filter((p) => p.kind === 'shield')).toEqual([
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
