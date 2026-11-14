@@ -1,10 +1,10 @@
 import { Color, DataTexture, Mesh, NearestFilter, PlaneGeometry, RGBAFormat, ShaderMaterial, UnsignedByteType } from 'three';
 import { LAWN_COLS, LAWN_LANES } from '../coords';
-import { PALETTE } from '../palette';
-import type { Faction } from '../types';
 
-// Where the picked card may go (UX fix A): every such tile at once, as blocky pixel corner
-// brackets (white, inked on the outside) round a light fill in the player's colour. One quad over
+// Where the picked card may go (UX fix A): every such tile at once, as thin blocky pixel corner
+// brackets (white, inked on the outside) and nothing between them, so the lawn still reads as
+// lawn. Quiet (`MARKS_QUIET`) while a card merely stays picked; loud (`MARKS_LOUD`) while one is
+// being dragged or just after one is tapped (`setStrength`, driven by the session). One quad over
 // the whole lawn; which tiles show is a 10 × 5 texture (one texel a tile, nearest sampling), so a
 // change of tiles is 200 bytes uploaded and never a new mesh. Each tile is drawn as 10 × 10
 // hard-edged "pixels", in the HUD's Minecraft look rather than the round hover mark's.
@@ -19,10 +19,9 @@ const VERTEX = /* glsl */ `
 
 const FRAGMENT = /* glsl */ `
   uniform sampler2D uMask;
-  uniform vec3 uFill;
   uniform vec3 uLine;
   uniform vec3 uInk;
-  uniform float uFillOpacity;
+  uniform float uStrength;
   varying vec2 vUv;
   const vec2 GRID = vec2(${LAWN_COLS}.0, ${LAWN_LANES}.0);
   const float PX = 10.0;
@@ -35,16 +34,19 @@ const FRAGMENT = /* glsl */ `
     bool corner = (p.x <= 3.0 || p.x >= 6.0) && (p.y <= 3.0 || p.y >= 6.0);
     bool ring = ((p.x == 1.0 || p.x == 8.0) && p.y >= 1.0 && p.y <= 8.0) || ((p.y == 1.0 || p.y == 8.0) && p.x >= 1.0 && p.x <= 8.0);
     bool edge = p.x == 0.0 || p.x == 9.0 || p.y == 0.0 || p.y == 9.0;
-    bool inside = p.x >= 2.0 && p.x <= 7.0 && p.y >= 2.0 && p.y <= 7.0;
-    if (corner && ring) gl_FragColor = vec4(uLine, 0.95);
-    else if (corner && edge) gl_FragColor = vec4(uInk, 0.55);
-    else if (inside) gl_FragColor = vec4(uFill, uFillOpacity);
+    // The blend happens in linear light, which brightens a thin white a lot once shown on screen:
+    // a strength of 0.35 needs about 5% cover to look like 35% (measured on the iPad-size shots).
+    float a = pow(uStrength, 2.8);
+    if (corner && ring) gl_FragColor = vec4(uLine, 0.95 * a);
+    else if (corner && edge) gl_FragColor = vec4(uInk, 0.55 * a);
     else discard;
   }
 `;
 
-/** The fill under the brackets: light enough that the grass and the units read through it. */
-const FILL_OPACITY = 0.22;
+/** The brackets while a card just stays picked: there, but the lawn reads as lawn. */
+export const MARKS_QUIET = 0.35;
+/** The brackets while a card is dragged, or just after one is tapped. */
+export const MARKS_LOUD = 1;
 
 /** The tiles a picked card may go on, all at once (see the note at the top). */
 export class PlaceMarks {
@@ -64,10 +66,9 @@ export class PlaceMarks {
       fragmentShader: FRAGMENT,
       uniforms: {
         uMask: { value: this.texture },
-        uFill: { value: new Color(PALETTE.sun) },
         uLine: { value: new Color('#FFFFFF').multiplyScalar(1.3) },
         uInk: { value: new Color('#2A1B0E') },
-        uFillOpacity: { value: FILL_OPACITY },
+        uStrength: { value: MARKS_QUIET },
       },
       transparent: true,
       depthWrite: false,
@@ -83,10 +84,10 @@ export class PlaceMarks {
   }
 
   /**
-   * Shows the tiles marked 1 in `mask` (`lane * LAWN_COLS + col`) in `side`'s colour; null or an
-   * all-zero mask hides the overlay. Call it when the tiles change, not every frame.
+   * Shows the tiles marked 1 in `mask` (`lane * LAWN_COLS + col`); null or an all-zero mask hides
+   * the overlay. Call it when the tiles change, not every frame.
    */
-  show(mask: Uint8Array | null, side: Faction): void {
+  show(mask: Uint8Array | null): void {
     let any = false;
     for (let i = 0; i < LAWN_COLS * LAWN_LANES; i++) {
       const on = mask !== null && mask[i] === 1;
@@ -94,8 +95,12 @@ export class PlaceMarks {
       if (on) any = true;
     }
     this.texture.needsUpdate = true;
-    (this.material.uniforms.uFill as { value: Color }).value.set(side === 'plants' ? PALETTE.sun : PALETTE.lanePurple);
     this.mesh.visible = any;
+  }
+
+  /** How strongly the brackets show, 0..1 (`MARKS_QUIET`, `MARKS_LOUD`). */
+  setStrength(strength: number): void {
+    (this.material.uniforms.uStrength as { value: number }).value = strength;
   }
 
   dispose(): void {

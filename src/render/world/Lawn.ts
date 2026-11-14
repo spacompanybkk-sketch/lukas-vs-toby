@@ -128,11 +128,16 @@ export class Lawn {
   }
 
   /**
-   * Marks every tile the picked card may go on (`mask`: 1 at `lane * LAWN_COLS + col`), in `side`'s
-   * colour; null clears them. Call it when the tiles change, not every frame.
+   * Marks every tile the picked card may go on (`mask`: 1 at `lane * LAWN_COLS + col`); null
+   * clears them. Call it when the tiles change, not every frame.
    */
-  showPlaceable(mask: Uint8Array | null, side: Faction): void {
-    this.placeMarks.show(mask, side);
+  showPlaceable(mask: Uint8Array | null): void {
+    this.placeMarks.show(mask);
+  }
+
+  /** How strongly the place marks show (`MARKS_QUIET` while a card stays picked, `MARKS_LOUD` while dragging). */
+  setPlaceStrength(strength: number): void {
+    this.placeMarks.setStrength(strength);
   }
 
   /** Frees every geometry and material the lawn made. Take `group` out of the scene first. */

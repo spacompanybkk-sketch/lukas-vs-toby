@@ -6,6 +6,7 @@ import { SoundGate, battleIntensity, playEventSounds } from '../audio/bindings';
 import { BattleView } from '../render/battle/BattleView';
 import type { AimPreview } from '../render/battle/types';
 import { LAWN_COLS, LAWN_LANES, simToWorld, tileCenter, worldToClient } from '../render/coords';
+import { MARKS_LOUD, MARKS_QUIET } from '../render/world/PlaceMarks';
 import type { CommandRejection, Faction, SimEvent } from '../sim/types';
 import { BattleController } from './BattleController';
 import type { BattleOptions } from './BattleController';
@@ -20,6 +21,9 @@ export const INTRO_SECONDS = 1.8;
 
 /** Seconds the winners cheer, after the loser's base has fallen, before the result panel shows. */
 export const CHEER_SECONDS = 2;
+
+/** The place marks show loud this long (real seconds) after a card is tapped. */
+export const PLACE_LOUD_SECONDS = 1;
 
 /** A hero power just used: whose (the banner shows that boy), numbered so two in a row both show. */
 export interface HeroBanner { side: Faction; n: number }
@@ -85,6 +89,10 @@ export class BattleSession implements Director, InputTarget {
   private readonly offEffects: (() => void)[] = [];
   /** The version of the controller's place marks the lawn shows (-1: none shown). */
   private placeShown = -1;
+  /** Real seconds since the session was made, and until when the place marks show loud. */
+  private realTime = 0;
+  private loudUntil = 0;
+  private placeStrength = MARKS_QUIET;
   /** Keeps poison and burn to one sound a second across the battle. */
   private readonly soundGate = new SoundGate();
 
@@ -113,6 +121,15 @@ export class BattleSession implements Director, InputTarget {
     this.offEffects.push(hud.shovel.subscribe(() => this.input.refresh()));
     this.offEffects.push(hud.heroSelected.subscribe(() => this.input.refresh()));
     this.offEffects.push(hud.spellSelected.subscribe(() => this.input.refresh()));
+    // A card picked (from the tray or the belt) shows where it may go at full strength for a moment.
+    // Subscribing calls back at once with the card picked at the start: that one stays quiet.
+    let first = 2;
+    const loud = (v: unknown): void => {
+      if (first > 0) { first -= 1; return; }
+      if (v !== null) this.loudUntil = this.realTime + PLACE_LOUD_SECONDS;
+    };
+    this.offEffects.push(hud.selected.subscribe(loud));
+    this.offEffects.push(this.controller.levelHud.beltSlot.subscribe(loud));
     // Every refusal, from a lawn tap or a HUD button (a power still charging), is heard once.
     let denied = hud.denied.peek();
     this.offEffects.push(hud.denied.subscribe((n) => {
@@ -162,6 +179,13 @@ export class BattleSession implements Director, InputTarget {
     if (place !== this.placeShown) {
       this.placeShown = place;
       this.view.setPlaceable(place < 0 ? null : this.controller.placeable);
+    }
+    // Quiet while a card just stays picked; loud while one is dragged or just after a tap.
+    this.realTime += realDt > 0 ? realDt : 0;
+    const strength = this.input.dragging() || this.realTime < this.loudUntil ? MARKS_LOUD : MARKS_QUIET;
+    if (strength !== this.placeStrength) {
+      this.placeStrength = strength;
+      this.view.setPlaceStrength(strength);
     }
     this.view.frame(state, alpha, gameDt, this.time);
     if (!this.ended) this.audio.setIntensity(battleIntensity(state));

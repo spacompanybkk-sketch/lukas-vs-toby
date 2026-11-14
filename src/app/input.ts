@@ -93,6 +93,11 @@ export class BattleInput {
     this.previewAt(this.last.x, this.last.y);
   }
 
+  /** True while a finger (or the mouse) that went down on a card is still down: a card is being dragged. */
+  dragging(): boolean {
+    return this.active !== null && this.active.source === 'card';
+  }
+
   /** Stops listening and clears the preview. */
   dispose(): void {
     this.doc.removeEventListener('pointerdown', this.onDown, true);

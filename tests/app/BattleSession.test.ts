@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { PerspectiveCamera, Scene, Vector3 } from 'three';
+import { Mesh, PerspectiveCamera, Scene, Vector3, type ShaderMaterial } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BattleSession, CHEER_SECONDS } from '../../src/app/BattleSession';
 import type { BattleSessionOptions } from '../../src/app/BattleSession';
@@ -11,6 +11,7 @@ import { Effects } from '../../src/render/fx/Effects';
 import { Particles } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
+import { MARKS_LOUD, MARKS_QUIET } from '../../src/render/world/PlaceMarks';
 import { spawnUnit } from '../../src/sim/match';
 import type { Faction } from '../../src/sim/types';
 
@@ -248,6 +249,34 @@ describe('BattleSession', () => {
     tap(stage, marker.x, marker.y);
     run(stage, 0.1);
     expect(plant.level).toBe(2);
+  });
+
+  it('the place marks are quiet; loud for a second after a card is picked, and while a card is dragged', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    ready(session);
+    const marks = stage.lawn.group.getObjectByName('place-marks') as Mesh;
+    const strength = (): number => ((marks.material as ShaderMaterial).uniforms.uStrength as { value: number }).value;
+    run(stage, 0.5);
+    expect(marks.visible).toBe(true); // the first card is picked from the start
+    expect(strength()).toBe(MARKS_QUIET);
+    session.controller.select('sunflower');
+    run(stage, 0.2);
+    expect(strength()).toBe(MARKS_LOUD);
+    run(stage, 1.2);
+    expect(strength()).toBe(MARKS_QUIET);
+    // A drag from a card: loud while the finger is down.
+    const card = document.createElement('button');
+    card.dataset.card = 'sunflower';
+    document.body.appendChild(card);
+    const init = { bubbles: true, clientX: 10, clientY: 10, pointerId: 3, pointerType: 'touch', button: 0, isPrimary: true };
+    card.dispatchEvent(new PointerEvent('pointerdown', init));
+    run(stage, 2);
+    expect(strength()).toBe(MARKS_LOUD);
+    document.dispatchEvent(new PointerEvent('pointerup', init));
+    run(stage, 0.1);
+    expect(strength()).toBe(MARKS_QUIET);
   });
 
   it('ignores the lawn before begin()', () => {

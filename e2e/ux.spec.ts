@@ -86,7 +86,15 @@ test('A: a picked card lights every tile it may go on, in a level and in a Quick
   await expect.poll(async () => (await marks(page)).lit.length).toBe(40);
   expect((await marks(page)).shown).toBe(true);
   expect((await marks(page)).lit.every((t) => Number(t.split(',')[1]) < 8)).toBe(true);
-  await shot(page, 'A-plants-level-marks');
+  // Quiet while a card just stays picked (thin brackets, no fill: the lawn reads as lawn); loud
+  // for a moment after a card is tapped.
+  const strength = (): Promise<number> => page.evaluate(() => (window.__lvt as any).stage.lawn.group.getObjectByName('place-marks').material.uniforms.uStrength.value as number);
+  await expect.poll(strength, { timeout: 5_000 }).toBeLessThan(0.5);
+  await shot(page, 'A-plants-level-marks-quiet');
+  await press(page.locator('[data-hud="tray"] [data-card="sunflower"]'));
+  await expect.poll(strength).toBe(1);
+  await shot(page, 'A-plants-level-marks-loud');
+  await expect.poll(strength, { timeout: 5_000 }).toBeLessThan(0.5);
   // The shovel picks no card: nothing lit.
   await press(page.locator('[data-shovel]'));
   await expect.poll(async () => (await marks(page)).shown).toBe(false);

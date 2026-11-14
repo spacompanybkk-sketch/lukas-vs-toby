@@ -39,8 +39,6 @@ test('boots to the title without errors', async ({ page }) => {
 test('the lawn is drawn where the hooks say: grass green, graveyard purple, a placed plant shows', async ({ page }) => {
   await startBattle(page, 'plants');
   await page.mouse.move(5, 5); // no hover ghost on the lawn
-  // No card picked: the lawn itself, without the marks of where a picked card may go.
-  await page.keyboard.press('Escape');
   await frames(page, 5);
   const grass = await tilePoint(page, 2, 3);
   const control = await tilePoint(page, 4, 5);
@@ -57,8 +55,8 @@ test('the lawn is drawn where the hooks say: grass green, graveyard purple, a pl
 
   await place(page, 'peashooter', 2, 3);
   await page.mouse.move(5, 5);
-  await page.keyboard.press('Escape');
-  await frames(page, 20);
+  // The place marks show loud for a second after the card was tapped: let them go quiet again.
+  await frames(page, 90);
   const after = await shootCanvas(page);
   // The unit stands above its tile's centre: look at a patch there, against a tile nothing happened on.
   const changed = await analyse(page, [after, before], [around(grass, 50, -25), around(control, 50, -25)]);
