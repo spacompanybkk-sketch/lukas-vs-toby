@@ -132,6 +132,20 @@ describe('the twist pan on the stage', () => {
     expect(five.controller.match.state.config.lawn.fog).toBe(5);
   });
 
+  it('the camera is focused once when the pan starts, then eases on its own (no focus call per frame)', () => {
+    const stage = fakeStage();
+    const focus = vi.spyOn(stage.rig, 'focus');
+    const session = start(stage, W2['p2-1']!);
+    session.begin();
+    run(stage, 3);
+    expect(focus.mock.calls.filter(([box]) => box !== null)).toHaveLength(1);
+    expect(focus.mock.calls[0]![0]).toBe(session.twistShow!.box);
+    session.controller.tapTwist();
+    run(stage, 0.2);
+    expect(focus.mock.calls.filter(([box]) => box === null)).toHaveLength(1);
+    expect(focus).toHaveBeenCalledTimes(2);
+  });
+
   it('ice: the icy lanes pulse and a ghost zombie slides; the camera pans', () => {
     const stage = fakeStage();
     const session = start(stage, W2['z2-1']!);

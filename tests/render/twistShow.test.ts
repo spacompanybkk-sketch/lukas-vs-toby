@@ -46,19 +46,20 @@ describe('TwistShow: fog', () => {
     });
   }
 
-  it('the camera box follows the pea along its lane and stays over the lawn', () => {
-    const show = new TwistShow('fog', fogLawn(7), puffs());
-    const first = show.frameBox();
-    play(show, 1.2);
-    const later = show.frameBox();
-    expect((later.x[0] + later.x[1]) / 2).toBeGreaterThan((first.x[0] + first.x[1]) / 2);
-    for (const b of [first, later]) {
-      expect(b.x[0]).toBeGreaterThanOrEqual(-1);
-      expect(b.x[1]).toBeLessThanOrEqual(11);
-      expect(b.z[0]).toBeLessThanOrEqual(show.lane);
-      expect(b.z[1]).toBeGreaterThanOrEqual(show.lane + 1);
+  it('the camera box is worked out once: the shooter to past the puff, over the lawn, the same object every frame', () => {
+    for (const reach of [7, 5]) {
+      const show = new TwistShow('fog', fogLawn(reach), puffs());
+      const box = show.box;
+      play(show, 1.2);
+      expect(show.box).toBe(box);
+      expect(box.x[0]).toBeLessThanOrEqual(show.startX - 0.5);
+      expect(box.x[1]).toBeGreaterThanOrEqual(Math.min(10.5, show.fadeX + 1));
+      expect(box.x[0]).toBeGreaterThanOrEqual(-1);
+      expect(box.x[1]).toBeLessThanOrEqual(11);
+      expect(box.z[0]).toBeLessThanOrEqual(show.lane);
+      expect(box.z[1]).toBeGreaterThanOrEqual(show.lane + 1);
+      show.dispose();
     }
-    show.dispose();
   });
 });
 

@@ -378,10 +378,6 @@ const GHOST_WALK = 1.4;
 /** Where a ghost zombie starts and stops along its lane. */
 const GHOST_FROM_X = 10.2;
 const GHOST_TO_X = 0.3;
-/** The camera follows the ghosts this fast (1/seconds), and frames this many tiles along the lane. */
-const FOLLOW_RATE = 3;
-const FOG_WINDOW = 5.2;
-const ICE_WINDOW = 6.4;
 /** The glowing steps of an icy lane's pulse (blocky, never smooth). */
 const PULSE_STEPS = [0.08, 0.25, 0.42, 0.25];
 
@@ -425,7 +421,8 @@ export interface Ghost { lane: number; object: Object3D }
 
 /**
  * One twist lesson's show: its ghosts in `group` (add it to the scene), moved on by `update`, and
- * the box the camera should frame now (`frameBox`, `view`). Loops until disposed.
+ * the box the camera frames for the whole show (`box`, `view`: worked out once, when it starts).
+ * Loops until disposed.
  */
 export class TwistShow {
   readonly group = new Group();
@@ -436,7 +433,9 @@ export class TwistShow {
   /** Ice: the ghost sliding down an icy lane, and the one walking a plain lane beside it (null: none plain). */
   readonly slider: Ghost = { lane: 0, object: new Group() };
   readonly walker: Ghost | null = null;
-  /** How the camera looks at `frameBox`. */
+  /** What the camera frames for the whole show (the shooter to past the puff; the racing lanes), and how. */
+  readonly box: FrameBox;
+  /** How the camera looks at `box`. */
   readonly view: FrameView;
   /** Times the show has played through. */
   loops = 0;
@@ -449,8 +448,6 @@ export class TwistShow {
   private readonly slideSpeed: number = GHOST_WALK;
   private clock = 0;
   private flying = true;
-  /** The middle of the camera's window along the lane. */
-  private follow: number;
   private readonly puffAt = new Vector3();
 
   constructor(readonly kind: 'fog' | 'ice', lawn: LawnConfig, private readonly fx: PuffHost) {
@@ -460,7 +457,7 @@ export class TwistShow {
       this.fadeX = this.startX + reach;
       this.buildFog(reach);
       this.view = { pitchDeg: 44 };
-      this.follow = this.startX + 1;
+      this.box = { x: [this.startX - 1.2, Math.min(10.6, this.fadeX + 2)], y: [0, 1.2], z: [this.lane - 0.6, this.lane + 1.6] };
     } else {
       const icy = [...(lawn.ice?.lanes ?? [FOG_LANE])];
       const near = (lanes: number[], to: number): number | null =>
@@ -474,7 +471,8 @@ export class TwistShow {
       this.slider = { lane: sliderLane, object: this.ghost(sliderLane) };
       this.walker = walkerLane === null ? null : { lane: walkerLane, object: this.ghost(walkerLane) };
       this.view = { pitchDeg: 46 };
-      this.follow = GHOST_FROM_X - ICE_WINDOW / 2;
+      const raced = walkerLane === null ? [sliderLane] : [sliderLane, walkerLane];
+      this.box = { x: [-0.3, 10.6], y: [0, 1.4], z: [Math.min(...raced) - 0.4, Math.max(...raced) + 1.4] };
     }
     this.update(0);
   }
@@ -486,23 +484,6 @@ export class TwistShow {
     this.clock += step;
     if (this.kind === 'fog') this.updateFog();
     else this.updateIce();
-    const target = this.kind === 'fog'
-      ? (this.flying && this.pea !== null ? this.pea.position.x : this.startX + 1)
-      : this.slider.object.position.x;
-    this.follow += (target - this.follow) * (1 - Math.exp(-step * FOLLOW_RATE));
-  }
-
-  /** The box the camera frames now: a window along the lane that follows the ghost. */
-  frameBox(): FrameBox {
-    if (this.kind === 'fog') {
-      const half = FOG_WINDOW / 2;
-      const c = Math.min(Math.max(this.follow, half - 0.5), 10.5 - half);
-      return { x: [c - half, c + half], y: [0, 1.2], z: [this.lane - 0.6, this.lane + 1.6] };
-    }
-    const half = ICE_WINDOW / 2;
-    const c = Math.min(Math.max(this.follow, half - 0.5), 10.5 - half);
-    const lanes = this.walker === null ? [this.slider.lane] : [this.slider.lane, this.walker.lane];
-    return { x: [c - half, c + half], y: [0, 1.4], z: [Math.min(...lanes) - 0.4, Math.max(...lanes) + 1.4] };
   }
 
   private updateFog(): void {

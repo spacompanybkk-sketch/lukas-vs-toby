@@ -344,7 +344,7 @@ export class BattleSession implements Director, InputTarget {
 
   /**
    * The twist lesson (a `twist` step holding the match): its ghosts on the lawn and the camera
-   * panning after them, from the moment the step holds until it ends (a tap), the battle leaves the
+   * easing in to frame them (one `focus`, made when the show starts), from the moment the step holds until it ends (a tap), the battle leaves the
    * stage or the stage shows another world. Paused, the show waits. Nothing here reaches the match.
    */
   private twistFrame(realDt: number): void {
@@ -358,9 +358,10 @@ export class BattleSession implements Director, InputTarget {
       this.endTwist();
       this.twist = new TwistShow(vm.kind, this.controller.match.state.config.lawn, this.stage.fx);
       this.stage.scene.add(this.twist.group);
+      // Once: the rig eases in on its own and keeps the shot through resizes.
+      this.stage.rig.focus(this.twist.box, this.twist.view);
     }
     if (!this.stage.paused) this.twist.update(realDt);
-    this.stage.rig.focus(this.twist.frameBox(), this.twist.view);
   }
 
   /** The twist show goes (ghosts freed) and the camera eases back to the lawn. */
