@@ -3,11 +3,14 @@ import { lawnOf, levelConfig } from '../../src/adventure/campaign';
 import { freePlayConfig } from '../../src/adventure/freePlay';
 import type { LevelDef } from '../../src/adventure/types';
 import { BALANCE } from '../../src/data/balance';
+import { ALL_CARDS } from '../../src/data/units';
 import { newSave } from '../../src/progress/save';
 import { cloneLawn, NO_TWIST } from '../../src/sim/lawn';
 import { Match, defaultConfig } from '../../src/sim/match';
-import { PLANT_COLS } from '../../src/sim/types';
-import type { LawnConfig, MatchConfig } from '../../src/sim/types';
+import { randomInt } from '../../src/sim/rng';
+import { SPELLS } from '../../src/sim/spells';
+import { COLS, LANES, PLANT_COLS } from '../../src/sim/types';
+import type { Command, Faction, LawnConfig, MatchConfig } from '../../src/sim/types';
 import { SAMPLE_BATTLE } from '../adventure/sampleLevels';
 
 /** The default setup with `lawn` merged into NO_TWIST. */
@@ -494,5 +497,94 @@ describe('lava: whoever stands on a lava tile burns, either side, bosses too', (
   it('plants may be put on lava', () => {
     const m = new Match(lawnConfig(1, { lava: LAVA([lavaTile(2, 3)]) }));
     expect(m.check({ type: 'place', faction: 'plants', unit: 'peashooter', lane: 2, col: 3 })).toBeNull();
+  });
+});
+
+describe('fuzz (Review Focus 1): random twists, a snapshot at a random tick restores to the same final checksum', () => {
+  type Rng = { rng: number };
+  const MATCHES = 200;
+  const TICKS = 900;
+
+  /** `n` distinct whole numbers drawn from 0..max-1. */
+  function distinct(r: Rng, n: number, max: number): number[] {
+    const pool = Array.from({ length: max }, (_, i) => i);
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) out.push(pool.splice(randomInt(r, pool.length), 1)[0]!);
+    return out;
+  }
+
+  function randomSetup(seed: number, r: Rng): MatchConfig {
+    const c = defaultConfig(seed);
+    c.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
+    c.startEnergy = { plants: 400, zombies: 400 };
+    c.incomeMultiplier = { plants: 2, zombies: 2 };
+    const lawn = cloneLawn(NO_TWIST);
+    if (randomInt(r, 2) === 0) lawn.rocks = distinct(r, 1 + randomInt(r, 6), LANES * PLANT_COLS);
+    if (randomInt(r, 2) === 0) lawn.fog = [2, 3, 3.5, 5, 6][randomInt(r, 5)]!;
+    if (randomInt(r, 2) === 0) lawn.ice = { lanes: distinct(r, 1 + randomInt(r, 3), LANES), speed: [1.3, 1.6, 2][randomInt(r, 3)]! };
+    if (randomInt(r, 2) === 0) lawn.lava = { tiles: distinct(r, 2 + randomInt(r, 8), LANES * COLS), dps: 15, burnTicks: 60 };
+    const roll = randomInt(r, 5);
+    if (roll === 0) {
+      c.mode = 'boss';
+      c.boss = { key: 'brainTitan', faction: 'zombies', lane: randomInt(r, LANES) };
+    } else if (roll === 1) {
+      c.mode = 'boss';
+      c.boss = { key: 'elderOak', faction: 'plants', lane: 1 + randomInt(r, 3) };
+      const oakTiles = [0, 1, 2].map((d) => (c.boss!.lane - 1 + d) * PLANT_COLS + 0);
+      lawn.rocks = lawn.rocks.filter((t) => !oakTiles.includes(t));
+    }
+    c.lawn = lawn;
+    return c;
+  }
+
+  function randomCommands(r: Rng, tick: number): Command[] {
+    const out: Command[] = [];
+    for (const faction of ['plants', 'zombies'] as const satisfies readonly Faction[]) {
+      if (randomInt(r, 6) === 0) {
+        const unit = ALL_CARDS[faction][randomInt(r, ALL_CARDS[faction].length)]!;
+        out.push({ type: 'place', faction, unit, lane: randomInt(r, LANES), col: randomInt(r, PLANT_COLS) });
+      }
+      if (tick % 97 === 0) out.push({ type: 'hero', faction, lane: randomInt(r, LANES) });
+      if (randomInt(r, 40) === 0) {
+        out.push({ type: 'spell', faction, spell: SPELLS[faction][randomInt(r, 5)]!, lane: randomInt(r, LANES), col: randomInt(r, COLS) });
+      }
+    }
+    return out;
+  }
+
+  it(`${MATCHES} matches, ${TICKS} ticks each`, () => {
+    let midBurn = 0;
+    let midFade = 0;
+    let refusedRock = 0;
+    for (let seed = 1; seed <= MATCHES; seed++) {
+      const r: Rng = { rng: (seed * 0x9e3779b1) >>> 0 };
+      const config = randomSetup(seed, r);
+      const a = new Match(config);
+      const at = 1 + randomInt(r, TICKS - 1);
+      const commands: Command[][] = [];
+      let snapshot = '';
+      let snapshotHash = 0;
+      while (a.state.winner === null && a.state.tick < TICKS) {
+        if (a.state.tick === at) {
+          snapshot = a.snapshot();
+          snapshotHash = a.hash();
+          const lava = a.state.config.lawn.lava;
+          if (lava !== null && a.state.units.some((u) => u.burn > 0 && lava.tiles.includes(u.lane * COLS + Math.floor(u.x)))) midBurn += 1;
+          if (a.state.projectiles.some((p) => p.fadeX !== null)) midFade += 1;
+        }
+        const cmds = randomCommands(r, a.state.tick);
+        commands.push(cmds);
+        for (const e of a.step(cmds)) if (e.type === 'commandRejected' && e.reason === 'rock') refusedRock += 1;
+      }
+      if (snapshot === '') continue; // over before the snapshot tick
+      const b = Match.restore(snapshot);
+      expect(b.hash()).toBe(snapshotHash);
+      while (b.state.winner === null && b.state.tick < TICKS) b.step(commands[b.state.tick]!);
+      expect([seed, b.state.tick, b.hash()]).toEqual([seed, a.state.tick, a.hash()]);
+    }
+    // The sweep did reach the moments Review Focus 1 names.
+    expect(midBurn).toBeGreaterThan(10);
+    expect(midFade).toBeGreaterThan(10);
+    expect(refusedRock).toBeGreaterThan(10);
   });
 });
