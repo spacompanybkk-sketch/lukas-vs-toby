@@ -27,6 +27,9 @@
 //
 //   --modes=novsync[,vsync,novsync-cpu4x]   only these modes (default: all three)
 //   --scenes=mix-150[,p1-60,p1-150,titan,oak-30,free-w20,map]   only these scenes (default: all)
+//   --scenes=mix-150-meadow[,…]             a world's look (backyard, meadow, desert, tundra,
+//                                           citadel) with its weather and sample twist tiles; only
+//                                           when named
 //   --no-portraits                          skip the portrait warm-up timing
 //   --reuse-build                           serve dist/ as it is (default: build first)
 //   --adaptive                              let the render scale adapt as in the game (default:
@@ -53,6 +56,10 @@ const SCENES = [
   { name: 'oak-30', query: '', setup: 'oak' },
   { name: 'free-w20', query: '', setup: 'free20' },
   { name: 'map', query: '', setup: 'map' },
+  // Worlds (opt-in, by name): mix-150 in each look with its weather and sample twist tiles.
+  ...['backyard', 'meadow', 'desert', 'tundra', 'citadel'].map((world) => ({
+    name: `mix-150-${world}`, query: `scene=stress&mix&units=150&world=${world}`, optIn: true,
+  })),
 ];
 
 /**
@@ -408,7 +415,7 @@ async function main() {
   await startServer();
   const wantModes = listArg('modes');
   const wantScenes = listArg('scenes');
-  const scenes = SCENES.filter((s) => !wantScenes || wantScenes.includes(s.name));
+  const scenes = SCENES.filter((s) => (wantScenes ? wantScenes.includes(s.name) : !s.optIn));
   const portraits = args.includes('--no-portraits') ? [] : await portraitWarmUp();
   const modes = [];
   for (const mode of MODES.filter((m) => !wantModes || wantModes.includes(m.name))) {
@@ -450,9 +457,9 @@ async function main() {
         for (const w of warnings) console.log(`\n!!!!!! WARNING: ${w} !!!!!!\n`);
         const ms = (v) => v.toFixed(1).padStart(5);
         console.log(
-          `${mode.name.padEnd(13)} ${scene.name.padEnd(7)} dpr ${deviceScaleFactor}  interval median ${ms(row.medianMs)} p95 ${ms(row.p95Ms)} worst ${ms(row.worstMs)} ms  `
+          `${mode.name.padEnd(13)} ${scene.name.padEnd(16)} dpr ${deviceScaleFactor}  interval median ${ms(row.medianMs)} p95 ${ms(row.p95Ms)} worst ${ms(row.worstMs)} ms  `
           + `frame cb ${ms(row.frameCallbackMedianMs)}  draw cpu ${ms(row.drawCpuMedianMs)}  draw+finish ${ms(row.drawFinishedMedianMs)} (p95 ${ms(row.drawFinishedP95Ms)})  `
-          + `scale ${row.renderScale.toFixed(2)}  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}${errors.length ? `  ERRORS: ${errors.join(' | ')}` : ''}`,
+          + `scale ${row.renderScale.toFixed(2)}  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}  load ${load.toFixed(1)}${errors.length ? `  ERRORS: ${errors.join(' | ')}` : ''}`,
         );
         await context.close();
       }
@@ -479,7 +486,7 @@ async function main() {
     const reliable = doubts.length === 0;
     verdict.push({ scene: row.scene, deviceScaleFactor: row.deviceScaleFactor, medianMs: row.medianMs, budget, ok: reliable ? ok : null, doubts });
     const word = !reliable ? 'UNRELIABLE' : ok ? 'OK' : 'MISS';
-    console.log(`BUDGET ${word.padEnd(10)} ${row.scene.padEnd(7)} dpr ${row.deviceScaleFactor}: ${row.medianMs.toFixed(1)} ms (budget ${budget} ms)`
+    console.log(`BUDGET ${word.padEnd(10)} ${row.scene.padEnd(16)} dpr ${row.deviceScaleFactor}: ${row.medianMs.toFixed(1)} ms (budget ${budget} ms)`
       + (reliable ? '' : `  (${doubts.join('; ')})`)
       + `  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}  scale ${row.renderScale.toFixed(2)}`
       + (row.contents ? `  [${Object.entries(row.contents).map(([k, v]) => `${k} ${v}`).join(', ')}]` : ''));
