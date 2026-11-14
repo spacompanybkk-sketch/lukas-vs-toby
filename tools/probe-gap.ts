@@ -14,13 +14,17 @@
  *   npx tsx tools/probe-gap.ts --blind lava                    the average player does not see the lava (or fog, ice):
  *                                                              a knowledge lever (rocks always refuse, so never hidden)
  *   npx tsx tools/probe-gap.ts --seeds 200 --first 1           seeds
+ *   npx tsx tools/probe-gap.ts --who average,expert,strong     the seats to play (strong: the expert with --strong)
+ *   npx tsx tools/probe-gap.ts --strong '{"stack":true,"table":{"thinkEvery":15}}'   the strong expert (StrongExpert)
+ *   Each row: per seat, win %, share with 2 stars or more, share with 3 stars, median minutes.
  */
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import type { Skill } from '../src/ai/bot';
 import { averageUpgrades, playLevel, summariseLevel } from '../src/ai/levelChecks';
 import type { LevelPlayed } from '../src/ai/levelChecks';
-import type { LevelStandIn } from '../src/ai/levelStandIns';
+import { createLevelStandIn } from '../src/ai/levelStandIns';
+import type { LevelStandIn, StrongExpert } from '../src/ai/levelStandIns';
 import type { LevelDef, LevelTwist } from '../src/adventure/types';
 import { ALL_CARDS } from '../src/data/units';
 import type { Bot } from '../src/ai/bot';
@@ -70,13 +74,15 @@ export function probeLevels(s: Setup): { def: LevelDef; levels: LevelDef[] } {
   return { def, levels: [...Array.from({ length: 39 }, (_, k) => stub(k + 1)), def] };
 }
 
-interface Job { setup: Setup; who: LevelStandIn; first: number; seeds: number }
+/** A stand-in seat: the three level stand-ins, or `strong`: the expert with `--strong` (`StrongExpert`). */
+type Who = LevelStandIn | 'strong';
+interface Job { setup: Setup; who: Who; strong: StrongExpert; first: number; seeds: number }
 
 /**
  * The stand-in shown a lawn without the `blind` twists: his match's config has them off, while
  * the match itself (its `check`, its steps) still has them.
  */
-function blindTo(blind: readonly string[]): (bot: Bot) => Bot {
+function blindTo(blind: readonly string[]): (bot: Bot, seed: number) => Bot {
   if (blind.length === 0) return (bot) => bot;
   return (bot) => ({
     faction: bot.faction,
@@ -91,9 +97,12 @@ function blindTo(blind: readonly string[]): (bot: Bot) => Bot {
 
 function work(job: Job): LevelPlayed[] {
   const { def, levels } = probeLevels(job.setup);
-  const wrap = job.who === 'average' ? blindTo(job.setup.blind) : (bot: Bot) => bot;
+  const wrap = job.who === 'average' ? blindTo(job.setup.blind)
+    : job.who === 'strong' ? (_: Bot, seed: number) => createLevelStandIn('expert', def.side, seed, { strong: job.strong })
+      : (bot: Bot) => bot;
+  const kind: LevelStandIn = job.who === 'strong' ? 'expert' : job.who;
   const out: LevelPlayed[] = [];
-  for (let seed = job.first; seed < job.first + job.seeds; seed++) out.push(playLevel(def, job.who, seed, undefined, levels, wrap));
+  for (let seed = job.first; seed < job.first + job.seeds; seed++) out.push(playLevel(def, kind, seed, undefined, levels, wrap));
   return out;
 }
 
@@ -109,7 +118,8 @@ async function main(): Promise<void> {
   const twist = (arg('--twist') ?? 'lava') as TwistName;
   const skills = (arg('--skills') ?? 'medium,hard').split(',') as Skill[];
   const incomes = (arg('--incomes') ?? '1,1.25,1.5,1.75,2,2.5').split(',').map(Number);
-  const who = (arg('--who') ?? 'average,expert').split(',') as LevelStandIn[];
+  const who = (arg('--who') ?? 'average,expert').split(',') as Who[];
+  const strong = JSON.parse(arg('--strong') ?? '{"stack":true}') as StrongExpert;
   const base = arg('--base') === undefined ? null : Number(arg('--base'));
   const blind = arg('--blind')?.split(',') ?? [];
   const first = Number(arg('--first') ?? 1);
@@ -132,18 +142,19 @@ async function main(): Promise<void> {
   const ups = averageUpgrades(sample.def, sample.levels);
   console.log(`probe: ${side} level 40, twist ${twist}, seeds ${first}..${first + seeds - 1}${base === null ? '' : `, base ${base}`}${blind.length === 0 ? '' : `, average blind to ${blind.join('+')}`}`);
   console.log(`average upgrades: ${Object.entries(ups).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-  console.log('skill   income  avg win%  avg 3*%  avg min  exp win%  exp 3*%  exp min   gap');
+  if (who.includes('strong')) console.log(`strong expert: ${JSON.stringify(strong)}`);
+  console.log(`skill   income  ${who.map((w) => `${w.slice(0, 6).padStart(6)}: win% 2*+% 3*%  min`).join(' | ')}`);
   try {
     const setups = skills.flatMap((skill) => incomes.map((income) => ({ side, twist, skill, income, base, blind })));
     const all = await Promise.all(setups.map((setup) => Promise.all(who.map(async (w) => {
       const parts: Promise<LevelPlayed[]>[] = [];
-      for (let a = 0; a < seeds; a += CHUNK) parts.push(run({ setup, who: w, first: first + a, seeds: Math.min(CHUNK, seeds - a) }));
+      for (let a = 0; a < seeds; a += CHUNK) parts.push(run({ setup, who: w, strong, first: first + a, seeds: Math.min(CHUNK, seeds - a) }));
       return summariseLevel((await Promise.all(parts)).flat());
     }))));
     setups.forEach((setup, i) => {
-      const [a, e] = all[i] as ReturnType<typeof summariseLevel>[];
-      const cell = (x: number | undefined, d = 1): string => (x === undefined ? '-' : x.toFixed(d)).padStart(8);
-      console.log(`${setup.skill.padEnd(7)} ${setup.income.toFixed(2).padStart(6)}  ${cell(a?.win)} ${cell(a?.threeStars)} ${cell(a?.minutes, 2)}  ${cell(e?.win)} ${cell(e?.threeStars)} ${cell(e?.minutes, 2)} ${cell(a !== undefined && e !== undefined ? e.win - a.win : undefined)}`);
+      const row = all[i] as ReturnType<typeof summariseLevel>[];
+      const f = (x: number, w = 5, d = 1): string => x.toFixed(d).padStart(w);
+      console.log(`${setup.skill.padEnd(7)} ${setup.income.toFixed(2).padStart(6)}  ${row.map((r) => `      ${f(r.win)} ${f(r.twoPlus)} ${f(r.threeStars)} ${f(r.minutes, 4, 1)}`).join(' | ')}`);
     });
   } finally {
     await Promise.all(workers.map((w) => w.terminate()));

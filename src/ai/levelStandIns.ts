@@ -355,8 +355,8 @@ function breakthroughMove(match: Match, kind: 'average' | 'expert', table: Skill
 }
 
 /** The average player and the expert: the computer's choices at their pace, plus the belt, the Titan and the Breakthrough push. */
-function createSensible(kind: 'average' | 'expert', side: Faction, seed: number, hero: boolean): Bot {
-  const table = standInTable(kind, side);
+function createSensible(kind: 'average' | 'expert', side: Faction, seed: number, hero: boolean, strong: StrongExpert | null): Bot {
+  const table = strong === null ? standInTable(kind, side) : { ...standInTable(kind, side), ...strong.table };
   const card = createBasicBot(side, kind === 'expert' ? 'hard' : 'medium', seed ^ SALT[kind], table);
   const rng = rngFor(seed, kind, side);
   const beltEvery = kind === 'expert' ? EXPERT_BELT_EVERY : AVERAGE.every;
@@ -381,7 +381,7 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
         }
         return out;
       }
-      if (side === 'zombies' && s.config.mode === 'breakthrough') {
+      if (side === 'zombies' && (s.config.mode === 'breakthrough' || (strong?.stack === true && s.config.mode === 'battle'))) {
         // The hero and spells as the computer fires them; the cards all down the lane that gives.
         const out: Command[] = card.think(match).filter(powerOk);
         if (s.tick % table.thinkEvery === 0) {
@@ -404,10 +404,21 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
 }
 
 /**
+ * A stronger expert, for probes (worlds plan Task 8 review): `table` changes his skill table (e.g.
+ * a faster look or a wider defence margin); `stack` (zombies) plays a battle as he plays a
+ * Breakthrough, every zombie down the lane that gives.
+ */
+export interface StrongExpert { readonly table?: Partial<SkillTable>; readonly stack?: boolean }
+
+/**
  * A stand-in of `kind` for `side` in one match (see the note at the top). `hero` false: a level
  * where the child has no hero button yet (`heroHidden`); the stand-in never fires the hero.
+ * `strong` (the expert only, probes): see `StrongExpert`.
  */
-export function createLevelStandIn(kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean } = {}): Bot {
+export function createLevelStandIn(
+  kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean; strong?: StrongExpert } = {},
+): Bot {
   const hero = opts.hero ?? true;
-  return kind === 'beginner' ? createBeginner(side, seed, hero) : createSensible(kind, side, seed, hero);
+  if (kind === 'beginner') return createBeginner(side, seed, hero);
+  return createSensible(kind, side, seed, hero, kind === 'expert' ? opts.strong ?? null : null);
 }

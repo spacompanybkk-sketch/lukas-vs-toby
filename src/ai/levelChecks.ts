@@ -193,15 +193,15 @@ export function standInFor(def: LevelDef, kind: LevelStandIn, seed: number, leve
 
 /**
  * One level, one stand-in, one seed. `wrap` (probes only) changes the stand-in, e.g. to hide a
- * twist from him.
+ * twist from him or to play another one in his seat.
  */
 export function playLevel(
   def: LevelDef, kind: LevelStandIn, seed: number, balance: Balance = BALANCE, levels: readonly LevelDef[] = LEVELS,
-  wrap: (bot: Bot) => Bot = (bot) => bot,
+  wrap: (bot: Bot, seed: number) => Bot = (bot) => bot,
 ): LevelPlayed {
   const config = levelConfig(def, standInSave(kind, def, levels), seed, balance);
   const maxTicks = config.goalTicks ?? MAX_MATCH_TICKS;
-  const { match, end } = play(config, [wrap(standInFor(def, kind, seed, levels)), levelOpponent(def, seed)], balance, maxTicks + 1);
+  const { match, end } = play(config, [wrap(standInFor(def, kind, seed, levels), seed), levelOpponent(def, seed)], balance, maxTicks + 1);
   const s = match.state;
   const side = def.side;
   const won = s.winner === side;
@@ -223,6 +223,8 @@ export interface LevelStats {
   medianStars: number;
   /** Shares of seeds with 3 stars, %. */
   threeStars: number;
+  /** Shares of seeds with 2 stars or more, %. */
+  twoPlus: number;
   /** Median length, minutes. */
   minutes: number;
   /** Shares, %, of seeds that ended by the clock, a base, the boss, or not at all. */
@@ -247,6 +249,7 @@ export function summariseLevel(results: readonly LevelPlayed[]): LevelStats {
     win: pct(results.filter((r) => r.won).length),
     medianStars: median(results.map((r) => r.stars)),
     threeStars: pct(results.filter((r) => r.stars === 3).length),
+    twoPlus: pct(results.filter((r) => r.stars >= 2).length),
     minutes: median(results.map((r) => r.ticks)) / 1800,
     ends,
   };
