@@ -2,8 +2,9 @@ import { isOpen, nextLevel, unlockedCards } from '../../adventure/campaign';
 import { LEVELS, levelsFor } from '../../adventure/levels';
 import type { LevelDef } from '../../adventure/types';
 import { factionOf, isCard } from '../../data/units';
-import { arenaOf } from '../../data/worlds';
+import { WORLDS, arenaOf } from '../../data/worlds';
 import type { WorldKey } from '../../data/worlds';
+import type { Theme } from '../../audio/music';
 import type { Save } from '../../progress/save';
 import type { CardKey, Faction, UnitKey } from '../../sim/types';
 
@@ -34,6 +35,14 @@ export const WORLD_NUMBERS: readonly World[] = [1, 2, 3, 4, 5];
  * levels yet, or its first level not open) and the stars won on it.
  */
 export interface Island { world: World; arena: WorldKey; locked: boolean; stars: number }
+
+/**
+ * The tune of the island the map shows: an open island plays its world's theme, a locked one (or
+ * none) the menu theme.
+ */
+export function mapTheme(island: Pick<Island, 'arena' | 'locked'> | null): Theme {
+  return island === null || island.locked ? 'menu' : WORLDS[island.arena].theme;
+}
 
 /** `side`'s five islands for the owner of `save`, in the side's own order (the zombies' reversed). */
 export function mapIslands(save: Save, side: Faction, levels: readonly LevelDef[] = LEVELS): Island[] {

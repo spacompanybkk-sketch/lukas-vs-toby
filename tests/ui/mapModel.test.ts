@@ -3,7 +3,7 @@ import { LEVELS } from '../../src/adventure/levels';
 import { previewWorlds } from '../../src/app/previewWorlds';
 import { newSave } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
-import { mapIslands, mapStones, openingWorld, twistKinds } from '../../src/ui/screens/mapModel';
+import { mapIslands, mapStones, mapTheme, openingWorld, twistKinds } from '../../src/ui/screens/mapModel';
 
 const NOW = 1_762_900_000_000;
 const fresh = newSave('p01', 'Lukas', 'peashooter', NOW);
@@ -86,5 +86,17 @@ describe('twistKinds: the twist pictures a level card shows', () => {
     expect(twistKinds(MORE.find((l) => l.id === 'p2-1')!)).toEqual(['fog']);
     expect(twistKinds(MORE.find((l) => l.id === 'z2-1')!)).toEqual(['ice']);
     expect(twistKinds(MORE.find((l) => l.id === 'p3-4')!)).toEqual(['rocks']);
+  });
+});
+
+describe('mapTheme: the map plays the tune of the island it shows', () => {
+  it('an open island plays its world\'s theme; a locked one (or none) the menu theme', () => {
+    expect(mapTheme({ arena: 'backyard', locked: false })).toBe('backyard');
+    expect(mapTheme({ arena: 'citadel', locked: false })).toBe('citadel');
+    expect(mapTheme({ arena: 'meadow', locked: true })).toBe('menu');
+    expect(mapTheme(null)).toBe('menu');
+    // Toby's first island is the Citadel, Lukas's the Backyard; their second islands are locked.
+    expect(mapIslands(fresh, 'zombies').map(mapTheme)).toEqual(['citadel', 'menu', 'menu', 'menu', 'menu']);
+    expect(mapIslands(fresh, 'plants').map(mapTheme)).toEqual(['backyard', 'menu', 'menu', 'menu', 'menu']);
   });
 });

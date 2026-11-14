@@ -200,7 +200,8 @@ export function mountGame(
   Object.defineProperty(lvt, 'screen', { configurable: true, get: () => screen.value });
 
   if (jumpIn) go({ name: 'battle', options: jumpIn });
-  // The menus have the demo battle behind them and their own tune.
+  // The menus have the demo battle behind them and their own tune; the map plays the tune of the
+  // island it shows (`onMusic`).
   const stopScreens = effect(() => {
     const s = screen.value;
     if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac' && s.name !== 'map') {
@@ -220,6 +221,7 @@ export function mountGame(
     audio.needsGesture ? audio.unlock().then(() => !audio.needsGesture) : true;
 
   const playUi = (name: Parameters<AudioEngine['play']>[0], opts?: { pitch?: number }): void => audio.play(name, opts);
+  const playMusic = (theme: Parameters<AudioEngine['startMusic']>[0]): void => audio.startMusic(theme);
 
   const renderer = stage?.renderer;
   renderer?.countDrawCalls(fps);
@@ -229,7 +231,7 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
-      onSound={playUi} almanac={almanac ?? undefined} map={map ?? undefined}
+      onSound={playUi} onMusic={playMusic} almanac={almanac ?? undefined} map={map ?? undefined}
     />
   );
   render(<Root />, ui);

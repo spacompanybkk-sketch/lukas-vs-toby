@@ -16,6 +16,7 @@ import { FREE_PLAY } from '../adventure/freePlay';
 import type { FreePlayRecord } from '../adventure/freePlay';
 import type { Turntable } from './hud/ResultOverlay';
 import type { SfxName } from '../audio/sfx';
+import type { Theme } from '../audio/music';
 import { board, rankChange } from '../app/board';
 import type { RankUp } from '../app/board';
 import { applyBattleResult, rewardFor } from '../progress/rewards';
@@ -68,6 +69,8 @@ export interface AppProps {
   fpsSource?: () => FpsStats;
   /** Plays a menu sound (a key, a refusal, a coin). */
   onSound?(name: SfxName, opts?: UiSoundOptions): void;
+  /** Plays a tune on a menu screen that picks its own (the Adventure map: the island shown). */
+  onMusic?(theme: Theme): void;
   /** The Almanac's turntable on the shared stage (none: the Almanac shows its panels only). */
   almanac?: AlmanacHost;
   /** The Adventure map's 3D board on the shared stage (none: the stones are laid out flat). */
@@ -163,7 +166,7 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   }, []);
 }
 
-export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, almanac, map }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, onMusic, almanac, map }: AppProps) {
   const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
@@ -223,7 +226,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       body = <PlaySide key={s.mode} mode={s.mode} boys={boys} portraits={portraits} />;
       break;
     case 'map':
-      body = <MapScreen side={s.side} card={s.card} world={s.world} portraits={portraits} boys={boys} host={map} />;
+      body = <MapScreen side={s.side} card={s.card} world={s.world} portraits={portraits} boys={boys} host={map} onMusic={onMusic} />;
       break;
     case 'battle':
       body = (

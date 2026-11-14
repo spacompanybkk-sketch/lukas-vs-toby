@@ -73,6 +73,52 @@ test('z1-1 on the Citadel look and theme ↔ a Backyard Quick Battle, ten round 
   for (const n of counts.slice(2)) expect(n, `geometries on the map: ${counts.join(', ')}`).toBe(counts[2]);
 });
 
+// The map plays the tune of the island it shows: after z1-1 (won, then quit) Toby's Citadel
+// island keeps the Citadel theme, Lukas's tab the Backyard, a locked island and the menus the menu theme.
+test('map music follows the island shown', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openTitle(page);
+  await logIn(page);
+  await page.evaluate(() => {
+    const lvt = window.__lvt as any;
+    const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((l) => (l.teaches ?? []).map((t) => t.id));
+    lvt.players.update((s: any) => ({ ...s, teached: ids }));
+  });
+  const theme = (): Promise<string | null> => page.evaluate(() => (window.__lvt as any).audio.musicTheme as string | null);
+  await press(page.locator('[data-home="play"]'));
+  await expect.poll(theme).toBe('menu');
+  await press(page.locator('[data-play="adventure"]'));
+  await press(page.locator('[data-side="zombies"]'));
+  await expect.poll(theme).toBe('citadel');
+  for (const how of ['win', 'quit'] as const) {
+    await press(page.locator('[data-stone="z1-1"]'));
+    await press(page.locator('[data-action="start-level"]'));
+    await waitLive(page);
+    if (how === 'win') {
+      await forceResult(page, 'plants');
+      await expect(page.locator('[data-level-result="z1-1"]')).toBeVisible({ timeout: 30_000 });
+      await press(page.locator('[data-screen="result"] [data-action="map"]'));
+    } else {
+      await press(page.locator('[data-hud="pause"]'));
+      await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+      await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+    }
+    await expect(page.locator('[data-screen="map"][data-side="zombies"]')).toBeVisible();
+    await expect.poll(theme, `after z1-1 (${how})`).toBe('citadel');
+  }
+  await press(page.locator('[data-tab="plants"]'));
+  await expect(page.locator('[data-screen="map"][data-side="plants"]')).toBeVisible();
+  await expect.poll(theme).toBe('backyard');
+  await press(page.locator('[data-action="world-next"]'));
+  await expect(page.locator('[data-screen="map"][data-locked]')).toBeVisible();
+  await expect.poll(theme).toBe('menu');
+  await press(page.locator('[data-action="world-prev"]'));
+  await expect.poll(theme).toBe('backyard');
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await expect(page.locator('[data-screen="play"]')).toBeVisible();
+  await expect.poll(theme).toBe('menu');
+});
+
 // Screenshots for review, only when asked: LVT_WORLD_SHOTS=<folder> npx playwright test e2e/worlds.spec.ts --project ipad -g shots
 // Every look with its twist, in a real level (the stand-in worlds), a picked card's marks, at the three iPad sizes.
 test('shots', async ({ page }) => {

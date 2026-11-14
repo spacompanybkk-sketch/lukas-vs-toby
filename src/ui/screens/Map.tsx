@@ -4,6 +4,7 @@ import { LEVELS, levelById } from '../../adventure/levels';
 import type { LevelDef } from '../../adventure/types';
 import { session } from '../../app/session';
 import { go, startLevel } from '../../app/store';
+import type { Theme } from '../../audio/music';
 import type { WorldKey } from '../../data/worlds';
 import type { Save } from '../../progress/save';
 import type { Faction } from '../../sim/types';
@@ -14,7 +15,7 @@ import { uiSound } from '../uiSound';
 import { QUESTION } from './adventurePictures';
 import { STAR } from './boardPictures';
 import { Digits, KindPicture, LevelCard, LockedCard, UnitPic } from './LevelCard';
-import { HOP_MS, mapIslands, mapStones, openingWorld } from './mapModel';
+import { HOP_MS, mapIslands, mapStones, mapTheme, openingWorld } from './mapModel';
 import type { Island, Stone, World } from './mapModel';
 import { ARROW, LOCK } from './pictures';
 import { PlayerPicture } from './PlayerPicture';
@@ -155,11 +156,12 @@ function WorldArrow({ dir, to, onTap }: { dir: 'prev' | 'next'; to: Island; onTa
  * padlock that refuses a tap. The map opens on the world of the next level (`world` keeps the
  * island an arrow went to). Two portrait tabs switch between Lukas's plants and Toby's zombies
  * (anyone may play either; each side has its own progress). A tap on a stone opens its card
- * (`card`). Without a host the stones are laid out flat.
+ * (`card`). Without a host the stones are laid out flat. `onMusic` is asked for the tune of the
+ * island shown (`mapTheme`) when the map opens and whenever the side or the island changes.
  */
-export function MapScreen({ side, card, world: asked, portraits = {}, boys = {}, host, levels = mapLevels.value }: {
+export function MapScreen({ side, card, world: asked, portraits = {}, boys = {}, host, levels = mapLevels.value, onMusic }: {
   side: Faction; card?: string; world?: World; portraits?: Record<string, string>; boys?: BoyPortraits; host?: MapHost;
-  levels?: readonly LevelDef[];
+  levels?: readonly LevelDef[]; onMusic?(theme: Theme): void;
 }) {
   const me = session.player.value;
   const loggedOut = me === null;
@@ -177,6 +179,11 @@ export function MapScreen({ side, card, world: asked, portraits = {}, boys = {},
     islands: islands.map((i) => ({ arena: i.arena, locked: i.locked })),
     frame: frameColor(me.slot), stones: stones.map((s) => ({ id: s.def.id, state: s.state })),
   };
+  // The island shown sets the tune (asking for the one already playing changes nothing).
+  const theme = me === null ? null : mapTheme(island);
+  useEffect(() => {
+    if (theme !== null) onMusic?.(theme);
+  }, [theme, onMusic]);
   const viewKey = view === null ? '' : `${view.side}|${view.arena}|${view.islands.map((i) => Number(i.locked)).join('')}|${view.frame}|${view.stones.map((s) => s.state).join(',')}`;
 
   // The 3D map: open once a player is there, kept in step with the stones, closed when the screen goes.

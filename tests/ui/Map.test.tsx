@@ -380,3 +380,25 @@ describe('Map screen: one island per world', () => {
     expect(need('[data-action="go-next"]').dataset.next).toBe('p2-1');
   });
 });
+
+describe('Map screen: music', () => {
+  it('asks for the shown island\'s tune on opening and on each side or island change, once per change', async () => {
+    await player();
+    const tunes: string[] = [];
+    const onMusic = (t: string): void => { tunes.push(t); };
+    act(() => render(<App boys={{ lukas: '/l.png', toby: '/t.png' }} onSound={(n) => sounds.push(n)} onMusic={onMusic} />, root));
+    act(() => go({ name: 'map', side: 'zombies' }));
+    expect(tunes).toEqual(['citadel']);
+    tap('[data-stone="z1-1"]'); // a card on the same island: the same tune, not asked again
+    tap('[data-action="close-card"]');
+    expect(tunes).toEqual(['citadel']);
+    tap('[data-tab="plants"]');
+    expect(tunes).toEqual(['citadel', 'backyard']);
+    tap('[data-action="world-next"]'); // a locked island
+    expect(tunes).toEqual(['citadel', 'backyard', 'menu']);
+    tap('[data-action="world-prev"]');
+    expect(tunes).toEqual(['citadel', 'backyard', 'menu', 'backyard']);
+    act(() => go({ name: 'play' }));
+    expect(tunes).toHaveLength(4);
+  });
+});
