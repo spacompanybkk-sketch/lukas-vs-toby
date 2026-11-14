@@ -52,6 +52,18 @@ const LAWN: Subject = {
   freeTop: free(0.09),
   freeBottom: free(0.22),
 };
+/** The subject framing `box` the way `view` says. */
+function subjectOf(box: FrameBox, view: FrameView): Subject {
+  return {
+    box,
+    pitch: view.pitchDeg === undefined ? LAWN.pitch : MathUtils.degToRad(MathUtils.clamp(view.pitchDeg, -89, 89)),
+    yaw: MathUtils.degToRad(view.yawDeg ?? 0),
+    freeX: free(view.side ?? 0.03),
+    freeTop: free(view.top ?? 0.09),
+    freeBottom: free(view.bottom ?? 0.22),
+  };
+}
+
 /** Below this pitch the view never meets the ground near the box, so the camera orbits the box itself. */
 const MIN_GROUND_PITCH = MathUtils.degToRad(12);
 
@@ -74,6 +86,9 @@ const euler = new Euler(0, 0, 0, 'YXZ');
 const scratch = new Vector3();
 /** A punch with a focus leans this share of the way towards its lane. */
 const PUNCH_LEAN = 0.4;
+
+/** A focus (`focus`) eases in, and back to the framed shot, over this long. */
+export const FOCUS_SECONDS = 0.8;
 
 /** The victory shot's pitch (degrees down) and distance (share of the framed shot's). */
 const VICTORY_PITCH_DEG = 52;
@@ -107,6 +122,11 @@ export class CameraRig {
   private introLeft = 0;
   private introDone: (() => void) | null = null;
 
+  /** What `focus` looks at (null: back to the framed shot), its shot, and how far in it is (0..1). */
+  private focusSubject: Subject | null = null;
+  private readonly focusOrbit: Orbit = { pivot: new Vector3(), yaw: 0, pitch: LAWN.pitch, distance: 30 };
+  private focusWeight = 0;
+
   private victory: Faction | null = null;
   private victoryClock = 0;
   /** Where the victory shot looks, along the lawn (see `orbitVictory`). */
@@ -132,17 +152,26 @@ export class CameraRig {
    * to the lawn. For scenes that show something other than a match, such as the model gallery.
    */
   frameSubject(box: FrameBox | null, view: FrameView = {}): void {
-    this.subject = box
-      ? {
-          box,
-          pitch: view.pitchDeg === undefined ? LAWN.pitch : MathUtils.degToRad(MathUtils.clamp(view.pitchDeg, -89, 89)),
-          yaw: MathUtils.degToRad(view.yawDeg ?? 0),
-          freeX: free(view.side ?? 0.03),
-          freeTop: free(view.top ?? 0.09),
-          freeBottom: free(view.bottom ?? 0.22),
-        }
-      : LAWN;
+    this.subject = box ? subjectOf(box, view) : LAWN;
     this.fitSubject(this.camera.aspect);
+  }
+
+  /**
+   * Eases over `FOCUS_SECONDS` from the framed shot to one of `box` (as `frameSubject` would frame
+   * it), and stays on it; `null` eases back to the framed shot, exactly. Called again with another
+   * box while focused, the camera follows the new box from where it is (a pan). Kept through
+   * resizes; `reset` drops it at once. For a short look at something during a match (the twist
+   * lesson), where the framed shot must come back untouched.
+   */
+  focus(box: FrameBox | null, view: FrameView = {}): void {
+    this.focusSubject = box ? subjectOf(box, view) : null;
+    if (this.focusSubject !== null) this.fit(this.focusSubject, this.focusOrbit);
+    this.apply();
+  }
+
+  /** A focus is on, or still easing back. */
+  get focusing(): boolean {
+    return this.focusSubject !== null || this.focusWeight > 0;
   }
 
   /**
@@ -154,8 +183,15 @@ export class CameraRig {
     camera.fov = FOV_DEG;
     camera.aspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
     camera.updateProjectionMatrix();
+    this.fit(this.subject, this.home);
+    if (this.focusSubject !== null) this.fit(this.focusSubject, this.focusOrbit);
+    this.apply();
+  }
 
-    const { box, pitch, yaw, freeX, freeTop, freeBottom } = this.subject;
+  /** The shot of `subject` for the camera's current aspect, into `out` (nothing else changes). */
+  private fit(subject: Subject, out: Orbit): void {
+    const camera = this.camera;
+    const { box, pitch, yaw, freeX, freeTop, freeBottom } = subject;
     const tanY = Math.tan(MathUtils.degToRad(FOV_DEG) / 2);
     const tanX = tanY * camera.aspect;
     // Camera axes at this pitch and yaw. With no yaw, right is +X and `up` and `fwd` lie in
@@ -225,12 +261,10 @@ export class CameraRig {
     // for a view too level to meet the ground nearby, the point level with the box centre).
     const grounded = pitch >= MIN_GROUND_PITCH && eyeY > 0;
     const reach = grounded ? eyeY / sinPitch : distance;
-    this.home.pivot.set(eyeX + fwdX * reach, grounded ? 0 : eyeY + fwdY * reach, eyeZ + fwdZ * reach);
-    this.home.yaw = yaw;
-    this.home.pitch = pitch;
-    this.home.distance = reach;
-
-    this.apply();
+    out.pivot.set(eyeX + fwdX * reach, grounded ? 0 : eyeY + fwdY * reach, eyeZ + fwdZ * reach);
+    out.yaw = yaw;
+    out.pitch = pitch;
+    out.distance = reach;
   }
 
   /** Mouse position across the window, −1..1 on each axis; the camera leans a little towards it. */
@@ -298,6 +332,8 @@ export class CameraRig {
     this.finishIntro();
     this.victory = null;
     this.victoryClock = 0;
+    this.focusSubject = null;
+    this.focusWeight = 0;
     this.shakeLeft = 0;
     this.shakeSeconds = 0;
     this.punchLeft = 0;
@@ -319,6 +355,11 @@ export class CameraRig {
     this.shakeLeft = Math.max(0, this.shakeLeft - dt);
     this.punchLeft = Math.max(0, this.punchLeft - dt);
     if (this.victory) this.victoryClock += dt;
+    const towards = this.focusSubject !== null ? 1 : 0;
+    if (this.focusWeight !== towards) {
+      const stepBy = dt / FOCUS_SECONDS;
+      this.focusWeight = towards > this.focusWeight ? Math.min(1, this.focusWeight + stepBy) : Math.max(0, this.focusWeight - stepBy);
+    }
 
     if (this.introDone) {
       this.introLeft = Math.max(0, this.introLeft - dt);
@@ -350,6 +391,16 @@ export class CameraRig {
       pose.pitch += MathUtils.degToRad(-22) * k;
       pose.distance *= 1 + 0.8 * k;
       pose.pivot.y -= 1.2 * k;
+    }
+
+    if (this.focusWeight > 0) {
+      // Towards the focused shot (`focus`), eased; at 0 the framed shot is untouched.
+      const k = easeInOutCubic(this.focusWeight);
+      const f = this.focusOrbit;
+      pose.pivot.lerp(f.pivot, k);
+      pose.yaw = MathUtils.lerp(pose.yaw, f.yaw, k);
+      pose.pitch = MathUtils.lerp(pose.pitch, f.pitch, k);
+      pose.distance = MathUtils.lerp(pose.distance, f.distance, k);
     }
 
     if (this.victory) {
