@@ -8,7 +8,7 @@ import type { Match } from '../sim/match';
 import { isStanding } from '../sim/lookup';
 import { spellArea } from '../sim/spells';
 import { COLS, LANES, MAX_LEVEL, PLANT_COLS, TICKS_PER_SECOND } from '../sim/types';
-import type { CardKey, Command, Faction, SimEvent, SpellKey, Unit } from '../sim/types';
+import type { CardKey, Command, Faction, LawnConfig, SimEvent, SpellKey, Unit } from '../sim/types';
 
 /**
  * The tutorial (plan Task 6): a level's `teaches` steps, played by pointing and doing. A boxy glove
@@ -32,6 +32,25 @@ import type { CardKey, Command, Faction, SimEvent, SpellKey, Unit } from '../sim
 /** An armed step whose action stopped being possible holds the match at most this long. */
 export const MISSING_HOLD_SECONDS = 6;
 
+/** A twist pan nobody has tapped for this long brings the glove, tapping the lawn: "tap". */
+export const TWIST_HINT_SECONDS = 3;
+
+/** The twists a `twist` step can show. */
+export type TwistShowKind = 'fog' | 'ice';
+
+/**
+ * The twist a `twist` step shows on this lawn, or null when the lawn has none it can show (the
+ * step is then left out). The step's id ending `.fog` or `.ice` picks between the two when the
+ * lawn has both.
+ */
+export function twistShown(lawn: LawnConfig, id: string): TwistShowKind | null {
+  const fog = lawn.fog !== null;
+  const ice = lawn.ice !== null && lawn.ice.lanes.length > 0;
+  if (id.endsWith('.ice') && ice) return 'ice';
+  if (id.endsWith('.fog') && fog) return 'fog';
+  return fog ? 'fog' : ice ? 'ice' : null;
+}
+
 /** What the glove points at. */
 export type GloveAim =
   /** A card in the tray, or on the belt. */
@@ -42,10 +61,15 @@ export type GloveAim =
   | { kind: 'unit'; unitId: number }
   | { kind: 'hero' }
   /** A spell button, by its place in the deal. */
-  | { kind: 'spell'; index: number; key: SpellKey };
+  | { kind: 'spell'; index: number; key: SpellKey }
+  /** A twist pan's hint: anywhere will do; the glove taps the middle of the lawn. */
+  | { kind: 'tap' };
 
 /** The glove as the HUD shows it: where it points, whether the match is held (the screen dims), and which step. */
 export interface GloveVM { aim: GloveAim; holding: boolean; step: string }
+
+/** A twist step as the stage and the HUD show it: which twist, and whether the match is held now (the pan plays). */
+export interface TwistVM { step: string; kind: TwistShowKind; holding: boolean }
 
 /** A player action the controller is about to take, for `allows`. */
 export type TutorialAction =
@@ -92,7 +116,7 @@ const sameAim = (a: GloveAim, b: GloveAim): boolean => {
     case 'tile': return a.lane === (b as typeof a).lane && a.col === (b as typeof a).col;
     case 'unit': return a.unitId === (b as typeof a).unitId;
     case 'spell': return a.index === (b as typeof a).index && a.key === (b as typeof a).key;
-    case 'hero': return true;
+    case 'hero': case 'tap': return true;
   }
 };
 
@@ -109,10 +133,15 @@ export class Tutorial {
   readonly taught: ReadonlySignal<readonly string[]>;
   /** Goes to 1 the first time a Sunflower pays after a Sunflower step (the energy counter pulses once). */
   readonly sunPulse: ReadonlySignal<number>;
+  /** A twist step armed (the stage pans over the twist while it holds); null otherwise. */
+  readonly twist: ReadonlySignal<TwistVM | null>;
 
   private readonly gloveSig = signal<GloveVM | null>(null);
   private readonly taughtSig = signal<readonly string[]>([]);
   private readonly sunSig = signal(0);
+  private readonly twistSig = signal<TwistVM | null>(null);
+  /** Step calls a twist step has held the match untapped (the "tap" glove comes at `TWIST_HINT_SECONDS`). */
+  private twistHeld = 0;
   private readonly steps: TutorialStep[];
   private readonly host: TutorialHost;
   private index = 0;
@@ -140,6 +169,7 @@ export class Tutorial {
     this.glove = this.gloveSig;
     this.taught = this.taughtSig;
     this.sunPulse = this.sunSig;
+    this.twist = this.twistSig;
     // Steps the match cannot play (a card not dealt, a spell not dealt, no hero) are left out.
     const s = host.match.state;
     const me = host.playerFaction;
@@ -152,8 +182,7 @@ export class Tutorial {
         case 'hero': return s.config.heroes[me];
         case 'spell': return st.index < s.players[me].spells.length;
         case 'belt': case 'belt-tile': return s.config.belt?.side === me;
-        // Task 3 implements the pan: until then a twist step is skipped (never shown, nothing held).
-        case 'twist': return false;
+        case 'twist': return twistShown(s.config.lawn, st.id) !== null;
       }
     });
     this.update();
@@ -196,6 +225,10 @@ export class Tutorial {
       this.update();
     }
     if (this.current === null || !this.started) return;
+    if (this.current.show === 'twist' && this.holding) {
+      this.twistHeld += 1;
+      if (this.twistHeld === TWIST_HINT_SECONDS * TICKS_PER_SECOND) this.update();
+    }
     if (this.ready) {
       this.grace = 0;
     } else if (this.armed && this.host.match.state.tick > 0) {
@@ -239,9 +272,20 @@ export class Tutorial {
       case 'belt-tile':
         if (action.kind === 'select') return true;
         return action.kind === 'command' && this.host.selected() !== null && this.isStepTile(action.cmd);
-      case 'twist': // Task 3 implements the pan (the constructor skips twist steps until then)
-        return true;
+      // The pan takes no action: the controller ends it on any tap (`tapped`) and swallows the tap.
+      case 'twist':
+        return false;
     }
+  }
+
+  /** The current step is a twist pan holding the match: the next tap of any kind ends it. */
+  get twistHolding(): boolean {
+    return this.current?.show === 'twist' && this.holding;
+  }
+
+  /** A tap, anywhere, while a twist pan holds the match: the step is done. Does nothing otherwise. */
+  tapped(): void {
+    if (this.twistHolding) this.done();
   }
 
   /** The player picked `card` (tray or belt): a `card` step for it, or a `belt` step, is done (when armed or usable). */
@@ -304,6 +348,7 @@ export class Tutorial {
     this.started = false;
     this.armed = false;
     this.grace = 0;
+    this.twistHeld = 0;
     this.sent = null;
     this.sentIsStep = false;
     this.update();
@@ -424,7 +469,10 @@ export class Tutorial {
         this.ready = true; // placeTile checked the command
         break;
       }
-      case 'twist': // Task 3 implements the pan (the constructor skips twist steps until then)
+      case 'twist':
+        // Nothing to point at (any tap ends it), until no tap has come for a while: then "tap".
+        this.aim = this.twistHeld >= TWIST_HINT_SECONDS * TICKS_PER_SECOND ? { kind: 'tap' } : null;
+        this.ready = true; // a tap is always possible
         break;
     }
     if (this.ready && !this.armed) {
@@ -597,9 +645,10 @@ export class Tutorial {
     return h;
   }
 
-  /** Writes the glove signal when what it shows changed: only while the step is armed. */
+  /** Writes the glove (and twist) signals when what they show changed: only while the step is armed. */
   private publish(): void {
     const step = this.current;
+    this.publishTwist();
     const aim = step === null || !this.started || !this.armed ? null : this.aim;
     const old = this.gloveSig.peek();
     if (aim === null) {
@@ -609,5 +658,18 @@ export class Tutorial {
     const holding = this.holding;
     if (old !== null && old.step === step!.id && old.holding === holding && sameAim(old.aim, aim)) return;
     this.gloveSig.value = { aim, holding, step: step!.id };
+  }
+
+  private publishTwist(): void {
+    const step = this.current;
+    const old = this.twistSig.peek();
+    const kind = step?.show === 'twist' && this.started && this.armed ? twistShown(this.host.match.state.config.lawn, step.id) : null;
+    if (kind === null || step === null) {
+      if (old !== null) this.twistSig.value = null;
+      return;
+    }
+    const holding = this.holding;
+    if (old !== null && old.step === step.id && old.kind === kind && old.holding === holding) return;
+    this.twistSig.value = { step: step.id, kind, holding };
   }
 }

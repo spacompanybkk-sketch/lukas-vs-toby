@@ -60,4 +60,33 @@ export const TEACHES: Readonly<Record<string, readonly TutorialStep[]>> = {
     { id: 'z1-5.belt', show: 'belt', until: 'selected' },
     { id: 'z1-5.belt-tile', show: 'belt-tile', lane: 2, col: 9, until: 'placed' },
   ],
+
+  // World 2 (content design §3, plan Rulings 1–2). Written ahead of the level files (`p2.ts`,
+  // `z2.ts`, Tasks 6–7): a lesson whose level is not in `LEVELS` yet is simply not used.
+  //
+  // The Moonlit Meadow's fog: the camera pans while a ghost pea flies and puffs out at the level's
+  // reach; any tap ends it.
+  'p2-1': [{ id: 'p2-1.fog', show: 'twist', until: 'tapped' }],
+  // The Mango-pult, the first level that deals it: in the middle lane, a little forward.
+  'p2-4': [
+    { id: 'p2-4.mango-card', show: 'card', card: 'mangoPult', until: 'selected' },
+    { id: 'p2-4.mango-tile', show: 'tile', card: 'mangoPult', lane: 2, col: 2, until: 'placed' },
+  ],
+  // The Avocado Bunker: in front, in the middle lane, holding the line.
+  'p2-7': [
+    { id: 'p2-7.avocado-card', show: 'card', card: 'avocadoBunker', until: 'selected' },
+    { id: 'p2-7.avocado-tile', show: 'tile', card: 'avocadoBunker', lane: 2, col: 4, until: 'placed' },
+  ],
+  // The Frozen Tundra's ice: the icy lanes pulse and a ghost zombie slides down one; any tap ends it.
+  'z2-1': [{ id: 'z2-1.ice', show: 'twist', until: 'tapped' }],
+  // Hot Topic, the first level that deals it: down the back lane.
+  'z2-4': [
+    { id: 'z2-4.hot-card', show: 'card', card: 'hotTopic', until: 'selected' },
+    { id: 'z2-4.hot-lane', show: 'tile', card: 'hotTopic', lane: 0, col: 9, until: 'placed' },
+  ],
+  // The Cowboy Zombie: down the middle lane.
+  'z2-7': [
+    { id: 'z2-7.cowboy-card', show: 'card', card: 'cowboyZombie', until: 'selected' },
+    { id: 'z2-7.cowboy-lane', show: 'tile', card: 'cowboyZombie', lane: 2, col: 9, until: 'placed' },
+  ],
 };

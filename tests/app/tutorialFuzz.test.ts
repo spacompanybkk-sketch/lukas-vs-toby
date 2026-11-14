@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { levelById } from '../../src/adventure/levels';
 import { BattleController } from '../../src/app/BattleController';
 import { levelOptions, prepareLevel } from '../../src/app/levelSession';
-import { MISSING_HOLD_SECONDS, stepsToTeach } from '../../src/app/tutorial';
+import { MISSING_HOLD_SECONDS, rememberTaught, stepsToTeach } from '../../src/app/tutorial';
+import type { LevelDef } from '../../src/adventure/types';
+import type { Save } from '../../src/progress/save';
+import { W2, lessonController, w2Save } from './world2Lessons';
 import { seconds } from '../../src/data/balance';
 import { newSave } from '../../src/progress/save';
 import { SPELLS } from '../../src/sim/spells';
@@ -63,6 +66,9 @@ function gloveActionValid(c: BattleController): boolean {
       }
       return false;
     }
+    case 'tap':
+      // The twist pan's hint: any tap ends a twist step that holds.
+      return c.tutorial!.twistHolding;
   }
 }
 
@@ -89,6 +95,9 @@ function tapGlove(c: BattleController): void {
       return;
     case 'spell':
       c.selectSpell(a.key);
+      return;
+    case 'tap':
+      c.tapTwist();
       return;
   }
 }
@@ -144,6 +153,16 @@ describe('the tutorial never freezes the match without an action to take', () =>
     }, 120_000);
   }
 
+  // Step 2: the world-2 lessons (the twist pans and the new-card gloves), on stand-in levels.
+  for (const id of Object.keys(W2)) {
+    it(`${id}: following the glove ends every step, on 50 seeds`, () => {
+      for (const seed of SEEDS) follow(lessonController(W2[id]!, seed), 150);
+    }, 120_000);
+    it(`${id}: a child who never taps is held only with a valid action, on 50 seeds`, () => {
+      for (const seed of SEEDS) idle(lessonController(W2[id]!, seed), 20);
+    }, 120_000);
+  }
+
   for (const side of ['plants', 'zombies'] as const) {
     for (const key of SPELLS[side]) {
       it(`${side === 'plants' ? 'p1-4' : 'z1-4'} with ${key} dealt first: the spell lesson ends, on 10 seeds`, () => {
@@ -156,4 +175,94 @@ describe('the tutorial never freezes the match without an action to take', () =>
       }, 120_000);
     }
   }
+});
+
+/** A small seeded random number generator (mulberry32). */
+function random(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * A child doing anything at all: taps on random tiles (and off the lawn), cards, the hero, spells,
+ * the shovel, Escape, drags (a card, then a tile), Pause and Resume, Restart and a reload of the page
+ * mid-step (both a new battle with the steps done so far remembered, as the app does). Whatever he
+ * does, the match is never held without an action that would let it go: a twist pan holds only
+ * while any tap ends it (and the HUD shows it), any other step only while its glove's action is
+ * valid (or for at most the limit). At the end he follows the glove, and the lessons end.
+ */
+function chaos(def: LevelDef, seed: number): void {
+  const rnd = random(seed * 7919 + 13);
+  const pickOf = <T>(xs: readonly T[]): T | undefined => xs[Math.floor(rnd() * xs.length)];
+  let save: Save = w2Save(def.side);
+  let c = lessonController(def, seed, save);
+  const remember = (): void => { save = (c.tutorial?.taught.peek() ?? []).reduce(rememberTaught, save); };
+  const side = def.side;
+  let streak = 0;
+  for (let i = 0; i < seconds(45); i++) {
+    const s = c.match.state;
+    s.baseHp[side] = s.baseMaxHp[side];
+    if (rnd() < 0.15) {
+      const r = rnd();
+      const hand = s.config.cards[side];
+      const tile = rnd() < 0.1 ? null : { lane: Math.floor(rnd() * LANES), col: Math.floor(rnd() * COLS) };
+      if (r < 0.25) c.click(tile, null);
+      else if (r < 0.4) { const card = pickOf(hand); if (card !== undefined) c.select(card); }
+      else if (r < 0.5) { const card = pickOf(hand); if (card !== undefined) { c.select(card); c.click(tile, null); } } // a drag
+      else if (r < 0.55) c.selectHero(true);
+      else if (r < 0.6) { const sp = pickOf(s.players[side].spells); if (sp !== undefined) c.selectSpell(sp.key); }
+      else if (r < 0.65) c.toggleShovel();
+      else if (r < 0.7) c.hotkey('Escape');
+      else if (r < 0.78) c.tapTwist();
+      else if (r < 0.86) c.setPaused(!c.hud.paused.peek());
+      else if (r < 0.93) { remember(); c = lessonController(def, seed + i, save); } // Restart
+      else { remember(); c = lessonController(def, (seed * 31 + i) >>> 0, save); } // a reload mid-step
+    }
+    c.step();
+    const t = c.tutorial;
+    if (t === null || t.current === null) continue;
+    if (t.twistHolding) {
+      // Held by a pan: the HUD's catcher is up (any tap ends it) and Pause is no tap.
+      expect(t.twist.peek()?.holding, `pan held but not shown at tick ${c.match.state.tick}`).toBe(true);
+      streak = 0;
+    } else if (t.holding && !gloveActionValid(c)) {
+      streak += 1;
+    } else {
+      streak = 0;
+    }
+    expect(streak, `${def.id}: held with no valid action at tick ${c.match.state.tick}`).toBeLessThanOrEqual(LIMIT);
+    if (c.match.state.winner !== null) { remember(); c = lessonController(def, seed + i, save); }
+  }
+  // Then he follows the glove (unpaused): every lesson left ends.
+  c.setPaused(false);
+  if (c.tutorial !== null) {
+    const before = c.tutorial.taught.peek().length;
+    follow(c, 150);
+    expect(c.tutorial.taught.peek().length).toBeGreaterThanOrEqual(before);
+  }
+}
+
+describe('a child doing anything during the world-2 lessons never leaves the match held with no way on', () => {
+  for (const id of Object.keys(W2)) {
+    it(`${id}: random taps, drags, pauses, restarts and reloads, on 40 seeds`, () => {
+      for (const seed of SEEDS.slice(0, 40)) chaos(W2[id]!, seed);
+    }, 120_000);
+  }
+  it('a pan with the hint glove up: any of the child\'s taps ends it, Pause and Resume do not', () => {
+    const c = lessonController(W2['z2-1']!, 5);
+    for (let i = 0; i < seconds(4); i++) c.step();
+    expect(c.tutorial!.glove.peek()?.aim).toEqual({ kind: 'tap' });
+    c.setPaused(true);
+    c.setPaused(false);
+    expect(c.tutorial!.twistHolding).toBe(true);
+    c.hotkey('1');
+    expect(c.tutorial!.current).toBeNull();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+  });
 });

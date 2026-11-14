@@ -347,6 +347,23 @@ export class BattleController {
     if (first !== undefined && this.tutorial?.startsWithCard !== true) this.hud.selected.value = first.unit;
   }
 
+  /**
+   * A twist pan holds the match: this tap (whatever it was on) ends it and does nothing else.
+   * Every player action calls this first, so a twist step is never left holding a child who taps.
+   */
+  private endedTwist(): boolean {
+    const tutorial = this.tutorial;
+    if (tutorial === null || !tutorial.twistHolding) return false;
+    tutorial.tapped();
+    return true;
+  }
+
+  /** A tap anywhere on the screen during a twist pan (the HUD's catcher over it): the pan ends. Not while paused. */
+  tapTwist(): void {
+    if (this.hud.paused.peek() || this.over()) return;
+    this.endedTwist();
+  }
+
   /** A tutorial step waits: anything but its own action is ignored (no denial, no buzz). */
   private refused(action: TutorialAction): boolean {
     return this.tutorial !== null && !this.tutorial.allows(action);
@@ -408,6 +425,7 @@ export class BattleController {
 
   select(unit: UnitKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.endedTwist()) return;
     if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
     if (this.refused(unit === null ? { kind: 'other' } : { kind: 'select', card: unit as CardKey })) return;
     this.levelHud.beltSlot.value = null;
@@ -426,6 +444,7 @@ export class BattleController {
    */
   selectBelt(slot: number | null): void {
     if (this.hud.paused.peek() || this.over() || this.level?.belt !== true) return;
+    if (this.endedTwist()) return;
     const card = slot === null ? undefined : this.match.state.belt[slot];
     if (this.refused(card === undefined ? { kind: 'other' } : { kind: 'select', card })) return;
     if (slot === null || card === undefined) {
@@ -447,6 +466,7 @@ export class BattleController {
 
   toggleShovel(): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.endedTwist()) return;
     if (this.playerFaction !== 'plants' || this.refused({ kind: 'other' })) return;
     const on = !this.hud.shovel.peek();
     this.hud.shovel.value = on;
@@ -465,6 +485,7 @@ export class BattleController {
    */
   selectHero(on: boolean): void {
     if (this.hud.paused.peek() || this.over() || this.level?.heroHidden === true) return;
+    if (this.endedTwist()) return;
     if (this.refused(on ? { kind: 'hero' } : { kind: 'other' })) return;
     if (!on) {
       if (this.hud.heroSelected.peek()) this.powerDone();
@@ -495,6 +516,7 @@ export class BattleController {
    */
   selectSpell(key: SpellKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.endedTwist()) return;
     if (this.refused(key === null || key === this.hud.spellSelected.peek() ? { kind: 'other' } : { kind: 'spell', key })) return;
     if (key === null || key === this.hud.spellSelected.peek()) {
       if (this.hud.spellSelected.peek() !== null) this.powerDone();
@@ -573,6 +595,7 @@ export class BattleController {
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.endedTwist()) return 'ignored';
     if (this.tutorial?.holding === true && !this.tutorialTap(tile, unitId)) return 'ignored';
     if (this.hud.heroSelected.peek()) return tile === null ? this.deny('bad-lane') : this.heroLane(tile.lane);
     const spell = this.hud.spellSelected.peek();
@@ -730,6 +753,7 @@ export class BattleController {
   heroLane(lane: number): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null || this.level?.heroHidden === true) return 'ignored';
+    if (this.endedTwist()) return 'ignored';
     const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
     if (this.refused({ kind: 'command', cmd })) return 'ignored';
     const reason = this.match.check(cmd);
@@ -746,7 +770,7 @@ export class BattleController {
     }
     if (this.hud.paused.peek() || this.over()) return;
     if (key === 'Escape') {
-      if (this.refused({ kind: 'other' })) return;
+      if (this.endedTwist() || this.refused({ kind: 'other' })) return;
       this.levelHud.beltSlot.value = null;
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
