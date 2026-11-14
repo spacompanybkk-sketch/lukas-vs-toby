@@ -10,7 +10,7 @@
  *   he takes a random card to a sensible tile.
  * - **average** (Lukas, 8, on Normal): the Medium computer's choices, a little slow and careless
  *   (one decision every 3 s, 15% of them random, no powers before 20 s, at most 4 Sunflowers); Marketplace upgrades as the campaign's rewards allow
- *   (`averageUpgrade`: `floor(coins earned so far / 1500)` on his three favourite units).
+ *   (`averageUpgrades` in `levelChecks.ts`: the coins of his stars, spent at the real prices on his favourites).
  * - **expert** (on Normal, no upgrades): the Hard computer's choices. Against the Brain Titan it
  *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane (the
  *   average player puts Peashooters there: he shoots at the giant).
@@ -52,18 +52,11 @@ export const AVERAGE = { every: 90, randomShare: 0.15, powerFirst: 20, sunflower
 /** How often the expert takes a belt card (ticks). */
 export const EXPERT_BELT_EVERY = 15;
 
-/** Coins that buy the average player one more upgrade level on each favourite. */
-export const COINS_PER_UPGRADE = 1500;
-/** The average player's three favourite units, per side: what he upgrades. */
+/** The average player's three first favourite units, per side (his newest unlocks join them: `favouritesAt`). */
 export const FAVOURITES: Readonly<Record<Faction, readonly CardKey[]>> = {
   plants: ['peashooter', 'sunflower', 'walnutBomb'],
   zombies: ['brainEater', 'veryFastWalker', 'skeletonWarrior'],
 };
-
-/** The average player's upgrade level on his favourites, having earned `coins` so far. */
-export function averageUpgrade(coins: number): number {
-  return Math.min(10, Math.floor(coins / COINS_PER_UPGRADE));
-}
 
 /** The skill table each stand-in decides with (the beginner has none: he taps). */
 export function standInTable(kind: Exclude<LevelStandIn, 'beginner'>, side: Faction): SkillTable {

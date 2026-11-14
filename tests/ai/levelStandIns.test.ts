@@ -4,7 +4,7 @@ import { levelById } from '../../src/adventure/levels';
 import { SKILLS } from '../../src/ai/basicBot';
 import { playLevel, standInFor, standInSave } from '../../src/ai/levelChecks';
 import {
-  AVERAGE, BEGINNER_TAP, LEVEL_STAND_INS, STAND_IN_DIFFICULTY, averageUpgrade, createLevelStandIn, standInTable,
+  AVERAGE, BEGINNER_TAP, LEVEL_STAND_INS, STAND_IN_DIFFICULTY, createLevelStandIn, standInTable,
 } from '../../src/ai/levelStandIns';
 import { Match } from '../../src/sim/match';
 import type { Command } from '../../src/sim/types';
@@ -93,11 +93,11 @@ describe('the level stand-ins', () => {
     expect(standInTable('expert', 'plants')).toBe(SKILLS.plants.hard);
   });
 
-  it('difficulty: the beginner on Easy, the others on Normal; upgrades from coins (none in the Backyard)', () => {
+  it('difficulty: the beginner on Easy, the others on Normal; only the average player buys upgrades', () => {
     expect(STAND_IN_DIFFICULTY).toEqual({ beginner: 'easy', average: 'medium', expert: 'medium' });
-    expect([0, 1499, 1500, 4600, 99999].map(averageUpgrade)).toEqual([0, 0, 1, 3, 10]);
     const z8 = levelById('z1-8')!;
-    expect(standInSave('average', z8).upgrades).toEqual({});
+    expect(Object.keys(standInSave('average', z8).upgrades).length).toBeGreaterThan(0);
+    expect(standInSave('expert', z8).upgrades).toEqual({});
     expect(standInSave('beginner', z8).zombies.unlocked).toEqual(['desertZombie', 'skeletonArcher']);
   });
 
