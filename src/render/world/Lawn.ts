@@ -9,7 +9,9 @@ import { buildIsland, buildIslet } from './island';
 import { LOOKS, type Look } from './looks';
 import { TileMark, type MarkState } from './TileMark';
 import { Weather } from './Weather';
-import { NO_TWIST, TwistTiles, coveredTile, sameLawn, type LawnConfig } from './TwistTiles';
+import { TwistTiles, coveredTile, sameLawn } from './TwistTiles';
+import { NO_TWIST } from '../../sim/lawn';
+import type { LawnConfig } from '../../sim/types';
 
 /** A small rock adrift beside the island. */
 interface Islet {

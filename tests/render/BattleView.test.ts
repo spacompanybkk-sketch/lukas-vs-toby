@@ -158,7 +158,7 @@ describe('BattleView', () => {
     view.applyEvents(events, match.state);
     run(0.4);
     match.state.projectiles.push({
-      id: 98, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: shooter.id, spawnTick: 0, flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0
+      id: 98, kind: 'pea', faction: 'plants', lane: 2, x: 1.5, speed: 0.2, damage: 20, ownerId: shooter.id, spawnTick: 0, flight: 'straight', sourceKey: 'peashooter', level: 1, targetId: null, targetX: null, pierceLeft: 0, hitIds: [], burning: false, burnDps: 0, burnTicks: 0, fadeX: 6.5
     });
     view.applyEvents([
       { type: 'unitAttacked', unitId: shooter.id, attack: 'shot', targetId: null, targetBase: 'zombies' },
@@ -168,8 +168,7 @@ describe('BattleView', () => {
     expect(countNamed(scene, 'projectile-')).toBe(1);
     const puff = vi.spyOn(fx, 'puff');
     match.state.projectiles.length = 0;
-    // TODO(merge): typed once the sim's SimEvent has it.
-    view.applyEvents([{ type: 'projectileFaded', id: 98, x: 6.5, lane: 2 } as unknown as SimEvent], match.state);
+    view.applyEvents([{ type: 'projectileFaded', id: 98, x: 6.5, lane: 2 }], match.state);
     run(DT);
     expect(countNamed(scene, 'projectile-')).toBe(0);
     expect(puff).toHaveBeenCalledTimes(1);

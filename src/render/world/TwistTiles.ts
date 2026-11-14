@@ -3,30 +3,16 @@ import { DISPLAY_TO_SCENE_GLSL, MATTE_PLASTIC } from '../look';
 import { BoxBatch, seededRandom, shade } from './boxes';
 import type { WorldKey } from '../../data/worlds';
 import { COLS, PLANT_COLS } from '../../sim/types';
+import type { LawnConfig } from '../../sim/types';
+import { NO_TWIST } from '../../sim/lawn';
 
 // The lawn twists as the player sees them: boulders on rock tiles, mist over a foggy lawn,
 // icy lanes and glowing lava tiles. Built once when a battle starts (the twists never change
 // during a match); `update` only moves uniforms.
 
-// TODO(merge): import LawnConfig and NO_TWIST from the sim once the twist task is merged; this
-// is the same shape, declared here so the render layer builds before it.
-/** What a level does to the lawn (the sim's `MatchConfig.lawn`). */
-export interface LawnConfig {
-  /** Tiles a plant may not be put on, as lane * PLANT_COLS + col. */
-  rocks: number[];
-  /** Tiles a shot reaches before it fades, or null for no fog. */
-  fog: number | null;
-  ice: { lanes: number[]; speed: number } | null;
-  /** Burning tiles, as lane * COLS + col. */
-  lava: { tiles: number[]; dps: number; burnTicks: number } | null;
-}
-
-/** A lawn with no twist. */
-export const NO_TWIST: LawnConfig = { rocks: [], fog: null, ice: null, lava: null };
-
 /**
- * Each world's twist as a level might use it, for the tools and the debug hooks until the
- * levels of worlds 2–5 exist (numbers as `Balance.twists` will give them).
+ * Each world's twist as a level might use it: tool and debug data only (the screenshot and perf
+ * scenes, `__lvt.setWorld`). Real battles draw their level's own `MatchConfig.lawn`.
  */
 export const SAMPLE_LAWNS: Record<WorldKey, LawnConfig> = {
   backyard: NO_TWIST,

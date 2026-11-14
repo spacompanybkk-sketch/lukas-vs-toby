@@ -1,7 +1,7 @@
 import type { WorldKey } from '../data/worlds';
 import type { Renderer } from '../render/Renderer';
 import type { Lawn } from '../render/world/Lawn';
-import type { LawnConfig } from '../render/world/TwistTiles';
+import type { LawnConfig } from '../sim/types';
 
 /** Test hooks exposed on `window.__lvt`; later tasks add fields to it. */
 export interface LvtDebug {

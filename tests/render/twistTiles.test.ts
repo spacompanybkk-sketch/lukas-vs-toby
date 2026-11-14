@@ -1,7 +1,8 @@
 import { Mesh, ShaderMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { Lawn } from '../../src/render/world/Lawn';
-import { NO_TWIST, SAMPLE_LAWNS, TwistTiles, coveredTile } from '../../src/render/world/TwistTiles';
+import { SAMPLE_LAWNS, TwistTiles, coveredTile } from '../../src/render/world/TwistTiles';
+import { NO_TWIST } from '../../src/sim/lawn';
 import { allocationsIn } from './allocations';
 import { BLOOM_THRESHOLD } from '../../src/render/look';
 import { COLS, PLANT_COLS } from '../../src/sim/types';

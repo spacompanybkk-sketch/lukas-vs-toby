@@ -11,7 +11,8 @@ import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
 import { LOOKS } from '../render/world/looks';
 import { Sky } from '../render/world/Sky';
-import { NO_TWIST, type LawnConfig } from '../render/world/TwistTiles';
+import { NO_TWIST } from '../sim/lawn';
+import type { LawnConfig } from '../sim/types';
 
 /** The parts of a 3D scene a world's look dresses. */
 export interface Dressable {

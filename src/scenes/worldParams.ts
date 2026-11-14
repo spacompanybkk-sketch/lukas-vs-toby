@@ -1,5 +1,7 @@
 import { WORLD_ORDER, type WorldKey } from '../data/worlds';
-import { NO_TWIST, SAMPLE_LAWNS, type LawnConfig } from '../render/world/TwistTiles';
+import { SAMPLE_LAWNS } from '../render/world/TwistTiles';
+import { NO_TWIST } from '../sim/lawn';
+import type { LawnConfig } from '../sim/types';
 
 /**
  * The world a tool scene is dressed as: `&world=<key>` (default the Backyard) with that world's

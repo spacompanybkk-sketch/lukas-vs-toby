@@ -7,7 +7,9 @@ import { WORLD_ORDER, type WorldKey } from '../../src/data/worlds';
 import { Lawn } from '../../src/render/world/Lawn';
 import { LOOKS } from '../../src/render/world/looks';
 import { Sky } from '../../src/render/world/Sky';
-import { NO_TWIST, SAMPLE_LAWNS, type LawnConfig } from '../../src/render/world/TwistTiles';
+import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
+import { NO_TWIST } from '../../src/sim/lawn';
+import type { LawnConfig } from '../../src/sim/types';
 import { levelOptions, prepareLevel } from '../../src/app/levelSession';
 import { newSave } from '../../src/progress/save';
 
@@ -110,16 +112,19 @@ describe('world looks', () => {
 
 describe('battleWorld', () => {
   it('puts a battle that is no level in the Backyard with no twist', () => {
-    expect(battleWorld({ playerFaction: 'plants', skill: 'easy', seed: 1 })).toEqual({ world: 'backyard', lawn: NO_TWIST });
+    expect(battleWorld({ playerFaction: 'plants', skill: 'easy', seed: 1 })).toEqual({ world: 'backyard', lawn: NO_TWIST, theme: 'backyard' });
   });
 
   it("plays a level in its side's arena: plant world 1 the Backyard, zombie world 1 the Citadel with no lava", () => {
     for (const [id, world] of [['p1-1', 'backyard'], ['p1-8', 'backyard'], ['z1-1', 'citadel'], ['z1-8', 'citadel']] as const) {
       const def = levelById(id)!;
       const save = newSave(def.side === 'plants' ? 'p01' : 'p02', 'Kid', 'peashooter', 0);
-      const got = battleWorld(levelOptions(prepareLevel(def, save, 3)));
+      const opts = levelOptions(prepareLevel(def, save, 3));
+      const got = battleWorld(opts);
       expect(got.world).toBe(world);
       expect(got.lawn.lava).toBeNull();
+      expect(got.lawn).toBe(opts.play!.config.lawn);
+      expect(got.theme).toBe(world);
     }
   });
 });

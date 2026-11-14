@@ -12,13 +12,18 @@ import { Particles } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
 import { spawnUnit } from '../../src/sim/match';
-import type { Faction } from '../../src/sim/types';
-import type { WorldKey } from '../../src/data/worlds';
+import type { Faction, LawnConfig } from '../../src/sim/types';
+import { WORLDS, arenaOf, type WorldKey } from '../../src/data/worlds';
+import { levelById } from '../../src/adventure/levels';
+import { levelOptions, prepareLevel, type LevelPlay } from '../../src/app/levelSession';
+import { newSave } from '../../src/progress/save';
+import { NO_TWIST } from '../../src/sim/lawn';
+import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
 
 const DT = 1 / 60;
 
 /** The stage without WebGL: a real scene, camera, rig, lawn and effects; `show` and `release` as the real one. */
-function fakeStage(): StageLike & { handOvers: number; worlds: string[] } {
+function fakeStage(): StageLike & { handOvers: number; worlds: string[]; lawns: LawnConfig[] } {
   const camera = new PerspectiveCamera(30, 1, 2, 200);
   const rig = new CameraRig(camera);
   rig.frameLawn(window.innerWidth / window.innerHeight);
@@ -42,8 +47,10 @@ function fakeStage(): StageLike & { handOvers: number; worlds: string[] } {
       stage.handOvers++;
     },
     worlds: [] as string[],
-    setWorld(world: WorldKey) {
+    lawns: [] as LawnConfig[],
+    setWorld(world: WorldKey, lawn: LawnConfig) {
       stage.worlds.push(world);
+      stage.lawns.push(lawn);
     },
   };
   stage.scene.add(stage.lawn.group, particles.object, stage.fx.group);
@@ -372,6 +379,41 @@ describe('BattleSession', () => {
     audio.startMusic('menu');
     session.dispose();
     expect(calls).toEqual(['start backyard', 'start menu']);
+  });
+
+  it("dresses the stage in a level's arena with the level's own lawn, and plays the arena's theme", () => {
+    const level = (id: string): LevelPlay => {
+      const def = levelById(id)!;
+      return prepareLevel(def, newSave(def.side === 'plants' ? 'p01' : 'p02', 'Kid', 'peashooter', 0), 3);
+    };
+    const p1 = level('p1-3');
+    const z1 = level('z1-3');
+    // A plant world-4 level with icy lanes (no such level exists yet): the Tundra, its ice, its theme.
+    const tundra: LevelPlay = { ...p1, def: { ...p1.def, world: 4 }, config: { ...p1.config, lawn: SAMPLE_LAWNS.tundra } };
+    for (const [play, world] of [[p1, 'backyard'], [z1, 'citadel'], [tundra, 'tundra']] as const) {
+      const stage = fakeStage();
+      const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+      const music = vi.spyOn(audio, 'startMusic').mockImplementation(() => {});
+      const session = new BattleSession(stage, audio, levelOptions(play), { introSeconds: 0, input: { isOverLawn: () => true } });
+      sessions.push(session);
+      expect(arenaOf(play.def.side, play.def.world)).toBe(world);
+      expect(stage.worlds).toEqual([world]);
+      expect(stage.lawns).toEqual([play.config.lawn]);
+      expect(stage.lawns[0]).toBe(play.config.lawn);
+      session.begin();
+      expect(music).toHaveBeenCalledWith(WORLDS[world].theme);
+    }
+    expect(z1.config.lawn.lava).toBeNull(); // zombie world 1: the Citadel with its lava off
+  });
+
+  it('puts Quick Battle in the Backyard with no twist and the Backyard theme', () => {
+    const stage = fakeStage();
+    const { session, audio } = make(stage);
+    const music = vi.spyOn(audio, 'startMusic').mockImplementation(() => {});
+    expect(stage.worlds).toEqual(['backyard']);
+    expect(stage.lawns).toEqual([NO_TWIST]);
+    session.begin();
+    expect(music).toHaveBeenCalledWith('backyard');
   });
 
   it('can be disposed during the opening camera move', async () => {

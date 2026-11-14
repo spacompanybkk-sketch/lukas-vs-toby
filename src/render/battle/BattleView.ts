@@ -880,12 +880,6 @@ export class BattleView {
   // ---- Events ----------------------------------------------------------------------------
 
   private apply(e: SimEvent, state: SimState): void {
-    // TODO(merge): a case of the switch once the sim's SimEvent has `projectileFaded` (fog).
-    if ((e as { type: string }).type === 'projectileFaded') {
-      const faded = e as unknown as { id: number; x: number; lane: number };
-      this.fadeProjectile(faded.id, faded.x, faded.lane);
-      return;
-    }
     switch (e.type) {
       case 'unitSpawned': {
         if (e.key === 'rock') {
@@ -1065,6 +1059,9 @@ export class BattleView {
         this.onFeel({ slowMo: 2.5 });
         break;
       case 'bossStrike': this.bossFx.strike(e, state); break;
+      case 'projectileFaded': // fog: a puff where the shot gave out; its object leaves with it
+        this.fadeProjectile(e.id, e.x, e.lane);
+        break;
       case 'commandRejected':
       case 'heroReady': // the HUD's button pulses; the call is a sound
       case 'spellReady':
@@ -1076,7 +1073,6 @@ export class BattleView {
       case 'waveStarted': // Free Play: the HUD shows the wave number
       case 'gardenBroken':
       case 'bossPhase': // the shield's pattern event and the HUD's notches show it
-      case 'projectileFaded': // fog: the projectile leaves with the state; its puff is the looks task's
         break;
       default: {
         const unhandled: never = e;
