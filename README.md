@@ -132,10 +132,16 @@ cards it lists that the player has. Quick Battle always has all ten.
 Easy) change only the player's income. A Conveyor level has no energy, so it shows none.
 
 **The tutorial.** No words: a white glove points at one thing at a time (a card, then the tile
-or lane to put it on; the hero's button when it is first ready; a spell at level 4), the rest of
+or lane to put it on; the hero's button when it is first ready; a spell at level 4; the front belt
+card, then a tile, at level 5, the conveyor), the rest of
 the screen dims a little and the match waits until the child does it. Taps elsewhere do nothing.
 The glove only waits for something that can be done now (a card still recharging is not pointed
-at). Levels 1–3 of each side teach this way; each step is remembered for the player.
+at). Levels 1–3 of each side teach this way; each step is remembered for the player. The hero's
+button appears only from the level that teaches it (level 2).
+
+**Where a card may go.** While a card is picked (tapped or dragged), every tile it may go on shows
+white pixel corners on a light fill (zombies: the spawn end of each lane), worked out by the
+match's own check; under the glove only the lesson's tile lights.
 
 **The bosses.** Level 8 of each side. Lukas meets the **Brain Titan**, who walks the middle lane,
 slams the plants in front of him and puts up a shield that peas bounce off (lobbed shots still
