@@ -1,5 +1,6 @@
 import type { Balance } from '../data/balance';
 import { isWindingUp } from './boss';
+import { iceFactor } from './lawn';
 import { nearestEnemyAhead, statsFor } from './lookup';
 import { canAct } from './status';
 import { BASE_STOP_X, TICKS_PER_SECOND } from './types';
@@ -20,7 +21,8 @@ import type { SimState } from './types';
  * shot's range when it has no `holdRange`, so it stays and shoots.
  *
  * A hasted zombie (Frenzy) walks `Balance.spells.frenzy.factor` times its speed. In fog
- * (`LawnConfig.fog`) a shooter's hold range is at most the fog, as its shot's reach is.
+ * (`LawnConfig.fog`) a shooter's hold range is at most the fog, as its shot's reach is. On ice
+ * (`LawnConfig.ice`) a zombie in an ice lane, a boss too, walks `ice.speed` times as fast.
  */
 export function tickMovement(s: SimState, b: Balance): void {
   for (const z of s.units) {
@@ -36,7 +38,9 @@ export function tickMovement(s: SimState, b: Balance): void {
       const holdRange = fog === null || stats.shot === undefined ? hold : Math.min(hold, fog);
       if (nearestEnemyAhead(s, z.faction, z.lane, z.x, holdRange) !== null) continue;
     }
-    const speed = z.haste > 0 ? stats.speed * (b.spells.frenzy.factor ?? 1) : stats.speed;
+    const walk = z.haste > 0 ? stats.speed * (b.spells.frenzy.factor ?? 1) : stats.speed;
+    const ice = iceFactor(s.config, z.lane);
+    const speed = ice === 1 ? walk : walk * ice; // no twist: the very same arithmetic as before
     z.x = Math.max(BASE_STOP_X, z.x - speed / TICKS_PER_SECOND);
   }
 }

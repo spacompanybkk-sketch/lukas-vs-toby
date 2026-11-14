@@ -39,6 +39,12 @@ export function cloneLawn(l: LawnConfig): LawnConfig {
   };
 }
 
+/** What a zombie in `lane` has its walking speed multiplied by: the ice's `speed` in an ice lane, else 1. */
+export function iceFactor(c: MatchConfig, lane: number): number {
+  const ice = c.lawn.ice;
+  return ice !== null && ice.lanes.includes(lane) ? ice.speed : 1;
+}
+
 /** Whether a rock of the lawn lies on plant tile (`lane`, `col`). */
 export function isRock(c: MatchConfig, lane: number, col: number): boolean {
   return c.lawn.rocks.length > 0 && c.lawn.rocks.includes(lane * PLANT_COLS + col);

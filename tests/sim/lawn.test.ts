@@ -17,6 +17,11 @@ function lawnConfig(seed: number, lawn: Partial<LawnConfig>, more: Partial<Match
 
 const tile = (lane: number, col: number): number => lane * PLANT_COLS + col;
 
+/** Nobody plays: no hands, heroes, spells or sudden death; only what a test puts on the lawn acts. */
+const quiet = (): Partial<MatchConfig> => ({
+  cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+});
+
 describe('NO_TWIST and the setup', () => {
   it('a default setup has no twist, and its own copy of it', () => {
     const a = defaultConfig(1);
@@ -223,7 +228,7 @@ describe('fog: a shot reaches min(range, fog) and fades out past it', () => {
   /** A plant setup: one Peashooter prepared on (2, col); nobody else plays. */
   function peashooterAt(col: number, fog: number | null = FOG, more: Partial<MatchConfig> = {}): Match {
     return new Match(lawnConfig(1, { fog }, {
-      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      ...quiet(),
       prepared: [{ unit: 'peashooter', faction: 'plants', lane: 2, x: col + 0.5, level: 1 }], ...more,
     }));
   }
@@ -301,7 +306,7 @@ describe('fog: a shot reaches min(range, fog) and fades out past it', () => {
   it('a zombie shooter holds its shot until a plant is within fog, and walks on until then', () => {
     // The Skeleton Archer (range 6) stops to shoot a plant in range; in fog 5 it walks to 5 first.
     const m = new Match(lawnConfig(1, { fog: 3 }, {
-      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      ...quiet(),
       prepared: [
         { unit: 'walnutBomb', faction: 'plants', lane: 1, x: 0.5, level: 1 },
         { unit: 'skeletonArcher', faction: 'zombies', lane: 1, x: 9.5, level: 1 },
@@ -318,7 +323,7 @@ describe('fog: a shot reaches min(range, fog) and fades out past it', () => {
 
   it.each([[FOG, true], [null, false]] as const)('fog %s: a trident pierces the plant in reach, then fades (%s) instead of hitting the base', (fog, fades) => {
     const m = new Match(lawnConfig(1, { fog }, {
-      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      ...quiet(),
       prepared: [
         { unit: 'walnutBomb', faction: 'plants', lane: 0, x: 2.5, level: 1 },
         { unit: 'tridentZombie', faction: 'zombies', lane: 0, x: 7.4, level: 1 },
@@ -344,7 +349,7 @@ describe('fog: a shot reaches min(range, fog) and fades out past it', () => {
 
   it('a lobbed shot aimed at a unit has no fadeX and lands; an unaimed one fades', () => {
     const m = new Match(lawnConfig(1, { fog: FOG }, {
-      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      ...quiet(),
       prepared: [
         { unit: 'kernelPult', faction: 'plants', lane: 3, x: 0.5, level: 1 },
         { unit: 'skeletonWarrior', faction: 'zombies', lane: 3, x: 4.5, level: 1 },
@@ -367,5 +372,56 @@ describe('fog: a shot reaches min(range, fog) and fades out past it', () => {
     }
     expect(fadedLanes.length).toBeGreaterThan(3);
     expect(new Set(fadedLanes)).toEqual(new Set([1])); // only the lane with nobody to aim at
+  });
+});
+
+describe('ice: zombies in the listed lanes walk ×speed', () => {
+
+  it('a walker in an ice lane covers 1.6× the distance of one in a plain lane over 90 ticks', () => {
+    const m = new Match(lawnConfig(1, { ice: { lanes: [1, 3], speed: 1.6 } }, {
+      ...quiet(),
+      prepared: [
+        { unit: 'brainEater', faction: 'zombies', lane: 1, x: 9.5, level: 1 },
+        { unit: 'brainEater', faction: 'zombies', lane: 2, x: 9.5, level: 1 },
+        { unit: 'veryFastWalker', faction: 'zombies', lane: 3, x: 9.5, level: 1 },
+        { unit: 'veryFastWalker', faction: 'zombies', lane: 4, x: 9.5, level: 1 },
+      ],
+    }));
+    m.step(); // they come on
+    const start = m.state.units.map((u) => u.x);
+    for (let i = 0; i < 90; i++) m.step();
+    const walked = m.state.units.map((u, i) => start[i]! - u.x);
+    expect(walked[1]!).toBeGreaterThan(0);
+    expect(walked[0]! / walked[1]!).toBeCloseTo(1.6, 9);
+    expect(walked[2]! / walked[3]!).toBeCloseTo(1.6, 9);
+  });
+
+  it('a boss on ice walks faster too; plants are not moved', () => {
+    const titan = (ice: boolean) => {
+      const m = new Match(lawnConfig(1, { ice: ice ? { lanes: [2], speed: 1.6 } : null }, {
+        ...quiet(), mode: 'boss', boss: { key: 'brainTitan', faction: 'zombies', lane: 2 },
+        prepared: [{ unit: 'peashooter', faction: 'plants', lane: 2, x: 0.5, level: 1 }],
+      }));
+      for (let i = 0; i < 120; i++) m.step();
+      const boss = m.state.units.find((u) => u.key === 'brainTitan')!;
+      expect(m.state.units.find((u) => u.key === 'peashooter')!.x).toBe(0.5);
+      return 9.5 - boss.x;
+    };
+    expect(titan(true) / titan(false)).toBeCloseTo(1.6, 9);
+  });
+
+  it('haste and ice multiply', () => {
+    const m = new Match(lawnConfig(1, { ice: { lanes: [0], speed: 1.6 } }, {
+      ...quiet(), prepared: [
+        { unit: 'brainEater', faction: 'zombies', lane: 0, x: 9.5, level: 1 },
+        { unit: 'brainEater', faction: 'zombies', lane: 1, x: 9.5, level: 1 },
+      ],
+    }));
+    m.step();
+    for (const u of m.state.units) u.haste = 1000;
+    const start = m.state.units.map((u) => u.x);
+    for (let i = 0; i < 30; i++) m.step();
+    const walked = m.state.units.map((u, i) => start[i]! - u.x);
+    expect(walked[0]! / walked[1]!).toBeCloseTo(1.6, 9);
   });
 });
