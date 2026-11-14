@@ -177,7 +177,7 @@ function weakestLane(b: Balance, lawn: readonly LaneView[], rng: BotRng): LaneVi
 }
 
 /** The zombies to try for a lane, best answer first, a Brain Eater last (see the note at the top). */
-function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng, memory: ZombieMemory): CardKey[] {
+export function cardsFor(view: LaneView, plan: ZombiePlan, rng: BotRng, memory: ZombieMemory): CardKey[] {
   const out: CardKey[] = [];
   const plants = view.plants.filter((p) => isCard(p.key));
   const tank = view.zombies.some((z) => TANKS.has(z.key) && z.x > 2 && z.hp >= 250);

@@ -101,6 +101,20 @@ describe('the level stand-ins', () => {
     expect(standInSave('beginner', z8).zombies.unlocked).toEqual(['desertZombie', 'skeletonArcher']);
   });
 
+  it('Breakthrough: the expert stacks one lane (the one that gives), the average player spreads by plant count', () => {
+    // z1-6: a Walnut Bomb in every lane, Peashooters behind lanes 0, 2 and 4: lanes 1 and 3 give.
+    const lanesOf = (who: 'average' | 'expert'): number[] =>
+      // From the second step on: the garden is laid on the first.
+      sent('z1-6', who, 40).filter((c) => c.tick > 0 && c.cmd.type === 'place' && !c.refused).map((c) => (c.cmd as { lane: number }).lane);
+    const expert = lanesOf('expert');
+    expect(expert.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(expert).size, `expert lanes ${expert.join(',')}`).toBe(1);
+    expect([1, 3]).toContain(expert[0]);
+    // The average player: the lanes with the fewest plants, but for his careless plays (15%).
+    const average = lanesOf('average');
+    expect(average.filter((l) => l === 1 || l === 3).length, `average lanes ${average.join(',')}`).toBeGreaterThanOrEqual(Math.ceil(average.length * 0.6));
+  });
+
   it('the expert puts Kernel-pults in the Titan\'s lane; a whole boss level ends', () => {
     const pults = sent('p1-8', 'expert', 90).filter((c) => c.cmd.type === 'place' && c.cmd.unit === 'kernelPult' && c.cmd.lane === 2);
     expect(pults.length).toBeGreaterThanOrEqual(1);

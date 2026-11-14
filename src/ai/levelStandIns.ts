@@ -15,6 +15,10 @@
  *   knows the shield bounces straight shots: it puts lobbing Kernel-pults in the Titan's lane (the
  *   average player puts Peashooters there: he shoots at the giant).
  *
+ * In a Breakthrough (a garden to break: z1-3, z1-6, Free Play's gardens) the average player and the
+ * expert push one lane with every zombie (`breakthroughLane`): the expert reads which lane gives as
+ * the computer reads a lane and stacks it, the average player takes the one with the fewest plants.
+ *
  * Every stand-in handles the conveyor (no energy, cards from the belt): it takes the belt card that
  * fits best (the beginner a random one) to a sensible tile or lane. Each is a pure function of the
  * match it is shown and its own seeded random numbers; make one per match.
@@ -30,9 +34,12 @@ import { createBasicBot, SKILLS, POWER_PACING } from './basicBot';
 import type { SkillTable } from './basicBot';
 import type { Bot, Skill } from './bot';
 import { shotDps } from './laneModel';
-import { freeTile, placeCommand, readLawn, sendCommand } from './lawn';
+import { freeTile, placeCommand, randomLegal, readLawn, sendCommand, shuffledLanes } from './lawn';
 import type { BotRng, LaneView } from './lawn';
 import { childPower } from './powers';
+import { choose } from './wants';
+import { cardsFor, laneSurplus, newZombieMemory } from './zombieStrategy';
+import type { ZombieMemory } from './zombieStrategy';
 
 export type LevelStandIn = 'beginner' | 'average' | 'expert';
 export const LEVEL_STAND_INS: readonly LevelStandIn[] = ['beginner', 'average', 'expert'];
@@ -323,13 +330,38 @@ export const TITAN_ANSWER: Readonly<Record<'average' | 'expert', { card: CardKey
   average: { card: 'peashooter', want: 3 },
 };
 
-/** The average player and the expert: the computer's choices at their pace, plus the belt and the Titan. */
+/**
+ * A Breakthrough (a garden to break, nobody rebuilding it): the lane a sensible zombie player pushes
+ * with everything he sends. The expert reads it as the computer reads a lane (`laneSurplus`: where
+ * a fresh Brain Eater, behind the zombies he already has there, gets furthest past the plants' fire),
+ * so he keeps stacking the lane that gives; the average player just takes the lane with the fewest
+ * plants, read afresh each time. Ties from a random start.
+ */
+export function breakthroughLane(match: Match, kind: 'average' | 'expert', rng: BotRng): LaneView {
+  const lawn = readLawn(match.state);
+  const order = shuffledLanes(rng).map((l) => lawn[l] as LaneView);
+  const score = (v: LaneView): number => (kind === 'expert' ? laneSurplus(match.balance, v, true) : -v.plants.length);
+  let best = order[0] as LaneView;
+  for (const v of order) if (score(v) > score(best)) best = v;
+  return best;
+}
+
+/** The sensible player's Breakthrough move: the best answer for `breakthroughLane` (as the computer picks cards), waiting for its energy. */
+function breakthroughMove(match: Match, kind: 'average' | 'expert', table: SkillTable, rng: BotRng, memory: ZombieMemory): Command | null {
+  const view = breakthroughLane(match, kind, rng);
+  return choose(match, cardsFor(view, table, rng, memory).map((card) => ({
+    cmd: sendCommand(card, view.lane), wait: 'energy' as const, onChosen: () => { memory.lastLane = view.lane; },
+  })));
+}
+
+/** The average player and the expert: the computer's choices at their pace, plus the belt, the Titan and the Breakthrough push. */
 function createSensible(kind: 'average' | 'expert', side: Faction, seed: number, hero: boolean): Bot {
   const table = standInTable(kind, side);
   const card = createBasicBot(side, kind === 'expert' ? 'hard' : 'medium', seed ^ SALT[kind], table);
   const rng = rngFor(seed, kind, side);
   const beltEvery = kind === 'expert' ? EXPERT_BELT_EVERY : AVERAGE.every;
   const lane = { current: -1, sent: 0 };
+  const memory = newZombieMemory();
   // Without the hero's button, the computer's hero presses are never made.
   const powerOk = (c: Command): boolean => c.type === 'spell' || (hero && c.type === 'hero');
   const own = (cmds: Command[]): Command[] => (hero ? cmds : cmds.filter((c) => c.type !== 'hero'));
@@ -345,6 +377,16 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
           // The average player's mistakes: now and then a random belt card to a random sensible tile.
           const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
           const cmd = careless ? beginnerBelt(match, side, rng) : sensibleBelt(match, side, rng, lane);
+          if (cmd !== null) out.push(cmd);
+        }
+        return out;
+      }
+      if (side === 'zombies' && s.config.mode === 'breakthrough') {
+        // The hero and spells as the computer fires them; the cards all down the lane that gives.
+        const out: Command[] = card.think(match).filter(powerOk);
+        if (s.tick % table.thinkEvery === 0) {
+          const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
+          const cmd = careless ? randomLegal(match, side, rng) : breakthroughMove(match, kind, table, rng, memory);
           if (cmd !== null) out.push(cmd);
         }
         return out;

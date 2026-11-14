@@ -36,7 +36,7 @@ export function blocks(): number[] {
 
 const SHORT_BREAKTHROUGH = 'three stars need the garden broken within the first half of the clock (60 / 75 s), which the 3-star bands ask of most seeds: under 1.5 min by construction';
 const SHORT_CONVEYOR = 'the sensible players break the regrowing garden in about 1.25 min; a bigger plant base drops the beginner below the smooth curve (5500: 75%, 7000: 38%)';
-const NOT_RANKED = 'the stand-ins are not ranked by skill in this mode (coordinator, final round: do not tune further): the sensible zombie players crack a garden no faster than the beginner with +25% income';
+const IDLE_P15 = 'worlds plan Task 8c: p1-5 must not be won by an idle player; every setting that makes its waves break an idle base (base 4000-4500, or added waves) costs the average player 3 stars there (68-75%, was 84%), so p1-7 (94%) is more than 15 points above p1-5; only p1-5 may change in this plan';
 
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-3 median length, beginner': `about 1.05 min: ${SHORT_BREAKTHROUGH}`,
@@ -47,8 +47,7 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-6 median length, expert': `about 1.21 min: ${SHORT_BREAKTHROUGH}`,
   'z1-5 median length, average': `about 1.25 min: ${SHORT_CONVEYOR}`,
   'z1-5 median length, expert': `about 1.12 min: ${SHORT_CONVEYOR}`,
-  'free play breakthrough: the average player breaks more gardens than the beginner': `median 4 against the beginner's 6 on every block: ${NOT_RANKED}`,
-  'free play breakthrough: the expert breaks more gardens than the average player and the beginner': `median 6, the beginner's 6 and the average's 4: ${NOT_RANKED}`,
+  'plants average 3 stars fall from level 1 to 8': `p1-7 v p1-5 about 94 v 73: ${IDLE_P15}`,
 };
 
 /** One test, or `it.fails` when the band is a known miss. */
