@@ -217,3 +217,155 @@ describe('rocks: no plant can be put on a rock tile', () => {
     expect(m.check({ type: 'place', faction: 'plants', unit: 'peashooter', lane: 2, col: 3 })).toBeNull();
   });
 });
+
+describe('fog: a shot reaches min(range, fog) and fades out past it', () => {
+  const FOG = 5;
+  /** A plant setup: one Peashooter prepared on (2, col); nobody else plays. */
+  function peashooterAt(col: number, fog: number | null = FOG, more: Partial<MatchConfig> = {}): Match {
+    return new Match(lawnConfig(1, { fog }, {
+      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      prepared: [{ unit: 'peashooter', faction: 'plants', lane: 2, x: col + 0.5, level: 1 }], ...more,
+    }));
+  }
+  const run = (m: Match, ticks: number) => {
+    const events = [];
+    for (let i = 0; i < ticks; i++) events.push(...m.step());
+    return events;
+  };
+
+  it.each([0, 1, 2, 3, 4])('a Peashooter on column %i never hurts the zombie base', (col) => {
+    const m = peashooterAt(col);
+    const events = run(m, 600);
+    expect(events.filter((e) => e.type === 'projectileSpawned').length).toBeGreaterThan(5); // it keeps firing at the base
+    expect(events.some((e) => e.type === 'baseDamaged')).toBe(false);
+    expect(m.state.baseHp.zombies).toBe(m.state.baseMaxHp.zombies);
+  });
+
+  it.each([5, 6, 7])('a Peashooter on column %i (>= 10 − fog) does', (col) => {
+    const m = peashooterAt(col);
+    const events = run(m, 600);
+    expect(events.some((e) => e.type === 'baseDamaged' && e.faction === 'zombies')).toBe(true);
+    expect(events.some((e) => e.type === 'projectileFaded')).toBe(false);
+  });
+
+  it('every pea that fades says so exactly once, at fadeX, and leaves the lawn', () => {
+    const m = peashooterAt(0);
+    const fired = new Map<number, number>();
+    const faded = new Map<number, number>();
+    for (let i = 0; i < 400; i++) {
+      for (const e of m.step()) {
+        if (e.type === 'projectileSpawned') fired.set(e.projectileId, e.x);
+        if (e.type === 'projectileFaded') {
+          expect(faded.has(e.id)).toBe(false);
+          faded.set(e.id, e.x);
+          expect(e.lane).toBe(2);
+          expect(m.state.projectiles.some((p) => p.id === e.id)).toBe(false);
+        }
+      }
+      for (const p of m.state.projectiles) expect(p.fadeX).toBe(fired.get(p.id)! + FOG);
+    }
+    expect(faded.size).toBeGreaterThan(5);
+    for (const [id, x] of faded) expect(x).toBe(fired.get(id)! + FOG);
+    for (const id of fired.keys()) if (!m.state.projectiles.some((p) => p.id === id)) expect(faded.has(id)).toBe(true);
+  });
+
+  it('a zombie beyond reach is not hit; one within reach is', () => {
+    for (const [x, hit] of [[6.2, false], [5.6, false], [5.2, true], [3.5, true]] as const) {
+      const m = peashooterAt(0, FOG, { prepared: [
+        { unit: 'peashooter', faction: 'plants', lane: 2, x: 0.5, level: 1 },
+        { unit: 'skeletonWarrior', faction: 'zombies', lane: 2, x, level: 1 },
+      ] });
+      m.step();
+      const z = m.state.units.find((u) => u.faction === 'zombies')!;
+      z.stun = 10_000; // it stands where it is
+      z.abilityTimer = 10_000; // and its shield never blocks
+      run(m, 300);
+      expect([x, z.hp < z.maxHp]).toEqual([x, hit]);
+    }
+  });
+
+  it('without fog the same Peashooter on column 0 hits the base, and its peas carry no fadeX', () => {
+    const m = peashooterAt(0, null);
+    let sawPea = false;
+    for (let i = 0; i < 600; i++) {
+      m.step();
+      for (const p of m.state.projectiles) {
+        sawPea = true;
+        expect(p.fadeX).toBeNull();
+      }
+    }
+    expect(sawPea).toBe(true);
+    expect(m.state.baseHp.zombies).toBeLessThan(m.state.baseMaxHp.zombies);
+  });
+
+  it('a zombie shooter holds its shot until a plant is within fog, and walks on until then', () => {
+    // The Skeleton Archer (range 6) stops to shoot a plant in range; in fog 5 it walks to 5 first.
+    const m = new Match(lawnConfig(1, { fog: 3 }, {
+      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      prepared: [
+        { unit: 'walnutBomb', faction: 'plants', lane: 1, x: 0.5, level: 1 },
+        { unit: 'skeletonArcher', faction: 'zombies', lane: 1, x: 9.5, level: 1 },
+      ],
+    }));
+    let firstShotFrom: number | null = null;
+    for (let i = 0; i < 1500 && firstShotFrom === null; i++) {
+      for (const e of m.step()) if (e.type === 'projectileSpawned' && e.faction === 'zombies') firstShotFrom = e.x;
+    }
+    expect(firstShotFrom).not.toBeNull();
+    expect(firstShotFrom! - 0.5).toBeLessThanOrEqual(3);
+    expect(firstShotFrom! - 0.5).toBeGreaterThan(2.9);
+  });
+
+  it.each([[FOG, true], [null, false]] as const)('fog %s: a trident pierces the plant in reach, then fades (%s) instead of hitting the base', (fog, fades) => {
+    const m = new Match(lawnConfig(1, { fog }, {
+      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      prepared: [
+        { unit: 'walnutBomb', faction: 'plants', lane: 0, x: 2.5, level: 1 },
+        { unit: 'tridentZombie', faction: 'zombies', lane: 0, x: 7.4, level: 1 },
+      ],
+    }));
+    let trident: number | null = null;
+    let fadedAt: number | null = null;
+    let baseHit = false;
+    let plantHit = false;
+    for (let i = 0; i < 300 && fadedAt === null && !baseHit; i++) {
+      for (const e of m.step()) {
+        if (e.type === 'projectileSpawned' && e.kind === 'trident' && trident === null) trident = e.projectileId;
+        if (e.type === 'projectileHit' && e.projectileId === trident && e.targetId !== null) plantHit = true;
+        if (e.type === 'projectileHit' && e.projectileId === trident && e.targetBase === 'plants') baseHit = true;
+        if (e.type === 'projectileFaded' && e.id === trident) fadedAt = e.x;
+      }
+    }
+    expect(trident).not.toBeNull();
+    expect(plantHit).toBe(true);
+    expect([fadedAt !== null, baseHit]).toEqual([fades, !fades]);
+    if (fades) expect(fadedAt! > 1.5 && fadedAt! < 2.5).toBe(true); // past the plant, short of the base
+  });
+
+  it('a lobbed shot aimed at a unit has no fadeX and lands; an unaimed one fades', () => {
+    const m = new Match(lawnConfig(1, { fog: FOG }, {
+      cards: { plants: [], zombies: [] }, heroes: { plants: false, zombies: false }, spells: { plants: 0, zombies: 0 }, suddenDeath: false,
+      prepared: [
+        { unit: 'kernelPult', faction: 'plants', lane: 3, x: 0.5, level: 1 },
+        { unit: 'skeletonWarrior', faction: 'zombies', lane: 3, x: 4.5, level: 1 },
+        { unit: 'kernelPult', faction: 'plants', lane: 1, x: 0.5, level: 1 },
+      ],
+    }));
+    const lane = new Map<number, number>();
+    const fadedLanes: number[] = [];
+    for (let i = 0; i < 200; i++) {
+      for (const e of m.step()) {
+        if (e.type === 'projectileSpawned') lane.set(e.projectileId, e.lane);
+        if (e.type === 'projectileFaded') fadedLanes.push(lane.get(e.id)!);
+      }
+      for (const p of m.state.projectiles) {
+        if (p.targetId !== null) expect(p.fadeX).toBeNull();
+        else expect(p.fadeX).toBe(0.5 + FOG);
+      }
+      const z = m.state.units.find((u) => u.key === 'skeletonWarrior');
+      if (z) z.x = 4.5; // it stays in reach
+    }
+    expect(fadedLanes.length).toBeGreaterThan(3);
+    expect(new Set(fadedLanes)).toEqual(new Set([1])); // only the lane with nobody to aim at
+  });
+});

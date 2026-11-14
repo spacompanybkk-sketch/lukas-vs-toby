@@ -74,13 +74,19 @@ function bite(s: SimState, b: Balance, z: Unit, stats: UnitStats, melee: MeleeSt
  * Fires one shot. A shot with a `status.chance` rolls the state rng once here; on success the
  * projectile is of kind `status.altKind` and carries the status. A lobbed shot aimed at a unit
  * remembers it (`targetId`, `targetX`); one with no unit to aim at flies on like a pea.
+ *
+ * Fog (`LawnConfig.fog`): the shot reaches `min(range, fog)` tiles, for its target and for a
+ * zombie's shot at the plant base; a plant with no target still fires down the lane, and its shot,
+ * like every one not lobbed at a unit, gets `fadeX` fog tiles on (see `fadesOut`).
  */
 function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEvent[]): void {
-  const target = nearestEnemyAhead(s, u.faction, u.lane, u.x, shot.range);
+  const fog = s.config.lawn.fog;
+  const range = fog === null ? shot.range : Math.min(shot.range, fog);
+  const target = nearestEnemyAhead(s, u.faction, u.lane, u.x, range);
   let targetBase: Faction | null = null;
   if (!target) {
     if (u.faction === 'plants') targetBase = 'zombies';
-    else if (u.x <= Math.min(shot.range, b.zombieBaseShotRange)) targetBase = 'plants';
+    else if (u.x <= Math.min(range, b.zombieBaseShotRange)) targetBase = 'plants';
     else return; // a zombie holds its shot until something is in range
   }
   u.shotTimer = seconds(shot.interval);
@@ -102,7 +108,8 @@ function shoot(s: SimState, b: Balance, u: Unit, shot: ShotStats, events: SimEve
     targetId: aimedAt ? aimedAt.id : null, targetX: aimedAt ? aimedAt.x : null,
     pierceLeft: flight === 'piercing' ? (shot.pierce ?? 1) : 0, hitIds: [],
     burning: false, burnDps: 0, burnTicks: 0,
-    fadeX: null,
+    // Fog: it fades `fog` tiles on, unless it is lobbed at a unit (which is in reach: it lands on it).
+    fadeX: fog === null || aimedAt ? null : u.faction === 'plants' ? u.x + fog : u.x - fog,
   };
   s.nextId += 1;
   s.projectiles.push(p);
@@ -182,6 +189,9 @@ function biterAtBase(s: SimState, lane: number): Unit | null {
  *
  * Whoever a shot damages also gets the status of the shot that fired it, if it carries one (see
  * `ShotStatus`).
+ *
+ * Fog: a straight or piercing projectile (or an unaimed lobbed one) meets nothing past its `fadeX`
+ * and fades out there, before it can reach a base (see `fadesOut`).
  */
 export function tickProjectiles(s: SimState, b: Balance, events: SimEvent[]): void {
   const flying: Projectile[] = [];
@@ -216,8 +226,9 @@ function advance(p: Projectile): number {
 
 function flyStraight(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
   const from = advance(p);
-  const target = nearestEnemyAhead(s, p.faction, p.lane, from, p.speed + b.hitRadius);
-  ignitePea(s, b, p, from, target ? target.x : p.x, events); // it leaves alone all but a straight plant pea
+  const target = nearestEnemyAhead(s, p.faction, p.lane, from, sweep(b, p, from));
+  const end = p.fadeX !== null && p.faction === 'plants' ? Math.min(p.x, p.fadeX) : p.x; // a pea fading passes no Torchwood past fadeX
+  ignitePea(s, b, p, from, target ? target.x : end, events); // it leaves alone all but a straight plant pea
   if (target) {
     if (p.flight === 'lobbed') {
       p.x = target.x; // it comes down on the enemy it met, so the view draws it there
@@ -227,7 +238,30 @@ function flyStraight(s: SimState, b: Balance, p: Projectile, events: SimEvent[])
     }
     return true;
   }
-  return reachBase(s, b, p, events);
+  return fadesOut(p, events) || reachBase(s, b, p, events);
+}
+
+/**
+ * How far ahead of `from` a straight or piercing projectile meets units this tick: its step and
+ * `hitRadius`, but in fog never past its `fadeX`.
+ */
+function sweep(b: Balance, p: Projectile, from: number): number {
+  const reach = p.speed + b.hitRadius;
+  return p.fadeX === null ? reach : Math.min(reach, Math.abs(p.fadeX - from));
+}
+
+/**
+ * Fog: a projectile that went its `fadeX` without being spent fades out there (`projectileFaded`,
+ * at `fadeX`) — unless the base comes first (`fadeX` at or past the lawn's edge). Returns true when it faded.
+ */
+function fadesOut(p: Projectile, events: SimEvent[]): boolean {
+  const fadeX = p.fadeX;
+  if (fadeX === null) return false;
+  const faded = p.faction === 'plants' ? p.x >= fadeX && fadeX < COLS : p.x <= fadeX && fadeX > 0;
+  if (!faded) return false;
+  p.x = fadeX;
+  events.push({ type: 'projectileFaded', id: p.id, x: fadeX, lane: p.lane });
+  return true;
 }
 
 function flyLobbed(s: SimState, b: Balance, p: Projectile, targetId: number, events: SimEvent[]): boolean {
@@ -244,7 +278,7 @@ function flyLobbed(s: SimState, b: Balance, p: Projectile, targetId: number, eve
 
 function flyPiercing(s: SimState, b: Balance, p: Projectile, events: SimEvent[]): boolean {
   const from = advance(p);
-  const reach = p.speed + b.hitRadius;
+  const reach = sweep(b, p, from);
   const met = s.units
     .filter((u) => u.faction !== p.faction && inLane(u, p.lane) && isStanding(u) && !p.hitIds.includes(u.id))
     .map((u) => ({ u, distance: p.faction === 'plants' ? u.x - from : from - u.x }))
@@ -256,7 +290,7 @@ function flyPiercing(s: SimState, b: Balance, p: Projectile, events: SimEvent[])
     p.pierceLeft -= 1;
     if (p.pierceLeft <= 0) return true;
   }
-  return reachBase(s, b, p, events);
+  return fadesOut(p, events) || reachBase(s, b, p, events);
 }
 
 /** A projectile past the far edge hits that side's base. Returns true when it did. */

@@ -19,7 +19,8 @@ import type { SimState } from './types';
  * tied, see `canAct`), it is a boss winding up a slam (`isWindingUp`), or it `holds` and a standing plant is ahead within `holdRange`, or its
  * shot's range when it has no `holdRange`, so it stays and shoots.
  *
- * A hasted zombie (Frenzy) walks `Balance.spells.frenzy.factor` times its speed.
+ * A hasted zombie (Frenzy) walks `Balance.spells.frenzy.factor` times its speed. In fog
+ * (`LawnConfig.fog`) a shooter's hold range is at most the fog, as its shot's reach is.
  */
 export function tickMovement(s: SimState, b: Balance): void {
   for (const z of s.units) {
@@ -29,7 +30,10 @@ export function tickMovement(s: SimState, b: Balance): void {
     z.blocked = z.x <= BASE_STOP_X || nearestEnemyAhead(s, z.faction, z.lane, z.x, reach) !== null;
     if (z.blocked || !canAct(z) || isWindingUp(b, z)) continue;
     if (stats.holds) {
-      const holdRange = stats.holdRange ?? stats.shot?.range ?? 0;
+      const fog = s.config.lawn.fog;
+      const hold = stats.holdRange ?? stats.shot?.range ?? 0;
+      // In fog a shooter walks on until it can shoot (a Necromancer, with no shot, keeps its distance).
+      const holdRange = fog === null || stats.shot === undefined ? hold : Math.min(hold, fog);
       if (nearestEnemyAhead(s, z.faction, z.lane, z.x, holdRange) !== null) continue;
     }
     const speed = z.haste > 0 ? stats.speed * (b.spells.frenzy.factor ?? 1) : stats.speed;
