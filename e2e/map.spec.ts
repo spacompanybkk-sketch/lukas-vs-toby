@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { expect, test } from './fixtures';
 import type { Locator } from '@playwright/test';
 import type { Page } from './fixtures';
-import { frames, glContexts, logIn, openTitle } from './helpers';
+import { forceResult, frames, glContexts, logIn, openTitle, waitLive } from './helpers';
 
 // Worlds machinery Task 7: one island per world in each side's order, arrow pictures between
 // them, locked islands that refuse; the level card's Adventure difficulty apart from Quick
@@ -50,6 +50,13 @@ async function bigEnough(page: Page): Promise<string[]> {
       .map((b) => ({ b, r: b.getBoundingClientRect() }))
       .filter(({ r }) => r.width < 44 || r.height < 44 || r.left < 0 || r.top < 0 || r.right > w! || r.bottom > h!)
       .map(({ b, r }) => `${b.dataset.action} ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`), [size.width, size.height]));
+    // The wide BACK button (its word) clears the side tabs and the arrows.
+    out.push(...await page.evaluate(() => {
+      const back = document.querySelector<HTMLElement>('[data-screen="map"] [data-action="back"]')!.getBoundingClientRect();
+      return [...document.querySelectorAll<HTMLElement>('[data-screen="map"] [data-tab], [data-screen="map"] [data-action^="world-"]')]
+        .filter((b) => { const r = b.getBoundingClientRect(); return r.left < back.right && r.right > back.left && r.top < back.bottom && r.bottom > back.top; })
+        .map((b) => `back overlaps ${b.dataset.tab ?? b.dataset.action}`);
+    }));
   }
   return out;
 }
@@ -98,7 +105,8 @@ test('arrows walk each side\'s islands in its own order; a locked island is grey
   await press(page.locator('[data-tab="zombies"]'));
   await expect(map).toHaveAttribute('data-arena', 'citadel');
   await stonesOnScreen(page, 8);
-  expect(await lawnShown(page)).toBe(false);
+  expect(await lawnShown(page)).toBe(true); // the stage's own lawn, dressed as the Citadel
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('citadel');
   await press(page.locator('[data-action="world-next"]'));
   await expect(map).toHaveAttribute('data-arena', 'tundra');
   await expect(map).toHaveAttribute('data-locked', '');
@@ -152,7 +160,8 @@ test('stand-in world 2: the map opens on it after world 1, in its colours; its l
   await expect(map).toHaveAttribute('data-arena', 'meadow');
   await expect(map).not.toHaveAttribute('data-locked', '');
   await stonesOnScreen(page, 8);
-  expect(await lawnShown(page)).toBe(false);
+  expect(await lawnShown(page)).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('meadow');
   await press(page.locator('[data-stone="p2-1"]'));
   const card = page.locator('[data-screen="level-card"][data-level="p2-1"]');
   await expect(card).toBeVisible();
@@ -162,6 +171,40 @@ test('stand-in world 2: the map opens on it after world 1, in its colours; its l
   await expect(map).toHaveAttribute('data-arena', 'backyard');
   await expect(page.locator('[data-stone="p1-8"]')).toHaveAttribute('data-state', 'done');
   await page.evaluate(() => (window.__lvt as any).previewWorlds(false));
+});
+
+test('ten map ↔ level round trips through the Citadel look: one WebGL context, the GPU\'s geometry count flat, handed back as the Backyard', async ({ page }) => {
+  test.setTimeout(240_000);
+  await openTitle(page);
+  await logIn(page);
+  await page.evaluate(() => {
+    const lvt = window.__lvt as any;
+    const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((l) => (l.teaches ?? []).map((t) => t.id));
+    lvt.players.update((s: any) => ({ ...s, teached: ids }));
+  });
+  const geometries = (): Promise<number> => page.evaluate(() => (window.__lvt as any).renderer.webgl.info.memory.geometries as number);
+  const lawnWorld = (): Promise<string> => page.evaluate(() => (window.__lvt as any).stage.lawn.world as string);
+  const counts: number[] = [];
+  await toMap(page, 'zombies');
+  for (let round = 0; round < 10; round++) {
+    await expect.poll(lawnWorld).toBe('citadel');
+    await frames(page, 3);
+    counts.push(await geometries());
+    await press(page.locator('[data-stone="z1-1"]'));
+    await press(page.locator('[data-action="start-level"]'));
+    await waitLive(page);
+    await forceResult(page, 'plants');
+    await expect(page.locator('[data-level-result="z1-1"]')).toBeVisible({ timeout: 30_000 });
+    await press(page.locator('[data-screen="result"] [data-action="map"]'));
+    await expect.poll(() => page.evaluate(() => (window.__lvt as any).map?.isOpen)).toBe(true);
+    expect(await glContexts(page), `round ${round + 1}`).toBe(1);
+  }
+  // From the third look on (caches warm), the same number of geometries on the GPU every time.
+  for (const n of counts.slice(2)) expect(n).toBe(counts[2]);
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await expect(page.locator('[data-screen="play"]')).toBeVisible();
+  await expect.poll(lawnWorld).toBe('backyard');
+  expect(await page.evaluate(() => (window.__lvt as any).stage.lawn.group.visible)).toBe(true);
 });
 
 // Screenshots for review, only when asked: LVT_MAP_SHOTS=<folder> npx playwright test e2e/map.spec.ts --project ipad -g shots

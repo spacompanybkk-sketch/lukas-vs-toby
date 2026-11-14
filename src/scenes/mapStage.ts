@@ -77,7 +77,7 @@ export const ISLAND_COLORS: Readonly<Record<WorldKey, { top: string; topAlt: str
  * on the left.
  */
 const RIGHT_OF_SHOWN: readonly (readonly [number, number, number, number])[] = [
-  [8.0, 1.4, -4.6, 1.05], [11.6, 0.6, -2.9, 1.2], [6.4, 2.6, -6.4, 0.8], [10.4, 2.6, -6.2, 0.85],
+  [7.4, 1.1, -4.2, 0.85], [9.0, 0.9, -3.8, 0.85], [10.6, 0.7, -3.3, 0.85], [12.2, 0.4, -2.6, 0.85],
 ];
 const skySpot = (offset: number): readonly [number, number, number, number] => {
   const [x, y, z, scale] = RIGHT_OF_SHOWN[Math.min(Math.abs(offset), RIGHT_OF_SHOWN.length) - 1]!;
