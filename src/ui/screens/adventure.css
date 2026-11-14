@@ -194,13 +194,17 @@
 .lcard__reward-pic { width: 100%; background: var(--c-sky-hi) !important; }
 .lcard__reward-pic img, .lcard__reward-pic svg { filter: brightness(0) invert(0.42); }
 .lcard__foot { display: flex; align-items: center; justify-content: center; gap: clamp(14px, 3vw, 40px); width: 100%; }
-.lcard__faces { display: flex; gap: clamp(6px, 1vw, 12px); }
-.lcard__face { width: clamp(52px, 8.6vh, 80px); height: clamp(52px, 8.6vh, 80px); padding: 6px; }
+.lcard__faces { display: flex; gap: clamp(10px, 1.6vw, 18px); }
+.lcard__face { width: clamp(64px, 10.4vh, 96px); height: auto; padding: 6px 2px calc(var(--px-bev) + 4px); flex-direction: column; gap: 2px; }
+.lcard__btn-pic { display: block; width: clamp(38px, 6.2vh, 60px); height: clamp(38px, 6.2vh, 60px); }
+.lcard__btn-pic--glove { display: grid; place-items: center; }
+.lcard__btn-name { font-size: clamp(11px, 1.9vh, 15px); line-height: 1; color: var(--white); text-transform: uppercase; white-space: nowrap; }
 .lcard__face:not(.is-on) svg { filter: grayscale(0.6) brightness(0.85); }
 .lcard__face.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: calc(var(--px-line) * 2); }
 /* The small glove button: plays the level with its tutorial again. */
-.lcard__teach { flex: none; padding: 6px; }
+.lcard__teach { flex: none; flex-direction: column; gap: 2px; width: clamp(64px, 10.4vh, 96px); padding: 6px 2px calc(var(--px-bev) + 4px); }
 .lcard__teach svg { display: block; width: clamp(30px, 4.6vh, 44px); height: auto; }
+.lcard__teach .lcard__btn-pic svg { width: auto; max-width: 100%; height: 100%; }
 .lcard__play { min-width: clamp(160px, 22vw, 260px); animation: px-breathe 1200ms steps(2, jump-none) infinite; }
 
 /* A closed level: its picture behind a padlock, and an arrow to the level to play now. */

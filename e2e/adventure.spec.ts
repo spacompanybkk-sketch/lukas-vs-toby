@@ -457,3 +457,33 @@ test('the Back button shows BACK and overlaps nothing beside it on the map, the 
     await press(page.locator(`[data-screen="${place}"] [data-action="back"]`));
   }
 });
+
+test('the level card names its small buttons (EASY, NORMAL, HARD, HELP), inside the card and clear of the Play button, at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  test.setTimeout(90_000);
+  await openTitle(page);
+  await logIn(page);
+  await toMap(page);
+  await press(page.locator('[data-stone="p1-1"]'));
+  await expect(page.locator('[data-screen="level-card"]')).toBeVisible();
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }]) {
+    await page.setViewportSize(size);
+    for (const [sel, word] of [['[data-skill="easy"]', 'EASY'], ['[data-skill="medium"]', 'NORMAL'], ['[data-skill="hard"]', 'HARD'], ['[data-action="replay-tutorial"]', 'HELP']] as const) {
+      await nameFitsTile(page, `[data-screen="level-card"] ${sel}`, '[data-btn-name]', word);
+    }
+    const r = await page.evaluate(() => {
+      const box = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+      const card = box('[data-screen="level-card"]');
+      const play = box('[data-action="start-level"]');
+      const btns = ['[data-skill="easy"]', '[data-skill="medium"]', '[data-skill="hard"]', '[data-action="replay-tutorial"]'].map(box);
+      const stars = box('.lcard__stars');
+      return {
+        apart: btns.every((b) => b.right <= play.left || b.left >= play.right || b.bottom <= play.top || b.top >= play.bottom),
+        inCard: [...btns, play].every((b) => b.left >= card.left && b.right <= card.right && b.bottom <= card.bottom && b.top >= card.top),
+        belowStars: btns.every((b) => b.top >= stars.bottom - 1),
+        rowOrdered: btns.every((b, i) => i === 0 || b.left >= btns[i - 1]!.right - 1),
+      };
+    });
+    expect(r).toEqual({ apart: true, inCard: true, belowStars: true, rowOrdered: true });
+  }
+});
