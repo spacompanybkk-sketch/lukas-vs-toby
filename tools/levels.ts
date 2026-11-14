@@ -1,5 +1,5 @@
 /**
- * The level tool: plays every Backyard level with every level stand-in (`src/ai/levelStandIns.ts`)
+ * The level tool: plays every Adventure level (`LEVELS`, all worlds) with every level stand-in (`src/ai/levelStandIns.ts`)
  * on N seeds, on a pool of at most three worker threads, and prints per level and stand-in the win
  * rate, the median stars, the share of 3-star seeds, the median length and how the seeds ended
  * (clock / base / boss / not at all). Also Free Play's first steps. Deterministic.
@@ -7,6 +7,7 @@
  *   npx tsx tools/levels.ts                    every level, 200 seeds, seeds 1..200
  *   npx tsx tools/levels.ts --first 1001       the second block (1001..), --first 2001 the third
  *   npx tsx tools/levels.ts --seeds 50         fewer seeds (quicker, noisier)
+ *   npx tsx tools/levels.ts --world 2          only world 2's levels (both sides)
  *   npx tsx tools/levels.ts --only p1-3,z1-8   only these levels (a regex also works: --only 'p1-')
  *   npx tsx tools/levels.ts --who average      only these stand-ins (comma list)
  *   npx tsx tools/levels.ts --free             Free Play instead of the levels
@@ -15,7 +16,7 @@
  */
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import { BACKYARD } from '../src/adventure/levels/backyard';
+import { LEVELS } from '../src/adventure/levels';
 import { BALANCE, cloneBalance } from '../src/data/balance';
 import type { Balance } from '../src/data/balance';
 import {
@@ -53,7 +54,7 @@ function work(job: Job): LevelPlayed[] | FreePlayed[] {
   const out: Array<LevelPlayed | FreePlayed> = [];
   for (let seed = job.first; seed < job.first + job.seeds; seed++) {
     if (job.kind === 'level') {
-      const def = BACKYARD.find((l) => l.id === job.id);
+      const def = LEVELS.find((l) => l.id === job.id);
       if (def === undefined) throw new Error(`no level ${job.id}`);
       out.push(playLevel(def, job.who, seed, b));
     } else {
@@ -124,8 +125,11 @@ async function main(): Promise<void> {
       }
       return;
     }
-    const pick = only === undefined ? BACKYARD
-      : BACKYARD.filter((l) => only.split(',').some((o) => l.id === o || new RegExp(o).test(l.id)));
+    const world = arg('--world');
+    const inWorld = world === undefined ? LEVELS : LEVELS.filter((l) => l.world === Number(world));
+    if (inWorld.length === 0) throw new Error(`no levels in world ${world}`);
+    const pick = only === undefined ? inWorld
+      : inWorld.filter((l) => only.split(',').some((o) => l.id === o || new RegExp(o).test(l.id)));
     // Every series at once, so the three workers stay busy.
     const runs = pick.flatMap((def) => who.map((w) => ({ def, w })));
     const results = await Promise.all(runs.map(({ def, w }) =>

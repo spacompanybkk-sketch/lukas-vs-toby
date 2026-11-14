@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { levelsFor } from '../../../src/adventure/levels';
 import type { LevelDef } from '../../../src/adventure/types';
-import { playFreePlay, playLevelSeries, summariseFreePlay, summariseLevel } from '../../../src/ai/levelChecks';
+import {
+  EXPERT_WIN_MIN, averageWinBand, beginnerWinMin, campaignIndex, playFreePlay, playLevelSeries, summariseFreePlay, summariseLevel,
+} from '../../../src/ai/levelChecks';
 import type { FreePlayStats, LevelStats } from '../../../src/ai/levelChecks';
 import { LEVEL_STAND_INS } from '../../../src/ai/levelStandIns';
 import type { LevelStandIn } from '../../../src/ai/levelStandIns';
 import type { Faction } from '../../../src/sim/types';
 
 /**
- * The Backyard's campaign bands (plan Task 8, spec 10; the average player's band as replaced by the
- * coordinator after the first review) with the level stand-ins, and Free Play's first steps: the
- * same numbers as `npx tsx tools/levels.ts` (and `--free`). Each seed block (1..200, 1001..1200,
- * 2001..2200) is its own test file, so `npm run test:balance` plays them on its three workers.
+ * The campaign bands with the level stand-ins, one test file per world (`levels-w1.test.ts` …
+ * `levels-w5.test.ts`, both sides each) and one for Free Play (`freePlay.test.ts`): the same
+ * numbers as `npx tsx tools/levels.ts` (`--world N`, `--free`). World 1 keeps the Backyard's bands
+ * (plan Task 8 of the Backyard plan; the average player's band as ruling A18 replaced it); worlds
+ * 2–5 take the curve of ruling 11 (`averageWinBand`). `npm run test:balance` plays one seed block
+ * (1..200); `LVT_BLOCKS=3` plays three (1..200, 1001..1200, 2001..2200), required when a world ships.
  *
  * A band holds when every block is inside it or within 1 point of it (the brief's rule), so each
  * block is asserted with that 1-point allowance (`SLACK`) on the percentage bands. A band in
@@ -22,6 +26,13 @@ export const SEEDS = 200;
 /** The brief's "within 1 point" on every percentage band, applied per block. */
 const SLACK = 1;
 const LONG_MS = 3_600_000;
+
+/** The seed blocks to play: `LVT_BLOCKS` of them (1 to 3; default 1). */
+export function blocks(): number[] {
+  const n = Number(process.env.LVT_BLOCKS ?? 1);
+  if (!Number.isInteger(n) || n < 1 || n > 3) throw new RangeError(`LVT_BLOCKS ${String(process.env.LVT_BLOCKS)} must be 1, 2 or 3`);
+  return [1, 1001, 2001].slice(0, n);
+}
 
 const SHORT_BREAKTHROUGH = 'three stars need the garden broken within the first half of the clock (60 / 75 s), which the 3-star bands ask of most seeds: under 1.5 min by construction';
 const SHORT_CONVEYOR = 'the sensible players break the regrowing garden in about 1.25 min; a bigger plant base drops the beginner below the smooth curve (5500: 75%, 7000: 38%)';
@@ -51,10 +62,23 @@ const within = (v: number, lo: number, hi: number, what: string, slack = SLACK):
   expect(v, what).toBeLessThanOrEqual(hi + slack);
 };
 
-/** Every level band and Free Play band on seeds `first`..`first + SEEDS - 1`. */
-export function levelBandTests(first: number): void {
+/** Every band of `world`'s levels on every seed block (`blocks`); a world without levels yet is a todo. */
+export function worldBandTests(world: 1 | 2 | 3 | 4 | 5): void {
+  const sides = (['plants', 'zombies'] as const).filter((side) => levelsFor(side, world).length > 0);
+  if (sides.length === 0) {
+    it.todo(`world ${world} has no levels yet`);
+    return;
+  }
+  for (const first of blocks()) {
+    if (world === 1) backyardBandTests(first);
+    else curveBandTests(world, sides, first);
+  }
+}
+
+/** A cache of one level series per level and stand-in on seeds `first`..`first + SEEDS - 1`. */
+function levelStats(first: number): (def: LevelDef, who: LevelStandIn) => Promise<LevelStats> {
   const cache = new Map<string, Promise<LevelStats>>();
-  const stats = (def: LevelDef, who: LevelStandIn): Promise<LevelStats> => {
+  return (def, who) => {
     const key = `${def.id}:${who}`;
     let p = cache.get(key);
     if (p === undefined) {
@@ -63,6 +87,39 @@ export function levelBandTests(first: number): void {
     }
     return p;
   };
+}
+
+/**
+ * Worlds 2–5 (ruling 11): the expert wins at least 95%; the average player sits in the curve's band
+ * for the level's campaign index (a boss 5 lower); the beginner on Easy wins at least 70% through
+ * world 2; every seed ends; median lengths 1.5–4 minutes (a boss up to 5).
+ */
+function curveBandTests(world: number, sides: readonly Faction[], first: number): void {
+  const stats = levelStats(first);
+  for (const side of sides) {
+    describe(`world ${world} as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
+      for (const def of levelsFor(side, world)) {
+        const boss = def.kind === 'boss';
+        const i = campaignIndex(def);
+        const avg = averageWinBand(i, boss);
+        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
+        band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
+        const floor = beginnerWinMin(i);
+        if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
+        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
+          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
+        });
+        for (const who of LEVEL_STAND_INS) {
+          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
+        }
+      }
+    });
+  }
+}
+
+/** The Backyard's bands on seeds `first`..`first + SEEDS - 1`. */
+function backyardBandTests(first: number): void {
+  const stats = levelStats(first);
 
   for (const side of ['plants', 'zombies'] as const satisfies readonly Faction[]) {
     const levels = levelsFor(side, 1);
@@ -106,7 +163,14 @@ export function levelBandTests(first: number): void {
       });
     });
   }
+}
 
+/** Free Play's bands on every seed block (`blocks`). */
+export function freePlayBandTests(): void {
+  for (const first of blocks()) freePlayBlock(first);
+}
+
+function freePlayBlock(first: number): void {
   const free = new Map<string, Promise<FreePlayStats>>();
   const freeStats = (side: Faction, who: LevelStandIn): Promise<FreePlayStats> => {
     const key = `${side}:${who}`;
