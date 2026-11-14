@@ -1,0 +1,1461 @@
+[
+ {
+  "id": "p1-1",
+  "world": 1,
+  "n": 1,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 20,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 34,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 48,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 62,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 76,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 90,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 104,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 118,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 132,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 146,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 160,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 174,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 188,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 202,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   }
+  ],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": 300,
+  "spells": false,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "p1-1.card",
+    "show": "card",
+    "card": "peashooter",
+    "until": "selected"
+   },
+   {
+    "id": "p1-1.tile",
+    "show": "tile",
+    "card": "peashooter",
+    "lane": 2,
+    "col": 1,
+    "until": "placed"
+   }
+  ],
+  "side": "plants",
+  "kind": "battle",
+  "cards": [
+   "peashooter"
+  ],
+  "baseHp": {
+   "zombies": 1500
+  }
+ },
+ {
+  "id": "p1-2",
+  "world": 1,
+  "n": 2,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 20,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 29,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 38,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 47,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 56,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 65,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 74,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 83,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 92,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 101,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 110,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 119,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 128,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 137,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 146,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 155,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 75,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 75.5,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   }
+  ],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": false,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "p1-2.sun-card",
+    "show": "card",
+    "card": "sunflower",
+    "until": "selected"
+   },
+   {
+    "id": "p1-2.sun-tile",
+    "show": "tile",
+    "card": "sunflower",
+    "lane": 1,
+    "col": 0,
+    "until": "placed"
+   },
+   {
+    "id": "p1-2.pea-card",
+    "show": "card",
+    "card": "peashooter",
+    "until": "selected"
+   },
+   {
+    "id": "p1-2.pea-tile",
+    "show": "tile",
+    "card": "peashooter",
+    "lane": 1,
+    "col": 1,
+    "until": "placed"
+   },
+   {
+    "id": "p1-2.hero",
+    "show": "hero",
+    "until": "fired",
+    "after": "hero"
+   }
+  ],
+  "side": "plants",
+  "kind": "battle",
+  "cards": [
+   "peashooter",
+   "sunflower"
+  ],
+  "baseHp": {
+   "plants": 12000,
+   "zombies": 2500
+  }
+ },
+ {
+  "id": "p1-3",
+  "world": 1,
+  "n": 3,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 20,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 26,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 32,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 38,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 44,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 50,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 56,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 62,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 68,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 72,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 72.5,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 73,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 73.5,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   }
+  ],
+  "prepared": [],
+  "seconds": 90,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": false,
+  "unlocks": "potatoMine",
+  "teaches": [
+   {
+    "id": "p1-3.card",
+    "show": "card",
+    "card": "peashooter",
+    "until": "selected"
+   },
+   {
+    "id": "p1-3.tile",
+    "show": "tile",
+    "card": "peashooter",
+    "lane": 2,
+    "col": 1,
+    "until": "placed"
+   },
+   {
+    "id": "p1-3.merge-card",
+    "show": "card",
+    "card": "peashooter",
+    "until": "selected"
+   },
+   {
+    "id": "p1-3.merge",
+    "show": "unit",
+    "card": "peashooter",
+    "until": "merged"
+   }
+  ],
+  "side": "plants",
+  "kind": "survive",
+  "cards": [
+   "peashooter",
+   "sunflower",
+   "walnutBomb"
+  ],
+  "baseHp": {
+   "plants": 4500
+  }
+ },
+ {
+  "id": "p1-4",
+  "world": 1,
+  "n": 4,
+  "opponent": {
+   "skill": "easy",
+   "cards": [
+    "brainEater",
+    "veryFastWalker",
+    "skeletonWarrior"
+   ],
+   "incomeScale": 0.5
+  },
+  "waves": [],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "p1-4.spell",
+    "show": "spell",
+    "index": 0,
+    "until": "fired",
+    "after": "spell"
+   }
+  ],
+  "side": "plants",
+  "kind": "battle",
+  "cards": [
+   "peashooter",
+   "sunflower",
+   "walnutBomb",
+   "potatoMine"
+  ],
+  "baseHp": {
+   "zombies": 3000
+  }
+ },
+ {
+  "id": "p1-5",
+  "world": 1,
+  "n": 5,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 15,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 22,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 29,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   },
+   {
+    "at": 36,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 43,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 50,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 57,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 64,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   },
+   {
+    "at": 71,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 78,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 85,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 92,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 55,
+    "unit": "veryFastWalker",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 69,
+    "unit": "veryFastWalker",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 83,
+    "unit": "veryFastWalker",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 100,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 100.5,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 101,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   }
+  ],
+  "prepared": [],
+  "seconds": 120,
+  "belt": {
+   "everySeconds": 5,
+   "cards": [
+    "peashooter",
+    "walnutBomb",
+    "potatoMine"
+   ]
+  },
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "p1-5.belt",
+    "show": "belt",
+    "until": "selected"
+   },
+   {
+    "id": "p1-5.belt-tile",
+    "show": "belt-tile",
+    "lane": 2,
+    "col": 1,
+    "until": "placed"
+   }
+  ],
+  "side": "plants",
+  "kind": "conveyor",
+  "cards": [
+   "peashooter",
+   "walnutBomb",
+   "potatoMine"
+  ],
+  "baseHp": {
+   "plants": 4400
+  }
+ },
+ {
+  "id": "p1-6",
+  "world": 1,
+  "n": 6,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 20,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 27,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 34,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 41,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 48,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   },
+   {
+    "at": 55,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 62,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 69,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 76,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 83,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   },
+   {
+    "at": 90,
+    "unit": "brainEater",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 97,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 104,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 111,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 120,
+    "unit": "skeletonWarrior",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 120.5,
+    "unit": "skeletonWarrior",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 121,
+    "unit": "skeletonWarrior",
+    "lane": 2,
+    "level": 1
+   },
+   {
+    "at": 121.5,
+    "unit": "skeletonWarrior",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 122,
+    "unit": "skeletonWarrior",
+    "lane": 4,
+    "level": 1
+   }
+  ],
+  "prepared": [],
+  "seconds": 150,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": "kernelPult",
+  "teaches": null,
+  "side": "plants",
+  "kind": "survive",
+  "cards": [
+   "peashooter",
+   "sunflower",
+   "walnutBomb",
+   "potatoMine"
+  ],
+  "baseHp": {
+   "plants": 3500
+  }
+ },
+ {
+  "id": "p1-7",
+  "world": 1,
+  "n": 7,
+  "opponent": {
+   "skill": "medium",
+   "cards": [
+    "brainEater",
+    "veryFastWalker",
+    "skeletonWarrior",
+    "desertZombie"
+   ],
+   "incomeScale": 0.25
+  },
+  "waves": [],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": null,
+  "side": "plants",
+  "kind": "battle",
+  "cards": [
+   "peashooter",
+   "sunflower",
+   "walnutBomb",
+   "potatoMine",
+   "kernelPult"
+  ],
+  "baseHp": {
+   "zombies": 3000
+  }
+ },
+ {
+  "id": "p1-8",
+  "world": 1,
+  "n": 8,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 30,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 50,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   },
+   {
+    "at": 70,
+    "unit": "brainEater",
+    "lane": 1,
+    "level": 1
+   },
+   {
+    "at": 90,
+    "unit": "brainEater",
+    "lane": 3,
+    "level": 1
+   },
+   {
+    "at": 110,
+    "unit": "brainEater",
+    "lane": 0,
+    "level": 1
+   },
+   {
+    "at": 130,
+    "unit": "brainEater",
+    "lane": 4,
+    "level": 1
+   }
+  ],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": {
+   "key": "brainTitan",
+   "lane": 2
+  },
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": null,
+  "side": "plants",
+  "kind": "boss",
+  "cards": [
+   "peashooter",
+   "sunflower",
+   "walnutBomb",
+   "potatoMine",
+   "kernelPult"
+  ],
+  "baseHp": {
+   "plants": 4850
+  }
+ },
+ {
+  "id": "z1-1",
+  "world": 1,
+  "n": 1,
+  "opponent": null,
+  "waves": [],
+  "prepared": [
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 2,
+    "level": 1
+   }
+  ],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": false,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "z1-1.card",
+    "show": "card",
+    "card": "brainEater",
+    "until": "selected"
+   },
+   {
+    "id": "z1-1.lane",
+    "show": "tile",
+    "card": "brainEater",
+    "lane": 2,
+    "col": 9,
+    "until": "placed"
+   }
+  ],
+  "side": "zombies",
+  "kind": "battle",
+  "cards": [
+   "brainEater"
+  ],
+  "baseHp": {
+   "plants": 3500
+  }
+ },
+ {
+  "id": "z1-2",
+  "world": 1,
+  "n": 2,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 30,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 2
+   },
+   {
+    "at": 30,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 2
+   },
+   {
+    "at": 60,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 1
+   },
+   {
+    "at": 60,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 1
+   },
+   {
+    "at": 90,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 4
+   },
+   {
+    "at": 90,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 4
+   },
+   {
+    "at": 120,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 0
+   },
+   {
+    "at": 120,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 0
+   }
+  ],
+  "prepared": [
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 3,
+    "level": 1
+   }
+  ],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": false,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "z1-2.card",
+    "show": "card",
+    "card": "veryFastWalker",
+    "until": "selected"
+   },
+   {
+    "id": "z1-2.lane",
+    "show": "tile",
+    "card": "veryFastWalker",
+    "lane": 0,
+    "col": 9,
+    "until": "placed"
+   },
+   {
+    "id": "z1-2.hero",
+    "show": "hero",
+    "until": "fired",
+    "after": "hero"
+   }
+  ],
+  "side": "zombies",
+  "kind": "battle",
+  "cards": [
+   "brainEater",
+   "veryFastWalker"
+  ],
+  "baseHp": {
+   "plants": 3500,
+   "zombies": 14000
+  }
+ },
+ {
+  "id": "z1-3",
+  "world": 1,
+  "n": 3,
+  "opponent": null,
+  "waves": [],
+  "prepared": [
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 1,
+    "col": 5,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 3,
+    "col": 5,
+    "level": 1
+   }
+  ],
+  "seconds": 120,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": false,
+  "unlocks": "desertZombie",
+  "teaches": [
+   {
+    "id": "z1-3.card",
+    "show": "card",
+    "card": "brainEater",
+    "until": "selected"
+   },
+   {
+    "id": "z1-3.lane",
+    "show": "tile",
+    "card": "brainEater",
+    "lane": 2,
+    "col": 9,
+    "until": "placed"
+   },
+   {
+    "id": "z1-3.merge-card",
+    "show": "card",
+    "card": "brainEater",
+    "until": "selected"
+   },
+   {
+    "id": "z1-3.merge",
+    "show": "unit",
+    "card": "brainEater",
+    "until": "merged"
+   }
+  ],
+  "side": "zombies",
+  "kind": "breakthrough",
+  "cards": [
+   "brainEater",
+   "veryFastWalker",
+   "skeletonWarrior"
+  ],
+  "baseHp": {
+   "plants": 1000
+  }
+ },
+ {
+  "id": "z1-4",
+  "world": 1,
+  "n": 4,
+  "opponent": {
+   "skill": "easy",
+   "cards": [
+    "peashooter",
+    "sunflower",
+    "walnutBomb"
+   ],
+   "incomeScale": 1
+  },
+  "waves": [],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "z1-4.spell",
+    "show": "spell",
+    "index": 0,
+    "until": "fired",
+    "after": "spell"
+   }
+  ],
+  "side": "zombies",
+  "kind": "battle",
+  "cards": [
+   "brainEater",
+   "veryFastWalker",
+   "skeletonWarrior",
+   "desertZombie"
+  ],
+  "baseHp": {
+   "plants": 4000
+  }
+ },
+ {
+  "id": "z1-5",
+  "world": 1,
+  "n": 5,
+  "opponent": null,
+  "waves": [
+   {
+    "at": 40,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 1
+   },
+   {
+    "at": 40,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 1
+   },
+   {
+    "at": 80,
+    "unit": "peashooter",
+    "lane": 0,
+    "col": 1
+   },
+   {
+    "at": 80,
+    "unit": "peashooter",
+    "lane": 4,
+    "col": 1
+   },
+   {
+    "at": 120,
+    "unit": "peashooter",
+    "lane": 2,
+    "col": 1
+   },
+   {
+    "at": 120,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 0
+   }
+  ],
+  "prepared": [
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 0,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 2,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 4,
+    "col": 3,
+    "level": 1
+   }
+  ],
+  "seconds": 150,
+  "belt": {
+   "everySeconds": 5,
+   "cards": [
+    "brainEater",
+    "veryFastWalker",
+    "skeletonWarrior",
+    "desertZombie"
+   ]
+  },
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": [
+   {
+    "id": "z1-5.belt",
+    "show": "belt",
+    "until": "selected"
+   },
+   {
+    "id": "z1-5.belt-tile",
+    "show": "belt-tile",
+    "lane": 2,
+    "col": 9,
+    "until": "placed"
+   }
+  ],
+  "side": "zombies",
+  "kind": "conveyor",
+  "cards": [
+   "brainEater",
+   "veryFastWalker",
+   "skeletonWarrior",
+   "desertZombie"
+  ],
+  "baseHp": {
+   "plants": 4300,
+   "zombies": 10000
+  }
+ },
+ {
+  "id": "z1-6",
+  "world": 1,
+  "n": 6,
+  "opponent": null,
+  "waves": [],
+  "prepared": [
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 0,
+    "col": 5,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 1,
+    "col": 5,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 2,
+    "col": 5,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 3,
+    "col": 5,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "walnutBomb",
+    "lane": 4,
+    "col": 5,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 0,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 2,
+    "col": 2,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 4,
+    "col": 2,
+    "level": 1
+   }
+  ],
+  "seconds": 150,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": "skeletonArcher",
+  "teaches": null,
+  "side": "zombies",
+  "kind": "breakthrough",
+  "cards": [
+   "brainEater",
+   "veryFastWalker",
+   "skeletonWarrior",
+   "desertZombie"
+  ],
+  "baseHp": {
+   "plants": 600
+  }
+ },
+ {
+  "id": "z1-7",
+  "world": 1,
+  "n": 7,
+  "opponent": {
+   "skill": "medium",
+   "cards": [
+    "peashooter",
+    "sunflower",
+    "walnutBomb",
+    "potatoMine"
+   ],
+   "incomeScale": 0.4
+  },
+  "waves": [],
+  "prepared": [],
+  "seconds": null,
+  "belt": null,
+  "boss": null,
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": null,
+  "side": "zombies",
+  "kind": "battle",
+  "cards": [
+   "brainEater",
+   "veryFastWalker",
+   "skeletonWarrior",
+   "desertZombie",
+   "skeletonArcher"
+  ],
+  "baseHp": {
+   "plants": 2800
+  }
+ },
+ {
+  "id": "z1-8",
+  "world": 1,
+  "n": 8,
+  "opponent": null,
+  "waves": [],
+  "prepared": [
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 0,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 4,
+    "col": 3,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 1,
+    "col": 4,
+    "level": 1
+   },
+   {
+    "at": 0,
+    "unit": "peashooter",
+    "lane": 3,
+    "col": 4,
+    "level": 1
+   }
+  ],
+  "seconds": null,
+  "belt": null,
+  "boss": {
+   "key": "elderOak",
+   "lane": 2
+  },
+  "startEnergy": null,
+  "spells": true,
+  "unlocks": null,
+  "teaches": null,
+  "side": "zombies",
+  "kind": "boss",
+  "cards": [
+   "brainEater",
+   "veryFastWalker",
+   "skeletonWarrior",
+   "desertZombie",
+   "skeletonArcher"
+  ]
+ }
+]
