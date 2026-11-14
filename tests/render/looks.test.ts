@@ -110,6 +110,29 @@ describe('world looks', () => {
   });
 });
 
+describe('Citadel rim', () => {
+  it('has no lava pools on the rim: the glow lying on the ground is only hair-thin seams in cooled crust', () => {
+    const { solid, glow } = LOOKS.citadel.props();
+    const position = glow.getAttribute('position');
+    const normal = glow.getAttribute('normal');
+    let groundGlow = 0;
+    for (let q = 0; q < position.count; q += 4) {
+      if (normal.getY(q) < 0.99 || position.getY(q) > 0.12) continue; // up faces near the ground only
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = q; i < q + 4; i++) {
+        minX = Math.min(minX, position.getX(i)); maxX = Math.max(maxX, position.getX(i));
+        minZ = Math.min(minZ, position.getZ(i)); maxZ = Math.max(maxZ, position.getZ(i));
+      }
+      expect(Math.min(maxX - minX, maxZ - minZ)).toBeLessThan(0.03); // a seam, never a pool
+      groundGlow += (maxX - minX) * (maxZ - minZ);
+    }
+    expect(groundGlow).toBeGreaterThan(0);
+    expect(groundGlow).toBeLessThan(0.15);
+    solid.dispose();
+    glow.dispose();
+  });
+});
+
 describe('battleWorld', () => {
   it('puts a battle that is no level in the Backyard with no twist', () => {
     expect(battleWorld({ playerFaction: 'plants', skill: 'easy', seed: 1 })).toEqual({ world: 'backyard', lawn: NO_TWIST, theme: 'backyard' });

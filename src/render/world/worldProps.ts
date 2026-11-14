@@ -414,10 +414,34 @@ function brazier(solid: BoxBatch, glow: BoxBatch, x: number, z: number, h: numbe
   });
 }
 
-/** A pool of lava on the rim (glow) inside a ring of dark rock. */
-function lavaPool(solid: BoxBatch, glow: BoxBatch, x: number, z: number, w: number, d: number): void {
-  solid.boxOn(x, 0, z, w + 0.16, 0.04, d + 0.16, '#2C2632', '#3A3242');
-  glow.boxOn(x, 0, z, w, 0.045, d, '#FF6A1A');
+/**
+ * Cooled lava on the rim: a raised slab of dark basalt crust, a few blocks stepped on it, and
+ * only hair-thin glowing seams in its cracks. Plainly rock, never a hazard: only real lava tiles
+ * on the lawn glow bright.
+ */
+function cooledLava(solid: BoxBatch, glow: BoxBatch, x: number, z: number, w: number, d: number, random: () => number): void {
+  const crust = '#221C2A';
+  const crustTop = '#2C2536';
+  solid.boxOn(x, 0, z, w + 0.12, 0.05, d + 0.12, crust, crustTop);
+  for (let i = 0; i < 3; i++) {
+    const bx = x + (random() - 0.5) * w * 0.7;
+    const bz = z + (random() - 0.5) * d * 0.6;
+    solid.boxOn(bx, 0.05, bz, 0.12 + random() * 0.1, 0.02, 0.1 + random() * 0.06, crust, shade(crustTop, 0.04));
+  }
+  // Seams: two short zig-zags of pixel-thin glow along the slab, just proud of its top.
+  const along = w >= d;
+  const length = along ? w : d;
+  for (let seam = 0; seam < 2; seam++) {
+    let u = -length / 2 + 0.06 + random() * 0.08;
+    let v = (seam === 0 ? -1 : 1) * (along ? d : w) * 0.18;
+    while (u < length / 2 - 0.12) {
+      const run = 0.08 + random() * 0.1;
+      const [cx, cz, sx, sz] = along ? [x + u + run / 2, z + v, run, 0.018] : [x + v, z + u + run / 2, 0.018, run];
+      glow.boxOn(cx, 0.05, cz, sx, 0.004, sz, '#E2541A');
+      u += run;
+      v += (random() < 0.5 ? -1 : 1) * 0.018;
+    }
+  }
 }
 
 /** An obsidian spike, `h` tall, leaning a little. */
@@ -438,20 +462,20 @@ export function buildCitadelProps(): Props {
   const glow = new BoxBatch();
   const rubble = '#6A6478';
 
-  // --- Lukas's end: a ruined stretch of wall, braziers and lava pools on the rim.
+  // --- Lukas's end: a ruined stretch of wall, braziers and cooled lava on the rim.
   battlements(solid, 0.2, 3.4, -0.62, 0.42, random);
   battlements(solid, 4.4, 7.6, -0.62, 0.36, random);
   for (let i = 0; i < 5; i++) rock(solid, 3.55 + random() * 0.7, -0.6 + random() * 0.2, 0.9 + random() * 0.5, rubble, random() * 3);
   tower(solid, -2.0, -0.4, 1.3);
   brazier(solid, glow, -0.6, -0.45, 0.4);
   brazier(solid, glow, -1.15, 5.4, 0.32);
-  lavaPool(solid, glow, -2.2, 2.4, 0.5, 1.1);
+  cooledLava(solid, glow, -2.2, 2.4, 0.5, 1.1, random);
   spike(solid, -2.3, 4.3, 0.8, 0.3, 0.12);
   spike(solid, -2.05, 1.2, 0.6, -0.4, -0.1);
 
-  // Front rim: low rubble, small lava pools and bones.
-  lavaPool(solid, glow, 2.6, 5.55, 0.7, 0.3);
-  lavaPool(solid, glow, 6.4, 5.5, 0.5, 0.3);
+  // Front rim: low rubble, slabs of cooled lava and bones.
+  cooledLava(solid, glow, 2.6, 5.55, 0.7, 0.3, random);
+  cooledLava(solid, glow, 6.4, 5.5, 0.5, 0.3, random);
   for (const [x, z, s, yaw] of [[1.4, 5.5, 0.9, 0.3], [4.6, 5.6, 1.1, 2.2], [-0.7, 5.5, 0.7, 1.4]] as const) rock(solid, x, z, s, rubble, yaw);
   for (let i = 0; i < 6; i++) bone(solid, -1.5 + random() * 8.6, 5.25 + random() * 0.35, random() * 3, 1.0);
   // Cracks across the first columns' corners.
@@ -460,7 +484,7 @@ export function buildCitadelProps(): Props {
     crack(solid, dx, lane + dz, random() * 3, 1.0, '#3A3446');
   }
 
-  // --- Toby's end: his gate towers, spikes, gravestones, bone piles and lava.
+  // --- Toby's end: his gate towers, spikes, gravestones, bone piles and cooled lava.
   tower(solid, 12.3, -0.45, 1.6);
   tower(solid, 12.4, 5.3, 1.0);
   spike(solid, 8.6, -0.6, 0.9, 0.2, 0.08);
@@ -470,7 +494,7 @@ export function buildCitadelProps(): Props {
   gravestone(solid, 8.75, 5.5, 0.26, 0.2, -0.1);
   gravestone(solid, 12.1, 1.6, 0.34, -1.2, 0.08, true);
   brazier(solid, glow, 12.2, 3.1, 0.42);
-  lavaPool(solid, glow, 10.4, 5.55, 0.8, 0.3);
+  cooledLava(solid, glow, 10.4, 5.55, 0.8, 0.3, random);
   for (let i = 0; i < 8; i++) bone(solid, 8.3 + random() * 3.6, -0.28 + random() * 0.12, random() * 3, 1.1);
   graveTiles(solid, random, shade('#2E2440', -0.04), ['#4A4258', '#625A72']);
 
