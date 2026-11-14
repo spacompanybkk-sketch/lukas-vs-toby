@@ -265,7 +265,7 @@ function beginnerCard(match: Match, side: Faction, rng: BotRng): Command | null 
 }
 
 /** The beginner: see the note at the top. */
-function createBeginner(side: Faction, seed: number): Bot {
+function createBeginner(side: Faction, seed: number, hero: boolean): Bot {
   const rng = rngFor(seed, 'beginner', side);
   let nextTap = BEGINNER_TAP.min + randomInt(rng, BEGINNER_TAP.max - BEGINNER_TAP.min + 1);
   const readySince: Partial<Record<SpellKey | 'hero', number>> = {};
@@ -281,10 +281,10 @@ function createBeginner(side: Faction, seed: number): Bot {
         readySince[key] ??= s.tick;
         return s.tick - (readySince[key] as number) >= BEGINNER_REACTION;
       };
-      let glowing = ready('hero', s.config.heroes[side] && player.heroTimer === 0);
+      let glowing = ready('hero', hero && s.config.heroes[side] && player.heroTimer === 0);
       for (const slot of player.spells) glowing = ready(slot.key, slot.timer === 0) || glowing;
       if (glowing && s.tick % 15 === 0) {
-        const power = childPower(match, side, rng);
+        const power = childPower(match, side, rng, hero);
         if (power !== null) return [power];
       }
       if (s.tick < nextTap) return [];
@@ -329,12 +329,15 @@ export const TITAN_ANSWER: Readonly<Record<'average' | 'expert', { card: CardKey
 };
 
 /** The average player and the expert: the computer's choices at their pace, plus the belt and the Titan. */
-function createSensible(kind: 'average' | 'expert', side: Faction, seed: number): Bot {
+function createSensible(kind: 'average' | 'expert', side: Faction, seed: number, hero: boolean): Bot {
   const table = standInTable(kind, side);
   const card = createBasicBot(side, kind === 'expert' ? 'hard' : 'medium', seed ^ SALT[kind], table);
   const rng = rngFor(seed, kind, side);
   const beltEvery = kind === 'expert' ? EXPERT_BELT_EVERY : AVERAGE.every;
   const lane = { current: -1, sent: 0 };
+  // Without the hero's button, the computer's hero presses are never made.
+  const powerOk = (c: Command): boolean => c.type === 'spell' || (hero && c.type === 'hero');
+  const own = (cmds: Command[]): Command[] => (hero ? cmds : cmds.filter((c) => c.type !== 'hero'));
   return {
     faction: side,
     think(match) {
@@ -342,7 +345,7 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number)
       if (s.winner !== null) return [];
       if (s.config.belt !== null && s.config.belt.side === side) {
         // No energy: the hero and spells as the computer would fire them, and the belt.
-        const out: Command[] = card.think(match).filter((c) => c.type === 'hero' || c.type === 'spell');
+        const out: Command[] = card.think(match).filter(powerOk);
         if (s.tick % beltEvery === 0) {
           // The average player's mistakes: now and then a random belt card to a random sensible tile.
           const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
@@ -354,16 +357,20 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number)
       if (side === 'plants' && s.tick % table.thinkEvery === 0) {
         const answer = titanAnswer(match, TITAN_ANSWER[kind].card, TITAN_ANSWER[kind].want);
         if (answer !== null) {
-          const powers = card.think(match).filter((c) => c.type === 'hero' || c.type === 'spell');
+          const powers = card.think(match).filter(powerOk);
           return [...powers, answer];
         }
       }
-      return card.think(match);
+      return own(card.think(match));
     },
   };
 }
 
-/** A stand-in of `kind` for `side` in one match (see the note at the top). */
-export function createLevelStandIn(kind: LevelStandIn, side: Faction, seed: number): Bot {
-  return kind === 'beginner' ? createBeginner(side, seed) : createSensible(kind, side, seed);
+/**
+ * A stand-in of `kind` for `side` in one match (see the note at the top). `hero` false: a level
+ * where the child has no hero button yet (`heroHidden`); the stand-in never fires the hero.
+ */
+export function createLevelStandIn(kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean } = {}): Bot {
+  const hero = opts.hero ?? true;
+  return kind === 'beginner' ? createBeginner(side, seed, hero) : createSensible(kind, side, seed, hero);
 }

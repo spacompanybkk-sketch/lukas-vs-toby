@@ -23,6 +23,7 @@ import { createBasicBot } from './basicBot';
 import type { Bot } from './bot';
 import { opponentOf } from './difficulty';
 import { FAVOURITES, STAND_IN_DIFFICULTY, averageUpgrade, createLevelStandIn } from './levelStandIns';
+import { heroHidden } from '../adventure/levels';
 import type { LevelStandIn } from './levelStandIns';
 import { MAX_MATCH_TICKS } from './runMatch';
 
@@ -88,11 +89,19 @@ function play(config: MatchConfig, bots: readonly Bot[], balance: Balance, maxTi
   return { match, end };
 }
 
+/**
+ * The stand-in of `kind` for `def`, with the hero only where the child has its button: the same
+ * rule the HUD uses (`heroHidden`), so a level before the hero's lesson is measured without it.
+ */
+export function standInFor(def: LevelDef, kind: LevelStandIn, seed: number): Bot {
+  return createLevelStandIn(kind, def.side, seed, { hero: !heroHidden(def) });
+}
+
 /** One level, one stand-in, one seed. */
 export function playLevel(def: LevelDef, kind: LevelStandIn, seed: number, balance: Balance = BALANCE, levels: readonly LevelDef[] = BACKYARD): LevelPlayed {
   const config = levelConfig(def, standInSave(kind, def, levels), seed, balance);
   const maxTicks = config.goalTicks ?? MAX_MATCH_TICKS;
-  const { match, end } = play(config, [createLevelStandIn(kind, def.side, seed), levelOpponent(def, seed)], balance, maxTicks + 1);
+  const { match, end } = play(config, [standInFor(def, kind, seed), levelOpponent(def, seed)], balance, maxTicks + 1);
   const s = match.state;
   const side = def.side;
   const won = s.winner === side;

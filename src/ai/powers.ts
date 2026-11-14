@@ -329,12 +329,13 @@ function gravePick(grid: Grid, faction: Faction, minCol: number): Pick {
  * deal order), aimed at a random spot, half the time on the half of the lawn where most units are
  * (where something is happening) and otherwise anywhere. Null when nothing is ready or no spot is
  * legal after a few tries.
+ * `hero` false: the hero's button is not there for this child (it is never pressed).
  */
-export function childPower(match: Match, faction: Faction, rng: BotRng): Command | null {
+export function childPower(match: Match, faction: Faction, rng: BotRng, hero = true): Command | null {
   const s = match.state;
   const player = s.players[faction];
   const ready: Array<SpellKey | 'hero'> = [];
-  if (s.config.heroes[faction] && player.heroTimer === 0) ready.push('hero');
+  if (hero && s.config.heroes[faction] && player.heroTimer === 0) ready.push('hero');
   for (const slot of player.spells) if (slot.timer === 0) ready.push(slot.key);
   const power = ready[0];
   if (power === undefined) return null;
