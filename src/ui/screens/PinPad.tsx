@@ -4,6 +4,7 @@ import { PixelIcon } from '../hud/PixelIcon';
 import { uiSound } from '../uiSound';
 import { ARROW, BACKSPACE, CHECK, CLOUD_OFF, CROSS, DIGITS, HOURGLASS } from './pictures';
 import './players.css';
+import { BackButton } from '../BackButton';
 
 /**
  * What the owner of the pad says about a number: `ok` (it moves on; the pad keeps its boxes
@@ -148,9 +149,7 @@ export function PinPad({ length = 3, head, onCode, onBack, lockedUntil, now = ()
   const shakeCls = shake === 0 ? '' : shake % 2 === 1 ? ' is-wrong is-wrong-a' : ' is-wrong is-wrong-b';
   return (
     <div data-screen={screenName} class={`layer layer--menu pinpad${step === 2 ? ' pinpad--repeat' : ''}`}>
-      <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={onBack}>
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={onBack} />
       <div class="pinpad__body">
         <div class="pinpad__left">
           {head}

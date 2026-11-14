@@ -12,6 +12,7 @@ import { ROBOT, SWORDS } from './boardPictures';
 import { LOCK } from './pictures';
 import './players.css';
 import './adventure.css';
+import { BackButton } from '../BackButton';
 
 type Mode = 'adventure' | 'quick' | 'free';
 
@@ -54,12 +55,7 @@ export function PlayMenu() {
   const hop = (mode: Mode): string => (nudge?.mode === mode ? (nudge.n % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b') : '');
   return (
     <div data-screen="play" class="layer layer--menu play">
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: guest ? 'title' : 'home' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: guest ? 'title' : 'home' }); }} />
       <div class="play__modes">
         <button
           type="button" data-play="adventure" aria-label={MODE_NAME.adventure} data-locked={guest ? '' : undefined}
@@ -131,12 +127,7 @@ export function PlaySide({ mode, boys = {}, portraits = {} }: { mode: 'adventure
   };
   return (
     <div data-screen="side" data-mode={mode} class="layer layer--menu play">
-      <button
-        type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back"
-        onClick={() => { uiSound('click'); go({ name: 'play' }); }}
-      >
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: 'play' }); }} />
       <span class="play__mode-mark px pal-cream" aria-hidden="true">
         <PixelIcon art={mode === 'adventure' ? PATH_FLAG : ENDLESS} />
       </span>

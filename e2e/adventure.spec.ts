@@ -411,3 +411,49 @@ test('the Play menu names its three tiles, each fully inside its tile, at the th
     }
   }
 });
+
+test('the Back button shows BACK and overlaps nothing beside it on the map, the Play menu, Marketplace, Almanac and Leaderboard at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  test.setTimeout(120_000);
+  await openTitle(page);
+  await logIn(page);
+  const sizes = [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }];
+  const check = async (screen: string): Promise<void> => {
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      await expect(page.locator(`[data-screen="${screen}"] [data-action="back"]`)).toBeVisible();
+      const r = await page.evaluate((sc) => {
+        const root = document.querySelector(`[data-screen="${sc}"]`)!;
+        const back = root.querySelector<HTMLElement>('[data-action="back"]')!;
+        const a = back.getBoundingClientRect();
+        const word = back.querySelector<HTMLElement>('.back__word')!.getBoundingClientRect();
+        const hits: string[] = [];
+        for (const el of root.querySelectorAll<HTMLElement>('button, [role="tab"], [role="tablist"], h1, h2, .px, .panel, [class*="__top"], [class*="__tabs"], [class*="__info"], [class*="offline"], [data-coins], [data-me]')) {
+          if (el === back || back.contains(el) || el.contains(back)) continue;
+          const b = el.getBoundingClientRect();
+          if (b.width === 0 || b.height === 0) continue;
+          if (b.left < a.right && b.right > a.left && b.top < a.bottom && b.bottom > a.top) hits.push(el.className || el.tagName);
+        }
+        return { w: a.width, h: a.height, wordInside: word.left >= a.left && word.right <= a.right && word.top >= a.top && word.bottom <= a.bottom, hits };
+      }, screen);
+      expect(r.hits).toEqual([]);
+      expect(r.wordInside).toBe(true);
+      expect(r.w).toBeGreaterThanOrEqual(44);
+      expect(r.h).toBeGreaterThanOrEqual(44);
+      await expect(page.locator(`[data-screen="${screen}"] [data-action="back"] .back__word`)).toHaveText('BACK');
+    }
+  };
+  await press(page.locator('[data-home="play"]'));
+  await check('play');
+  await press(page.locator('[data-play="adventure"]'));
+  await press(page.locator('[data-side="plants"]'));
+  await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  await check('map');
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await press(page.locator('[data-screen="play"] [data-action="back"]'));
+  for (const place of ['marketplace', 'almanac', 'leaderboard']) {
+    await press(page.locator(`[data-home="${place}"]`));
+    await check(place);
+    await press(page.locator(`[data-screen="${place}"] [data-action="back"]`));
+  }
+});
