@@ -153,4 +153,29 @@ describe('the twist pan through the app', () => {
     expect(css).toMatch(/\.battle\.is-twist \.battle__top \{ z-index: 6; \}/);
     expect(css).not.toContain(':has(');
   });
+
+  it('a pointer dragged across the catcher does nothing (no pick, no plant, the pan stays); the next plain tap ends it', () => {
+    const c = startP21();
+    steps(c, 3);
+    const catcher = need('[data-twist="fog"]');
+    const selected = c.hud.selected.peek();
+    act(() => {
+      catcher.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 500, clientY: 700, pointerId: 1, isPrimary: true }));
+      catcher.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 520, clientY: 500, pointerId: 1, isPrimary: true }));
+      catcher.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 540, clientY: 300, pointerId: 1, isPrimary: true }));
+      catcher.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 540, clientY: 300 }));
+    });
+    expect(c.tutorial!.current?.id).toBe('p2-1.fog');
+    expect(c.hud.selected.peek()).toBe(selected);
+    steps(c, 10);
+    expect(c.match.state.tick).toBe(1);
+    expect(c.match.state.units).toHaveLength(0);
+    act(() => {
+      catcher.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 400, clientY: 400, pointerId: 2, isPrimary: true }));
+      catcher.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 404, clientY: 402, pointerId: 2, isPrimary: true }));
+      catcher.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 404, clientY: 402 }));
+    });
+    expect(c.tutorial!.current).toBeNull();
+    expect(q('[data-twist]')).toBeNull();
+  });
 });

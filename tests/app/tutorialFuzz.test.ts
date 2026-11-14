@@ -239,12 +239,17 @@ function chaos(def: LevelDef, seed: number): void {
     expect(streak, `${def.id}: held with no valid action at tick ${c.match.state.tick}`).toBeLessThanOrEqual(LIMIT);
     if (c.match.state.winner !== null) { remember(); c = lessonController(def, seed + i, save); }
   }
-  // Then he follows the glove (unpaused): every lesson left ends.
+  // Then he follows the glove (unpaused): every lesson left ends, and nothing holds the match.
   c.setPaused(false);
-  if (c.tutorial !== null) {
-    const before = c.tutorial.taught.peek().length;
-    follow(c, 150);
-    expect(c.tutorial.taught.peek().length).toBeGreaterThanOrEqual(before);
+  if (c.tutorial !== null) follow(c, 150);
+  expect(c.tutorial?.current ?? null, `${def.id}: a lesson left after following the glove`).toBeNull();
+  expect(c.tutorial?.holding ?? false).toBe(false);
+  expect(c.tutorial?.twist.peek() ?? null).toBeNull();
+  expect(c.tutorial?.glove.peek() ?? null).toBeNull();
+  if (c.match.state.winner === null) {
+    const at = c.match.state.tick;
+    c.step();
+    expect(c.match.state.tick, `${def.id}: the match moves on`).toBe(at + 1);
   }
 }
 

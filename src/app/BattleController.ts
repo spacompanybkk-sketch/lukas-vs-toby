@@ -553,6 +553,7 @@ export class BattleController {
    * would be allowed); with a card, the placement or merge preview; otherwise null.
    */
   hover(tile: Tile | null, unitId: number | null): AimPreview | null {
+    if (this.tutorial?.twistHolding === true) return null; // a twist pan shows no placing ghost
     if (this.hud.heroSelected.peek()) {
       if (tile === null) return null;
       return { hero: true, lane: tile.lane, ok: this.match.check({ type: 'hero', faction: this.playerFaction, lane: tile.lane }) === null };

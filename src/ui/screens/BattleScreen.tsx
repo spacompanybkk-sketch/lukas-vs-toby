@@ -288,9 +288,25 @@ function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySigna
  */
 function LiveTwist({ ctl, twist }: { ctl: Controller; twist: ReadonlySignal<TwistVM | null> }) {
   const vm = twist.value;
+  const down = useRef<{ x: number; y: number } | null>(null);
   if (vm === null || !vm.holding || ctl.hud.paused.value || ctl.hud.result.value !== null) return null;
-  return <div class="tut-twist" data-twist={vm.kind} data-twist-step={vm.step} aria-hidden="true" onClick={() => ctl.tapTwist?.()} />;
+  // A tap ends the pan; a drag across it (a finger sliding off a card) does not.
+  const onClick = (e: MouseEvent): void => {
+    const from = down.current;
+    down.current = null;
+    if (from !== null && Math.hypot(e.clientX - from.x, e.clientY - from.y) > TWIST_TAP_SLOP_PX) return;
+    ctl.tapTwist?.();
+  };
+  return (
+    <div
+      class="tut-twist" data-twist={vm.kind} data-twist-step={vm.step} aria-hidden="true"
+      onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY }; }} onClick={onClick}
+    />
+  );
 }
+
+/** A press that moves further than this before it lets go is a drag, not a tap on the twist pan. */
+export const TWIST_TAP_SLOP_PX = 24;
 
 /** A Free Play run's bank on the armed Quit: its score and the coins ending now would pay. */
 function LiveBank({ endless }: { endless: EndlessSignals }) {

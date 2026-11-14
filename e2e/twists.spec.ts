@@ -280,6 +280,30 @@ test('ice pan: z2-1 holds and pans; a tap anywhere (the sky) ends it and the lev
   expect(await glContexts(page)).toBe(1);
 });
 
+test('fog pan: a real pointer dragged from the cards across the lawn does nothing; the next plain tap ends the pan', async ({ page }) => {
+  test.setTimeout(120_000);
+  await playStandIn(page, 'plants', 2, true);
+  await expect(page.locator('[data-twist="fog"]')).toBeVisible();
+  const held = await tick(page);
+  const card = await page.locator('[data-hud="tray"] [data-card="peashooter"]').boundingBox();
+  const to = await tilePoint(page, 2, 3);
+  // Press on the (dimmed) card, slide to a lawn tile, let go: the catcher is over both.
+  await page.mouse.move(card!.x + card!.width / 2, card!.y + card!.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(card!.x + (to.x - card!.x) * i / 8, card!.y + (to.y - card!.y) * i / 8);
+  await page.mouse.up();
+  await frames(page, 10);
+  await expect(page.locator('[data-twist="fog"]')).toBeVisible();
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.tutorial.current?.id)).toBe('p2-1.fog');
+  expect(await tick(page)).toBe(held);
+  expect(await units(page)).toHaveLength(0);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value)).toBe(0);
+  await tapAt(page, to);
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 5);
+  expect(await units(page)).toHaveLength(0);
+});
+
 test('new card: p2-4 points at the Mango-pult, then its tile; tapping both plants it there', async ({ page }) => {
   test.setTimeout(120_000);
   await playStandIn(page, 'plants', 2, true, 4);
