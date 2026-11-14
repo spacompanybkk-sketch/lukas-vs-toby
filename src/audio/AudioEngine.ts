@@ -303,7 +303,7 @@ export class AudioEngine {
    * crossfades). Asked before the unlock, it starts at the unlock. It starts straight at the
    * latest `setIntensity` target, even one given before the unlock or before this call.
    */
-  startMusic(theme: 'menu' | 'backyard'): void {
+  startMusic(theme: Theme): void {
     this.wantedTheme = theme;
     if (!this.ready || this.playback?.theme === theme) return;
     this.beginMusic(theme);
