@@ -1,0 +1,25 @@
+/* The phone notice: a cream pixel panel on the sky. Tokens live in theme.css. */
+.phone { background: var(--c-sky); }
+.phone__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(10px, 3vmin, 24px);
+  max-width: 100%;
+  padding: clamp(12px, 4vmin, 28px);
+  text-align: center;
+}
+.phone__pics { display: flex; align-items: flex-end; justify-content: center; gap: clamp(12px, 5vmin, 28px); }
+.phone__pic { display: block; width: clamp(56px, 20vmin, 120px); height: auto; image-rendering: pixelated; }
+.phone__text {
+  margin: 0;
+  max-width: 14em;
+  color: var(--white);
+  font-size: clamp(20px, 6.2vmin, 34px);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+@media (orientation: landscape) and (max-height: 480px) {
+  .phone__panel { flex-direction: row; gap: clamp(16px, 5vmin, 32px); }
+  .phone__text { max-width: 12em; }
+}
