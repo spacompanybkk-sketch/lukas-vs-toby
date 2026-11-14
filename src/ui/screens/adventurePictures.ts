@@ -28,6 +28,29 @@ export const PATH_FLAG = art(outlined([
   '.eEEe...........',
 ]));
 
+/**
+ * Free Play: three boxy zombie heads in a row, each bigger than the last, under a fat arrow - "they
+ * keep coming, more and bigger". Wider than the 16 × 16 pictures (the heads need the room).
+ */
+export const ENDLESS = art(outlined([
+  '.......................',
+  '........yy.............',
+  '........yyy............',
+  '.llllllllyyy...........',
+  '.yyyyyyyyyyyy..........',
+  '.YYYYYYYYYYY...........',
+  '........YYY............',
+  '........YY....gggggggg.',
+  '..............gggggggg.',
+  '.......gggggg.gwwggwwg.',
+  '.ggggg.gggggg.gwPggwPg.',
+  '.gPgPg.gPggPg.gggggggg.',
+  '.ggggg.gggggg.ggeeeegg.',
+  '.geGeg.geGGeg.ggPPPPgg.',
+  '.GGGGG.GGGGGG.GGGGGGGG.',
+  '.......................',
+]));
+
 /** Survive: a wooden shield. */
 export const SHIELD = art(outlined([
   '................',

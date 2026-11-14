@@ -8,7 +8,9 @@ import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import type { CardKey } from '../../src/sim/types';
 import { App } from '../../src/ui/App';
-import { ADVENTURE_PICTURES } from '../../src/ui/screens/adventurePictures';
+import { ADVENTURE_PICTURES, ENDLESS } from '../../src/ui/screens/adventurePictures';
+import { WAVE } from '../../src/ui/screens/boardPictures';
+import { pixelPaths } from '../../src/ui/hud/PixelIcon';
 import { setUiSound } from '../../src/ui/uiSound';
 import { MemoryStorage } from '../progress/memoryStorage';
 
@@ -108,6 +110,18 @@ describe('Play menu', () => {
     expect(need('[data-hud="free-top"]').dataset.mode).toBe('breakthrough');
   });
 
+  it('Free Play\'s picture is zombie heads growing under an arrow ("more and more come"), not the wave (read as water)', async () => {
+    await player();
+    mount();
+    act(() => go({ name: 'play' }));
+    const drawn = (sel: string): string[] => [...need(sel).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+    const endless = pixelPaths(ENDLESS).map((p) => p.d);
+    expect(drawn('[data-play="free"] svg')).toEqual(endless);
+    expect(drawn('[data-play="free"] svg')).not.toEqual(pixelPaths(WAVE).map((p) => p.d));
+    tap('[data-play="free"]');
+    expect(drawn('.play__mode-mark svg')).toEqual(endless);
+  });
+
   it('a guest has Quick Battle only: Adventure and Free Play carry a player padlock and buzz', () => {
     mount();
     act(() => go({ name: 'play' }));
@@ -136,5 +150,20 @@ describe('Adventure pictures', () => {
       expect(row.length).toBe(16);
       for (const ch of row) if (ch !== '.') expect(art.palette[ch], `colour ${ch}`).toBeDefined();
     }
+  });
+});
+
+describe('the Free Play picture', () => {
+  it('ENDLESS: three boxy zombie heads, each bigger, under an arrow; one size of row, every colour in the palette', () => {
+    const w = ENDLESS.rows[0]!.length;
+    expect(ENDLESS.rows).toHaveLength(16);
+    for (const row of ENDLESS.rows) {
+      expect(row.length).toBe(w);
+      for (const ch of row) if (ch !== '.') expect(ENDLESS.palette[ch], `colour ${ch}`).toBeDefined();
+    }
+    // The heads' bottoms line up; their heights grow left to right.
+    const height = (from: number, to: number): number => ENDLESS.rows.filter((r) => r.slice(from, to).includes('g')).length;
+    expect(height(1, 6)).toBeLessThan(height(7, 13));
+    expect(height(7, 13)).toBeLessThan(height(14, 22));
   });
 });
