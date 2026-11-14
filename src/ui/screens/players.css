@@ -268,10 +268,18 @@
 .home__place {
   width: clamp(130px, min(16vw, 24vh), 220px);
   height: clamp(130px, min(16vw, 24vh), 220px);
-  padding: 0 0 var(--px-bev);
+  padding: 0 0 calc(var(--px-bev) + 4%);
+  flex-direction: column; gap: 0;
+  container-type: inline-size;
   animation: px-pop var(--t-pop) steps(4, end) 80ms both;
 }
-.home__place-icon { width: 70% !important; height: 70% !important; }
+.home__place-pic { flex: 1 1 0; min-height: 0; width: 100%; display: grid; place-items: center; }
+.home__place-icon { width: 80% !important; height: 80% !important; }
+.home__place-name, .home__play-name {
+  flex: none; line-height: 1; color: var(--white); text-transform: uppercase; white-space: nowrap; text-align: center;
+}
+.home__place-name { max-width: 94%; font-size: 12cqw; }
+.home__play-name { font-size: var(--fs-big); }
 
 /* ---- A place not built yet ---- */
 .soon__pic { display: grid; place-items: center; width: clamp(200px, 40vh, 340px); height: clamp(200px, 40vh, 340px); padding: 28px; }
