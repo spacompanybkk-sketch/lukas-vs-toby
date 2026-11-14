@@ -61,7 +61,8 @@ export class Lawn {
     this.group.add(this.dressing);
     this.build(LOOKS[world], twist);
     this.placeMarks.setLook(LOOKS[world].marks);
-    this.group.add(this.tileMark.mesh, this.laneMark.mesh, this.placeMarks.mesh);
+    this.placeMarks.setWarn(twist.lava?.tiles ?? []);
+    this.group.add(this.tileMark.mesh, this.laneMark.mesh, this.placeMarks.mesh, this.placeMarks.warnMesh);
     this.update(0);
   }
 
@@ -86,6 +87,7 @@ export class Lawn {
     this.twist = twist;
     this.build(LOOKS[world], twist);
     this.placeMarks.setLook(LOOKS[world].marks);
+    this.placeMarks.setWarn(twist.lava?.tiles ?? []);
     this.update(this.time);
     return true;
   }
@@ -205,7 +207,8 @@ export class Lawn {
 
   /**
    * Marks every tile the picked card may go on (`mask`: 1 at `lane * LAWN_COLS + col`); null
-   * clears them. Call it when the tiles change, not every frame.
+   * clears them. A marked lava tile shows warning-orange brackets. Call it when the tiles change,
+   * not every frame.
    */
   showPlaceable(mask: Uint8Array | null): void {
     this.placeMarks.show(mask);
