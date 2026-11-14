@@ -129,35 +129,62 @@ function boulder(batch: BoxBatch, lane: number, col: number, random: () => numbe
   batch.boxOn(cx, 0.06, cz, 0.732, 0.025, 0.672, shade('#5E4E44', 0));
 }
 
-// ---- Ice: glassy pale-blue tiles along each icy lane -----------------------------------------
+// ---- Ice: deep blue glassy tiles along each icy lane -----------------------------------------
 
 /** Ice lies this far above the ground: over the grass creases, under the placement marks (0.012). */
 const ICE_Y = 0.006;
 
-/** One lane of ice: a checker of two blues with white scratches, glossy so the sun glints on it. */
+/** Deep blues, well apart from the pale snow, so a child sees at once which lanes are ice. */
+const ICE_LIGHT = '#3F92D6';
+const ICE_DARK = '#3282C8';
+const ICE_EDGE = '#1F5E9E';
+const ICE_CRACK = '#1C4F88';
+const ICE_GLINT = '#F2FAFF';
+
+/**
+ * One lane of ice: a checker of two deep blues in a dark blue frame, each tile with a pixel-thin
+ * crack or two and a few hard white glints (a 3-pixel L and lone pixels), glossy so the sun
+ * glints on it too.
+ */
 function iceLane(batch: BoxBatch, lane: number, random: () => number): void {
-  const light = '#A6DAF4';
-  const dark = '#8CC8EC';
-  const scratch = shade('#F4FBFF', 0);
+  const glint = shade(ICE_GLINT, 0);
+  const crack = shade(ICE_CRACK, 0);
+  const px = 1 / 16;
   for (let col = 0; col < COLS; col++) {
-    const tint = shade((col + lane) % 2 === 0 ? light : dark, (random() - 0.5) * 0.02);
+    const tint = shade((col + lane) % 2 === 0 ? ICE_LIGHT : ICE_DARK, (random() - 0.5) * 0.03);
     const x0 = col + 0.02;
     const x1 = col + 0.98;
     const z0 = lane + 0.02;
     const z1 = lane + 0.98;
     batch.quad([x0, ICE_Y, z1], [x1, ICE_Y, z1], [x1, ICE_Y, z0], [x0, ICE_Y, z0], [0, 1, 0], tint);
-    // Two or three skate scratches along the lane, a pixel-thin slab each.
-    const n = 2 + Math.floor(random() * 2);
-    for (let i = 0; i < n; i++) {
-      const sx = col + 0.08 + random() * 0.5;
-      const sz = lane + 0.12 + random() * 0.76;
-      batch.box(sx, ICE_Y, sz, 0.2 + random() * 0.25, 0.002, 0.025, scratch);
+    // A crack: a few pixel-wide steps zig-zagging across part of the tile.
+    let cx = col + 0.08 + Math.floor(random() * 3) * px;
+    let cz = lane + 0.2 + Math.floor(random() * 8) * px;
+    const steps = 4 + Math.floor(random() * 3);
+    for (let i = 0; i < steps; i++) {
+      const run = (1 + Math.floor(random() * 2)) * px;
+      batch.boxOn(cx + run / 2, ICE_Y, cz + px / 2, run, 0.002, px * 0.6, crack);
+      cx += run;
+      cz += (random() < 0.5 ? -1 : 1) * px * 0.6;
+    }
+    // Glints: an L of three white pixels near a corner, and one or two lone pixels.
+    const gx = col + 0.6 + Math.floor(random() * 3) * px;
+    const gz = lane + 0.12 + Math.floor(random() * 3) * px;
+    batch.boxOn(gx + px, ICE_Y, gz + px / 2, px * 2, 0.003, px, glint);
+    batch.boxOn(gx + px / 2, ICE_Y, gz + px * 1.5, px, 0.003, px, glint);
+    const lone = 1 + Math.floor(random() * 2);
+    for (let i = 0; i < lone; i++) {
+      const lx = col + 0.12 + Math.floor(random() * 12) * px;
+      const lz = lane + 0.55 + Math.floor(random() * 5) * px;
+      batch.boxOn(lx + px / 2, ICE_Y, lz + px / 2, px, 0.003, px, glint);
     }
   }
-  // A frosted rim on the lane's front and back edges.
-  const frost = shade('#E4F4FC', 0);
-  batch.box(0, ICE_Y, lane + 0.02, COLS, 0.003, 0.05, frost);
-  batch.box(0, ICE_Y, lane + 0.93, COLS, 0.003, 0.05, frost);
+  // A dark blue frame along the lane's front and back edges, with a white frost line inside it.
+  const edge = shade(ICE_EDGE, 0);
+  const frost = shade('#D8EEFF', 0);
+  batch.boxOn(COLS / 2, ICE_Y, lane + 0.05, COLS, 0.003, 0.06, edge);
+  batch.boxOn(COLS / 2, ICE_Y, lane + 0.95, COLS, 0.003, 0.06, edge);
+  batch.boxOn(COLS / 2, ICE_Y, lane + 0.1, COLS, 0.003, 0.025, frost);
 }
 
 // ---- Lava: glowing tiles of blocky molten rock in a crust of basalt ---------------------------

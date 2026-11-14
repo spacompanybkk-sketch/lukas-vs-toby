@@ -1,4 +1,5 @@
-import { Mesh, ShaderMaterial } from 'three';
+import { Color, Mesh, ShaderMaterial } from 'three';
+import { LOOKS } from '../../src/render/world/looks';
 import { describe, expect, it } from 'vitest';
 import { Lawn } from '../../src/render/world/Lawn';
 import { SAMPLE_LAWNS, TwistTiles, coveredTile } from '../../src/render/world/TwistTiles';
@@ -71,6 +72,25 @@ describe('TwistTiles', () => {
     expect([...lanes].sort()).toEqual([1, 3]);
     expect(minX).toBeLessThanOrEqual(0.05);
     expect(maxX).toBeGreaterThanOrEqual(9.95);
+    tiles.dispose();
+  });
+
+  it('draws ice in deep blues that stand well apart from the pale snow, with white glints', () => {
+    const tiles = new TwistTiles(SAMPLE_LAWNS.tundra);
+    const [ice] = named(tiles, 'ice');
+    const colors = (ice as Mesh).geometry.getAttribute('color');
+    const lum = (r: number, g: number, b: number): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const snow = new Color(LOOKS.tundra.ground.grassDark); // the darker snow tone, linear like the vertex colours
+    const snowLum = lum(snow.r, snow.g, snow.b);
+    let blue = 0;
+    let white = 0;
+    for (let i = 0; i < colors.count; i++) {
+      const [r, g, b] = [colors.getX(i), colors.getY(i), colors.getZ(i)];
+      if (b > r * 2 && lum(r, g, b) < snowLum * 0.5) blue++;
+      if (lum(r, g, b) > snowLum) white++;
+    }
+    expect(blue / colors.count).toBeGreaterThan(0.5);
+    expect(white).toBeGreaterThan(0);
     tiles.dispose();
   });
 
