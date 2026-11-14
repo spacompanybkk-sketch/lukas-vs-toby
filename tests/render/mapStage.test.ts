@@ -308,6 +308,9 @@ describe('MapStage', () => {
     }
     expect(stage.scene.getObjectByName('map-flag')).toBeUndefined();
     expect(Object.keys(map.layout()!.stones)).toHaveLength(0);
+    expect(stage.scene.getObjectByName('map-pebbles')).toBeUndefined(); // no path on a locked island
+    expect(meshesOf(stage.scene.getObjectByName('map-island-props')!).length).toBe(1);
+    expect((stage.scene.getObjectByName('map-island-props') as Mesh).geometry.getAttribute('position').count).toBeGreaterThan(0);
     expect(stage.lawn.group.visible).toBe(false);
     // The Backyard (open, behind) hangs in the sky without a padlock; the locked ones with one.
     expect(meshesOf(stage.scene.getObjectByName('map-world-backyard')!).length).toBe(1);

@@ -191,7 +191,9 @@ function repaint(geometry: BufferGeometry, world: WorldKey): BufferGeometry {
         want = light ? pal.top : pal.topAlt;
         was = graveTile ? (light ? PALETTE.graveLight : PALETTE.graveDark) : light ? PALETTE.grassLight : PALETTE.grassDark;
       } else {
-        want = pal.rim;
+        // The Citadel's rim is cracked with glowing lava here and there.
+        const crack = world === 'citadel' && hash2(Math.floor(cx * 4), Math.floor(cz * 4), 71) < 0.06;
+        want = crack ? pal.accent : pal.rim;
         was = grave ? PALETTE.rimGrave : PALETTE.rimGrass;
       }
     } else if (ny < -0.5) {
@@ -222,7 +224,8 @@ function repaint(geometry: BufferGeometry, world: WorldKey): BufferGeometry {
 
 /** Spots on the rim, round the lawn, where a world's props stand (kept only where there is island). */
 const PROP_SPOTS: readonly (readonly [number, number])[] = [
-  [-2.3, -0.6], [-2.6, 2.2], [-2.2, 5.5], [1.5, -1.0], [3.6, 5.9], [5.6, -1.1], [7.4, 6.0], [9.0, -1.0], [12.2, -0.5], [12.6, 2.4], [12.3, 5.6],
+  [-1.3, -0.4], [-1.5, 1.4], [-1.1, 3.4], [-1.4, 5.3], [1.2, -0.45], [3.4, 5.5], [5.2, -0.5], [7.0, 5.5], [8.8, -0.45],
+  [11.3, -0.4], [11.5, 1.6], [11.1, 3.6], [11.4, 5.3],
 ];
 
 /** One world's props on the rim, in its accent: glowing mushrooms, cacti, ice crystals or lava with obsidian. */
@@ -231,7 +234,7 @@ function propsGeometry(world: WorldKey): BufferGeometry {
   const pal = ISLAND_COLORS[world];
   const random = seededRandom(31 + world.length);
   for (const [x, z] of PROP_SPOTS) {
-    if (insideIsland(x, z) < 0.45) continue;
+    if (insideIsland(x, z) < 0.2) continue;
     const s = 0.8 + random() * 0.5;
     switch (world) {
       case 'meadow':
@@ -361,10 +364,13 @@ export class MapStage implements Director {
     }
     this.clearPath();
     const path = pathFor(view.side);
-    const pebbles = new Mesh(pebblesGeometry(path), material);
-    pebbles.name = 'map-pebbles';
-    pebbles.receiveShadow = true;
-    this.root.add(pebbles);
+    // A locked island has no stones, so no path between them either.
+    if (view.stones.length > 0) {
+      const pebbles = new Mesh(pebblesGeometry(path.slice(0, view.stones.length)), material);
+      pebbles.name = 'map-pebbles';
+      pebbles.receiveShadow = true;
+      this.root.add(pebbles);
+    }
     const points: Record<string, Pt> = {};
     view.stones.forEach((s, i) => {
       points[s.id] = { x: 0, y: 0 };
