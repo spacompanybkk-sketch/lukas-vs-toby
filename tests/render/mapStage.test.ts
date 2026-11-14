@@ -27,6 +27,10 @@ import { BufferAttribute, Color } from 'three';
 import { HOP_MS } from '../../src/ui/screens/mapModel';
 import { allocationsIn } from './allocations';
 import type { MapView } from '../../src/scenes/mapStage';
+import { NO_TWIST } from '../../src/sim/lawn';
+import type { LawnConfig } from '../../src/sim/types';
+
+const worlds = (stage: StageLike): string[] => (stage as unknown as { worlds: string[] }).worlds;
 
 function fakeStage(): StageLike {
   const camera = new PerspectiveCamera(30, 1.4, 2, 200);
@@ -43,7 +47,7 @@ function fakeStage(): StageLike {
       if (d === stage.director) return;
       const old = stage.director;
       stage.director = null;
-      if (old) (old.detach(), rig.reset());
+      if (old) (old.detach(), rig.reset(), stage.setWorld('backyard', NO_TWIST));
       stage.director = d;
     },
     release(d: Director) {
@@ -51,8 +55,10 @@ function fakeStage(): StageLike {
       stage.director = null;
       d.detach();
       rig.reset();
+      stage.setWorld('backyard', NO_TWIST); // as the real stage: every hand-over asks for the Backyard
     },
-    setWorld() {},
+    worlds: [] as string[],
+    setWorld(world: WorldKey, lawn: LawnConfig) { stage.worlds.push(world); stage.lawn.setWorld(world, lawn); },
   };
   stage.scene.add(stage.lawn.group, particles.object, stage.fx.group);
   return stage;
@@ -103,11 +109,11 @@ describe('MapStage', () => {
     expect(map.layout()).toBeNull();
   });
 
-  it('closing frees every geometry and the material it made (on the Backyard and on an island of its own)', () => {
+  it('closing frees every geometry and the material it made (on the Backyard and on the Citadel)', () => {
     const stage = fakeStage();
     const map = new MapStage(stage);
     for (let i = 0; i < 3; i++) {
-      map.open(view(i % 2 === 0 ? 'plants' : 'zombies')); // the Backyard on the stage lawn, the Citadel on its own island
+      map.open(i === 1 ? { ...view('zombies'), arena: 'tundra', locked: true, stones: [] } : view(i === 0 ? 'plants' : 'zombies')); // open, locked (an island of its own), open
       const root = stage.scene.getObjectByName('map') as Object3D;
       const meshes = meshesOf(root);
       expect(meshes.length).toBe(map.meshCount);
@@ -135,8 +141,8 @@ describe('MapStage', () => {
     expect(freed).toBe(true);
     expect(stage.scene.getObjectByName('map-stone-p1-1')).toBeUndefined();
     expect(stage.scene.getObjectByName('map-stone-z1-1')).toBeDefined();
-    // The same stones, pebbles and flag; plus the zombies' Citadel island and its props (the plants' Backyard is the stage lawn).
-    expect(map.meshCount).toBe(count + 2);
+    // The same stones, pebbles, flag and islands in the sky (both open islands are the stage lawn).
+    expect(map.meshCount).toBe(count);
     map.close();
   });
 
@@ -254,53 +260,43 @@ describe('MapStage', () => {
     expect(hsl(ISLAND_COLORS.citadel.accent).h * 360).toBeLessThan(40); // the orange glow
   });
 
-  it('an open Backyard uses the stage\'s own lawn; any other island hides it and shows its own, in its colours', () => {
+  it('an open island is the stage\'s own lawn dressed in that world\'s look; a locked one hides it and shows a grey island of the map\'s own', () => {
     const stage = fakeStage();
     const map = new MapStage(stage);
     map.open(view('plants'));
+    expect(worlds(stage)).toEqual(['backyard']);
     expect(stage.lawn.group.visible).toBe(true);
     expect(stage.scene.getObjectByName('map-island')).toBeUndefined();
+    // The zombies' first island, the Citadel: the stage dresses itself as the Citadel, no copy of the map's.
     map.update(view('zombies'));
+    expect(worlds(stage).at(-1)).toBe('citadel');
+    expect(stage.lawn.world).toBe('citadel');
+    expect(stage.lawn.group.visible).toBe(true);
+    expect(stage.scene.getObjectByName('map-island')).toBeUndefined();
+    // A locked island: the lawn hidden, the Backyard's sky asked for, a grey island of the map's own.
+    map.update({ ...view('zombies'), arena: 'tundra', locked: true, stones: [] });
     expect(stage.lawn.group.visible).toBe(false);
+    expect(worlds(stage).at(-1)).toBe('backyard');
     const island = stage.scene.getObjectByName('map-island') as Mesh;
     expect(island).toBeDefined();
-    // Its lawn tiles are the Citadel's dark purple stone: a vertex on top in the middle of the lawn.
-    const pos = island.geometry.getAttribute('position') as BufferAttribute;
-    const nor = island.geometry.getAttribute('normal') as BufferAttribute;
-    const col = island.geometry.getAttribute('color') as BufferAttribute;
-    let found = 0;
-    const want = [new Color(ISLAND_COLORS.citadel.top), new Color(ISLAND_COLORS.citadel.topAlt)];
-    for (let i = 0; i < pos.count; i += 4) {
-      if (nor.getY(i) < 0.5) continue;
-      const cx = (pos.getX(i) + pos.getX(i + 2)) / 2;
-      const cz = (pos.getZ(i) + pos.getZ(i + 2)) / 2;
-      if (cx < 3 || cx > 7 || cz < 1 || cz > 4) continue;
-      const c = new Color(col.getX(i), col.getY(i), col.getZ(i));
-      const near = Math.min(...want.map((w) => Math.abs(w.r - c.r) + Math.abs(w.g - c.g) + Math.abs(w.b - c.b)));
-      expect(near).toBeLessThan(0.1);
-      found++;
-    }
-    expect(found).toBeGreaterThan(50);
-    // The zombies' four others: tundra, desert, meadow locked; the Backyard last.
-    expect(stage.scene.getObjectByName('map-world-citadel')).toBeUndefined();
-    expect(meshesOf(stage.scene.getObjectByName('map-world-backyard')!).length).toBe(2);
-    // Back on the plants' Backyard the stage lawn shows again and the own island is freed.
     let freed = false;
     island.geometry.addEventListener('dispose', () => { freed = true; });
-    map.update(view('plants'));
+    // Back to an open island: the grey one is freed and the lawn shows again.
+    map.update(view('zombies'));
     expect(freed).toBe(true);
     expect(stage.lawn.group.visible).toBe(true);
     expect(stage.scene.getObjectByName('map-island')).toBeUndefined();
-    // Closing on another island shows the stage lawn again for whoever comes next.
-    map.update(view('zombies'));
+    // Leaving on a locked island shows the stage lawn again, handed back as the Backyard.
+    map.update({ ...view('plants'), arena: 'meadow', locked: true, stones: [] });
     map.close();
     expect(stage.lawn.group.visible).toBe(true);
+    expect(stage.lawn.world).toBe('backyard');
   });
 
-  it('a locked island: grey (no colour left), no stones, no flag; an open island in the sky has no padlock', () => {
+  it('a locked island: grey (no colour left), no stones, no flag, no path; an open island in the sky has no padlock', () => {
     const stage = fakeStage();
     const map = new MapStage(stage);
-    map.open({ ...view('plants'), arena: 'meadow', locked: true, stones: [], islands: islandsOf('plants', 2) });
+    map.open({ ...view('plants'), arena: 'meadow', locked: true, stones: [], islands: islandsOf('plants', 1) });
     const island = stage.scene.getObjectByName('map-island') as Mesh;
     const col = island.geometry.getAttribute('color') as BufferAttribute;
     for (let i = 0; i < col.count; i += 97) {
@@ -308,30 +304,61 @@ describe('MapStage', () => {
       expect(c.getHSL({ h: 0, s: 0, l: 0 }).s).toBeLessThan(0.2);
     }
     expect(stage.scene.getObjectByName('map-flag')).toBeUndefined();
+    expect(stage.scene.getObjectByName('map-pebbles')).toBeUndefined();
     expect(Object.keys(map.layout()!.stones)).toHaveLength(0);
-    expect(stage.scene.getObjectByName('map-pebbles')).toBeUndefined(); // no path on a locked island
-    expect(meshesOf(stage.scene.getObjectByName('map-island-props')!).length).toBe(1);
     expect((stage.scene.getObjectByName('map-island-props') as Mesh).geometry.getAttribute('position').count).toBeGreaterThan(0);
-    expect(stage.lawn.group.visible).toBe(false);
-    // The Backyard (open, behind) hangs in the sky without a padlock; the locked ones with one.
+    // The Backyard (open, before it) hangs in the sky without a padlock; the locked ones with one.
     expect(meshesOf(stage.scene.getObjectByName('map-world-backyard')!).length).toBe(1);
     expect(meshesOf(stage.scene.getObjectByName('map-world-desert')!).length).toBe(2);
     map.close();
   });
 
-  it('switching islands ten times frees what each built: the mesh count comes back the same', () => {
+  it('the islands in the sky: worlds before the shown one hang on the left, worlds after it on the right', () => {
     const stage = fakeStage();
     const map = new MapStage(stage);
-    map.open(view('plants'));
-    const plants = map.meshCount;
-    map.update(view('zombies'));
-    const zombies = map.meshCount;
-    for (let i = 0; i < 10; i++) {
-      map.update(view(i % 2 === 0 ? 'plants' : 'zombies'));
-      expect(map.meshCount).toBe(i % 2 === 0 ? plants : zombies);
+    const order = islandsOf('plants', 5);
+    const middle = 5; // the lawn's middle (LAWN_COLS / 2)
+    for (let shown = 0; shown < order.length; shown++) {
+      map.open({ ...view('plants'), arena: order[shown]!.arena, islands: order });
+      order.forEach((other, i) => {
+        const group = stage.scene.getObjectByName(`map-world-${other.arena}`);
+        if (i === shown) { expect(group).toBeUndefined(); return; }
+        if (i < shown) expect(group!.position.x, `${other.arena} with ${order[shown]!.arena} shown`).toBeLessThan(middle);
+        else expect(group!.position.x, `${other.arena} with ${order[shown]!.arena} shown`).toBeGreaterThan(middle);
+      });
+      // The next and the one before are the nearest to the middle on their side.
+      const xs = order.map((o) => stage.scene.getObjectByName(`map-world-${o.arena}`)?.position.x ?? middle);
+      for (let i = shown + 2; i < order.length; i++) expect(Math.abs(xs[i]! - middle)).not.toBeLessThan(Math.abs(xs[shown + 1]! - middle) - 1.7);
     }
     map.close();
-    expect(stage.lawn.group.visible).toBe(true);
+  });
+
+  it('ten map ↔ battle round trips through different worlds: the scene\'s geometry and mesh counts stay flat, no renderer made', () => {
+    const stage = fakeStage();
+    const map = new MapStage(stage);
+    const demo = new TitleDemo(stage);
+    const geometries = (): number => {
+      const set = new Set<BufferGeometry>();
+      stage.scene.traverse((o) => { if (o instanceof Mesh) set.add(o.geometry); });
+      return set.size;
+    };
+    const views: MapView[] = [view('plants'), view('zombies'), { ...view('zombies'), arena: 'tundra', locked: true, stones: [] }];
+    const counts: number[][] = [];
+    for (let round = 0; round < 10; round++) {
+      const row: number[] = [];
+      for (const v of views) {
+        map.open(v);
+        row.push(map.meshCount, geometries());
+        demo.show(); // another director (a battle) takes the stage: handed back as the Backyard
+        stage.setWorld('citadel', NO_TWIST); // the battle's own world
+        row.push(geometries());
+      }
+      counts.push(row);
+    }
+    for (const row of counts) expect(row).toEqual(counts[0]);
+    expect(made.renderers).toBe(0);
+    expect(made.contexts).toBe(0);
+    map.close();
   });
 
   it('another director taking the stage takes the map out too', () => {

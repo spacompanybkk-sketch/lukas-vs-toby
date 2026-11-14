@@ -356,7 +356,7 @@ export function MapScreen({ side, card, world: asked, portraits = {}, boys = {},
         <LevelCard
           def={open.def} save={me} portraits={portraits} onClose={close}
           onPlay={() => { uiSound('click'); startLevel(open.def, me, undefined, levels); }}
-          onTutorial={() => { uiSound('click'); startLevel(open.def, me, undefined, undefined, undefined, { replayTutorial: true }); }}
+          onTutorial={() => { uiSound('click'); startLevel(open.def, me, undefined, levels, undefined, { replayTutorial: true }); }}
           onSkill={(skill) => { uiSound('click'); session.update((s) => ({ ...s, adventureDifficulty: { ...s.adventureDifficulty, [side]: skill } })); }}
         />
       )}
