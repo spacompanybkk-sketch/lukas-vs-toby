@@ -143,6 +143,10 @@ export class BossFx {
   private readonly strikeFrameMaterial = new MeshBasicMaterial({ color: '#FFFFFF', depthWrite: false });
   private readonly strikeFillMaterial = new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: STRIKE_FILL_OPACITY, depthWrite: false });
   private readonly strikeTiles: { frame: Mesh; fill: Mesh }[] = [];
+  /** A dithered smoke fill (`StrikeWarning.dither`), its two checkers made on first use. */
+  private strikeDither = false;
+  private ditherA: ReturnType<BoxBatch['build']> | null = null;
+  private ditherB: ReturnType<BoxBatch['build']> | null = null;
   /** How many of `strikeTiles` the strike being wound up uses. */
   private strikeUsed = 0;
   /** Seconds left of the strike's wind-up, or −1 (from the simulation each step, like the slam's). */
@@ -635,7 +639,17 @@ export class BossFx {
       // As the slam's: the frames stay, the fills blink in hard steps, faster in the last half second.
       const rate = this.strikeLeft < 0.5 ? BLINK_FAST : BLINK_PER_SECOND;
       const on = Math.floor(this.time * rate * 2) % 2 === 0;
-      for (let i = 0; i < this.strikeUsed; i++) (this.strikeTiles[i] as { fill: Mesh }).fill.visible = on;
+      if (this.strikeDither) {
+        // Smoke: the fill stays, its pixel dither crawling (the two checkers swapping) at the blink's beat.
+        const geometry = on ? this.ditherA : this.ditherB;
+        for (let i = 0; i < this.strikeUsed; i++) {
+          const fill = (this.strikeTiles[i] as { fill: Mesh }).fill;
+          fill.visible = true;
+          if (geometry !== null) fill.geometry = geometry;
+        }
+      } else {
+        for (let i = 0; i < this.strikeUsed; i++) (this.strikeTiles[i] as { fill: Mesh }).fill.visible = on;
+      }
       // Its tell blinks with them (the Melon's icicle crown).
       for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = on;
     }
@@ -710,6 +724,8 @@ export class BossFx {
     this.markMaterial.dispose();
     this.strikeFrameMaterial.dispose();
     this.strikeFillMaterial.dispose();
+    this.ditherA?.dispose();
+    this.ditherB?.dispose();
     for (const e of this.ears) {
       e.mesh.removeFromParent();
       e.material.dispose();
@@ -898,6 +914,13 @@ export class BossFx {
     this.strikeFrameMaterial.color.set(warning.frame);
     this.strikeFillMaterial.color.set(warning.fill);
     this.strikeFillMaterial.opacity = warning.opacity;
+    this.strikeDither = warning.dither === true;
+    if (this.strikeDither && this.ditherA === null) {
+      this.ditherA = ditherFill(0);
+      this.ditherB = ditherFill(1);
+    }
+    const fillGeometry = this.strikeDither ? (this.ditherA as ReturnType<BoxBatch['build']>) : this.fillGeometry;
+    for (let i = 0; i < this.strikeTiles.length; i++) (this.strikeTiles[i] as { fill: Mesh }).fill.geometry = fillGeometry;
     const n = Math.min(tiles.length, this.strikeTiles.length);
     for (let i = 0; i < this.strikeTiles.length; i++) {
       const s = this.strikeTiles[i] as { frame: Mesh; fill: Mesh };
@@ -1045,6 +1068,20 @@ function landingMark(): ReturnType<BoxBatch['build']> {
   b.box(r - t, 0, -r + t, t, h, 2 * r - 2 * t, TILE_RED);
   // A dot in the middle: the spot.
   b.box(-0.07, 0, -0.07, 0.14, h, 0.14, TILE_RED);
+  return b.build();
+}
+
+/**
+ * A smoke fill: the tile's fill cut into a 6 × 6 checker of pixels, `phase` 0 or 1 choosing which
+ * half is drawn, so swapping the two makes the dither crawl.
+ */
+function ditherFill(phase: 0 | 1): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const n = 6;
+  const cell = 0.92 / n;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) if ((i + j + phase) % 2 === 0) b.box(-0.46 + i * cell, 0.02, -0.46 + j * cell, cell, 0.01, cell, TILE_RED);
+  }
   return b.build();
 }
 

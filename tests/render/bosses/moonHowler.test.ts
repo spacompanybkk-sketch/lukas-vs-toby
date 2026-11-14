@@ -132,7 +132,7 @@ describe('the Moon Howler on the lawn', () => {
     expect(shown(s.scene, 'boss-strike-tile')).toBe(0);
   });
 
-  it('the howl\'s lane is warned of in dark smoke with a light outline (its own colours), the Titan\'s demo keeping the shared grey', () => {
+  it('the howl\'s lane is warned of in crawling dark smoke inside a light outline (its own colours), the Titan\'s demo keeping the shared grey', () => {
     const s = bossStage('moonHowler');
     s.until((e) => e.type === 'bossStrike' && e.windup);
     s.play(0.1);
@@ -143,8 +143,21 @@ describe('the Moon Howler on the lawn', () => {
       if (o.name === 'boss-strike-fill') fill = (o as unknown as { material: MeshBasicMaterial }).material;
     });
     expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#E6E0F5');
-    expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#3A3150');
-    expect(fill!.opacity).toBeCloseTo(0.62);
+    expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#1C1430');
+    expect(fill!.opacity).toBeCloseTo(0.88);
+    // Smoke: the fills stay up, their pixel dither crawling (the geometry swaps) through the wind-up.
+    const fills = (): { visible: boolean; geometry: unknown }[] => {
+      const out: { visible: boolean; geometry: unknown }[] = [];
+      s.scene.traverse((o) => { if (o.name === 'boss-strike-fill' && o.visible) out.push(o as unknown as { visible: boolean; geometry: unknown }); });
+      return out;
+    };
+    const seen = new Set<unknown>();
+    for (let f = 0; f < 30; f++) {
+      s.frames(1);
+      expect(fills()).toHaveLength(10);
+      seen.add(fills()[0]!.geometry);
+    }
+    expect(seen.size).toBe(2);
     expect(BOSS_LOOK.brainTitan.fx.strikeWarnings).toBeUndefined();
   });
 

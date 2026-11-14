@@ -13,7 +13,11 @@ import type { BossKey, StatusKind } from '../sim/types';
 export type FacePixel = readonly [x: number, y: number, w: number, h: number, fill: string];
 
 /** A strike's warning colours (CSS hex): the blinking fill and its opacity, the steady outline. */
-export interface StrikeWarning { fill: string; frame: string; opacity: number }
+export interface StrikeWarning {
+  fill: string; frame: string; opacity: number;
+  /** The fill drawn as a crawling pixel dither (smoke) that stays up, not a solid blink. */
+  dither?: boolean;
+}
 
 /** Which of the shows `BossFx` knows each moment of the fight uses. */
 export interface BossShows {
@@ -151,9 +155,9 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       phaseParts: ['glow', 'glowMoon', 'glowEyes'],
       shards: ['#9C98B8', '#66627F', '#9ACD8A', '#7B4BD6', '#FFF2A8'],
       slamRise: 1.5,
-      // The blinding howl's lane: dark smoke with a light pixel outline, which reads on the night lawn
+      // The blinding howl's lane: dark purple smoke, a crawling pixel dither, inside a light outline, which reads on the night lawn
       // (the shared grey came out near-white there).
-      strikeWarnings: { blind: { fill: '#3A3150', frame: '#E6E0F5', opacity: 0.62 } },
+      strikeWarnings: { blind: { fill: '#1C1430', frame: '#E6E0F5', opacity: 0.88, dither: true } },
       pups: true,
     },
   },
