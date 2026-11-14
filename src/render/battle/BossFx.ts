@@ -6,7 +6,6 @@ import { patternsOf, slamCol } from '../../sim/boss';
 import { BOSS_HALF_WIDTH, COLS, LANES, TICKS_PER_SECOND } from '../../sim/types';
 import type { BossKey, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
 import type { Effects } from '../fx/Effects';
-import { SLAM_WINDUP } from '../models/bosses/brainTitan';
 import { makeProjectile } from '../models/props';
 import { PALETTE } from '../palette';
 import { BoxBatch } from '../world/boxes';
@@ -14,11 +13,12 @@ import type { Feel } from './types';
 import type { UnitView } from './UnitView';
 
 // The bosses' shows (phase 3 Task 3), for `BattleView`: the entrance, the slam's wind-up tiles and
-// its blow, a strike's warning tiles and its blow, the shield (a dome, or bark), the summons, the
-// eyes that follow the enemies, and the defeat (brain blocks; leaves and rolling acorns). Which show
-// a boss gets is its row in `BOSS_LOOK` (data/bossLooks.ts); nothing here names a boss. Everything
-// is made once and pooled (a strike's tiles on its first strike): nothing here allocates per frame.
-// Read from events and the state only.
+// its blow, a strike's warning tiles, its move and its blow, the shield (a dome, a moon dome, bark or
+// ice plates), the summons, the eyes that follow the enemies, the parts that light up from phase 2,
+// and the defeat (brain blocks; leaves and rolling acorns; shards). Which show a boss gets is its row
+// in `BOSS_LOOK` (data/bossLooks.ts); nothing here names a boss. Everything is made once and pooled
+// (a strike's tiles on its first strike): nothing here allocates per frame. Read from events and the
+// state only.
 
 /** How much bigger than a unit each boss is drawn (from `BOSS_LOOK`). */
 export const BOSS_SCALE: Readonly<Record<BossKey, number>> = Object.fromEntries(
@@ -51,6 +51,10 @@ const ARROW_Z = 0.1;
 /** The Titan's shield dome: pale blue glass, pulsing in two steps. */
 const DOME_COLOR = '#9FE7FF';
 const DOME_OPACITY = 0.14;
+/** The moon dome (`shield: 'moon'`): the same glass in pale moonlight, glowing, its edges past the bloom threshold. */
+const MOON_COLOR = '#FFF2A8';
+const MOON_GLOW = 0.6;
+const MOON_EDGE_GLOW = 1.4;
 /** The Oak's bark clapping shut: the halves start this far apart (tiles) and meet in this long. */
 const BARK_APART = 0.7;
 const BARK_SECONDS = 0.22;
@@ -72,6 +76,11 @@ const PURPLE = hex('#9B6BFF');
 const LEAF = hex(PALETTE.leafLight);
 const DOME_SPARK = hex(DOME_COLOR);
 const BARK = [hex(PALETTE.walnut), hex(PALETTE.walnutDark), hex(PALETTE.walnutLight)];
+/** The ice plates' chips (`shield: 'ice'`): frost white and two blues. */
+const ICE = [hex('#E8FAFF'), hex('#7FD3F5'), hex('#B8ECFF')];
+const MOON_SPARK = hex(MOON_COLOR);
+/** The shield plates each plate show slides in: bark (`barkL`, `barkR`) or ice (`iceL`, `iceR`). */
+const PLATES = { bark: ['barkL', 'barkR'], ice: ['iceL', 'iceR'] } as const;
 /**
  * A strike's warning tiles and its blow are tinted by what it leaves: icy blue for a stun, grey for
  * blindness, orange for a burn, white for none (the others in their own shot colours).
@@ -139,8 +148,22 @@ export class BossFx {
   /** The tint of the strike being wound up (its blow is drawn in it too). */
   private strikeTint = 0xffffff;
   private domeOn = false;
+  /** Shield plates shut (bark or ice), and seconds since they began to close (−1: still). */
   private barkOn = false;
   private barkFor = -1;
+  /** The boss's shield plates (none for a dome) and the colours their chips fly in. */
+  private plateL = 'barkL';
+  private plateR = 'barkR';
+  private plateChips: number[] = BARK;
+  /** The dome's spark colour (blue glass or moonlight). */
+  private domeSpark = DOME_SPARK;
+  /** The boss's parts that blink through a strike's wind-up (`fx.strikeParts`), found once on `enter`. */
+  private readonly strikeParts: Object3D[] = [];
+  /** Its parts shown from phase 2 on (`fx.phaseParts`), and whether they show. */
+  private readonly phaseParts: Object3D[] = [];
+  private phaseShown = false;
+  /** A `shards` defeat's colours (`fx.shards`). */
+  private readonly shardColors: number[] = [];
   /** The boss's view (one boss a match), while it stands. */
   private boss: UnitView | null = null;
   private entranceLeft = -1;
@@ -226,7 +249,9 @@ export class BossFx {
   /** A boss came on. `late`: the view joined a match already under way, so no entrance. */
   enter(view: UnitView, late: boolean): void {
     this.boss = view;
-    view.setBulk(lookOf(view.key).scale);
+    const look = lookOf(view.key);
+    view.setBulk(look.scale);
+    this.dress(view, look);
     view.wrapper.add(this.dome);
     if (late) return;
     this.entranceLeft = ENTRANCE_SECONDS;
@@ -247,7 +272,7 @@ export class BossFx {
     if (view.dying || this.ended) return;
     const shows = lookOf(view.key).fx;
     const shield = u.shieldLeft > 0;
-    if (shows.shield === 'dome') {
+    if (shows.shield === 'dome' || shows.shield === 'moon') {
       if (shield !== this.domeOn) this.setDome(view, shield);
     } else if (shield !== this.barkOn) {
       this.setBark(view, shield);
@@ -260,13 +285,20 @@ export class BossFx {
       if (this.windupLeft <= 0) {
         // Joined during a wind-up: the tiles, and the arm on its way up, timed to land with the blow.
         this.showTiles(u.lane, slamCol(u, slam), left);
-        view.model.play('ability', { speed: SLAM_WINDUP / left });
+        this.raiseArm(view, slam.windupSeconds, left);
       }
       this.windupLeft = left;
     } else if (this.windupLeft > 0) {
       this.hideTiles();
     }
-    this.syncStrike(view.key as BossKey, u);
+    this.syncStrike(view, u);
+    // From phase 2 on (after its first shield mark) its phase parts light up; from the state, so a
+    // restored match shows them as its phase says.
+    const angry = u.phase >= 1;
+    if (angry !== this.phaseShown) {
+      this.phaseShown = angry;
+      for (let i = 0; i < this.phaseParts.length; i++) (this.phaseParts[i] as Object3D).visible = angry;
+    }
     if (shows.eyes === 'follow') this.lookAt(view, u, state);
   }
 
@@ -283,6 +315,8 @@ export class BossFx {
       const strike = p !== undefined && p.kind === 'strike' ? p : null;
       const windup = strike === null ? 0 : strike.windupSeconds;
       this.showStrike(e.tiles, strikeTintOf(strike), windup);
+      const boss = this.boss;
+      if (boss !== null && boss.id === e.unitId) this.strikeMove(boss, windup);
       return;
     }
     // The blow: the tint it was announced in (or, for a view that missed the wind-up, its list's).
@@ -301,14 +335,18 @@ export class BossFx {
     this.onFeel({ shake: 0.6, hitStop: 0.05 });
   }
 
-  /** A boss's pattern event. */
-  pattern(e: Extract<SimEvent, { type: 'bossPattern' }>, view: UnitView | undefined): void {
+  /** A boss's pattern event (`state`: the state after its step, for the slam's own wind-up). */
+  pattern(e: Extract<SimEvent, { type: 'bossPattern' }>, view: UnitView | undefined, state?: SimState): void {
     if (!view || view.dying) return;
     switch (e.kind) {
       case 'slam':
         if (e.windup) {
-          view.play('ability');
-          if (e.col !== null) this.showTiles(e.lane, e.col, SLAM_WINDUP);
+          // Each slam's own wind-up (the Titan's 1.5 s, or whatever a boss's table says).
+          const u = state?.units.find((v) => v.id === e.unitId);
+          const slam = u === undefined ? null : slamOf(this.balance, view.key as BossKey, u.phase, u.pattern);
+          const windup = slam?.windupSeconds ?? lookOf(view.key).fx.slamRise ?? 1.5;
+          this.raiseArm(view, windup, windup);
+          if (e.col !== null) this.showTiles(e.lane, e.col, windup);
         } else {
           this.hideTiles();
           this.slamDown(e.lane, e.col ?? 0);
@@ -333,7 +371,7 @@ export class BossFx {
         // The look itself comes from the state (`sync`); here the moment it goes up.
         view.flash();
         v1.set(view.currX, 0, view.lane + 0.5);
-        this.fx.ring(v1, lookOf(view.key).fx.shield === 'bark' ? BARK[1] as number : DOME_SPARK, 1.6, true);
+        this.fx.ring(v1, this.shieldRing(lookOf(view.key).fx.shield), 1.6, true);
         this.onFeel({ shake: 0.3 });
         break;
       default: {
@@ -345,21 +383,21 @@ export class BossFx {
 
   /** A shot bounced off the dome: a ping of sparks where it hit. */
   ping(at: Vector3): void {
-    this.fx.sparkles(at, DOME_SPARK);
+    this.fx.sparkles(at, this.domeSpark);
   }
 
-  /** True while the Oak's bark is shut (hits on it then throw sparks: it takes half). */
+  /** True while the plates (the Oak's bark, the Melon's ice) are shut (hits on them then throw chips: it takes half). */
   get barkShut(): boolean {
     return this.barkOn;
   }
 
-  /** The Oak was hit while its bark is shut: chips of bark and a spark off the plates (at most every 0.15 s). */
+  /** Hit while its plates are shut: chips of bark or ice and a spark off the plates (at most every 0.15 s). */
   barkHit(view: UnitView): void {
     if (!this.barkOn || this.barkSparkIn > 0) return;
     this.barkSparkIn = BARK_SPARK_GAP;
     v1.set(view.currX + 0.75, 0.9, view.lane + 0.5 + 0.35);
     this.fx.spark(v1);
-    this.fx.burst(v1, BARK, 6, 1.2);
+    this.fx.burst(v1, this.plateChips, 6, 1.2);
   }
 
   /**
@@ -402,12 +440,17 @@ export class BossFx {
     this.hideStrike();
     this.setDome(view, false);
     this.barkOn = false;
-    if (lookOf(view.key).fx.defeat === 'leaves') {
+    const defeat = lookOf(view.key).fx.defeat;
+    if (defeat === 'leaves') {
       // The leaves start to drop at once.
       for (let i = -1; i <= 1; i++) {
         v1.set(view.currX, 2.2, view.lane + 0.5 + i);
         this.fx.burst(v1, LEAVES, 16, 1.2);
       }
+    } else if (defeat === 'shards') {
+      // The first chips fly as it cracks.
+      v1.set(view.currX, 1.4, view.lane + 0.5);
+      this.fx.burst(v1, this.shardColors, 12, 1.4);
     }
     this.onFeel({ shake: 0.5 });
   }
@@ -427,6 +470,8 @@ export class BossFx {
       v1.set(x + 1, 0, z);
       this.fx.ring(v1, BRAIN[0] as number, 1.1);
       this.onFeel({ shake: 1, hitStop: 0.1 });
+    } else if (lookOf(view.key).fx.defeat === 'shards') {
+      this.shatter(view, x, z);
     } else {
       for (let i = -1; i <= 1; i++) {
         v1.set(x, 0.6, z + i);
@@ -493,6 +538,8 @@ export class BossFx {
       const rate = this.strikeLeft < 0.5 ? BLINK_FAST : BLINK_PER_SECOND;
       const on = Math.floor(this.time * rate * 2) % 2 === 0;
       for (let i = 0; i < this.strikeUsed; i++) (this.strikeTiles[i] as { fill: Mesh }).fill.visible = on;
+      // Its tell blinks with them (the Melon's icicle crown).
+      for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = on;
     }
     if (this.barkSparkIn > 0) this.barkSparkIn -= dt;
     for (let i = 0; i < this.marks.length; i++) {
@@ -512,15 +559,15 @@ export class BossFx {
       this.barkFor += dt;
       const u = Math.min(1, this.barkFor / BARK_SECONDS);
       const apart = (BARK_APART * (1 - u * u)) / lookOf(boss.key).scale;
-      boss.shiftPart('barkL', 0, 0, -apart);
-      boss.shiftPart('barkR', 0, 0, apart);
+      boss.shiftPart(this.plateL, 0, 0, -apart);
+      boss.shiftPart(this.plateR, 0, 0, apart);
       if (u >= 1) {
         this.barkFor = -1;
         v1.set(boss.currX + 0.75, 0.8, boss.lane + 0.5 + 0.35);
-        this.fx.burst(v1, BARK, 18, 1.8);
+        this.fx.burst(v1, this.plateChips, 18, 1.8);
         this.fx.spark(v1);
         v1.set(boss.currX + 0.5, 0, boss.lane + 0.5);
-        this.fx.ring(v1, BARK[0] as number, 1.2, true);
+        this.fx.ring(v1, this.plateChips[0] as number, 1.2, true);
         this.onFeel({ shake: 0.5, hitStop: 0.06 });
       }
     }
@@ -579,6 +626,92 @@ export class BossFx {
     this.ground(boss.currX, boss.lane, 1.6);
   }
 
+  /**
+   * What the boss's look asks for, once as it comes on: the dome's glass (blue, or glowing moonlight),
+   * which plates its shield slides in, its strike and phase parts, its shards' colours.
+   */
+  private dress(view: UnitView, look: BossLook): void {
+    const shows = look.fx;
+    const moon = shows.shield === 'moon';
+    const glass = moon ? MOON_COLOR : DOME_COLOR;
+    this.domeMaterial.color.set(glass);
+    this.domeMaterial.emissive.set(glass);
+    this.domeMaterial.emissiveIntensity = moon ? MOON_GLOW : 0.15;
+    this.edgeMaterial.color.set(glass);
+    if (moon) this.edgeMaterial.color.multiplyScalar(MOON_EDGE_GLOW);
+    this.domeSpark = moon ? MOON_SPARK : DOME_SPARK;
+    const ice = shows.shield === 'ice';
+    [this.plateL, this.plateR] = ice ? PLATES.ice : PLATES.bark;
+    this.plateChips = ice ? ICE : BARK;
+    this.strikeParts.length = 0;
+    this.phaseParts.length = 0;
+    this.phaseShown = false;
+    for (const name of shows.strikeParts ?? []) {
+      const part = view.model.root.getObjectByName(name);
+      if (part) {
+        part.visible = false;
+        this.strikeParts.push(part);
+      }
+    }
+    for (const name of shows.phaseParts ?? []) {
+      const part = view.model.root.getObjectByName(name);
+      if (part) {
+        part.visible = false;
+        this.phaseParts.push(part);
+      }
+    }
+    this.shardColors.length = 0;
+    for (const c of shows.shards ?? []) this.shardColors.push(hex(c));
+    if (this.shardColors.length === 0) this.shardColors.push(0xffffff);
+  }
+
+  /** The ring thrown out as its shield goes up, in the shield's colour. */
+  private shieldRing(shield: BossLook['fx']['shield']): number {
+    if (shield === 'bark') return BARK[1] as number;
+    if (shield === 'ice') return ICE[1] as number;
+    return shield === 'moon' ? MOON_SPARK : DOME_SPARK;
+  }
+
+  /**
+   * The slam's raised arm (its `ability`), sped up or slowed so the arm's rise (`fx.slamRise`, or
+   * the slam's own wind-up) fills the `left` seconds until the blow.
+   */
+  private raiseArm(view: UnitView, windupSeconds: number, left: number): void {
+    if (view.dying || !(left > 0)) return;
+    const rise = lookOf(view.key).fx.slamRise ?? windupSeconds;
+    view.model.play('ability', { speed: rise / left });
+  }
+
+  /**
+   * A strike's move (`fx.strike`), drawn out over the `left` seconds of its wind-up so it ends with
+   * the blow: a one-shot clip slowed to fit, a looping one played that long. None: it carries on.
+   */
+  private strikeMove(view: UnitView, left: number): void {
+    const name = lookOf(view.key).fx.strike;
+    if (name === undefined || view.dying || !(left > 0)) return;
+    const clip = view.def.clips[name];
+    if (clip === undefined) return;
+    if (clip.loop) view.playFor(name, left);
+    else view.model.play(name, { speed: clip.duration / left });
+  }
+
+  /** A `shards` defeat: its body breaks into chips of its colours, across the lanes it stands in, or along its fallen length. */
+  private shatter(view: UnitView, x: number, z: number): void {
+    const half = BOSS_HALF_WIDTH[view.key as BossKey];
+    const colors = this.shardColors;
+    for (let i = 0; i < BRAIN_HANDFULS; i++) {
+      // A boss across lanes breaks where it stands; a walker that toppled lies along +X from its feet.
+      if (half > 0) v1.set(x + 0.2 * (i % 2), 0.4 + 0.5 * (i % 3), z - half + (2 * half * i) / (BRAIN_HANDFULS - 1));
+      else v1.set(x + 0.3 + i * 0.45, 0.4, z + (i % 2 === 0 ? 0.3 : -0.3));
+      this.fx.debris(v1, colors, 5);
+      this.fx.debris(v1, colors, 5);
+      this.fx.burst(v1, colors, 14, 3.2);
+    }
+    v1.set(half > 0 ? x : x + 1, 0, z);
+    this.fx.ring(v1, colors[0] as number, 1.1 + half);
+    this.onFeel({ shake: 1, hitStop: 0.1 });
+  }
+
   /** Soil and a ring thrown up round a boss's feet. */
   private ground(x: number, lane: number, radius: number): void {
     v1.set(x, 0, lane + 0.5);
@@ -627,18 +760,20 @@ export class BossFx {
    * The strike's wind-up from the state: the timer of the boss's strike (held by a stun), its tiles
    * for a view that joined during the wind-up, and none once the simulation dropped them (a new phase).
    */
-  private syncStrike(key: BossKey, u: Unit): void {
+  private syncStrike(view: UnitView, u: Unit): void {
     if (u.strikeTiles.length === 0) {
       if (this.strikeLeft > 0) this.hideStrike();
       return;
     }
-    const p = patternsOf(this.balance.bosses[key], u.phase)[u.pattern];
+    const p = patternsOf(this.balance.bosses[view.key as BossKey], u.phase)[u.pattern];
     if (p === undefined || p.kind !== 'strike' || u.patternTimer <= 0) return;
     const left = u.patternTimer / TICKS_PER_SECOND;
     if (this.strikeLeft <= 0) {
+      // Joined during the wind-up (or restored into one): the warning and the move, timed to the blow.
       const tiles: { lane: number; col: number }[] = [];
       for (const t of u.strikeTiles) tiles.push({ lane: Math.floor(t / COLS), col: t % COLS });
       this.showStrike(tiles, strikeTintOf(p), left);
+      this.strikeMove(view, left);
     }
     this.strikeLeft = left;
   }
@@ -680,6 +815,7 @@ export class BossFx {
       const s = this.strikeTiles[i] as { frame: Mesh; fill: Mesh };
       s.frame.visible = s.fill.visible = false;
     }
+    for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = false;
   }
 
   /** The blow lands: soil and a ring on each of the three tiles, the camera shakes hard. */
@@ -700,17 +836,18 @@ export class BossFx {
     if (on && this.dome.parent !== view.wrapper) view.wrapper.add(this.dome);
   }
 
+  /** Its plates (bark or ice) show and start to slide shut, or go. */
   private setBark(view: UnitView, on: boolean): void {
     this.barkOn = on;
-    view.showPart('barkL', on);
-    view.showPart('barkR', on);
+    view.showPart(this.plateL, on);
+    view.showPart(this.plateR, on);
     this.barkFor = on ? 0 : -1;
     const apart = on ? BARK_APART / lookOf(view.key).scale : 0;
-    view.shiftPart('barkL', 0, 0, -apart);
-    view.shiftPart('barkR', 0, 0, apart);
+    view.shiftPart(this.plateL, 0, 0, -apart);
+    view.shiftPart(this.plateR, 0, 0, apart);
   }
 
-  /** The Oak's pupils turn towards the nearest standing zombie (across the lanes). */
+  /** Its pupils (the Oak's, the Melon's) turn towards the nearest standing zombie (across the lanes). */
   private lookAt(view: UnitView, oak: Unit, state: SimState): void {
     let best = 0;
     let bestD = Infinity;

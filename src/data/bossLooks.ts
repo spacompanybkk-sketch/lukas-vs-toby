@@ -18,12 +18,34 @@ export interface BossShows {
   roar: 'cheer' | 'ability';
   /** A summon: a purple ring and a stomp, or leaf sparkles from its crown (with its ability move). */
   summon: 'ring' | 'sparkles';
-  /** Its shield: a glass dome round it (shots ping off), or bark plates clapping shut. */
-  shield: 'dome' | 'bark';
-  /** Beaten: it bursts into brain blocks, or drops its leaves and its acorns roll away. */
-  defeat: 'brains' | 'leaves';
+  /**
+   * Its shield: a glass dome round it (shots ping off), the same dome glowing in moonlight
+   * (`moon`), bark plates clapping shut (the model's `barkL`/`barkR`), or ice plates (`iceL`/`iceR`).
+   */
+  shield: 'dome' | 'moon' | 'bark' | 'ice';
+  /**
+   * Beaten: it bursts into brain blocks, drops its leaves and its acorns roll away, or breaks into
+   * chips of `shards`' colours (across the lanes it stands in, or along its fallen length).
+   */
+  defeat: 'brains' | 'leaves' | 'shards';
   /** Its pupils follow the nearest enemy across the lanes (the model needs a `pupils` part). */
   eyes: 'still' | 'follow';
+  /**
+   * The move it makes through a strike's wind-up, drawn out to end with the blow (a one-shot clip
+   * slowed to fit, a looping one held). Left out: no move (the Titan's test-only strike).
+   */
+  strike?: 'cheer' | 'ability' | 'shoot';
+  /** Model parts (built hidden) that blink with the strike's warning tiles: the Melon's icicle crown. */
+  strikeParts?: readonly string[];
+  /** Model parts (built hidden) shown from phase 2 on, after its first shield mark. */
+  phaseParts?: readonly string[];
+  /** A `shards` defeat's colours (hex). */
+  shards?: readonly string[];
+  /**
+   * Seconds its slam clip (`ability`) takes to raise the arm; the clip is sped up or slowed so the
+   * rise fills each slam's own wind-up. Left out: the clip is timed to the wind-up as it is.
+   */
+  slamRise?: number;
 }
 
 export interface BossLook {
@@ -87,7 +109,39 @@ const SHIPPED = {
 
 export const BOSS_LOOK: Record<BossKey, BossLook> = {
   ...SHIPPED,
-  // stub: Task 2. The world-2 bosses wear the Titan's and the Oak's rows until their own are drawn.
-  moonHowler: { ...SHIPPED.brainTitan },
+  moonHowler: {
+    // The model is a unit's voxels, a little bigger than the Titan.
+    scale: 2.6,
+    // The green head between two grey wolf ears, its snout and nose, a fur ruff and the moon pendant.
+    face: [
+      [1, 0, 3, 4, '#9C98B8'],
+      [8, 0, 3, 4, '#9C98B8'],
+      [2, 1, 1, 2, '#F2A0BE'],
+      [9, 1, 1, 2, '#F2A0BE'],
+      [1, 3, 10, 7, '#9ACD8A'],
+      [1, 3, 10, 1, '#9C98B8'],
+      [2, 4, 3, 3, 'eye'],
+      [7, 5, 2, 2, 'eye'],
+      [3, 7, 6, 3, '#CDEDBE'],
+      [5, 7, 2, 1, '#22202C'],
+      [4, 9, 1, 1, '#FFF7E3'],
+      [7, 9, 1, 1, '#FFF7E3'],
+      [0, 10, 12, 2, '#9C98B8'],
+      [5, 10, 2, 2, '#FFF2A8'],
+    ],
+    bar: { fill: 'var(--c-slate)', hi: 'var(--c-slate-hi)' },
+    call: 'howlerHowl',
+    defeat: 'howlerDefeat',
+    fx: {
+      roar: 'cheer', summon: 'ring', shield: 'moon', defeat: 'shards', eyes: 'still',
+      // The howl: head thrown back through the blinding strike's wind-up.
+      strike: 'shoot',
+      // Phase 2: its pendant lights up as a little full moon, a crescent moon glows over its head, its eyes glow.
+      phaseParts: ['glow', 'glowMoon', 'glowEyes'],
+      shards: ['#9C98B8', '#66627F', '#9ACD8A', '#7B4BD6', '#FFF2A8'],
+      slamRise: 1.5,
+    },
+  },
+  // stub: Task 2. The Frost Melon wears the Oak's row until its own is drawn.
   frostMelon: { ...SHIPPED.elderOak },
 };
