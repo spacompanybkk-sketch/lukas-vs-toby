@@ -1,5 +1,5 @@
 import { Scene } from 'three';
-import type { MeshStandardMaterial } from 'three';
+import type { MeshBasicMaterial, MeshStandardMaterial } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { AudioEngine, PlayOptions, SfxName } from '../../../src/audio/AudioEngine';
 import { playEventSounds } from '../../../src/audio/bindings';
@@ -130,6 +130,38 @@ describe('the Moon Howler on the lawn', () => {
     s.until((e) => e.type === 'bossStrike' && !e.windup);
     s.play(0.1);
     expect(shown(s.scene, 'boss-strike-tile')).toBe(0);
+  });
+
+  it('the howl\'s lane is warned of in dark smoke with a light outline (its own colours), the Titan\'s demo keeping the shared grey', () => {
+    const s = bossStage('moonHowler');
+    s.until((e) => e.type === 'bossStrike' && e.windup);
+    s.play(0.1);
+    let frame: MeshBasicMaterial | null = null;
+    let fill: MeshBasicMaterial | null = null;
+    s.scene.traverse((o) => {
+      if (o.name === 'boss-strike-tile') frame = (o as unknown as { material: MeshBasicMaterial }).material;
+      if (o.name === 'boss-strike-fill') fill = (o as unknown as { material: MeshBasicMaterial }).material;
+    });
+    expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#E6E0F5');
+    expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#3A3150');
+    expect(fill!.opacity).toBeCloseTo(0.62);
+    expect(BOSS_LOOK.brainTitan.fx.strikeWarnings).toBeUndefined();
+  });
+
+  it('the units it summons come on as its pups, with wolf ears; the Titan\'s summons do not', () => {
+    const ears = (s: ReturnType<typeof bossStage>): number => shown(s.scene, 'boss-pup-ears');
+    const s = bossStage('moonHowler');
+    s.until((e) => e.type === 'bossPattern' && e.kind === 'summon');
+    s.play(0.1);
+    const pups = s.match.state.units.filter((u) => u.key === 'veryFastWalker').length;
+    expect(pups).toBeGreaterThan(0);
+    expect(ears(s)).toBe(pups);
+    // The Brain Eaters walking the outer lanes on their own are no pups.
+    expect(s.match.state.units.filter((u) => u.key === 'brainEater').length).toBeGreaterThan(0);
+    const titan = bossStage('brainTitan', BALANCE as never);
+    titan.until((e) => e.type === 'bossPattern' && e.kind === 'summon');
+    titan.play(0.1);
+    expect(ears(titan)).toBe(0);
   });
 
   it('its phase-2 parts (the lit pendant, the crescent moon, the glowing eyes) show only from phase 2, as the state says', () => {

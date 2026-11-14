@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { modelsFor } from '../../src/app/prewarm';
+import { bossDemoMatch } from '../../src/scenes/bossScript';
 import { Match, defaultConfig } from '../../src/sim/match';
 
 describe('modelsFor', () => {
@@ -18,5 +19,12 @@ describe('modelsFor', () => {
     match.state.config.cards.zombies = [...match.state.config.cards.zombies, 'necromancer'];
     match.state.players.zombies.spells = [];
     expect(modelsFor(match.state)).toContain('boneMinion');
+  });
+
+  it("builds the level's own boss and no other (a parked boss's model is never built)", () => {
+    const howler = modelsFor(bossDemoMatch('moonHowler', 1).state);
+    expect(howler).toContain('moonHowler');
+    for (const other of ['brainTitan', 'elderOak', 'frostMelon']) expect(howler).not.toContain(other);
+    expect(modelsFor(new Match(defaultConfig(3)).state).some((k) => ['brainTitan', 'elderOak', 'moonHowler', 'frostMelon'].includes(k))).toBe(false);
   });
 });

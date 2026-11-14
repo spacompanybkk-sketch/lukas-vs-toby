@@ -1,5 +1,5 @@
 import type { SfxName } from '../audio/sfx';
-import type { BossKey } from '../sim/types';
+import type { BossKey, StatusKind } from '../sim/types';
 
 // How each boss looks and sounds (worlds machinery, Task 5): one row per boss, read by the battle
 // view's boss shows (`BossFx`), the HUD's boss bar (`BossBar`) and the sound bindings. A new boss
@@ -11,6 +11,9 @@ import type { BossKey } from '../sim/types';
  * `[x, y, w, h, 'eye']` for an eye (drawn open, or knocked out as an X once the boss is beaten).
  */
 export type FacePixel = readonly [x: number, y: number, w: number, h: number, fill: string];
+
+/** A strike's warning colours (CSS hex): the blinking fill and its opacity, the steady outline. */
+export interface StrikeWarning { fill: string; frame: string; opacity: number }
 
 /** Which of the shows `BossFx` knows each moment of the fight uses. */
 export interface BossShows {
@@ -41,6 +44,14 @@ export interface BossShows {
   phaseParts?: readonly string[];
   /** A `shards` defeat's colours (hex). */
   shards?: readonly string[];
+  /**
+   * Its own strike warning colours by the status the strike leaves, where the shared tint would not
+   * read on its world's ground (the Howler's grey blind on the night Meadow): the fill blinks in
+   * `fill` at `opacity`, the outline stays in `frame`, and the blow flies in `frame`.
+   */
+  strikeWarnings?: Partial<Record<StatusKind | 'none', StrikeWarning>>;
+  /** The units it summons come on as its pups, with wolf ears (the Howler's); views only. */
+  pups?: boolean;
   /**
    * Seconds its slam clip (`ability`) takes to raise the arm; the clip is sped up or slowed so the
    * rise fills each slam's own wind-up. Left out: the clip is timed to the wind-up as it is.
@@ -140,6 +151,10 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       phaseParts: ['glow', 'glowMoon', 'glowEyes'],
       shards: ['#9C98B8', '#66627F', '#9ACD8A', '#7B4BD6', '#FFF2A8'],
       slamRise: 1.5,
+      // The blinding howl's lane: dark smoke with a light pixel outline, which reads on the night lawn
+      // (the shared grey came out near-white there).
+      strikeWarnings: { blind: { fill: '#3A3150', frame: '#E6E0F5', opacity: 0.62 } },
+      pups: true,
     },
   },
   // stub: Task 2. The Frost Melon wears the Oak's row until its own is drawn.

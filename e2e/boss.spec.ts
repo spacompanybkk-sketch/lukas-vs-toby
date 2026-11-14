@@ -4,7 +4,7 @@ import { frames } from './helpers';
 // Phase 3 Task 3: each boss's demo level plays 30 seconds on the real lawn (desktop and iPad),
 // with the boss bar on screen the whole time and no console error.
 
-for (const boss of ['brainTitan', 'elderOak'] as const) {
+for (const boss of ['brainTitan', 'elderOak', 'moonHowler'] as const) {
   test(`the ${boss} demo plays 30 s with its boss bar showing and no error`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto(`/?scene=boss-demo&boss=${boss}&seed=1&debug&cloud=fake`);

@@ -907,7 +907,10 @@ export class BattleView {
         v1.set(e.x, 0, e.lane + 0.5);
         this.fx.dirt(v1);
         if (view.boss) this.bossFx.enter(view, false);
-        else if (e.faction === 'zombies') this.raiseGrave(e.x, e.lane);
+        else {
+          this.bossFx.spawned(view); // a boss's pups get their ears
+          if (e.faction === 'zombies') this.raiseGrave(e.x, e.lane);
+        }
         break;
       }
       case 'unitMerged':

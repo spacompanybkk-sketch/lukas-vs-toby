@@ -1,7 +1,7 @@
-import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
+import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
 import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
 import { BOSS_LOOK } from '../../data/bossLooks';
-import type { BossLook } from '../../data/bossLooks';
+import type { BossLook, StrikeWarning } from '../../data/bossLooks';
 import { patternsOf, slamCol } from '../../sim/boss';
 import { BOSS_HALF_WIDTH, COLS, LANES, TICKS_PER_SECOND } from '../../sim/types';
 import type { BossKey, SimEvent, SimState, StatusKind, Unit, UnitKey } from '../../sim/types';
@@ -164,6 +164,12 @@ export class BossFx {
   private phaseShown = false;
   /** A `shards` defeat's colours (`fx.shards`). */
   private readonly shardColors: number[] = [];
+  /** Wolf ears for the units a boss with `fx.pups` summons (made on its first summon), and who wears each. */
+  private earGeometry: ReturnType<BoxBatch['build']> | null = null;
+  private readonly earMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+  private readonly ears: { mesh: Mesh; owner: UnitView | null }[] = [];
+  /** How many units spawned this step still get ears (set by a summon, cleared by the boss's `sync`). */
+  private pupsDue = 0;
   /** The boss's view (one boss a match), while it stands. */
   private boss: UnitView | null = null;
   private entranceLeft = -1;
@@ -269,6 +275,7 @@ export class BossFx {
 
   /** The step's state for the boss: shield, wind-up tiles for a view that joined late, the eyes. */
   sync(view: UnitView, u: Unit, state: SimState): void {
+    this.pupsDue = 0; // the summon's units came on in the step's events, before this
     if (view.dying || this.ended) return;
     const shows = lookOf(view.key).fx;
     const shield = u.shieldLeft > 0;
@@ -314,14 +321,14 @@ export class BossFx {
       const p = patternsOf(this.balance.bosses[u.key as BossKey], u.phase)[u.pattern];
       const strike = p !== undefined && p.kind === 'strike' ? p : null;
       const windup = strike === null ? 0 : strike.windupSeconds;
-      this.showStrike(e.tiles, strikeTintOf(strike), windup);
+      this.showStrike(e.tiles, warningOf(u.key as BossKey, strike?.status?.kind ?? 'none'), windup);
       const boss = this.boss;
       if (boss !== null && boss.id === e.unitId) this.strikeMove(boss, windup);
       return;
     }
     // The blow: the tint it was announced in (or, for a view that missed the wind-up, its list's).
     if (this.strikeLeft <= 0 && u !== undefined && Object.hasOwn(BOSS_HALF_WIDTH, u.key)) {
-      this.strikeTint = hex(STRIKE_TINT[firstStrikeStatus(patternsOf(this.balance.bosses[u.key as BossKey], u.phase))]);
+      this.strikeTint = hex(warningOf(u.key as BossKey, firstStrikeStatus(patternsOf(this.balance.bosses[u.key as BossKey], u.phase))).frame);
     }
     this.hideStrike();
     const tint = this.strikeTint;
@@ -353,6 +360,7 @@ export class BossFx {
         }
         break;
       case 'summon':
+        if (lookOf(view.key).fx.pups === true) this.pupsDue = PUPS_MAX;
         if (lookOf(view.key).fx.summon === 'ring') {
           view.playFor('cheer', 0.9);
           v1.set(view.currX, 0, view.lane + 0.5);
@@ -379,6 +387,41 @@ export class BossFx {
         void unhandled;
       }
     }
+  }
+
+  /**
+   * A unit came on (not a boss). Straight after a summon by a boss with `fx.pups` (the Howler), its
+   * side's newcomers are its pups and get a pair of wolf ears on their heads. Views only: nothing in
+   * the simulation knows, so a view that joins later shows them without.
+   */
+  spawned(view: UnitView): void {
+    const boss = this.boss;
+    if (this.pupsDue <= 0 || boss === null || view.faction !== boss.faction || view.boss) return;
+    const head = view.model.root.getObjectByName('head');
+    if (!head) return;
+    this.pupsDue--;
+    let slot = this.ears.find((e) => e.owner === null || e.owner.dying || e.owner.wrapper.parent === null);
+    if (slot === undefined) {
+      if (this.ears.length >= PUPS_POOL) return;
+      this.earGeometry ??= wolfEars();
+      const mesh = new Mesh(this.earGeometry, this.earMaterial);
+      mesh.name = 'boss-pup-ears';
+      slot = { mesh, owner: null };
+      this.ears.push(slot);
+    }
+    slot.owner = view;
+    // On top of its head, as modelled: the head's own boxes (the parts on it left out).
+    const top = PUP_BOX.makeEmpty();
+    for (const child of head.children) {
+      const g = (child as Mesh).geometry;
+      if (!(child as Mesh).isMesh || !g) continue;
+      if (g.boundingBox === null) g.computeBoundingBox();
+      top.union(g.boundingBox as Box3);
+    }
+    if (top.isEmpty()) return;
+    slot.mesh.position.set((top.min.x + top.max.x) / 2, top.max.y, (top.min.z + top.max.z) / 2);
+    slot.mesh.scale.setScalar(PUP_EAR_SCALE);
+    head.add(slot.mesh);
   }
 
   /** A shot bounced off the dome: a ping of sparks where it hit. */
@@ -611,6 +654,9 @@ export class BossFx {
     this.markMaterial.dispose();
     this.strikeFrameMaterial.dispose();
     this.strikeFillMaterial.dispose();
+    for (const e of this.ears) e.mesh.removeFromParent();
+    this.earGeometry?.dispose();
+    this.earMaterial.dispose();
     this.boss = null;
   }
 
@@ -772,14 +818,14 @@ export class BossFx {
       // Joined during the wind-up (or restored into one): the warning and the move, timed to the blow.
       const tiles: { lane: number; col: number }[] = [];
       for (const t of u.strikeTiles) tiles.push({ lane: Math.floor(t / COLS), col: t % COLS });
-      this.showStrike(tiles, strikeTintOf(p), left);
+      this.showStrike(tiles, warningOf(view.key as BossKey, p.status?.kind ?? 'none'), left);
       this.strikeMove(view, left);
     }
     this.strikeLeft = left;
   }
 
-  /** Puts the warning on `tiles` in `tint` for `seconds` (the frames steady, the fills blinking). */
-  private showStrike(tiles: readonly { lane: number; col: number }[], tint: string, seconds: number): void {
+  /** Puts the warning on `tiles` in its colours for `seconds` (the frames steady, the fills blinking). */
+  private showStrike(tiles: readonly { lane: number; col: number }[], warning: StrikeWarning, seconds: number): void {
     while (this.strikeTiles.length < Math.min(tiles.length, STRIKE_TILES)) {
       const frame = new Mesh(this.frameGeometry, this.strikeFrameMaterial);
       const fill = new Mesh(this.fillGeometry, this.strikeFillMaterial);
@@ -790,9 +836,10 @@ export class BossFx {
       this.group.add(frame, fill);
       this.strikeTiles.push({ frame, fill });
     }
-    this.strikeTint = hex(tint);
-    this.strikeFrameMaterial.color.set(tint);
-    this.strikeFillMaterial.color.set(tint);
+    this.strikeTint = hex(warning.frame);
+    this.strikeFrameMaterial.color.set(warning.frame);
+    this.strikeFillMaterial.color.set(warning.fill);
+    this.strikeFillMaterial.opacity = warning.opacity;
     const n = Math.min(tiles.length, this.strikeTiles.length);
     for (let i = 0; i < this.strikeTiles.length; i++) {
       const s = this.strikeTiles[i] as { frame: Mesh; fill: Mesh };
@@ -865,15 +912,55 @@ export class BossFx {
   }
 }
 
-/** A strike's tint: that of the status it leaves, or white for none. */
-function strikeTintOf(p: Extract<BossPattern, { kind: 'strike' }> | null): string {
-  return STRIKE_TINT[p?.status?.kind ?? 'none'];
+/**
+ * How a boss's strike leaving `status` is warned of: its look's own colours for that status
+ * (`fx.strikeWarnings`: the Howler's blinding howl is dark smoke with a light outline, which reads
+ * on the night lawn), or the shared tint (`STRIKE_TINT`) for frame and fill alike.
+ */
+function warningOf(key: BossKey, status: StatusKind | 'none'): StrikeWarning {
+  const own = BOSS_LOOK[key]?.fx.strikeWarnings?.[status];
+  if (own !== undefined) return own;
+  const tint = STRIKE_TINT[status];
+  const shared = SHARED_WARNINGS[status];
+  shared.fill = shared.frame = tint;
+  return shared;
 }
+/** The shared warnings, one object per status (no allocation per strike). */
+const SHARED_WARNINGS: Record<StatusKind | 'none', { fill: string; frame: string; opacity: number }> = {
+  stun: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY }, blind: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY },
+  burn: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY }, none: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY },
+  poison: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY }, tied: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY },
+  haste: { fill: '', frame: '', opacity: STRIKE_FILL_OPACITY },
+};
 
 /** The status of the first strike in a pattern list ('none' when it has no strike or that leaves none). */
 function firstStrikeStatus(list: readonly BossPattern[]): StatusKind | 'none' {
   for (const p of list) if (p.kind === 'strike') return p.status?.kind ?? 'none';
   return 'none';
+}
+
+/** At most this many pups a summon, and pairs of ears in all (a pup's are reused once it is gone). */
+const PUPS_MAX = 4;
+const PUPS_POOL = 12;
+const PUP_BOX = new Box3();
+/** Ears a little bigger than the Howler's voxels, so they read on a small zombie from the lawn camera. */
+const PUP_EAR_SCALE = 1.4;
+
+/**
+ * A pup's wolf ears, in tiles about the top middle of its head: two stepped grey-violet points with
+ * pink insides, standing up either side, like the Howler's.
+ */
+function wolfEars(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const v = VOXEL;
+  for (const side of [1, -1]) {
+    const z = side > 0 ? 1 * v : -3.5 * v;
+    b.box(-1.5 * v, 0, z, 3 * v, 1.5 * v, 2.5 * v, '#9C98B8');
+    b.box(-1 * v, 1.5 * v, z + 0.5 * v, 2 * v, 1.5 * v, 1.5 * v, '#9C98B8');
+    b.box(-0.5 * v, 3 * v, z + 0.75 * v, 1 * v, 1 * v, 1 * v, '#CFCBE2');
+    b.box(-2 * v, 0.5 * v, z + 0.5 * v, 0.5 * v, 2 * v, 1.5 * v, '#F2A0BE');
+  }
+  return b.build();
 }
 
 /** A tile's red frame: four bars round its edge, a little above the grass. */

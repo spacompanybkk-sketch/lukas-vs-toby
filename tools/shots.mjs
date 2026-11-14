@@ -393,7 +393,9 @@ const SCENARIOS = [
     ['boss-howler-enter', 'moonHowler', [0.5, 1.0]],
     ['boss-howler-windup', 'moonHowler', [7.4, 8.05]], // the claw slam winds up 6.5–8 s
     ['boss-howler-shield', 'moonHowler', [27]], // the moon dome 25.9–30.9 s
-    ['boss-howler-strike', 'moonHowler', [31.3, 32.7, 33.45]], // the howl winds up 30.9–33.4 s (a Kernel's butter holds it)
+    ['boss-howler-summon', 'moonHowler', [14.05, 14.6]], // its pups, with wolf ears, at 14 s
+    ['boss-howler-strike', 'moonHowler', [31.3, 31.45, 31.6, 32.7]], // the howl winds up 30.9–33.4 s (a Kernel's butter holds it)
+    ['boss-howler-blind', 'moonHowler', [33.45, 34.5]], // the lane blinded
     ['boss-howler-phase2', 'moonHowler', [35]],
     ['boss-howler-defeat', 'moonHowler', [50.9, 51.4, 51.9]], // falls at 50.7 s, in its second howl's wind-up
   ].map(([name, boss, times]) => {

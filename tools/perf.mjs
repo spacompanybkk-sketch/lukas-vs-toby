@@ -27,6 +27,7 @@
 //
 //   --modes=novsync[,vsync,novsync-cpu4x]   only these modes (default: all three)
 //   --scenes=mix-150[,p1-60,p1-150,titan,oak-30,free-w20,map]   only these scenes (default: all)
+//   --scenes=howler                         the Moon Howler's boss demo in the Meadow (fog, fireflies), opt-in
 //   --scenes=mix-150-meadow[,…]             a world's look (backyard, meadow, desert, tundra,
 //                                           citadel) with its weather and sample twist tiles; only
 //                                           when named
@@ -58,6 +59,8 @@ const SCENES = [
   { name: 'free-w20', query: '', setup: 'free20' },
   { name: 'map', query: '', setup: 'map' },
   { name: 'map-zombies', query: '', setup: 'mapZombies', optIn: true },
+  // Step 2 (opt-in): the Moon Howler's fight (its boss demo) in the Meadow's fog with fireflies.
+  { name: 'howler', query: 'scene=boss-demo&boss=moonHowler&seed=1', setup: 'howler', optIn: true },
   // Worlds (opt-in, by name): mix-150 in each look with its weather and sample twist tiles.
   ...['backyard', 'meadow', 'desert', 'tundra', 'citadel'].map((world) => ({
     name: `mix-150-${world}`, query: `scene=stress&mix&units=150&world=${world}`, optIn: true,
@@ -231,6 +234,15 @@ const GAME_SETUPS = {
   },
   async mapZombies(page) {
     return this.map(page, 'zombies');
+  },
+  /** The Howler demo moved on to 20 s (its pups, Brain Eaters, the garden firing), then left to play live. */
+  async howler(page) {
+    return page.evaluate(() => {
+      const b = window.__lvt.battle;
+      b.advance(20);
+      const s = b.match.state;
+      return { units: s.units.length, projectiles: s.projectiles.length, howler: s.units.some((u) => u.key === 'moonHowler'), fog: s.config.lawn.fog };
+    });
   },
 };
 const BUDGET_MS = { 1: 10, 2: 16.6 };
