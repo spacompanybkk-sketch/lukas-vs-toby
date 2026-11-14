@@ -30,6 +30,7 @@ import { AlmanacStage } from '../scenes/almanacStage';
 import { MapStage } from '../scenes/mapStage';
 import { mapLevels } from '../ui/screens/Map';
 import { previewWorlds } from './previewWorlds';
+import { TEACHES } from '../adventure/levels/teaches';
 import { reloadForUnreadableSave } from './staleBuild';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
@@ -125,7 +126,10 @@ export function mountGame(
   lvt.map = map;
   // The map e2e and screenshots: stand-in worlds (2 and 3 unless `worlds` says) on the map, copies
   // of world 1 with their arena's twist; the twist e2e plays them. Only on the debug hooks.
-  lvt.previewWorlds = (on = true, worlds?: (2 | 3 | 4 | 5)[]): void => { mapLevels.value = on ? previewWorlds(LEVELS, worlds) : LEVELS; };
+  // With `lessons`, the stand-ins carry the world-2 lessons written ahead of their levels (`TEACHES`).
+  lvt.previewWorlds = (on = true, worlds?: (2 | 3 | 4 | 5)[], lessons = false): void => {
+    mapLevels.value = on ? previewWorlds(LEVELS, worlds, lessons ? TEACHES : undefined) : LEVELS;
+  };
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
