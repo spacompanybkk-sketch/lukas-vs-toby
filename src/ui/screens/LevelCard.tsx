@@ -51,7 +51,7 @@ export function UnitPic({ unit, portraits, class: cls = '' }: { unit: UnitKey; p
 /** Each lawn twist's small picture on the card. */
 const TWIST_ART: Record<TwistPicture, PixelArt> = { fog: TWIST_FOG, rocks: TWIST_ROCK, ice: TWIST_ICE, lava: TWIST_LAVA };
 
-/** The glove button replays the level with its whole tutorial ("Show me how"); its short name. */
+/** The glove button replays the level with its whole tutorial; its short name (its label "Help: show me how" starts with it). */
 const HELP_NAME = 'Help';
 
 const FACES: { skill: Skill; art: PixelArt; label: string }[] = [
@@ -173,7 +173,7 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
             ))}
           </div>}
           {onTutorial !== undefined && def.teaches !== null && def.teaches.length > 0 && (
-            <button type="button" data-action="replay-tutorial" aria-label="Show me how" class="btn btn--square pal-cream lcard__teach" onClick={onTutorial}>
+            <button type="button" data-action="replay-tutorial" aria-label={`${HELP_NAME}: show me how`} class="btn btn--square pal-cream lcard__teach" onClick={onTutorial}>
               <span class="lcard__btn-pic lcard__btn-pic--glove"><PixelIcon art={GLOVE} /></span>
               <span class="lcard__btn-name inked" data-btn-name="help">{HELP_NAME}</span>
             </button>

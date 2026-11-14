@@ -146,6 +146,15 @@ describe('Level card', () => {
     for (const el of all('[data-btn-name]')) expect(el.classList.contains('inked')).toBe(true);
   });
 
+  it('every named small button\'s label holds its visible word (label in name): the glove says "Help: show me how"', async () => {
+    await openCard('p1-1');
+    expect(need('[data-action="replay-tutorial"]').getAttribute('aria-label')).toBe('Help: show me how');
+    for (const el of all('[data-btn-name]')) {
+      const button = el.closest('button')!;
+      expect(button.getAttribute('aria-label')!.toLowerCase(), button.outerHTML.slice(0, 80)).toContain(el.textContent!.toLowerCase());
+    }
+  });
+
   it('the difficulty is drawn as one, two, three skulls (not moods); the chosen one ringed, the others greyed', async () => {
     await openCard('z1-1');
     const drawn = (skill: string): string[] => [...need(`[data-skill="${skill}"] svg`).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
