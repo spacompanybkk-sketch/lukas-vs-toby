@@ -39,6 +39,11 @@ export interface Save {
   teached: string[];
   /** The most gardens broken in one Free Play breakthrough run (the zombies). Saves written before it read as 0. */
   bestGarden: number;
+  /**
+   * The difficulty per side of the Adventure and Free Play (the level card's skulls); `difficulty`
+   * is Quick Battle's alone. Saves written before it read with a copy of their `difficulty`.
+   */
+  adventureDifficulty: Record<Faction, Skill>;
 }
 
 const SKILLS: readonly Skill[] = ['easy', 'medium', 'hard'];
@@ -54,7 +59,7 @@ const SAVE_KEYS = [
   'bestWave', 'versusWins', 'computerWins', 'difficulty', 'importedOld', 'updatedAt',
 ] as const;
 /** Keys added later: a save written before them still loads, with their defaults. */
-const LATER_KEYS = ['lastBattle', 'teached', 'bestGarden'] as const;
+const LATER_KEYS = ['lastBattle', 'teached', 'bestGarden', 'adventureDifficulty'] as const;
 /** At most this many tutorial steps are kept in `teached`. */
 export const MAX_TEACHED = 128;
 /** A battle id or a tutorial step id: 1–64 characters. */
@@ -69,6 +74,7 @@ export function newSave(slot: Slot, name: string, picture: CardKey, now: number)
     difficulty: { plants: 'medium', zombies: 'medium' },
     importedOld: false, updatedAt: now,
     lastBattle: null, teached: [], bestGarden: 0,
+    adventureDifficulty: { plants: 'medium', zombies: 'medium' },
   };
 }
 
@@ -107,6 +113,13 @@ function parseSide(raw: unknown, faction: Faction): SideProgress | null {
   return { stars: outStars, unlocked: [...unlocked] as CardKey[] };
 }
 
+/** A skill per side (`difficulty`, `adventureDifficulty`): exactly both sides, each a known skill. */
+function parseSkills(raw: unknown): Record<Faction, Skill> | null {
+  if (!isRecord(raw) || !hasExactly(raw, FACTIONS)) return null;
+  if (!SKILLS.includes(raw.plants as Skill) || !SKILLS.includes(raw.zombies as Skill)) return null;
+  return { plants: raw.plants as Skill, zombies: raw.zombies as Skill };
+}
+
 /** Reads a save strictly: any wrong shape, range, type, missing or extra key gives null. */
 export function parseSave(raw: unknown): Save | null {
   if (!isRecord(raw) || !hasKeys(raw, SAVE_KEYS, LATER_KEYS)) return null;
@@ -124,9 +137,10 @@ export function parseSave(raw: unknown): Save | null {
     upgrades[k] = n;
   }
 
-  const d = o.difficulty;
-  if (!isRecord(d) || !hasExactly(d, FACTIONS)) return null;
-  if (!SKILLS.includes(d.plants as Skill) || !SKILLS.includes(d.zombies as Skill)) return null;
+  const difficulty = parseSkills(o.difficulty);
+  if (difficulty === null) return null;
+  const adventureDifficulty = Object.hasOwn(o, 'adventureDifficulty') ? parseSkills(o.adventureDifficulty) : { ...difficulty };
+  if (adventureDifficulty === null) return null;
 
   const plants = parseSide(o.plants, 'plants');
   const zombies = parseSide(o.zombies, 'zombies');
@@ -144,9 +158,9 @@ export function parseSave(raw: unknown): Save | null {
     v: 1, slot: o.slot, name: o.name, picture: o.picture,
     coins: o.coins, upgrades, plants, zombies,
     bestWave: o.bestWave, versusWins: o.versusWins, computerWins: o.computerWins,
-    difficulty: { plants: d.plants as Skill, zombies: d.zombies as Skill },
+    difficulty,
     importedOld: o.importedOld, updatedAt: o.updatedAt,
-    lastBattle, teached: [...teached] as string[], bestGarden,
+    lastBattle, teached: [...teached] as string[], bestGarden, adventureDifficulty,
   };
 }
 

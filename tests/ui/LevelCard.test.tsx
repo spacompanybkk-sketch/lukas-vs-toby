@@ -10,7 +10,12 @@ import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import type { Save } from '../../src/progress/save';
 import { App } from '../../src/ui/App';
-import { resetSeenStars } from '../../src/ui/screens/Map';
+import { mapLevels, resetSeenStars } from '../../src/ui/screens/Map';
+import { LEVELS } from '../../src/adventure/levels';
+import { previewWorlds } from '../../src/app/previewWorlds';
+import { DIFF_EASY, DIFF_HARD, DIFF_NORMAL } from '../../src/ui/screens/adventurePictures';
+import { pixelPaths } from '../../src/ui/hud/PixelIcon';
+import type { PixelArt } from '../../src/ui/hud/PixelIcon';
 import { MemoryStorage } from '../progress/memoryStorage';
 
 let root: HTMLElement;
@@ -27,6 +32,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => render(null, root));
   root.remove();
+  mapLevels.value = LEVELS;
   session.dispose();
   go({ name: 'title' });
 });
@@ -52,6 +58,25 @@ async function openCard(id: string, progress: Partial<Pick<Save, 'plants' | 'zom
 const pictures = (sel: string): string[] => all(`${sel} [data-picture]`).map((p) => p.dataset.picture ?? '');
 
 describe('Level card', () => {
+  it('a level without a twist shows no twist picture', async () => {
+    await openCard('p1-1');
+    expect(q('[data-twists]')).toBeNull();
+  });
+
+  it.each<[string, string, string]>([['p2-1', 'p1', 'fog'], ['z2-1', 'z1', 'ice'], ['p3-1', 'p2', 'rocks']])(
+    'a level with a twist (%s, stand-in levels) shows its picture beside the number: %s won before, %s', async (id, before, twist) => {
+      mapLevels.value = previewWorlds(LEVELS);
+      const stars = (p: string): Record<string, 1> => Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`${p}-${i + 1}`, 1]));
+      const side = id.startsWith('p') ? 'plants' : 'zombies';
+      const all8 = before === 'p2' ? { ...stars('p1'), ...stars('p2') } : stars(before);
+      await openCard(id, { [side]: { stars: all8, unlocked: [] } });
+      expect(need('[data-screen="level-card"]').dataset.level).toBe(id);
+      expect(all('.lcard__head [data-twist]').map((t) => t.dataset.twist)).toEqual([twist]);
+      // The twist is a picture only: no word joins the small buttons' names (no tutorial on these copies).
+      expect(need('.lcard__twists').textContent?.trim()).toBe('');
+    },
+  );
+
   it('a first battle: its kind and number, the one card dealt, the enemy, three empty stars (win, base at half, nearly full)', async () => {
     await openCard('p1-1');
     const card = need('[data-screen="level-card"]');
@@ -65,7 +90,7 @@ describe('Level card', () => {
       'win 1', `base ${ADVENTURE.baseStars.two}`, `base ${ADVENTURE.baseStars.three}`,
     ]);
     expect(q('[data-reward]')).toBeNull();
-    expect(card.textContent?.trim()).toBe(''); // pictures only
+    expect(card.textContent?.trim()).toBe('EasyNormalHardHelp'); // pictures, and only the four small buttons' names
   });
 
   it('a won level shows its stars filled', async () => {
@@ -100,12 +125,50 @@ describe('Level card', () => {
     await openCard('z1-1');
     const pressed = (): string[] => all('[data-skill][aria-pressed="true"]').map((b) => b.dataset.skill ?? '');
     expect(all('[data-skill]').map((b) => b.dataset.skill)).toEqual(['easy', 'medium', 'hard']);
-    const saved = session.player.value!.difficulty.zombies;
+    const saved = session.player.value!.adventureDifficulty.zombies;
+    const quick = session.player.value!.difficulty;
     expect(pressed()).toEqual([saved]);
     tap('[data-skill="hard"]');
-    expect(session.player.value!.difficulty.zombies).toBe('hard');
+    expect(session.player.value!.adventureDifficulty.zombies).toBe('hard');
+    // Quick Battle keeps its own difficulty.
+    expect(session.player.value!.difficulty).toEqual(quick);
     expect(pressed()).toEqual(['hard']);
     expect(sounds.at(-1)).toBe('click');
+  });
+
+  it('each small button names itself under its picture: EASY, NORMAL, HARD and the glove HELP', async () => {
+    await openCard('p1-1');
+    const names = (sel: string): string | undefined => need(`${sel} [data-btn-name]`).textContent ?? undefined;
+    expect(names('[data-skill="easy"]')).toBe('Easy');
+    expect(names('[data-skill="medium"]')).toBe('Normal');
+    expect(names('[data-skill="hard"]')).toBe('Hard');
+    expect(names('[data-action="replay-tutorial"]')).toBe('Help');
+    for (const el of all('[data-btn-name]')) expect(el.classList.contains('inked')).toBe(true);
+  });
+
+  it('every named small button\'s label holds its visible word (label in name): the glove says "Help: show me how"', async () => {
+    await openCard('p1-1');
+    expect(need('[data-action="replay-tutorial"]').getAttribute('aria-label')).toBe('Help: show me how');
+    for (const el of all('[data-btn-name]')) {
+      const button = el.closest('button')!;
+      expect(button.getAttribute('aria-label')!.toLowerCase(), button.outerHTML.slice(0, 80)).toContain(el.textContent!.toLowerCase());
+    }
+  });
+
+  it('the difficulty is drawn as one, two, three skulls (not moods); the chosen one ringed, the others greyed', async () => {
+    await openCard('z1-1');
+    const drawn = (skill: string): string[] => [...need(`[data-skill="${skill}"] svg`).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+    expect(drawn('easy')).toEqual(pixelPaths(DIFF_EASY).map((p) => p.d));
+    expect(drawn('medium')).toEqual(pixelPaths(DIFF_NORMAL).map((p) => p.d));
+    expect(drawn('hard')).toEqual(pixelPaths(DIFF_HARD).map((p) => p.d));
+    tap('[data-skill="medium"]');
+    expect(need('[data-skill="medium"]').classList.contains('is-on')).toBe(true);
+    expect(all('.lcard__face.is-on')).toHaveLength(1);
+  });
+
+  it('each difficulty picture holds as many skulls as its step (eyes counted: two of four pixels a skull)', () => {
+    const eyes = (art: PixelArt): number => art.rows.join('').split('').filter((ch) => ch === 'P' || ch === 'r').length;
+    expect([DIFF_EASY, DIFF_NORMAL, DIFF_HARD].map((a) => eyes(a) / 4)).toEqual([1, 2, 3]);
   });
 
   it('a level with no energy (conveyor) shows no difficulty faces: they change only income', async () => {
@@ -153,7 +216,7 @@ describe('Level card', () => {
   it('a tap on the dim around the card closes it', async () => {
     await openCard('p1-1');
     act(() => { need('[data-veil]').click(); });
-    expect(screen.value).toEqual({ name: 'map', side: 'plants' });
+    expect(screen.value).toEqual({ name: 'map', side: 'plants', world: 1 });
   });
 
   it('every target is a button (tap only), and the card of a level of the other side does not open', async () => {

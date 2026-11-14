@@ -13,23 +13,33 @@ TypeScript on Vite.
 | `npm run preview` | Serve the build on port 5274 |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests (Vitest) |
-| `npm run test:balance` | The long level checks (`tests/ai/long`, three workers, about 15–25 minutes): every Backyard level played by the stand-in children on many seeds, against its win and star bands |
+| `npm run test:balance` | The long level checks (`tests/ai/long/levels-w1` … `levels-w5` and `freePlay`, three workers, a few minutes): every Adventure level of every world, and Free Play, played by the level stand-ins on one seed block (seeds 1–200), against its win and star bands |
+| `LVT_BLOCKS=3 npm run test:balance` | The same on three seed blocks (1–200, 1001–1200, 2001–2200; about three times as long). Required before a world ships |
+| `npm run test:balance:core` | The long checks of the core game, apart from the levels (`tests/ai/long/core`, `humans`, `picks`, `spam*`, `spell*`): Quick Battle difficulty, spam, picks and spells. Run it when a unit, hero, spell or Quick Battle number changes |
+| `npx tsx tools/levels.ts` | The level tool: every level with every stand-in, as a table of win and star rates. `--world 2` only world 2's levels (both sides), `--only p1-3,z1-8`, `--who average`, `--free` for Free Play, `--first 1001` for the second seed block, `--set path=value` to try a Balance number. See the note at the top of the file |
 | `npm run build:live` / `npm run check:live` | A build for the real cloud, and the check that `dist/` is one (a plain build is the fake cloud and shows a test-tube badge on the title) |
 | `npm run shots -- <scenario...>` | Screenshots into `artifacts/shots/` (add `--headed` to watch) |
 | `npm run e2e` | Browser tests (Playwright, Chromium: `desktop` and `ipad` projects). Builds and serves its own copy on port 5314, so a dev server can keep running |
-| `npm run perf` | Frame-rate measurement (headed Chromium, port 5315 or `LVT_PERF_PORT`): the phase-1 stress crowd (60 and 150 units) and the mixed roster (`mix-150`), device scale 1 and 2, plus the time to draw the twenty card portraits; prints the budget verdict (unthrottled frame ≤ 10 ms at scale 1, ≤ 16.6 ms at scale 2, on the MacBook Air M3) and writes `artifacts/perf.json`. `--modes=novsync --scenes=mix-150` for a short run. It measures a Mac, never an iPad (see `?fps` below) |
+| `npm run perf` | Frame-rate measurement (headed Chromium, port 5315 or `LVT_PERF_PORT`): the phase-1 stress crowd (60 and 150 units) and the mixed roster (`mix-150`), device scale 1 and 2, plus the time to draw the twenty card portraits; prints the budget verdict (unthrottled frame ≤ 10 ms at scale 1, ≤ 16.6 ms at scale 2, on the MacBook Air M3) and writes `artifacts/perf.json`. `--modes=novsync --scenes=mix-150` for a short run; `--scenes=mix-150-citadel` (or `-backyard`, `-meadow`, `-desert`, `-tundra`) measures the crowd in a world's look with its weather and twist tiles. Every line prints the machine's load average: a number taken at a load over 4 does not count. It measures a Mac, never an iPad (see `?fps` below) |
 | `npm run sim:smoke` | Balance report without drawing anything (about a minute): computer against computer, one-card spam and merge-spam, the difficulty stand-ins, merge value. See below |
 | `npx tsx tools/tune.ts` | The balance tuner: a scorecard of every balance target, or a search over chosen knobs (`--search spec.json`). See the note at the top of the file |
 
 `?scene=stress&units=<n>` fills the real battle view with `n` fighting units for the performance tool;
 add `&mix` for the mixed roster (all 21 kinds, all ten shot kinds, puddles, statuses, rocks, a spell
 and a hero power always firing).
-`npm run shots -- title battle-busy hud-plants result-win` takes the named screenshots.
+`npm run shots -- title battle-busy hud-plants result-win` takes the named screenshots;
+`world-<key>`, `world-<key>-lawn`, `-crowd`, `-game` and `-marks` show each world's look.
+`?world=<key>` dresses the lawn, stress and battle-demo scenes as a world (with its sample twist;
+`&twist=0` for none).
 `?scene=boot` shows the spinning-cube renderer check.
 
 `window.__lvt` holds test hooks (`await __lvt.ready` resolves after the scene's first frame). It is
 there in the dev server, and in a production build only when the address has `?debug`
-(`/?debug`, `/?scene=stress&debug&units=60`); every e2e test and tool adds it.
+(`/?debug`, `/?scene=stress&debug&units=60`); every e2e test and tool adds it, and `cloud=fake`
+as well. Among them: `__lvt.setWorld('desert')` dresses the stage as a world (with its sample
+twist, or the lawn config given) until the next screen change, and
+`__lvt.previewWorlds(true, [2, 3, 4, 5])` puts stand-in worlds on the Adventure map (copies of
+world 1 carrying each arena's twist) until the real level files exist; the twist e2e plays them.
 
 ### Checking speed on the iPad (`?fps`)
 
@@ -92,12 +102,12 @@ zombie in it; Toby's **Bone Storm** does the same to the plants in a lane.
 
 ## Adventure
 
-Home → **Play** → **Adventure** → a side opens that side's map: a path of eight stones across the
-Backyard (Lukas's plant levels `p1-1` … `p1-8`, Toby's zombie levels `z1-1` … `z1-8`; the other
-worlds show locked). A stone shows the level's kind, its number, the stars won and, when winning
+Home → **Play** → **Adventure** → a side opens that side's map: one island per world, with a
+path of eight stones across it (Lukas's plant levels `p1-1` … `p1-8`, Toby's zombie levels
+`z1-1` … `z1-8`; see **Worlds** below for the other islands). A stone shows the level's kind, its number, the stars won and, when winning
 it brings a new unit, that unit's silhouette with a "?". The player's picture hops on the next
 stone. A tap on a stone opens the level card: the cards dealt, the enemies, what each star asks,
-the reward, a big play button, three faces for the difficulty, and a glove button that plays the
+the reward, a big play button, three skull pictures for the difficulty, and a glove button that plays the
 level's tutorial again. Guests get Quick Battle only. Levels are data:
 `src/adventure/levels/backyard.ts` (the lessons in `teaches.ts`), the rules in `src/adventure/`.
 
@@ -128,14 +138,24 @@ Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: De
 Skeleton Archer), shown turning on a turntable on the result screen. A level deals only the
 cards it lists that the player has. Quick Battle always has all ten.
 
-**Difficulty.** The three faces on the level card (kept per player and side; Toby starts on
-Easy) change only the player's income. A Conveyor level has no energy, so it shows no faces.
+**Difficulty.** One, two or three skulls on the level card (EASY, NORMAL, HARD; kept per player
+and side; Toby starts on Easy) change only the player's income. It is Adventure's own
+(`adventureDifficulty` in the save, also used by Free Play): changing it never changes Quick
+Battle's, and a save from before it existed starts with a copy of Quick Battle's. A Conveyor level
+has no energy, so it shows none.
 
 **The tutorial.** No words: a white glove points at one thing at a time (a card, then the tile
-or lane to put it on; the hero's button when it is first ready; a spell at level 4), the rest of
+or lane to put it on; the hero's button when it is first ready; a spell at level 4; the front belt
+card, then a tile, at level 5, the conveyor), the rest of
 the screen dims a little and the match waits until the child does it. Taps elsewhere do nothing.
 The glove only waits for something that can be done now (a card still recharging is not pointed
-at). Levels 1–3 of each side teach this way; each step is remembered for the player.
+at). Levels 1–3 of each side teach this way; each step is remembered for the player. The hero's
+button appears only from the level that teaches it (level 2).
+
+**Where a card may go.** While a card is picked (tapped or dragged), every tile it may go on shows
+thin pixel corner brackets (zombies: the spawn end of each lane), worked out by the match's own
+check; under the glove only the lesson's tile lights. A rock tile never lights. A lava tile may
+be planted on, so it lights, but with thick orange brackets inked black: you can, but it burns.
 
 **The bosses.** Level 8 of each side. Lukas meets the **Brain Titan**, who walks the middle lane,
 slams the plants in front of him and puts up a shield that peas bounce off (lobbed shots still
@@ -143,6 +163,53 @@ hurt). Toby meets the **Elder Oak**, who guards the plant base across the middle
 acorns, grows Peashooters and armours up. The boss bar shows the boss's face and its health in
 blocks, with a notch where its shield comes up; a short face card announces the boss beside the
 bar (a tap skips it).
+
+## Worlds
+
+The Adventure travels five worlds. Lukas's plants go **Backyard → Meadow → Desert → Tundra →
+Citadel**; Toby's zombies come the other way, so his world 1 is the Citadel (`arenaOf` in
+`src/data/worlds.ts`). Only world 1 of each side has levels so far; the level ids keep each side's
+own order (`p2-…` is the Meadow, `z2-…` the Tundra).
+
+| World | Look | Weather | Twist | Music |
+|--|--|--|--|--|
+| Backyard | The green toy garden | none | none | The Backyard tune |
+| Meadow | Night blues, a moon, mushrooms | Fireflies | Fog | A soft minor lullaby |
+| Desert | Orange mesas and cacti | Dust | Rocks | Phrygian |
+| Tundra | White and blue, ice crystals | Snow | Ice | Bright, sparse bells |
+| Citadel | Dark stone, lava glow, obsidian | Embers | Lava | Low and driving |
+
+A world is data (`WORLDS`); the looks are `src/render/world/looks.ts` (art in
+`docs/art-bible.md`), the tunes `src/audio/music.ts`. Zombie world 1 (z1-…) is played on the
+Citadel look to the Citadel tune, with its lava off. Quick Battle, Versus and Free Play are always
+the Backyard with no twist. All the worlds share the page's one WebGL context; changing world
+frees what the old look built.
+
+**The four twists.** A level names its twist tiles (`LevelDef.twist`); how strong each one is
+lives in `Balance.twists`. Both sides are affected the same way.
+
+| Twist | What it does | How it looks |
+|--|--|--|
+| Rocks | A rock tile takes no plant: no card, no belt card, no Rock Wall, no plant boss's summon. Zombies and shots pass it | A boulder on the tile; the tile never lights for a picked card |
+| Fog | Straight, piercing and untargeted lobbed shots fade out a few tiles from where they were fired, so a shooter at the back cannot reach the far base. Heroes, spells and boss attacks are not affected | Low mist over the lawn; a puff where a shot fades |
+| Ice | Zombies, bosses included, walk faster down an icy lane | A blue checker of ice along the lane |
+| Lava | Whatever stands on a lava tile burns, plants and zombies, bosses included. Planting there is allowed | A glowing pool in a basalt crust; orange brackets when a card is picked |
+
+A level file that puts a plant on a rock, lists a lane twice or gives fog no reach is refused when
+the level is built. The computer players never place on a rock and keep plants off lava while a
+plain tile is free.
+
+**Bosses** may change their attacks at each shield mark (phases) and can use a generic strike:
+it announces tiles or lanes with blinking warning tiles, then hits them (Titan and Oak fight as
+before; the phases are for the bosses still to come). A boss that falls mid wind-up takes its
+warning with it.
+
+**The map.** One island per world, in the side's own order, with wooden arrow pictures to step
+between them; it opens on the world of the next level. An open island is the world's real look
+(the stage's own lawn, with its weather); the other islands float in the sky, earlier worlds on
+the left. A world without levels yet (or whose first level is not open) is grey with a padlock:
+no stones, and a tap on the padlock only shakes it. A level card shows a small picture of the
+level's twist (fog cloud, boulder, ice crystal, lava drop).
 
 ## Free Play
 
@@ -177,6 +244,19 @@ With the dev server running (`npm run dev`, port 5273):
 
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.
+
+## Hosting and old builds
+
+`firebase.json` serves `index.html`, the extensionless app addresses and `cloud-mode.txt` with
+`Cache-Control: no-cache`, so an iPad asks for the newest page every time, and the content-hashed
+files under `/assets/` for a year, immutable. The card portraits under `/portraits/` are not hashed
+and keep the host's default caching.
+
+A build that is still cached somewhere may meet a save written by a newer build (a key it does not
+know, such as `adventureDifficulty`) and cannot read it. When that happens at the pin pad, on a
+device that has no copy of that player, the page reloads itself once to fetch the current build
+(once per browser session, and only while online). Everywhere else such a save is refused as
+before; it never reloads mid-play. Update the devices together when the save gains a key.
 
 ## Balance checks
 

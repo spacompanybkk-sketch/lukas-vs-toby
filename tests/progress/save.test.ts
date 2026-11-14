@@ -30,6 +30,7 @@ describe('newSave', () => {
       difficulty: { plants: 'medium', zombies: 'medium' },
       importedOld: false, updatedAt: T0,
       lastBattle: null, teached: [], bestGarden: 0,
+      adventureDifficulty: { plants: 'medium', zombies: 'medium' },
     });
   });
 
@@ -67,6 +68,7 @@ describe('parseSave', () => {
     lastBattle: 'b-17',
     teached: ['p1-1:0', 'p1-1:1'],
     bestGarden: 4,
+    adventureDifficulty: { plants: 'medium', zombies: 'hard' },
   };
   const g = good as unknown as Record<string, unknown>;
 
@@ -150,7 +152,30 @@ describe('parseSave', () => {
     delete old.lastBattle;
     delete old.teached;
     delete old.bestGarden;
-    expect(parseSave(old)).toEqual({ ...good, lastBattle: null, teached: [], bestGarden: 0 });
+    delete old.adventureDifficulty;
+    expect(parseSave(old)).toEqual({
+      ...good, lastBattle: null, teached: [], bestGarden: 0, adventureDifficulty: { plants: 'hard', zombies: 'easy' },
+    });
+  });
+
+  it('review focus 4: a save written before adventureDifficulty reads with it seeded from difficulty', () => {
+    const old: Record<string, unknown> = { ...g };
+    delete old.adventureDifficulty;
+    const parsed = parseSave(JSON.parse(JSON.stringify(old)))!;
+    expect(parsed.adventureDifficulty).toEqual({ plants: 'hard', zombies: 'easy' });
+    expect(parsed.difficulty).toEqual({ plants: 'hard', zombies: 'easy' });
+    // The two are separate objects: changing one later never changes the other.
+    expect(parsed.adventureDifficulty).not.toBe(parsed.difficulty);
+  });
+
+  it.each<[string, unknown]>([
+    ['a skill that does not exist', { plants: 'insane', zombies: 'easy' }],
+    ['a side missing', { plants: 'easy' }],
+    ['an extra side', { plants: 'easy', zombies: 'easy', robots: 'easy' }],
+    ['a string', 'easy'],
+    ['null', null],
+  ])('rejects adventureDifficulty with %s', (_what, value) => {
+    expect(parseSave({ ...g, adventureDifficulty: value })).toBeNull();
   });
 
   it.each<[string, string]>([['lastBattle', 'teached'], ['teached', 'lastBattle']])(

@@ -2,7 +2,7 @@ import { effect } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
 import { isOpen, levelConfig } from '../adventure/campaign';
 import { LEVELS, levelById } from '../adventure/levels';
-import { applyLevelResult, starsFor } from '../adventure/rewards';
+import { applyLevelResult, starRule, starsFor } from '../adventure/rewards';
 import { applyFreePlayResult, freePlayConfig, wavesCleared } from '../adventure/freePlay';
 import type { FreePlayRecord } from '../adventure/freePlay';
 import type { Stars } from '../adventure/rewards';
@@ -38,7 +38,11 @@ export interface LevelPlay {
 }
 
 /** The result of one played level, kept on the device until applied. */
-export interface LevelRecord { battleId: string; levelId: string; side: Faction; stars: Stars; won: boolean }
+export interface LevelRecord {
+  battleId: string; levelId: string; side: Faction; stars: Stars; won: boolean;
+  /** The share the stars were measured on (`starRule`: base kept, or clock left), 0..1; absent in older records. */
+  share?: number;
+}
 
 /** What the result screen shows once a record is applied. */
 export interface LevelOutcome {
@@ -49,6 +53,8 @@ export interface LevelOutcome {
   unlocked: CardKey | null;
   /** The level after this one when it is open now (a win opens it), else null. */
   next: LevelDef | null;
+  /** The share the stars were measured on (`starRule`), for the result's meter; null or absent: not known. */
+  share?: number | null;
 }
 
 /** What the level flow needs from the player session (the app's `session`; tests pass their own). */
@@ -109,12 +115,14 @@ export function levelRecord(ctl: { readonly play: LevelPlay | null; readonly mat
   const won = s.winner === side;
   const max = s.baseMaxHp[side];
   const goal = play.config.goalTicks;
-  const stars = starsFor(play.def, {
+  const end = {
     won,
     baseHpShare: max > 0 ? Math.max(0, s.baseHp[side]) / max : 0,
     clockShareLeft: goal === null ? 0 : Math.max(0, goal - s.tick) / goal,
-  });
-  return { battleId: play.battleId, levelId: play.def.id, side, stars, won };
+  };
+  const stars = starsFor(play.def, end);
+  const share = starRule(play.def).measure === 'clock' ? end.clockShareLeft : end.baseHpShare;
+  return { battleId: play.battleId, levelId: play.def.id, side, stars, won, share };
 }
 
 function readKey(storage: Storage | undefined, key: string): string | null {
@@ -154,7 +162,9 @@ function parseRecord(raw: string): LevelRecord | FreePlayRecord | null {
   const okStars = r.stars === 0 || r.stars === 1 || r.stars === 2 || r.stars === 3;
   if (!okId || typeof r.levelId !== 'string' || !okSide || !okStars || typeof r.won !== 'boolean') return null;
   if (r.won !== ((r.stars as number) > 0)) return null;
-  return { battleId: r.battleId as string, levelId: r.levelId, side: r.side as Faction, stars: r.stars as Stars, won: r.won };
+  const rec: LevelRecord = { battleId: r.battleId as string, levelId: r.levelId, side: r.side as Faction, stars: r.stars as Stars, won: r.won };
+  if (typeof r.share === 'number' && r.share >= 0 && r.share <= 1) rec.share = r.share;
+  return rec;
 }
 
 /** The pending record of `slot` on this device, or null. */
@@ -189,6 +199,7 @@ function apply(host: LevelHost, rec: LevelRecord | FreePlayRecord, levels: reado
   return {
     levelId: def.id, won: rec.won, stars: rec.stars, ...paid,
     next: next !== null && save !== null && isOpen(save, next, levels) ? next : null,
+    share: rec.share ?? null,
   };
 }
 

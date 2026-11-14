@@ -13,6 +13,10 @@ import type { BossKey, CardKey, Faction, UnitKey } from '../sim/types';
  *   with the level-up arrow). While `card` is not picked, the glove points at the card first.
  * - `hero` … `fired`: the hero button, then a lane.
  * - `spell` … `fired`: the spell button `index` (deal order), then a tile for an aimed spell.
+ * - `belt` … `selected`: a conveyor level's belt brings cards at random, so no card is named: the
+ *   glove points at the card at the front of the belt, and picking any belt card ends the step.
+ * - `belt-tile` … `placed`: the picked belt card is put on the tile (zombies: the lane). While no
+ *   belt card is picked, the glove points at the front one first.
  *
  * `after`: the step waits (no glove, nothing held) until the hero, or the spell it points at, is
  * first ready. Steps run in order.
@@ -23,12 +27,22 @@ export type TutorialStep = { id: string; after?: 'hero' | 'spell' } & (
   | { show: 'unit'; card: CardKey; until: 'merged' }
   | { show: 'hero'; until: 'fired' }
   | { show: 'spell'; index: number; until: 'fired' }
+  | { show: 'belt'; until: 'selected' }
+  | { show: 'belt-tile'; lane: number; col: number; until: 'placed' }
 );
 
 export type LevelKind = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';
 
 /** A unit arriving (`waves`) or standing at the start (`prepared`). `at` = seconds; `col` only for plants. */
 export interface Spawn { at: number; unit: UnitKey; lane: number; level?: number; col?: number }
+
+/**
+ * Which tiles of a level's lawn carry its world's twist; the numbers come from `Balance.twists`.
+ * `iceLanes` are lane indices, `fog` is on or absent. The two tile lists count differently:
+ * - `rocks` index the plant tiles, `lane * PLANT_COLS + col` (8 plant columns: rock 13 = lane 1, col 5);
+ * - `lavaTiles` index the whole lawn, `lane * COLS + col` (10 columns: lava 13 = lane 1, col 3).
+ */
+export interface LevelTwist { rocks?: number[]; fog?: true; iceLanes?: number[]; lavaTiles?: number[] }
 
 /** One Adventure level: data only (spec 8). Its id is `<p|z><world>-<n>`. */
 export interface LevelDef {
@@ -46,6 +60,8 @@ export interface LevelDef {
   /** Conveyor only. */
   belt: { everySeconds: number; cards: CardKey[] } | null;
   boss: { key: BossKey; lane: number } | null;
+  /** The lawn's twist for this level; left out = none. */
+  twist?: LevelTwist;
   /**
    * The bases' health where the level wants other than the balance's (a short tutorial battle, a
    * small garden). Left out (or a side left out) = the balance default.

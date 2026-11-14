@@ -10,6 +10,9 @@ import { PlayerPicture } from './PlayerPicture';
 import { ARROW, BOOK, CLOUD, CLOUD_OFF, COIN, DOOR, LAPTOP, MARKET, TABLET, TROPHY } from './pictures';
 import './players.css';
 
+/** The name next to the big Play picture (also its aria-label); the stylesheet shows it in capitals. */
+const PLAY_NAME = 'Play';
+
 type Place = 'marketplace' | 'almanac' | 'leaderboard';
 
 const PLACES: { name: Place; art: PixelArt; label: string; pal: string }[] = [
@@ -88,13 +91,15 @@ export function Home({ portraits = {} }: { portraits?: Record<string, string> })
         <PixelIcon art={DOOR} class="home__door-icon" />
       </button>
       <div class="home__menu">
-        <button type="button" data-home="play" aria-label="Play" class="btn btn--big pal-leaf home__play" disabled={leaving} onClick={() => to({ name: 'play' })}>
+        <button type="button" data-home="play" aria-label={PLAY_NAME} class="btn btn--big pal-leaf home__play" disabled={leaving} onClick={() => to({ name: 'play' })}>
           <span class="ico ico--play home__play-icon" aria-hidden="true" />
+          <span class="home__play-name inked" data-home-name="play">{PLAY_NAME}</span>
         </button>
         <div class="home__places">
           {PLACES.map((p) => (
             <button key={p.name} type="button" data-home={p.name} aria-label={p.label} class={`btn home__place ${p.pal}`} disabled={leaving} onClick={() => to({ name: p.name })}>
-              <PixelIcon art={p.art} class="home__place-icon" />
+              <span class="home__place-pic"><PixelIcon art={p.art} class="home__place-icon" /></span>
+              <span class="home__place-name inked" data-home-name={p.name}>{p.label}</span>
             </button>
           ))}
         </div>

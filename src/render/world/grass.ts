@@ -1,8 +1,8 @@
 import { Color, InstancedMesh, MeshStandardMaterial, Object3D, type BufferGeometry, type ColorRepresentation } from 'three';
 import { GRAVE_FROM_COL, LAWN_LANES, PLANT_BASE_X } from '../coords';
-import { PALETTE } from '../palette';
 import { BoxBatch, paint, seededRandom, shade } from './boxes';
 import { inLawn, insideIsland, onGraveSide } from './island';
+import { LOOKS, type Tufts } from './looks';
 
 // Grass tufts: one instanced mesh, bent by the wind in the vertex shader.
 
@@ -65,11 +65,11 @@ interface Tuft {
   color: Color;
 }
 
-function scatterTufts(): Tuft[] {
+function scatterTufts(colours: Tufts, skip: (col: number, lane: number) => boolean): Tuft[] {
   const random = seededRandom(777);
   const tufts: Tuft[] = [];
-  const { leaf, leafLight, grassDark } = PALETTE;
-  const greens = [leaf, leaf, shade(leaf, 0.04), shade(grassDark, -0.05), leafLight];
+  const { base, dark, light } = colours;
+  const greens = [base, base, shade(base, 0.04), shade(dark, -0.05), light];
   const green = (): Color => paint(greens[Math.floor(random() * greens.length)] as ColorRepresentation);
 
   // On the grass tiles: short, and round the edges of each tile rather than under the plants.
@@ -84,7 +84,8 @@ function scatterTufts(): Tuft[] {
           if (Math.abs(dx - 0.5) > Math.abs(dz - 0.5)) dx = dx < 0.5 ? dx * 0.3 : 1 - (1 - dx) * 0.3;
           else dz = dz < 0.5 ? dz * 0.3 : 1 - (1 - dz) * 0.3;
         }
-        tufts.push({ x: col + dx, z: lane + dz, scale: 0.6 + random() * 0.45, yaw: random() * Math.PI, color: green() });
+        const tuft = { x: col + dx, z: lane + dz, scale: 0.6 + random() * 0.45, yaw: random() * Math.PI, color: green() };
+        if (!skip(col, lane)) tufts.push(tuft);
       }
     }
   }
@@ -104,9 +105,14 @@ function scatterTufts(): Tuft[] {
 /**
  * The grass on the lawn and the rim, as one instanced mesh named `grass`. `wind.value` is
  * the time in seconds; change it and the tufts sway. The mesh owns its geometry and material.
+ * `colours` tints the tufts; no tuft grows on a lawn tile `skip` names (ice or lava covers it).
  */
-export function buildGrass(wind: { value: number }): InstancedMesh {
-  const tufts = scatterTufts();
+export function buildGrass(
+  wind: { value: number },
+  colours: Tufts = LOOKS.backyard.tufts,
+  skip: (col: number, lane: number) => boolean = () => false,
+): InstancedMesh {
+  const tufts = scatterTufts(colours, skip);
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uWind = wind;

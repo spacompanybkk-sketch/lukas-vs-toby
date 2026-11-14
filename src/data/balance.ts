@@ -107,12 +107,22 @@ export interface SpellStats {
  *   zombie, each at that lane's foremost one: `damage`, and the same within `splash` of it.
  * - shield: for `seconds`, all damage times `damageFactor`; with `bouncesStraight`, straight shots
  *   bounce off (lobbed shots, blasts, heroes and spells still hurt).
+ * - strike: as its wind-up starts (its last `windupSeconds`) it picks its tiles with the state rng
+ *   and says which (`bossStrike`, `windup` true): `count` whole lanes (`target` 'lanes'), or `count`
+ *   tiles that have an enemy standing on them (`target` 'tiles'). Then every enemy standing on one
+ *   of those tiles takes `damage`, and `status` for `seconds` (`dps` for poison and burn): freeze
+ *   (stun), fog breath (blind), lava pour (burn), rockfall (damage alone). Generic: any boss may have it.
  */
 export type BossPattern =
   | { kind: 'slam'; everySeconds: number; windupSeconds: number; damage: number; sideDamage: number; reach: number }
   | { kind: 'summon'; everySeconds: number; unit: UnitKey; count: number; level: number; minCol?: number; maxCol?: number }
   | { kind: 'barrage'; everySeconds: number; count: number; damage: number; splash: number; speed: number }
-  | { kind: 'shield'; everySeconds: 0; atHealth: readonly number[]; seconds: number; damageFactor: number; bouncesStraight: boolean };
+  | { kind: 'shield'; everySeconds: 0; atHealth: readonly number[]; seconds: number; damageFactor: number; bouncesStraight: boolean }
+  | {
+    kind: 'strike'; everySeconds: number; windupSeconds: number;
+    target: 'lanes' | 'tiles'; count: number; damage: number;
+    status?: { kind: StatusKind; seconds: number; dps?: number };
+  };
 
 /**
  * A boss's numbers: a unit's (`hp`, `speed`, a bite, …; `recharge` is a placeholder nothing reads)
@@ -126,10 +136,15 @@ export type BossPattern =
  * - `col`: a boss that stands still stands on this column's middle (the Elder Oak); a walker
  *   comes on at the spawn edge;
  * - `guardFactor`: while it stands, its side's base cannot be hurt; whatever would hurt the base
- *   (a bite, a shot, sudden death) hurts the boss instead, times this (the Oak's roots).
+ *   (a bite, a shot, sudden death) hurts the boss instead, times this (the Oak's roots);
+ * - `phases`: per-phase lists of timed patterns. Phase i (after i shield marks) takes turns through
+ *   `phases[i]`, or through `patterns` when there is none (see `patternsOf`); passing a mark starts
+ *   the new list from its first timed pattern. The shield itself (its marks) is always read from
+ *   `patterns`. A boss without phases (the Titan, the Oak) plays `patterns` throughout.
  */
 export type BossStats = UnitStats & {
   patterns: readonly BossPattern[];
+  phases?: readonly (readonly BossPattern[])[];
   maxStunSeconds: number; stunFalloff: number; stunWindowSeconds: number; hitCap: number;
   col?: number; guardFactor?: number;
 };
@@ -200,6 +215,12 @@ export interface Balance {
     clockSeconds: number; clockBonusSeconds: number; gardenBaseHp: number; gardenHpStep: number;
     spreadSeconds: number; gardenMinCol: number; gardenMaxCol: number;
   };
+  /**
+   * The lawn twists of worlds 2–5 (see `LawnConfig`, built by `levelConfig` from a level's
+   * `twist`): fog lets a shot reach `reach` tiles; ice makes zombies walk `speed` times as fast;
+   * lava burns whoever stands on it for `dps` a second, lasting `burnSeconds` after they step off.
+   */
+  twists: { fog: { reach: number }; ice: { speed: number }; lava: { dps: number; burnSeconds: number } };
 }
 
 /** `T` with every property, nested ones and array elements included, read-only. */
@@ -415,6 +436,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     clockSeconds: 90, clockBonusSeconds: 45, gardenBaseHp: 1500, gardenHpStep: 0.15,
     spreadSeconds: 6, gardenMinCol: 1, gardenMaxCol: 7,
   },
+  // Worlds machinery rulings 3, 5, 6: fog 5 tiles, ice ×1.6, lava 15 dps with a 2 s refreshing burn.
+  twists: { fog: { reach: 5 }, ice: { speed: 1.6 }, lava: { dps: 15, burnSeconds: 2 } },
 });
 
 /** Seconds to whole ticks. */

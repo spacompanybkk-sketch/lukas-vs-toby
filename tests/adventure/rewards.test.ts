@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyLevelResult, starsFor } from '../../src/adventure/rewards';
+import { ADVENTURE, applyLevelResult, starRule, starsFor } from '../../src/adventure/rewards';
 import type { LevelDef } from '../../src/adventure/types';
 import { newSave, parseSave } from '../../src/progress/save';
 import type { Save } from '../../src/progress/save';
@@ -27,6 +27,19 @@ describe('starsFor', () => {
   it('a loss gives no star, whatever is left', () => {
     expect(starsFor(SAMPLE_BATTLE, { won: false, baseHpShare: 1, clockShareLeft: 1 })).toBe(0);
     expect(starsFor(BREAKTHROUGH, { won: false, baseHpShare: 1, clockShareLeft: 1 })).toBe(0);
+  });
+});
+
+describe('starRule: what the second and third stars are measured on (the result screen draws it)', () => {
+  it('the base kept, except Breakthrough (no player base): the clock left; the shares starsFor uses', () => {
+    expect(starRule(SAMPLE_BATTLE)).toEqual({ measure: 'base', ...ADVENTURE.baseStars });
+    expect(starRule(SAMPLE_SURVIVE)).toEqual({ measure: 'base', ...ADVENTURE.baseStars });
+    expect(starRule(BREAKTHROUGH)).toEqual({ measure: 'clock', ...ADVENTURE.clockStars });
+    for (const def of [SAMPLE_BATTLE, BREAKTHROUGH]) {
+      const r = starRule(def);
+      const at = (share: number) => starsFor(def, { won: true, baseHpShare: share, clockShareLeft: share });
+      expect([at(r.two - 0.001), at(r.two), at(r.three - 0.001), at(r.three)]).toEqual([1, 2, 2, 3]);
+    }
   });
 });
 

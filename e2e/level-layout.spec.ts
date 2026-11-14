@@ -71,14 +71,15 @@ function box(page: Page, selector: string): Promise<Named | null> {
 
 const overlaps = (a: Box, b: Box): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** At each size: the named bars present, nothing overlapping, nothing on lanes 0–4, all on screen. */
-async function checkSizes(page: Page, must: string[], bottom: string): Promise<void> {
+/** At each size: the named bars present (and the `never` ones not), nothing overlapping, nothing on lanes 0–4, all on screen. */
+async function checkSizes(page: Page, must: string[], bottom: string, never: string[] = []): Promise<void> {
   for (const size of SIZES) {
     await page.setViewportSize(size);
     await frames(page, 4);
     const tag = `${size.width}x${size.height}`;
     const all = await hudBoxes(page);
     for (const name of must) expect(all.map((b) => b.name), `${tag}: ${name} shown`).toContain(name);
+    for (const name of never) expect(all.map((b) => b.name), `${tag}: ${name} not shown`).not.toContain(name);
     const lawn = await lawnCorners(page);
     for (const b of all) {
       expect(boxHitsPolygon(b, lawn), `${tag}: ${b.name} covers lanes 0–4`).toBe(false);
@@ -102,14 +103,15 @@ test('survive, conveyor and breakthrough levels: the clock bar, the belt and the
   test.setTimeout(180_000);
   await setUp(page);
   await level(page, 'p1-3');
-  await checkSizes(page, ['clock-goal', 'topbar', 'base-plants'], '[data-hud="tray"]');
+  // One picture of time: the draining clock bar, and no count-up clock beside it.
+  await checkSizes(page, ['clock-goal', 'base-plants'], '[data-hud="tray"]', ['topbar']);
   await page.locator('[data-hud="pause"]').click();
   await page.locator('[data-screen="pause"] [data-action="quit"]').click();
   await page.locator('[data-screen="pause"] [data-action="quit"]').click();
   await page.locator('[data-screen="map"] [data-action="back"]').click();
   await page.locator('[data-screen="play"] [data-action="back"]').click();
   await level(page, 'p1-5');
-  await checkSizes(page, ['clock-goal', 'topbar'], '[data-hud="belt"]');
+  await checkSizes(page, ['clock-goal'], '[data-hud="belt"]', ['topbar']);
   await page.locator('[data-hud="pause"]').click();
   await page.locator('[data-screen="pause"] [data-action="quit"]').click();
   await page.locator('[data-screen="pause"] [data-action="quit"]').click();
@@ -117,7 +119,7 @@ test('survive, conveyor and breakthrough levels: the clock bar, the belt and the
   await page.locator('[data-screen="play"] [data-action="back"]').click();
   await level(page, 'z1-3');
   await page.evaluate(() => (window.__lvt as any).fastForward(30 * 40));
-  await checkSizes(page, ['clock-goal', 'topbar', 'base-plants'], '[data-hud="tray"]');
+  await checkSizes(page, ['clock-goal', 'base-plants'], '[data-hud="tray"]', ['topbar']);
 });
 
 test('both boss levels: the boss bar (and the wave bar) clear of the top bar and the lanes; the entrance card too, and a tap skips it', async ({ page }) => {
@@ -159,7 +161,8 @@ test('both boss levels: the boss bar (and the wave bar) clear of the top bar and
     if (test.info().project.name === 'ipad') await intro.tap();
     else await intro.click();
     await expect(intro).toHaveCount(0);
-    await checkSizes(page, id === 'p1-8' ? ['boss', 'wave-bar', 'topbar'] : ['boss', 'topbar'], '[data-hud="tray"]');
+    // No count-up clock in a boss level (it read 0:00 as the boss came on).
+    await checkSizes(page, id === 'p1-8' ? ['boss', 'wave-bar'] : ['boss'], '[data-hud="tray"]', ['topbar']);
     await page.locator('[data-hud="pause"]').click();
     await page.locator('[data-screen="pause"] [data-action="quit"]').click();
     await page.locator('[data-screen="pause"] [data-action="quit"]').click();

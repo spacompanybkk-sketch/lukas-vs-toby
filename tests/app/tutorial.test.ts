@@ -40,6 +40,10 @@ describe('the lessons', () => {
     expect(levelById('z1-4')!.teaches).toEqual([expect.objectContaining({ show: 'spell', index: 0, after: 'spell' })]);
     expect(levelById('p1-3')!.teaches?.at(-1)).toMatchObject({ show: 'unit', until: 'merged' });
     expect(levelById('z1-3')!.teaches?.at(-1)).toMatchObject({ show: 'unit', until: 'merged' });
+    // The conveyor levels teach the belt: a belt card, then a tile.
+    for (const id of ['p1-5', 'z1-5']) {
+      expect(levelById(id)!.teaches?.map((t) => `${t.show} ${t.until}`), id).toEqual(['belt selected', 'belt-tile placed']);
+    }
   });
 
   it('every step names a card its level deals, a tile on the lawn, an id unique across levels', () => {
@@ -52,7 +56,8 @@ describe('the lessons', () => {
         ids.add(s.id);
         expect(s.id.length).toBeLessThanOrEqual(64);
         if (s.show === 'card' || s.show === 'tile' || s.show === 'unit') expect(def.cards).toContain(s.card);
-        if (s.show === 'tile') {
+        if (s.show === 'belt' || s.show === 'belt-tile') expect(def.kind, s.id).toBe('conveyor');
+        if (s.show === 'tile' || s.show === 'belt-tile') {
           expect(s.lane).toBeGreaterThanOrEqual(0);
           expect(s.lane).toBeLessThan(5);
           expect(s.col).toBeLessThan(def.side === 'plants' ? 8 : 10);
@@ -249,6 +254,56 @@ describe('p1-2: the Sunflower pays', () => {
     }
     expect(paidAt).toBeGreaterThanOrEqual(0);
     expect(c.tutorial!.sunPulse.peek()).toBe(1);
+  });
+});
+
+describe('the conveyor levels by the glove', () => {
+  it('p1-5: no glove until a card is on the belt; then the front belt card, then the tile; the plant grows', () => {
+    const c = taught('p1-5');
+    expect(c.tutorial!.glove.peek()).toBeNull(); // the belt is empty before the first tick
+    c.step();
+    const front = c.match.state.belt[0]!;
+    expect(front).toBeDefined();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: front }, step: 'p1-5.belt', holding: true });
+    run(c, seconds(10));
+    expect(tick(c)).toBe(1); // held: the belt does not move on
+    expect(c.click({ lane: 2, col: 1 }, null)).toBe('ignored');
+    c.selectBelt(0);
+    expect(c.tutorial!.taught.peek()).toEqual(['p1-5.belt']);
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', lane: 2, col: 1 }, step: 'p1-5.belt-tile', holding: true });
+    expect(c.click({ lane: 3, col: 1 }, null)).toBe('ignored');
+    expect(c.click({ lane: 2, col: 5 }, null)).toBe('ignored');
+    expect(c.hud.denied.peek()).toBe(0);
+    expect(c.click({ lane: 2, col: 1 }, null)).toBeNull();
+    c.step();
+    expect(plantAt(c, 2, 1)?.key).toBe(front);
+    expect(c.tutorial!.taught.peek()).toEqual(['p1-5.belt', 'p1-5.belt-tile']);
+    expect(c.tutorial!.current).toBeNull();
+    run(c, 30);
+    expect(tick(c)).toBe(32);
+  });
+
+  it('p1-5: the tile step alone (the belt step done) points at the front belt card first, then the tile', () => {
+    const save = { ...saveFor('plants'), teached: ['p1-5.belt'] };
+    const c = taught('p1-5', 3, save);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: c.match.state.belt[0] }, step: 'p1-5.belt-tile' });
+    c.selectBelt(0);
+    expect(c.tutorial!.glove.peek()?.aim).toEqual({ kind: 'tile', lane: 2, col: 1 });
+  });
+
+  it('z1-5: a belt card down the marked lane (any tile of it)', () => {
+    const c = taught('z1-5');
+    c.step();
+    const front = c.match.state.belt[0]!;
+    c.selectBelt(0);
+    expect(c.tutorial!.glove.peek()?.aim).toEqual({ kind: 'tile', lane: 2, col: 9 });
+    expect(c.click({ lane: 1, col: 9 }, null)).toBe('ignored');
+    expect(c.click({ lane: 2, col: 8 }, null)).toBeNull();
+    c.step();
+    expect(c.match.state.units.find((u) => u.faction === 'zombies')).toMatchObject({ key: front, lane: 2 });
+    expect(c.tutorial!.current).toBeNull();
+    expect(c.hud.denied.peek()).toBe(0);
   });
 });
 

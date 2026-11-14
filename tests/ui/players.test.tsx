@@ -210,6 +210,7 @@ describe('Players', () => {
     await typePin('555');
     await see('[data-screen="home"]');
     expect(session.player.value?.difficulty).toEqual({ plants: 'easy', zombies: 'easy' });
+    expect(session.player.value?.adventureDifficulty).toEqual({ plants: 'easy', zombies: 'easy' });
   });
 
   it('a new player: picture, name on the boxy keyboard, number twice; the lowest free place', async () => {
@@ -343,6 +344,15 @@ describe('Players', () => {
     expect(need('[data-sync]').getAttribute('data-sync')).toBe('offline');
   });
 
+  it('Home: the big Play tile and the three place tiles each show their name', async () => {
+    await makeLukas();
+    const names: Record<string, string> = { play: 'Play', marketplace: 'Marketplace', almanac: 'Almanac', leaderboard: 'Leaderboard' };
+    for (const [id, name] of Object.entries(names)) {
+      expect(need(`[data-home="${id}"]`).getAttribute('aria-label')).toBe(name);
+      expect(need(`[data-home="${id}"] [data-home-name]`).textContent).toBe(name);
+    }
+  });
+
   it('Home: Play → Quick Battle goes to the side pick preset from the save; a changed difficulty is saved; back to the Play menu and Home', async () => {
     await makeLukas();
     tap('[data-home="play"]');
@@ -353,6 +363,8 @@ describe('Players', () => {
     tap('[data-skill="hard"]');
     expect(session.player.value?.difficulty.plants).toBe('hard');
     expect(loadLocal('p01', storage)?.difficulty.plants).toBe('hard');
+    // The Adventure keeps its own difficulty.
+    expect(session.player.value?.adventureDifficulty.plants).toBe('medium');
     tap('[data-action="back"]');
     await see('[data-screen="play"]');
     tap('[data-action="back"]');

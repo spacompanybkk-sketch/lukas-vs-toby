@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { PerspectiveCamera, Scene, Vector3 } from 'three';
+import { Mesh, PerspectiveCamera, Scene, Vector3, type ShaderMaterial } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BattleSession, CHEER_SECONDS } from '../../src/app/BattleSession';
 import type { BattleSessionOptions } from '../../src/app/BattleSession';
@@ -11,13 +11,20 @@ import { Effects } from '../../src/render/fx/Effects';
 import { Particles } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
+import { MARKS_LOUD, MARKS_QUIET } from '../../src/render/world/PlaceMarks';
 import { spawnUnit } from '../../src/sim/match';
-import type { Faction } from '../../src/sim/types';
+import type { Faction, LawnConfig } from '../../src/sim/types';
+import { WORLDS, arenaOf, type WorldKey } from '../../src/data/worlds';
+import { levelById } from '../../src/adventure/levels';
+import { levelOptions, prepareLevel, type LevelPlay } from '../../src/app/levelSession';
+import { newSave } from '../../src/progress/save';
+import { NO_TWIST } from '../../src/sim/lawn';
+import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
 
 const DT = 1 / 60;
 
 /** The stage without WebGL: a real scene, camera, rig, lawn and effects; `show` and `release` as the real one. */
-function fakeStage(): StageLike & { handOvers: number } {
+function fakeStage(): StageLike & { handOvers: number; worlds: string[]; lawns: LawnConfig[] } {
   const camera = new PerspectiveCamera(30, 1, 2, 200);
   const rig = new CameraRig(camera);
   rig.frameLawn(window.innerWidth / window.innerHeight);
@@ -39,6 +46,12 @@ function fakeStage(): StageLike & { handOvers: number } {
       d.detach();
       stage.rig.reset(); // as the real stage does on every hand-over
       stage.handOvers++;
+    },
+    worlds: [] as string[],
+    lawns: [] as LawnConfig[],
+    setWorld(world: WorldKey, lawn: LawnConfig) {
+      stage.worlds.push(world);
+      stage.lawns.push(lawn);
     },
   };
   stage.scene.add(stage.lawn.group, particles.object, stage.fx.group);
@@ -250,6 +263,34 @@ describe('BattleSession', () => {
     expect(plant.level).toBe(2);
   });
 
+  it('the place marks are quiet; loud for a second after a card is picked, and while a card is dragged', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    ready(session);
+    const marks = stage.lawn.group.getObjectByName('place-marks') as Mesh;
+    const strength = (): number => ((marks.material as ShaderMaterial).uniforms.uStrength as { value: number }).value;
+    run(stage, 0.5);
+    expect(marks.visible).toBe(true); // the first card is picked from the start
+    expect(strength()).toBe(MARKS_QUIET);
+    session.controller.select('sunflower');
+    run(stage, 0.2);
+    expect(strength()).toBe(MARKS_LOUD);
+    run(stage, 1.2);
+    expect(strength()).toBe(MARKS_QUIET);
+    // A drag from a card: loud while the finger is down.
+    const card = document.createElement('button');
+    card.dataset.card = 'sunflower';
+    document.body.appendChild(card);
+    const init = { bubbles: true, clientX: 10, clientY: 10, pointerId: 3, pointerType: 'touch', button: 0, isPrimary: true };
+    card.dispatchEvent(new PointerEvent('pointerdown', init));
+    run(stage, 2);
+    expect(strength()).toBe(MARKS_LOUD);
+    document.dispatchEvent(new PointerEvent('pointerup', init));
+    run(stage, 0.1);
+    expect(strength()).toBe(MARKS_QUIET);
+  });
+
   it('ignores the lawn before begin()', () => {
     const stage = fakeStage();
     const { session } = make(stage);
@@ -367,6 +408,41 @@ describe('BattleSession', () => {
     audio.startMusic('menu');
     session.dispose();
     expect(calls).toEqual(['start backyard', 'start menu']);
+  });
+
+  it("dresses the stage in a level's arena with the level's own lawn, and plays the arena's theme", () => {
+    const level = (id: string): LevelPlay => {
+      const def = levelById(id)!;
+      return prepareLevel(def, newSave(def.side === 'plants' ? 'p01' : 'p02', 'Kid', 'peashooter', 0), 3);
+    };
+    const p1 = level('p1-3');
+    const z1 = level('z1-3');
+    // A plant world-4 level with icy lanes (no such level exists yet): the Tundra, its ice, its theme.
+    const tundra: LevelPlay = { ...p1, def: { ...p1.def, world: 4 }, config: { ...p1.config, lawn: SAMPLE_LAWNS.tundra } };
+    for (const [play, world] of [[p1, 'backyard'], [z1, 'citadel'], [tundra, 'tundra']] as const) {
+      const stage = fakeStage();
+      const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+      const music = vi.spyOn(audio, 'startMusic').mockImplementation(() => {});
+      const session = new BattleSession(stage, audio, levelOptions(play), { introSeconds: 0, input: { isOverLawn: () => true } });
+      sessions.push(session);
+      expect(arenaOf(play.def.side, play.def.world)).toBe(world);
+      expect(stage.worlds).toEqual([world]);
+      expect(stage.lawns).toEqual([play.config.lawn]);
+      expect(stage.lawns[0]).toBe(play.config.lawn);
+      session.begin();
+      expect(music).toHaveBeenCalledWith(WORLDS[world].theme);
+    }
+    expect(z1.config.lawn.lava).toBeNull(); // zombie world 1: the Citadel with its lava off
+  });
+
+  it('puts Quick Battle in the Backyard with no twist and the Backyard theme', () => {
+    const stage = fakeStage();
+    const { session, audio } = make(stage);
+    const music = vi.spyOn(audio, 'startMusic').mockImplementation(() => {});
+    expect(stage.worlds).toEqual(['backyard']);
+    expect(stage.lawns).toEqual([NO_TWIST]);
+    session.begin();
+    expect(music).toHaveBeenCalledWith('backyard');
   });
 
   it('can be disposed during the opening camera move', async () => {

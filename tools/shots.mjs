@@ -385,6 +385,17 @@ const SCENARIOS = [
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),
+  // A boss's strike (worlds machinery Task 5): the demo's test-only Titan (`&strike=`), its warning
+  // on four tiles (3.5 s), its blow (5.05 s), its warning on a whole lane (9.5 s), in each tint.
+  ...['stun', 'blind', 'burn', 'none'].map((status) => {
+    const url = (t) => `/?scene=boss-demo&strike=${status}&seed=1&t=${t}&cloud=fake`;
+    const times = [3.5, 5.05, 9.5];
+    return {
+      name: `boss-strike-${status}`,
+      url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
   // ---- The game: menus, HUD, pause and result (Tasks 14 and 15, wired) ----
   { name: 'title', url: '/', steps: (page) => demoAt(page, 45) },
   { name: 'portrait', url: '/', viewport: { width: 768, height: 1024 }, steps: (page) => demoAt(page, 20) },
@@ -474,7 +485,81 @@ const SCENARIOS = [
   hudBattle('hud-battle-zombies-1024', 'zombies', [2, 6]),
   // The zombies' aimed area over their own purple graveyard columns.
   hudBattle('hud-battle-zombies-1024-grave', 'zombies', [1, 9]),
+  // ---- Worlds (Task 4 of the worlds plan): each look at the iPad window, with its twist ----
+  ...worldShots(),
 ];
+
+/**
+ * Each world at the iPad window (1024x704): `world-<key>` the busy seed-7 battle in that look with
+ * its sample twist tiles, `-lawn` the bare lawn with them, `-crowd` the mixed 150-unit crowd (30 a
+ * lane, live), `-game` a real Quick Battle on the game page dressed through `__lvt.setWorld`. The
+ * Meadow adds `-fade`: every shot in the air fading in the fog at once. `-marks`: the place marks
+ * of a picked card on that world's ground.
+ */
+function worldShots() {
+  const ipad = { width: 1024, height: 704 };
+  return ['backyard', 'meadow', 'desert', 'tundra', 'citadel'].flatMap((world) => {
+    const shots = [
+      { name: `world-${world}`, url: `/?scene=battle-demo&seed=7&t=150&world=${world}`, viewport: ipad },
+      { name: `world-${world}-lawn`, url: `/?scene=lawn&t=3&world=${world}`, viewport: ipad },
+      {
+        name: `world-${world}-crowd`,
+        url: `/?scene=stress&mix&units=150&world=${world}`,
+        viewport: ipad,
+        steps: (page) => page.waitForTimeout(2500),
+      },
+      {
+        name: `world-${world}-game`,
+        url: '/?scene=battle&side=plants&skill=medium&seed=7',
+        viewport: ipad,
+        steps: async (page) => {
+          await battleAt(page, 70);
+          await page.evaluate((w) => window.__lvt.setWorld(w), world);
+          await settleUi(page);
+        },
+      },
+    ];
+    // The place marks on this world's ground: a Quick Battle early on, dressed with the world's
+    // sample twist (the match told about it too, so rocks refuse and stay dark), a Peashooter picked.
+    shots.push({
+      name: `world-${world}-marks`,
+      url: '/?scene=battle&side=plants&skill=medium&seed=7',
+      viewport: ipad,
+      steps: async (page) => {
+        await battleAt(page, 8);
+        await page.evaluate((w) => {
+          const lvt = window.__lvt;
+          lvt.setWorld(w);
+          const c = lvt.session.controller;
+          c.match.state.config.lawn = lvt.lawn.lawnConfig;
+          c.match.state.players.plants.energy = 900;
+          c.match.state.players.plants.recharge = {};
+          c.select('peashooter');
+        }, world);
+        await settleUi(page);
+      },
+    });
+    if (world === 'meadow') {
+      shots.push({
+        name: 'world-meadow-fade',
+        url: '/?scene=stress&mix&units=60&world=meadow',
+        viewport: ipad,
+        steps: async (page) => {
+          await page.waitForTimeout(2000);
+          await page.evaluate(() => {
+            const { match, view } = window.__lvt.stress;
+            const state = match.state;
+            const faded = state.projectiles.map((p) => ({ type: 'projectileFaded', id: p.id, x: p.x, lane: p.lane }));
+            view.applyEvents(faded, state);
+            window.__lvt.fadedShots = faded.length;
+          });
+          await page.waitForTimeout(120);
+        },
+      });
+    }
+    return shots;
+  });
+}
 
 /** A real battle as `side`, 46 s in: tap the hero button, aim at `lane`, tap; stills of the power playing. */
 function heroShot(name, side, lane) {

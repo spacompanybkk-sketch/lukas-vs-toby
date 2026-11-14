@@ -181,7 +181,9 @@ export function BattleScreen(props: BattleScreenProps) {
         <div class="battle__left">
           {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} teach={ctl.tutorial?.sunPulse} />}
         </div>
-        {ctl.endless != null ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} /> : <LiveClock hud={hud} />}
+        {ctl.endless != null
+          ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} />
+          : countsUp(ctl.level ?? null) && <LiveClock hud={hud} />}
         <div class="battle__right">
           <LivePause ctl={ctl} />
         </div>
@@ -230,6 +232,15 @@ function ResultClears({ hud, resultReady, clear, children }: { hud: HudSignals; 
   const up = hud.result.value !== null && (resultReady === undefined || resultReady.value);
   if (clear && up) return null;
   return <>{children}</>;
+}
+
+/**
+ * Whether the count-up clock shows at the top: not in a level whose goal bar is a clock that drains
+ * (two pictures of time that disagree), so a child sees one clock only; nor in a boss level, whose
+ * boss comes at once (the clock would read 0:00 as he arrives) and whose bar is the boss's health.
+ */
+export function countsUp(info: LevelHudInfo | null): boolean {
+  return info === null || (info.goalSeconds === null && info.mode !== 'boss');
 }
 
 /** A level's goal: the clock bar (with the star marks for Breakthrough) and the wave bar; gone at the end. */
@@ -382,7 +393,8 @@ function LivePowers({ ctl, powers, portrait, powerDenied }: { ctl: Controller; p
   useEffect(() => () => clearTimeout(timer.current), []);
   if (ctl.hud.result.value !== null) return null;
   const side = ctl.playerFaction;
-  const hero = powers.hero?.value;
+  // Before the level that teaches the hero, its button is not there at all.
+  const hero = ctl.level?.heroHidden === true ? undefined : powers.hero?.value;
   const spells = powers.spells?.value ?? [];
   /** Presses a button; a press the controller refused shakes that button (and not the tray). */
   const press = (key: string, act: () => void): void => {
@@ -566,6 +578,8 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
       // A Free Play run has one way out, Quit, which banks it; a Restart would throw it away unpaid.
       onRestart={ctl.endless != null ? undefined : onRestart} onSettings={() => setSettingsOpen(true)} onQuit={onQuit}
       bank={ctl.endless != null ? <LiveBank endless={ctl.endless} /> : undefined}
+      // In a level Quit goes back to the map: its picture says so (elsewhere it is the house).
+      quitTo={ctl.level != null ? 'map' : 'home'}
     />
   );
 }

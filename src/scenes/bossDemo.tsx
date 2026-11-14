@@ -13,18 +13,22 @@ import { disposeModels } from '../render/voxel/build';
 import { seededRandom } from '../render/world/boxes';
 import { Lawn } from '../render/world/Lawn';
 import { Sky } from '../render/world/Sky';
-import type { BossKey, SimEvent } from '../sim/types';
+import { factionOf } from '../data/units';
+import { isBoss } from '../sim/lookup';
+import type { BossKey, SimEvent, StatusKind } from '../sim/types';
 import { TICKS_PER_SECOND } from '../sim/types';
 import { BossBar } from '../ui/hud/BossBar';
 import { TopBar } from '../ui/hud/TopBar';
 import '../ui/hud/hud.css';
-import { bossDemoMatch } from './bossScript';
+import { STRIKE_DEMOS, bossDemoMatch, strikeDemoBalance } from './bossScript';
 
 // A boss at work (phase 3 Task 3): the demo level of `bossScript.ts` through the battle view on
 // the real lawn, with the clock and the boss bar over it (no tray, no sound). For judging the
 // bosses by eye and for the screenshot tool.
 //
 //   ?scene=boss-demo&boss=brainTitan|elderOak   which boss (default the Brain Titan)
+//   &strike=stun|blind|burn|none                a test-only Titan that strikes first (tiles at 3–5 s,
+//                                               a lane at 9–11 s), leaving that status (bossScript.ts)
 //   &seed=<n>                                   the match's seed (default 1)
 //   &t=<seconds>                                fast-forwards to that time and freezes there
 //   &focus=<lane>,<x>[,<half>]                  closes the camera in on a spot
@@ -70,10 +74,12 @@ export async function mount(canvas: HTMLCanvasElement, params: URLSearchParams):
   const fx = new Effects(particles, seededRandom(2026));
   renderer.scene.add(particles.object, fx.group);
 
-  const key: BossKey = params.get('boss') === 'elderOak' ? 'elderOak' : 'brainTitan';
+  const strike = STRIKE_DEMOS.find((s) => s === params.get('strike'));
+  const askedBoss = params.get('boss') ?? '';
+  const key: BossKey = strike === undefined && isBoss(askedBoss as BossKey) ? (askedBoss as BossKey) : 'brainTitan';
   const seed = Math.trunc(number(params, 'seed', 1));
-  const match = bossDemoMatch(key, seed);
-  const player = key === 'brainTitan' ? 'plants' : 'zombies';
+  const match = strike === undefined ? bossDemoMatch(key, seed) : bossDemoMatch(key, seed, strikeDemoBalance(strike as StatusKind | 'none'));
+  const player = factionOf(key) === 'zombies' ? 'plants' : 'zombies';
   const view = new BattleView(renderer.scene, renderer.camera, lawn, fx, player, { balance: match.balance });
 
   const clock = signal(0);

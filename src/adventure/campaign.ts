@@ -3,11 +3,12 @@ import { BALANCE, seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
 import { ALL_CARDS, factionOf } from '../data/units';
 import type { Save } from '../progress/save';
+import { cloneLawn, NO_TWIST } from '../sim/lawn';
 import { defaultConfig } from '../sim/match';
 import { ZOMBIE_SPAWN_X } from '../sim/types';
-import type { CardKey, Faction, MatchConfig, PreparedUnit } from '../sim/types';
+import type { CardKey, Faction, LawnConfig, MatchConfig, PreparedUnit } from '../sim/types';
 import { ADVENTURE } from './rewards';
-import type { LevelDef, Spawn } from './types';
+import type { LevelDef, LevelTwist, Spawn } from './types';
 
 /** The cards `side` holds in Adventure: its first three, and those it has unlocked, in unlock order. */
 export function unlockedCards(save: Save, side: Faction): CardKey[] {
@@ -49,10 +50,29 @@ function spawnX(s: Spawn, faction: Faction): number {
 }
 
 /**
+ * The lawn of a level with `twist` (which tiles and lanes), its numbers from `Balance.twists`:
+ * fog reaches `fog.reach` tiles, ice lanes walk `ice.speed` times as fast, lava burns `lava.dps`
+ * for `lava.burnSeconds`. No twist (or an empty list) is `NO_TWIST` for that part.
+ */
+export function lawnOf(twist: LevelTwist | undefined, b: Balance = BALANCE): LawnConfig {
+  if (twist === undefined) return cloneLawn(NO_TWIST);
+  const { fog, ice, lava } = b.twists;
+  return {
+    rocks: [...(twist.rocks ?? [])],
+    fog: twist.fog === true ? fog.reach : null,
+    ice: twist.iceLanes !== undefined && twist.iceLanes.length > 0 ? { lanes: [...twist.iceLanes], speed: ice.speed } : null,
+    lava: twist.lavaTiles !== undefined && twist.lavaTiles.length > 0
+      ? { tiles: [...twist.lavaTiles], dps: lava.dps, burnTicks: seconds(lava.burnSeconds) }
+      : null,
+  };
+}
+
+/**
  * The match for `def` played by the owner of `save`: the level's cards that the player has
  * unlocked, the level's opponent (or none), the player's Marketplace upgrades on the player's side
  * only, and the player's Adventure difficulty on the player's income only (Easy ×1.25, Normal ×1,
- * Hard ×0.75). Heroes are always on; two spells a side only when the level deals them.
+ * Hard ×0.75). Heroes are always on; two spells a side only when the level deals them. The lawn
+ * carries the level's twist (`lawnOf`).
  */
 export function levelConfig(
   def: LevelDef, save: Save, seed: number, b: Balance = BALANCE,
@@ -109,7 +129,7 @@ export function levelConfig(
       [enemy]: def.opponent === null ? [] : [...def.opponent.cards],
     } as Record<Faction, CardKey[]>,
     incomeMultiplier: {
-      [player]: ADVENTURE.income[save.difficulty[player]],
+      [player]: ADVENTURE.income[save.adventureDifficulty[player]],
       [enemy]: def.opponent === null ? 1 : def.opponent.incomeScale,
     } as Record<Faction, number>,
     suddenDeath: def.kind === 'battle' || def.kind === 'boss',
@@ -117,5 +137,6 @@ export function levelConfig(
     spells: def.spells ? { ...base.spells } : { plants: 0, zombies: 0 },
     upgrades: { [player]: upgrades, [enemy]: {} } as Record<Faction, Partial<Record<CardKey, number>>>,
     ...level,
+    lawn: lawnOf(def.twist, b),
   };
 }

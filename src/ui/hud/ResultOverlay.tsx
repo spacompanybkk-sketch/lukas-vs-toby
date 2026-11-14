@@ -4,7 +4,9 @@ import type { BattleResult } from '../../app/BattleController';
 import type { RankUp } from '../../app/board';
 import type { LevelOutcome } from '../../app/levelSession';
 import type { UnitKey } from '../../sim/types';
-import { KIND_ART, PATH_FLAG } from '../screens/adventurePictures';
+import { CLOCK, KIND_ART, PATH_FLAG, TOWER } from '../screens/adventurePictures';
+import { levelById } from '../../adventure/levels';
+import { starRule } from '../../adventure/rewards';
 import { STAR } from '../screens/boardPictures';
 import { ARROW, COIN, DIGITS } from '../screens/pictures';
 import { BURST } from './levelPictures';
@@ -133,6 +135,35 @@ export function ResultOverlay(props: ResultOverlayProps) {
 type Step = 'stars' | 'coins' | 'unlock';
 
 /**
+ * Why a star was won or lost, without words: the level's own star rule (`starRule`) drawn as its
+ * picture (the base's tower, or the clock for Breakthrough), a bar filled to what was kept at the
+ * end, and a star standing on the bar at each share the second and third stars ask - gold when the
+ * fill reached it, grey when it stopped short. Shown for a win whose share is known.
+ */
+export function StarMeter({ levelId, stars, share }: { levelId: string; stars: number; share: number }) {
+  const def = levelById(levelId);
+  if (def === null) return null;
+  const rule = starRule(def);
+  const marks: [2 | 3, number][] = [[2, rule.two], [3, rule.three]];
+  return (
+    <div class={`lmeter lmeter--${rule.measure}`} data-star-meter={rule.measure} data-share={share} aria-hidden="true">
+      <PixelIcon art={rule.measure === 'clock' ? CLOCK : TOWER} class="lmeter__icon" />
+      <span class="lmeter__bar">
+        <span class="lmeter__fill" style={{ width: `${Math.round(Math.min(1, Math.max(0, share)) * 100)}%` }} />
+        {marks.map(([n, at]) => (
+          <span
+            key={n} class={`lmeter__mark${stars >= n ? ' is-reached' : ''}`} data-mark={n}
+            data-reached={stars >= n ? '' : undefined} style={{ left: `${at * 100}%` }}
+          >
+            <PixelIcon art={STAR} />
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/**
  * The result of an Adventure level, step by step: the stars (0–3) pop in one by one with the
  * merge sound at a rising pitch; then the coins fall; then a newly unlocked unit turns on the
  * turntable with a golden burst. A loss shows its consolation coins at once. Buttons by picture:
@@ -208,6 +239,9 @@ function LevelResultOverlay(props: ResultOverlayProps & { level: LevelOutcome })
               </span>
             ))}
           </div>
+          {level.won && level.share !== undefined && level.share !== null && (
+            <StarMeter levelId={level.levelId} stars={level.stars} share={level.share} />
+          )}
           {step !== 'stars' && (
             level.coins > 0
               ? <CoinRain coins={level.coins}>{rankUp !== null && <RankUpBadge up={rankUp} />}</CoinRain>

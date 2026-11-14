@@ -24,20 +24,24 @@ import { seconds } from '../data/balance';
 import type { Balance, BossPattern, BossStats } from '../data/balance';
 import { factionOf } from '../data/units';
 import { damageUnit } from './damage';
+import { isRock } from './lawn';
 import { inLane, isBoss, isStanding, shieldOf } from './lookup';
+import { inflictStatus } from './status';
 import { randomInt } from './rng';
 import { spawnAtLevel, spawnUnit } from './spawn';
-import { BOSS_HALF_WIDTH, LANES, PLANT_COLS, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from './types';
-import type { Faction, MatchConfig, Projectile, SimEvent, SimState, Unit } from './types';
+import { BOSS_HALF_WIDTH, COLS, LANES, PLANT_COLS, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from './types';
+import type { Faction, MatchConfig, Projectile, SimEvent, SimState, StatusKind, Unit } from './types';
 
 type Slam = Extract<BossPattern, { kind: 'slam' }>;
 type Summon = Extract<BossPattern, { kind: 'summon' }>;
 type Barrage = Extract<BossPattern, { kind: 'barrage' }>;
+type Strike = Extract<BossPattern, { kind: 'strike' }>;
 
 /**
  * Refuses a boss setup that makes no sense, with a `RangeError`: a boss exactly in mode `'boss'`; a
  * boss key with numbers in `Balance.bosses`, on its own side, in a lane where all of it fits on the
- * lawn (the Elder Oak's middle lane 1..3).
+ * lawn (the Elder Oak's middle lane 1..3); no shield in a phase list (the marks are the table's);
+ * every strike sound (`checkStrike`).
  */
 export function checkBoss(c: MatchConfig, b: Balance): void {
   const boss = c.boss as MatchConfig['boss'] | undefined;
@@ -54,6 +58,35 @@ export function checkBoss(c: MatchConfig, b: Balance): void {
   if (!(Number.isInteger(boss.lane) && boss.lane - half >= 0 && boss.lane + half < LANES)) {
     throw new RangeError(`boss lane ${boss.lane}: ${boss.key} must stand on the lawn (lanes ${half}..${LANES - 1 - half})`);
   }
+  const stats = b.bosses[boss.key];
+  (stats.phases ?? []).forEach((list, i) => {
+    if (list.some((p) => p.kind === 'shield')) throw new RangeError(`boss ${boss.key}: phase ${i} lists a shield; its marks come from its patterns`);
+  });
+  for (const list of [stats.patterns, ...(stats.phases ?? [])]) for (const p of list) if (p.kind === 'strike') checkStrike(boss.key, p);
+}
+
+/** Every status a strike may leave (a `Record`, so a new `StatusKind` must be listed here). */
+const STRIKE_STATUS: Readonly<Record<StatusKind, true>> = { stun: true, blind: true, tied: true, poison: true, burn: true, haste: true };
+
+/**
+ * A strike must wind up for a while above 0 and shorter than its gap (so its wind-up starts on a
+ * tick of its own), hit at least one whole lane or tile, deal no negative damage, and aim at
+ * lanes or tiles. Its status, if any, must be a known kind lasting at least a tick, with no
+ * negative `dps`.
+ */
+function checkStrike(key: string, p: Strike): void {
+  const what = `boss ${key} strike`;
+  if (!(seconds(p.windupSeconds) > 0 && seconds(p.windupSeconds) < seconds(p.everySeconds))) {
+    throw new RangeError(`${what}: windupSeconds ${p.windupSeconds} must be above 0 and shorter than everySeconds ${p.everySeconds}`);
+  }
+  if (!(Number.isInteger(p.count) && p.count >= 1)) throw new RangeError(`${what}: count ${p.count} is not a whole number from 1`);
+  if (!(p.damage >= 0)) throw new RangeError(`${what}: damage ${p.damage} must be a number from 0`);
+  if (p.target !== 'lanes' && p.target !== 'tiles') throw new RangeError(`${what}: target "${String(p.target)}" is not lanes or tiles`);
+  const st = p.status;
+  if (st === undefined) return;
+  if (!Object.hasOwn(STRIKE_STATUS, st.kind)) throw new RangeError(`${what}: status "${String(st.kind)}" is no status (${Object.keys(STRIKE_STATUS).join(', ')})`);
+  if (!(seconds(st.seconds) > 0)) throw new RangeError(`${what}: status seconds ${st.seconds} must last at least a tick`);
+  if (st.dps !== undefined && !(st.dps >= 0)) throw new RangeError(`${what}: status dps ${st.dps} must be a number from 0`);
 }
 
 /**
@@ -69,8 +102,21 @@ export function spawnBoss(s: SimState, b: Balance, events: SimEvent[]): void {
   const u = spawnUnit(s, b, boss.key, boss.lane, x, events);
   if (u.id !== bossIdOf(s.config)) throw new Error(`the boss came on as unit ${u.id}, not ${bossIdOf(s.config)}`);
   u.spent = 0;
-  u.pattern = nextTimed(stats, -1);
-  u.patternTimer = u.pattern < 0 ? 0 : seconds(stats.patterns[u.pattern]!.everySeconds);
+  startList(u, patternsOf(stats, 0));
+}
+
+/**
+ * The timed patterns a boss takes turns through in `phase` (shield marks passed): `phases[phase]`,
+ * or its table `patterns` when it has no list for that phase.
+ */
+export function patternsOf(stats: Pick<BossStats, 'patterns' | 'phases'>, phase: number): readonly BossPattern[] {
+  return stats.phases?.[phase] ?? stats.patterns;
+}
+
+/** Starts a pattern list from its first timed pattern, due its `everySeconds` from now. */
+function startList(u: Unit, list: readonly BossPattern[]): void {
+  u.pattern = nextTimed(list, -1);
+  u.patternTimer = u.pattern < 0 ? 0 : seconds(list[u.pattern]!.everySeconds);
 }
 
 /**
@@ -81,12 +127,12 @@ export function bossIdOf(c: MatchConfig): number {
   return c.prepared.length + 1;
 }
 
-/** The index of the timed pattern after `from` (round the table), or -1 when it has none. */
-function nextTimed(stats: BossStats, from: number): number {
-  const n = stats.patterns.length;
+/** The index of the timed pattern after `from` (round the list), or -1 when it has none. */
+function nextTimed(list: readonly BossPattern[], from: number): number {
+  const n = list.length;
   for (let i = 1; i <= n; i++) {
     const at = (((from + i) % n) + n) % n;
-    if (stats.patterns[at]!.everySeconds > 0) return at;
+    if (list[at]!.everySeconds > 0) return at;
   }
   return -1;
 }
@@ -96,9 +142,11 @@ function nextTimed(stats: BossStats, from: number): number {
  * 1. Its shield runs down (always).
  * 2. For each shield mark its health has fallen to (health ≤ max × mark, marks in table order) it
  *    passes the mark (`bossPhase`); if it passed any, the shield goes up for its full `seconds`
- *    (`bossPattern` shield).
- * 3. Unless it is stunned, the pattern timer counts down. A slam says it winds up (`bossPattern`,
- *    `windup` true) on the tick its timer reaches `windupSeconds`; on the tick it reaches 0 the
+ *    (`bossPattern` shield), and a boss with `phases` starts its new phase's list (`patternsOf`)
+ *    from the first timed pattern, due its `everySeconds` from now.
+ * 3. Unless it is stunned, the pattern timer of the current phase's list counts down. A slam says it winds up (`bossPattern`,
+ *    `windup` true), and a strike picks and announces its tiles (`aimStrike`), on the tick its timer
+ *    reaches `windupSeconds`; on the tick it reaches 0 the
  *    pattern goes off and the next timed one is due its `everySeconds` later.
  */
 export function tickBoss(s: SimState, b: Balance, events: SimEvent[]): void {
@@ -109,15 +157,17 @@ export function tickBoss(s: SimState, b: Balance, events: SimEvent[]): void {
     const stats = b.bosses[u.key];
     tickShield(b, u, events);
     if (u.stun > 0 || u.pattern < 0) continue;
-    const p = stats.patterns[u.pattern]!;
+    const list = patternsOf(stats, u.phase);
+    const p = list[u.pattern]!;
     u.patternTimer = Math.max(0, u.patternTimer - 1);
     if (p.kind === 'slam' && u.patternTimer === seconds(p.windupSeconds)) {
       events.push({ type: 'bossPattern', unitId: u.id, kind: 'slam', lane: u.lane, col: slamCol(u, p), windup: true });
     }
+    if (p.kind === 'strike' && u.patternTimer === seconds(p.windupSeconds)) aimStrike(s, u, p, events);
     if (u.patternTimer > 0) continue;
     fire(s, b, u, p, events);
-    u.pattern = nextTimed(stats, u.pattern);
-    u.patternTimer = seconds(stats.patterns[u.pattern]!.everySeconds);
+    u.pattern = nextTimed(list, u.pattern);
+    u.patternTimer = seconds(list[u.pattern]!.everySeconds);
   }
 }
 
@@ -136,6 +186,11 @@ function tickShield(b: Balance, u: Unit, events: SimEvent[]): void {
   if (!passed) return;
   u.shieldLeft = seconds(shield.seconds);
   events.push({ type: 'bossPattern', unitId: u.id, kind: 'shield', lane: u.lane, col: null, windup: false });
+  const stats = b.bosses[u.key];
+  if (stats.phases !== undefined) {
+    startList(u, patternsOf(stats, u.phase)); // a new phase: its own list, from the top
+    u.strikeTiles = []; // a strike being wound up is dropped with the old list
+  }
 }
 
 function fire(s: SimState, b: Balance, u: Unit, p: BossPattern, events: SimEvent[]): void {
@@ -148,6 +203,9 @@ function fire(s: SimState, b: Balance, u: Unit, p: BossPattern, events: SimEvent
       break;
     case 'barrage':
       barrage(s, u, p, events);
+      break;
+    case 'strike':
+      strike(s, b, u, p, events);
       break;
     case 'shield':
       break; // never timed (`everySeconds` 0)
@@ -170,7 +228,7 @@ export function slamCol(u: Unit, slam: Slam): number {
  */
 export function isWindingUp(b: Balance, u: Unit): boolean {
   if (!isBoss(u.key) || u.pattern < 0) return false;
-  const p = b.bosses[u.key].patterns[u.pattern];
+  const p = patternsOf(b.bosses[u.key], u.phase)[u.pattern];
   return p !== undefined && p.kind === 'slam' && u.patternTimer <= seconds(p.windupSeconds);
 }
 
@@ -191,7 +249,7 @@ function slam(s: SimState, b: Balance, u: Unit, p: Slam, events: SimEvent[]): vo
 /**
  * The summon: `bossPattern`, then `count` of `unit` at `level` (each with its `unitSpawned`): a
  * zombie in as many different lanes, drawn with `randomInt` from those not drawn yet, at the spawn
- * edge; a plant on as many different free tiles (no standing plant there) in columns
+ * edge; a plant on as many different free tiles (no standing plant there, no rock of the lawn) in columns
  * `minCol`..`maxCol`, drawn the same way from the free ones in lane-then-column order.
  */
 function summon(s: SimState, b: Balance, u: Unit, p: Summon, events: SimEvent[]): void {
@@ -212,7 +270,7 @@ function summon(s: SimState, b: Balance, u: Unit, p: Summon, events: SimEvent[])
   for (let lane = 0; lane < LANES; lane++) {
     for (let col = minCol; col <= maxCol; col++) {
       const taken = s.units.some((v) => v.faction === 'plants' && isStanding(v) && inLane(v, lane) && Math.floor(v.x) === col);
-      if (!taken) free.push(lane * PLANT_COLS + col);
+      if (!taken && !isRock(s.config, lane, col)) free.push(lane * PLANT_COLS + col);
     }
   }
   for (let i = 0; i < p.count && free.length > 0; i++) {
@@ -247,7 +305,7 @@ function barrage(s: SimState, u: Unit, p: Barrage, events: SimEvent[]): void {
       speed: p.speed / TICKS_PER_SECOND, damage: p.damage, ownerId: u.id, spawnTick: s.tick,
       flight: 'lobbed', sourceKey: u.key, level: 1,
       targetId: target.id, targetX: target.x, pierceLeft: 0, hitIds: [],
-      burning: false, burnDps: 0, burnTicks: 0,
+      burning: false, burnDps: 0, burnTicks: 0, fadeX: null, // a boss's attack is never fogged
     };
     s.nextId += 1;
     s.projectiles.push(acorn);
@@ -258,10 +316,67 @@ function barrage(s: SimState, u: Unit, p: Barrage, events: SimEvent[]): void {
   }
 }
 
-/** The splash of a boss's barrage (for its acorns' landing), or undefined for anything a boss did not throw. */
-export function bossSplash(b: Balance, p: Projectile): number | undefined {
+/**
+ * A strike's wind-up starts: its tiles are drawn with `randomInt` and kept on the boss
+ * (`strikeTiles`, lane × COLS + col, so a snapshot taken during the wind-up keeps them), then
+ * announced (`bossStrike`, `windup` true), unless there are none. 'lanes': `count` different lanes,
+ * drawn from all five, each as its ten tiles in column order. 'tiles': `count` different tiles drawn
+ * from those a standing enemy stands on (lane-then-column order; all of them if fewer).
+ */
+function aimStrike(s: SimState, u: Unit, p: Strike, events: SimEvent[]): void {
+  const tiles: number[] = [];
+  if (p.target === 'lanes') {
+    const lanes: number[] = [];
+    for (let lane = 0; lane < LANES; lane++) lanes.push(lane);
+    for (let i = 0; i < p.count && lanes.length > 0; i++) {
+      const lane = lanes.splice(randomInt(s, lanes.length), 1)[0]!;
+      for (let col = 0; col < COLS; col++) tiles.push(lane * COLS + col);
+    }
+  } else {
+    const taken: number[] = [];
+    for (let lane = 0; lane < LANES; lane++) {
+      for (let col = 0; col < COLS; col++) {
+        if (s.units.some((v) => v.faction !== u.faction && isStanding(v) && inLane(v, lane) && Math.floor(v.x) === col)) taken.push(lane * COLS + col);
+      }
+    }
+    for (let i = 0; i < p.count && taken.length > 0; i++) tiles.push(taken.splice(randomInt(s, taken.length), 1)[0]!);
+  }
+  u.strikeTiles = tiles;
+  if (tiles.length > 0) events.push({ type: 'bossStrike', unitId: u.id, tiles: tilesOf(tiles), windup: true });
+}
+
+/**
+ * The strike's blow on the tiles it announced (none: nothing happens): `bossStrike` (`windup`
+ * false), then every enemy standing on one of them, in ascending id and once however many of its
+ * tiles are struck, takes `damage` and then the strike's status, if any. The tiles are forgotten.
+ */
+function strike(s: SimState, b: Balance, u: Unit, p: Strike, events: SimEvent[]): void {
+  const tiles = u.strikeTiles;
+  u.strikeTiles = [];
+  if (tiles.length === 0) return;
+  events.push({ type: 'bossStrike', unitId: u.id, tiles: tilesOf(tiles), windup: false });
+  for (const v of s.units) {
+    if (v.faction === u.faction || !isStanding(v)) continue;
+    if (!tiles.some((t) => t % COLS === Math.floor(v.x) && inLane(v, Math.floor(t / COLS)))) continue;
+    damageUnit(s, b, v, p.damage, events);
+    if (p.status !== undefined) inflictStatus(s, b, v, p.status.kind, seconds(p.status.seconds), p.status.dps ?? 0, u.id, events);
+  }
+}
+
+const tilesOf = (tiles: readonly number[]): { lane: number; col: number }[] =>
+  tiles.map((t) => ({ lane: Math.floor(t / COLS), col: t % COLS }));
+
+/**
+ * The splash of a boss's barrage (for its acorns' landing), or undefined for anything a boss did not
+ * throw: the first barrage of the thrower's current phase list (`patternsOf`), or of its table and
+ * then its phases in order when that list has none (or the thrower has fallen).
+ */
+export function bossSplash(s: SimState, b: Balance, p: Projectile): number | undefined {
   if (!isBoss(p.sourceKey)) return undefined;
-  for (const pattern of b.bosses[p.sourceKey].patterns) if (pattern.kind === 'barrage') return pattern.splash;
+  const stats = b.bosses[p.sourceKey];
+  const thrower = s.units.find((u) => u.id === p.ownerId);
+  const lists = [...(thrower === undefined ? [] : [patternsOf(stats, thrower.phase)]), stats.patterns, ...(stats.phases ?? [])];
+  for (const list of lists) for (const pattern of list) if (pattern.kind === 'barrage') return pattern.splash;
   return undefined;
 }
 

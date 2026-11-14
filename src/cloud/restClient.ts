@@ -125,6 +125,17 @@ export class RestCloud implements Cloud {
   }
 
   private readonly blocked: boolean;
+  /** `slot/hash` pairs whose last read found a save stored that this build cannot read. */
+  private readonly unreadable = new Set<string>();
+
+  /**
+   * Whether the last `loadRecord(slot, hash)` found a save stored but unreadable by this build
+   * (most likely a newer build wrote it); that read answered `refused` as before. The pin pad's
+   * log-in alone asks this, to reload for the newer build.
+   */
+  async unreadableSave(slot: Slot, hash: string): Promise<boolean> {
+    return this.unreadable.has(`${slot}/${hash}`);
+  }
 
   private async request(method: 'GET' | 'PUT' | 'PATCH', path: string, body?: unknown): Promise<Answer> {
     if (this.blocked) return { kind: 'bad' };
@@ -181,6 +192,7 @@ export class RestCloud implements Cloud {
 
   async loadRecord(slot: Slot, hash: string): Promise<SaveRecord | null | CloudError> {
     if (!SLOT_SHAPE.test(slot) || !HASH.test(hash)) return 'refused';
+    this.unreadable.delete(`${slot}/${hash}`);
     const a = await this.request('GET', `saves/${slot}/${hash}`);
     if (a.kind === 'denied') return 'wrong-pin';
     if (a.kind !== 'ok') return a.kind === 'offline' ? 'offline' : 'refused';
@@ -188,7 +200,9 @@ export class RestCloud implements Cloud {
     const s = isObj(a.data) ? saveFromWire(a.data.save) : null;
     const ver = isObj(a.data) ? a.data.ver : undefined;
     // Something is stored but unreadable (a newer game's save?): never treat it as "nothing".
-    return s && s.slot === slot && typeof ver === 'string' && VER.test(ver) ? { save: s, ver } : 'refused';
+    const ok = s && s.slot === slot && typeof ver === 'string' && VER.test(ver);
+    if (isObj(a.data) && typeof a.data.save === 'string' && s === null) this.unreadable.add(`${slot}/${hash}`);
+    return ok ? { save: s, ver } : 'refused';
   }
 
   async writeSave(save: Save, hash: string, ver: string, prev: string | null): Promise<'ok' | 'conflict' | CloudError> {

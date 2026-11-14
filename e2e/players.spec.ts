@@ -1,5 +1,6 @@
 import { expect, test } from './fixtures';
-import { forceResult, openTitle, typePin, waitLive } from './helpers';
+import type { Page } from './fixtures';
+import { forceResult, logIn, nameFitsTile, openTitle, typePin, waitLive } from './helpers';
 
 // Phase 4a: players, numbers, the lock-out and coins, by taps only, on the fake cloud (the app's
 // default until the database rules are deployed). Battles are fast-forwarded and ended with the
@@ -141,3 +142,16 @@ test('offline on a fresh device: play anyway as a guest, no player and no coins,
   await expect(page.locator('[data-screen="title"]')).toBeVisible();
 });
 
+test('Home names its Play tile and its three place tiles, each fully inside its tile, at the three iPad sizes', async ({ page }) => {
+  test.skip(test.info().project.name !== 'ipad', 'iPad sizes');
+  await openTitle(page);
+  await logIn(page);
+  for (const size of [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }]) {
+    await page.setViewportSize(size);
+    await expect(page.locator('[data-screen="home"]')).toBeVisible();
+    await nameFitsTile(page, '[data-home="play"]', '[data-home-name]', 'PLAY');
+    for (const [id, word] of [['marketplace', 'MARKETPLACE'], ['almanac', 'ALMANAC'], ['leaderboard', 'LEADERBOARD']] as const) {
+      await nameFitsTile(page, `[data-home="${id}"]`, '[data-home-name]', word);
+    }
+  }
+});

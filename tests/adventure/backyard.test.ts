@@ -107,11 +107,12 @@ describe('the Backyard (Task 8 data)', () => {
   });
 
   /**
-   * A child who does nothing must not win. Only the plants' hold-out levels are won by waiting, as
-   * designed: p1-3 and p1-5 (the zombie base cannot be hurt; nothing in their waves reaches a 4500 /
-   * 6000 base unaided). p1-6 is a hold-out too, but its waves are strong enough that an idle base falls.
+   * A child who does nothing must not win. Only the first hold-out is won by waiting, as designed:
+   * p1-3 (the zombie base cannot be hurt; nothing in its waves reaches a 4500 base unaided). p1-5's
+   * conveyor and p1-6 are hold-outs too, but their waves are strong enough that an idle base falls
+   * (worlds plan Task 8c: p1-5 is no longer won by an idle player).
    */
-  const WAITING_WINS = ['p1-3', 'p1-5'];
+  const WAITING_WINS = ['p1-3'];
   it('an idle player never wins a level (20 seeds), except the hold-outs where waiting is the point', () => {
     for (const def of BACKYARD) {
       const enemy = def.side === 'plants' ? 'zombies' : 'plants';

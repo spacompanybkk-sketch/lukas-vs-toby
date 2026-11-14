@@ -20,12 +20,17 @@ import { announceCloudMode } from './cloudMode';
 import { session } from './session';
 import { watchPending } from './levelSession';
 import { Stage } from './Stage';
+import { SAMPLE_LAWNS } from '../render/world/TwistTiles';
+import { NO_TWIST } from '../sim/lawn';
 import { defaultCloud, pageCloudMode } from '../cloud/restClient';
 import { modeStorage } from '../cloud/modeStorage';
 import { go, screen } from './store';
 import { TitleDemo } from './TitleDemo';
 import { AlmanacStage } from '../scenes/almanacStage';
 import { MapStage } from '../scenes/mapStage';
+import { mapLevels } from '../ui/screens/Map';
+import { previewWorlds } from './previewWorlds';
+import { reloadForUnreadableSave } from './staleBuild';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
 export const PORTRAIT_SIZE = 120;
@@ -76,7 +81,12 @@ export function mountGame(
   } catch {
     local = undefined;
   }
-  session.configure({ cloud, mode, now: () => Date.now() + skew });
+  // A save this (older, cached) build cannot read, at the pin pad of a device with no copy of the
+  // player: reload once for the current build.
+  session.configure({
+    cloud, mode, now: () => Date.now() + skew,
+    staleBuild: () => { reloadForUnreadableSave({ session: browserSession(), online: () => navigator.onLine !== false, reload: () => location.reload() }); },
+  });
   board.configure({ cloud, ...(local ? { storage: modeStorage(local, mode) as Storage } : {}) });
   lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };
@@ -113,6 +123,9 @@ export function mountGame(
   // The Adventure map's board, on the same stage too.
   const map = stage ? new MapStage(stage) : null;
   lvt.map = map;
+  // The map e2e and screenshots: stand-in worlds (2 and 3 unless `worlds` says) on the map, copies
+  // of world 1 with their arena's twist; the twist e2e plays them. Only on the debug hooks.
+  lvt.previewWorlds = (on = true, worlds?: (2 | 3 | 4 | 5)[]): void => { mapLevels.value = on ? previewWorlds(LEVELS, worlds) : LEVELS; };
   if (stage) {
     const s = stage;
     document.body.classList.add('has-stage');
@@ -140,6 +153,12 @@ export function mountGame(
     lvt.renderer = s.renderer;
     lvt.lawn = s.lawn;
     lvt.stage = s;
+    // Any world's look and twist tiles on the lawn now, until the next hand-over (the levels of
+    // worlds 2–5 do not exist yet). `lawn` defaults to that world's sample twist.
+    lvt.setWorld = (world, lawn) => {
+      s.setWorld(world, lawn === undefined ? SAMPLE_LAWNS[world] : { ...NO_TWIST, ...lawn });
+      s.applyWorld();
+    };
   } else {
     lvt.portraits = Promise.resolve();
     requestAnimationFrame(() => markReady());
@@ -181,7 +200,8 @@ export function mountGame(
   Object.defineProperty(lvt, 'screen', { configurable: true, get: () => screen.value });
 
   if (jumpIn) go({ name: 'battle', options: jumpIn });
-  // The menus have the demo battle behind them and their own tune.
+  // The menus have the demo battle behind them and their own tune; the map plays the tune of the
+  // island it shows (`onMusic`).
   const stopScreens = effect(() => {
     const s = screen.value;
     if (s.name !== 'battle' && s.name !== 'unsupported' && s.name !== 'almanac' && s.name !== 'map') {
@@ -201,6 +221,7 @@ export function mountGame(
     audio.needsGesture ? audio.unlock().then(() => !audio.needsGesture) : true;
 
   const playUi = (name: Parameters<AudioEngine['play']>[0], opts?: { pitch?: number }): void => audio.play(name, opts);
+  const playMusic = (theme: Parameters<AudioEngine['startMusic']>[0]): void => audio.startMusic(theme);
 
   const renderer = stage?.renderer;
   renderer?.countDrawCalls(fps);
@@ -210,7 +231,7 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
-      onSound={playUi} almanac={almanac ?? undefined} map={map ?? undefined}
+      onSound={playUi} onMusic={playMusic} almanac={almanac ?? undefined} map={map ?? undefined}
     />
   );
   render(<Root />, ui);
@@ -224,4 +245,13 @@ export function mountGame(
     stage?.dispose();
     audio.stopMusic(0);
   };
+}
+
+/** `sessionStorage`, or undefined where there is none or touching it throws (Safari private mode). */
+function browserSession(): Storage | undefined {
+  try {
+    return typeof sessionStorage === 'undefined' ? undefined : sessionStorage;
+  } catch {
+    return undefined;
+  }
 }

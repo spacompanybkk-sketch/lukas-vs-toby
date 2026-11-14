@@ -10,13 +10,14 @@ import { Match } from '../sim/match';
 import { spellArea } from '../sim/spells';
 import type { SpellTile } from '../sim/spells';
 import { isStanding, statsFor } from '../sim/lookup';
-import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
+import { COLS, LANES, MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
 import type { BossKey, CardKey, Command, CommandRejection, Faction, SimEvent, SimState, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
 import { bigWaveRuns, freePlayRecord, levelProblem, levelRecord } from './levelSession';
 import type { FreePlayPlay, LevelPlay, LevelRecord } from './levelSession';
 import type { FreePlayRecord } from '../adventure/freePlay';
 import { Tutorial } from './tutorial';
+import { heroHidden } from '../adventure/levels';
 import type { TutorialAction } from './tutorial';
 
 /**
@@ -164,6 +165,8 @@ export interface LevelHudInfo {
   belt: boolean;
   /** No energy in this level: the energy counter is not shown. */
   noEnergy: boolean;
+  /** The hero power is not shown yet (a level before the one that teaches it, `heroHidden`): no button, no H key. */
+  heroHidden: boolean;
 }
 
 /** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
@@ -185,6 +188,9 @@ type Tile = { lane: number; col: number };
 
 /** A zombie tap merges into the player's own zombie of that type standing this near the tapped tile's middle, along the lane. */
 export const ZOMBIE_MERGE_REACH = 0.75;
+
+/** One number folded into a running key (no closure, so a per-frame key allocates nothing). */
+const mixKey = (h: number, v: number): number => (Math.imul(h ^ (v | 0), 0x01000193) + 0x9e3779b9) | 0;
 
 const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
@@ -243,6 +249,16 @@ export class BattleController {
   private readonly castOnce = new Set<SpellKey>();
   /** The card selected when a power was picked: it comes back once the power is cast or put down. */
   private cardBeforePower: UnitKey | null = null;
+  /**
+   * Where the picked card may go now (`placeTiles`): one entry a tile, `lane * COLS + col`, 1 where a
+   * tap would be accepted. Zombies go by lane: their lanes' spawn end (the last column) is marked.
+   */
+  readonly placeable = new Uint8Array(LANES * COLS);
+  /** How many times `placeable` has been worked out (for tests: only when something changed). */
+  placeWorkouts = 0;
+  private placeKey = Number.NaN;
+  private placeGlove: unknown = undefined;
+  private placeVersion = 0;
 
   constructor(opts: BattleOptions, balance: Balance = BALANCE) {
     this.playerFaction = opts.playerFaction;
@@ -277,6 +293,7 @@ export class BattleController {
         enemy: this.opponent,
         belt: config.belt !== null && config.belt.side === this.playerFaction,
         noEnergy: config.noEnergy,
+        heroHidden: heroHidden(def),
       };
     } else if (this.free !== null) {
       // Free Play: the endless source is the other side; nobody else plays.
@@ -444,10 +461,10 @@ export class BattleController {
   /**
    * Picks the hero power (it then waits for a lane: a tap goes to `heroLane`) or puts it down.
    * Picking it clears the card, the shovel and any spell; a hero still charging is refused
-   * (counted as a denial) and not picked.
+   * (counted as a denial) and not picked. Nothing at all in a level that hides the hero.
    */
   selectHero(on: boolean): void {
-    if (this.hud.paused.peek() || this.over()) return;
+    if (this.hud.paused.peek() || this.over() || this.level?.heroHidden === true) return;
     if (this.refused(on ? { kind: 'hero' } : { kind: 'other' })) return;
     if (!on) {
       if (this.hud.heroSelected.peek()) this.powerDone();
@@ -625,6 +642,71 @@ export class BattleController {
   }
 
   /**
+   * Keeps `placeable` up to date and returns its version, which changes only when the marked tiles
+   * do. Called once a frame: it reads a few numbers into a key (the pick, the energy, the card's
+   * recharge, the belt, every unit's tile and level, the glove) and allocates nothing; only when the
+   * key changed does it ask the match (`check`, the same answer a tap gets) about every tile. Under
+   * the tutorial's glove a tile lights only if the step would take the tap too.
+   */
+  placeTiles(): number {
+    const key = this.placeRelevance();
+    const glove = this.tutorial?.glove.peek();
+    if (key === this.placeKey && glove === this.placeGlove) return this.placeVersion;
+    this.placeKey = key;
+    this.placeGlove = glove;
+    this.placeWorkouts += 1;
+    const mask = this.placeable;
+    let changed = false;
+    const mark = (i: number, on: boolean): void => {
+      const v = on ? 1 : 0;
+      if (mask[i] !== v) { mask[i] = v; changed = true; }
+    };
+    const unit = this.hud.selected.peek();
+    const slot = this.levelHud.beltSlot.peek();
+    const idle = unit === null || this.hud.shovel.peek() || this.hud.heroSelected.peek() || this.hud.spellSelected.peek() !== null
+      || this.hud.paused.peek() || this.over();
+    const plants = this.playerFaction === 'plants';
+    for (let lane = 0; lane < LANES; lane++) {
+      for (let col = 0; col < COLS; col++) {
+        let on = false;
+        // Zombies are sent down a lane: only its spawn end is marked.
+        if (!idle && (plants || col === COLS - 1)) {
+          const tile = { lane, col };
+          const cmd = slot !== null ? this.beltCommand(slot, tile) : this.commandFor(unit, tile, plants ? this.plantAt(tile) ?? null : null);
+          on = this.match.check(cmd) === null && !this.refused({ kind: 'command', cmd });
+        }
+        mark(lane * COLS + col, on);
+      }
+    }
+    if (changed) this.placeVersion += 1;
+    return this.placeVersion;
+  }
+
+  /** A number that changes whenever anything `placeTiles` asks the match about may have (see there). */
+  private placeRelevance(): number {
+    const s = this.match.state;
+    const me = s.players[this.playerFaction];
+    let h = 17;
+    const unit = this.hud.selected.peek();
+    h = mixKey(h, unit === null ? -1 : unit.length * 131 + unit.charCodeAt(0) * 7 + unit.charCodeAt(unit.length - 1));
+    h = mixKey(h, this.levelHud.beltSlot.peek() ?? -1);
+    h = mixKey(h, (this.hud.shovel.peek() ? 1 : 0) + (this.hud.heroSelected.peek() ? 2 : 0) + (this.hud.spellSelected.peek() !== null ? 4 : 0)
+      + (this.hud.paused.peek() ? 8 : 0) + (this.over() ? 16 : 0) + (this.tutorial?.holding === true ? 32 : 0));
+    h = mixKey(h, Math.floor(me.energy));
+    if (unit !== null && isCard(unit)) h = mixKey(h, Math.ceil(me.recharge[unit] ?? 0));
+    for (let i = 0; i < s.belt.length; i++) { const k = s.belt[i]!; h = mixKey(h, k.length * 131 + k.charCodeAt(0) * 7 + k.charCodeAt(k.length - 1)); }
+    h = mixKey(h, s.belt.length);
+    const units = s.units;
+    h = mixKey(h, units.length);
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i] as Unit;
+      h = mixKey(h, u.id * 8 + u.level);
+      h = mixKey(h, u.lane * 64 + Math.floor(u.x) * 2 + (u.hp > 0 ? 1 : 0));
+    }
+    return h;
+  }
+
+  /**
    * The tile to act on when the pointer's ray hits a unit's model itself: the unit's own tile,
    * when it is the player's own standing unit and the selected card is its type (a merge) or
    * the shovel is on. Otherwise null, and the ground under the pointer decides. A tap on the
@@ -642,11 +724,12 @@ export class BattleController {
   /**
    * Fires the player's hero power down `lane`, answering as `click` does: null means queued for
    * the next tick, 'match-over' once decided, 'ignored' while paused or with a command already
-   * queued, and the match's own refusal (counted as a denial) otherwise.
+   * queued or in a level that hides the hero (`heroHidden`), and the match's own refusal (counted
+   * as a denial) otherwise.
    */
   heroLane(lane: number): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
-    if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.hud.paused.peek() || this.queued !== null || this.level?.heroHidden === true) return 'ignored';
     const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
     if (this.refused({ kind: 'command', cmd })) return 'ignored';
     const reason = this.match.check(cmd);

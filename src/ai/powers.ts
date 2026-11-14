@@ -24,7 +24,7 @@ import type { Match } from '../sim/match';
 import { isStanding } from '../sim/lookup';
 import { spellArea } from '../sim/spells';
 import { COLS, LANES, PLANT_COLS } from '../sim/types';
-import type { Command, Faction, SimState, SpellKey, SpellSize, Unit } from '../sim/types';
+import type { Command, Faction, LawnConfig, SimState, SpellKey, SpellSize, Unit } from '../sim/types';
 import { seconds } from '../data/balance';
 import { nextRandom, randomInt } from '../sim/rng';
 import { TICKS_PER_SECOND } from '../sim/types';
@@ -85,6 +85,8 @@ const ABOUT_TO_BITE = 2.5;
 interface Grid {
   readonly units: readonly Unit[];
   readonly at: ReadonlyArray<ReadonlyArray<Unit[]>>; // [lane][col]
+  /** The lawn's twists (a Rock Wall goes on no rock and no lava). */
+  readonly lawn: LawnConfig;
 }
 
 function readGrid(s: SimState): Grid {
@@ -96,7 +98,7 @@ function readGrid(s: SimState): Grid {
     at[u.lane]?.[col]?.push(u);
     units.push(u);
   }
-  return { units, at };
+  return { units, at, lawn: s.config.lawn };
 }
 
 /** The best command among one power's candidates, or null when none clears its line. */
@@ -283,7 +285,7 @@ function spellPick(b: Balance, grid: Grid, faction: Faction, spell: SpellKey, wa
   }
 }
 
-/** A rock on the free tile just in front of the lane with the most zombie health closing in. */
+/** A rock on the free tile (no plant, no rock of the lawn, no lava) just in front of the lane with the most zombie health closing in. */
 function rockPick(grid: Grid, faction: Faction): Pick | null {
   let best: Pick | null = null;
   for (let lane = 0; lane < LANES; lane++) {
@@ -295,6 +297,7 @@ function rockPick(grid: Grid, faction: Faction): Pick | null {
     // The rearmost tile still in front of the zombie that no plant stands on, nearest the zombie first.
     for (let col = Math.min(PLANT_COLS - 1, Math.floor(front.x - 0.6)); col >= 0; col--) {
       if ((grid.at[lane]?.[col] ?? []).some((u) => u.faction === 'plants')) continue;
+      if (grid.lawn.rocks.includes(lane * PLANT_COLS + col) || grid.lawn.lava?.tiles.includes(lane * COLS + col) === true) continue;
       best = better(best, { cmd: { type: 'spell', faction, spell: 'rockWall', lane, col }, score: hp });
       break;
     }
@@ -329,12 +332,13 @@ function gravePick(grid: Grid, faction: Faction, minCol: number): Pick {
  * deal order), aimed at a random spot, half the time on the half of the lawn where most units are
  * (where something is happening) and otherwise anywhere. Null when nothing is ready or no spot is
  * legal after a few tries.
+ * `hero` false: the hero's button is not there for this child (it is never pressed).
  */
-export function childPower(match: Match, faction: Faction, rng: BotRng): Command | null {
+export function childPower(match: Match, faction: Faction, rng: BotRng, hero = true): Command | null {
   const s = match.state;
   const player = s.players[faction];
   const ready: Array<SpellKey | 'hero'> = [];
-  if (s.config.heroes[faction] && player.heroTimer === 0) ready.push('hero');
+  if (hero && s.config.heroes[faction] && player.heroTimer === 0) ready.push('hero');
   for (const slot of player.spells) if (slot.timer === 0) ready.push(slot.key);
   const power = ready[0];
   if (power === undefined) return null;

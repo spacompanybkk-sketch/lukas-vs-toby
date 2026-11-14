@@ -1,6 +1,7 @@
 import { QUALITIES } from '../app/settings';
 import type { Quality, Settings } from '../app/settings';
 import './screens/screens.css';
+import { BackButton } from './BackButton';
 
 export interface SettingsPanelProps {
   settings: Settings;
@@ -20,9 +21,7 @@ export function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProp
       <div class="settings panel px pal-cream stack">
         <div class="settings__head">
           {onClose !== undefined && (
-            <button type="button" data-action="close-settings" class="btn btn--square pal-wood" aria-label="Back" onClick={onClose}>
-              <span class="ico ico--back" aria-hidden="true" />
-            </button>
+            <BackButton data-action="close-settings" onClick={onClose} />
           )}
           <span class="settings__title ico ico--gear" aria-hidden="true" />
         </div>

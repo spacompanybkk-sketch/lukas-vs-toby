@@ -110,6 +110,13 @@ describe('levelRecord: the stars from the end of the match', () => {
     expect(levelRecord(playToEnd(p11(), { win: false }))).toMatchObject({ won: false, stars: 0 });
   });
 
+  it('carries the share the stars were measured on (the result screen draws it), and so does the outcome', () => {
+    expect(levelRecord(playToEnd(p11()))?.share).toBe(1);
+    expect(levelRecord(playToEnd(p11(), { hurt: 0.4 }))?.share).toBeCloseTo(0.6, 2);
+    const out = settleLevel(host, levelRecord(playToEnd(p11(), { hurt: 0.4 }))!, me().slot);
+    expect(out?.share).toBeCloseTo(0.6, 2);
+  });
+
   it('Breakthrough counts the clock left', () => {
     const def = levelById('z1-3')!;
     host.update((s) => ({ ...s, zombies: { stars: { 'z1-1': 1, 'z1-2': 1 }, unlocked: [] } }));
@@ -120,6 +127,7 @@ describe('levelRecord: the stars from the end of the match', () => {
     ctl.match.state.baseHp.plants = 0;
     ctl.step();
     expect(levelRecord(ctl)).toMatchObject({ won: true, stars: 2 });
+    expect(levelRecord(ctl)!.share).toBeCloseTo(0.4, 2);
   });
 
   it('is null before the end and for a Quick Battle', () => {

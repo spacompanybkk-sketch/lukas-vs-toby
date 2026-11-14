@@ -23,6 +23,8 @@
  *    zombie on the lawn; then it merges its lowest-level Sunflower up to its skill's level.
  * 6. Margin: a lane under its skill's margin gets another shooter, then a wall (the wall first
  *    when it already has two shooters).
+ * 6b. Fog: a lane with a shooter but none whose shot reaches the zombie base gets a Peashooter
+ *    far enough forward (`fogWant`).
  * 7. Build-up, from what is left above its reserve: a wall in front of two shooters (an Avocado
  *    Bunker where it is worth guarding or fast biters are about, else a Walnut Bomb), then a
  *    Pumpkin Squash behind that wall; a Torchwood just in front of two or more Peashooters; a
@@ -42,10 +44,10 @@ import type { Balance } from '../data/balance';
 import { UNIT_INFO } from '../data/units';
 import type { Match } from '../sim/match';
 import { randomInt } from '../sim/rng';
-import { MAX_LEVEL, PLANT_COLS } from '../sim/types';
+import { COLS, MAX_LEVEL, PLANT_COLS } from '../sim/types';
 import type { CardKey, Command, Unit } from '../sim/types';
 import { reckonLane } from './laneModel';
-import { mergeCommand, placeCommand, readLawn, shuffledLanes } from './lawn';
+import { freeTile, mergeCommand, placeCommand, readLawn, shuffledLanes } from './lawn';
 import type { BotRng, LaneView } from './lawn';
 import { choose } from './wants';
 import type { Want } from './wants';
@@ -190,6 +192,9 @@ function* plantWants(
     if (wall !== undefined) yield wall;
   }
 
+  const fog = fogWant(lawn, rng);
+  if (fog !== undefined) yield fog;
+
   if (!spare(UNIT_INFO.torchwood.price)) return;
   const built = buildUpWant(lawn, rng, energy);
   if (built !== undefined) yield built;
@@ -224,7 +229,7 @@ function buildUpWant(lawn: readonly LaneView[], rng: BotRng, energy: number): Wa
     const view = lawn[lane] as LaneView;
     const n = shooters(view).length;
     if (n >= 1 && !view.plants.some((p) => WALLS.has(p.key as CardKey))) {
-      const col = WALL_COLS.find((c) => view.tiles[c] === undefined);
+      const col = WALL_COLS.find((c) => freeTile(view, c));
       const guarded = view.plants.some((p) => p.key === 'torchwood' || (SHOOTERS.has(p.key as CardKey) && p.level >= 2));
       const rich = energy >= RICH_WALL;
       const kind: CardKey = guarded || biters || rich ? 'avocadoBunker' : 'walnutBomb';
@@ -232,8 +237,30 @@ function buildUpWant(lawn: readonly LaneView[], rng: BotRng, energy: number): Wa
     }
     if (n >= 2 && view.plants.some((p) => WALLS.has(p.key as CardKey) && p.key !== 'pumpkinSquash')
       && !view.plants.some((p) => p.key === 'pumpkinSquash')) {
-      const col = PUMPKIN_COLS.find((c) => view.tiles[c] === undefined);
+      const col = PUMPKIN_COLS.find((c) => freeTile(view, c));
       if (col !== undefined) return { cmd: placeCommand('plants', 'pumpkinSquash', lane, col), wait: 'energy' };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Fog (rule 6b): a shot reaches the zombie base only from column `COLS − fog` on, so a lane with a
+ * shooter and none that far forward gets a Peashooter on the rearmost such free column, the lane
+ * with the most shooters first (it is the best covered). Nothing without fog.
+ */
+function fogWant(lawn: readonly LaneView[], rng: BotRng): Want | undefined {
+  const fog = lawn[0]?.fog ?? null;
+  if (fog === null) return undefined;
+  const reach = Math.max(0, Math.ceil(COLS - fog));
+  const order = shuffledLanes(rng);
+  const lanes = [...lawn].sort((a, c) => shooters(c).length - shooters(a).length || order.indexOf(a.lane) - order.indexOf(c.lane));
+  for (const view of lanes) {
+    const own = shooters(view);
+    if (own.length === 0 || own.some((p) => Math.floor(p.x) >= reach)) continue;
+    const zombieX = nearestZombie(view, 0.5)?.x ?? Infinity;
+    for (let c = reach; c < PLANT_COLS; c++) {
+      if (freeTile(view, c) && c + 0.5 <= zombieX) return { cmd: placeCommand('plants', 'peashooter', view.lane, c), wait: 'energy' };
     }
   }
   return undefined;
@@ -296,7 +323,7 @@ function wallWant(view: LaneView, rng: BotRng, energy: number): Want | undefined
   if (shooters(view).length === 0) return undefined;
   if (WALL_COLS.some((c) => { const k = view.tiles[c]?.key; return k !== undefined && WALLS.has(k as CardKey); })) return undefined;
   const approached = (c: number): boolean => view.zombies.some((z) => z.x >= c + WALL_LEAD);
-  const col = pick(rng, WALL_COLS.filter((c) => view.tiles[c] === undefined && approached(c)));
+  const col = pick(rng, WALL_COLS.filter((c) => freeTile(view, c) && approached(c)));
   if (col === undefined) return undefined;
   return { cmd: placeCommand('plants', wallKind(view, energy), view.lane, col), wait: 'energy' };
 }
@@ -312,12 +339,12 @@ function mineWant(b: Balance, view: LaneView, quiet: boolean): Want | undefined 
   let col: number | undefined;
   if (front === undefined) {
     if (!quiet) return undefined;
-    col = MINE_COLS.find((c) => view.tiles[c] === undefined);
+    col = MINE_COLS.find((c) => freeTile(view, c));
   } else {
-    const speed = b.units[front.key]?.speed ?? 0.35;
+    const speed = (b.units[front.key]?.speed ?? 0.35) * view.ice;
     const reach = front.x - stats.armSeconds * speed - stats.reach; // where it will be once armed
     for (let c = Math.min(PLANT_COLS - 1, Math.floor(reach - 0.5)); c >= 1; c--) {
-      if (view.tiles[c] === undefined) {
+      if (freeTile(view, c)) {
         col = c;
         break;
       }
@@ -344,7 +371,7 @@ function torchWant(lawn: readonly LaneView[]): Want | undefined {
   const zombieX = nearestZombie(view, 0.5)?.x ?? Infinity;
   for (let c = Math.floor(frontPea) + 1; c < PLANT_COLS; c++) {
     if (c + 0.5 >= zombieX) break;
-    if (view.tiles[c] === undefined) return { cmd: placeCommand('plants', 'torchwood', view.lane, c), wait: 'energy' };
+    if (freeTile(view, c)) return { cmd: placeCommand('plants', 'torchwood', view.lane, c), wait: 'energy' };
   }
   return undefined;
 }
@@ -362,7 +389,7 @@ function cherryWant(b: Balance, lawn: readonly LaneView[]): Want | undefined {
   let best: { lane: number; col: number; caught: number } | undefined;
   for (const view of lawn) {
     for (let col = 0; col < PLANT_COLS; col++) {
-      if (view.tiles[col] !== undefined) continue;
+      if (!freeTile(view, col)) continue;
       let caught = 0;
       for (const z of zombies) {
         const dl = z.lane - view.lane;
@@ -408,7 +435,7 @@ function lanesByFewestShooters(lawn: readonly LaneView[], rng: BotRng): LaneView
 
 /** The first of `cols` that is free and whose plant could hit something at `x`. */
 function freeColLeftOf(view: LaneView, cols: readonly number[], x: number): number | undefined {
-  return cols.find((c) => view.tiles[c] === undefined && c + 0.5 <= x);
+  return cols.find((c) => freeTile(view, c) && c + 0.5 <= x);
 }
 
 function pick(rng: BotRng, items: readonly number[]): number | undefined {
@@ -437,7 +464,7 @@ function sunflowerTile(lawn: readonly LaneView[], rng: BotRng, opening: boolean)
     .sort((a, b) => shooters(b).length - shooters(a).length || rank(a) - rank(b));
   for (const col of SUN_COLS) {
     for (const view of lanes) {
-      if (view.tiles[col] === undefined) return { lane: view.lane, col };
+      if (freeTile(view, col)) return { lane: view.lane, col };
     }
   }
   return null;

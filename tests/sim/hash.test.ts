@@ -4,7 +4,11 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 2254 bytes). Re-pinned in phase 3
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 2370 bytes). Re-pinned once in the
+ * worlds machinery plan, Task 2 (lawn twists), when projectiles gained `fadeX` (fog; after
+ * `burnTicks`) and the setup its `lawn` (after `endless`), cross-checked by a separate Python FNV-1a
+ * written from the documented layout, fed the JSON of `makeState()` (3452586360 over 2370 bytes);
+ * before that it was 3852161195 over 2254 bytes. Re-pinned in phase 3
  * Task 8 (levels) when units gained `stunFatigue` (a boss's stun resistance; 8 bytes per unit, after
  * `phase`), cross-checked by a separate Python FNV-1a written from the documented layout, fed the
  * JSON of `makeState()` (3852161195 over 2254 bytes; the same script without `stunFatigue` gives the
@@ -33,7 +37,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 3852161195;
+const GOLDEN_HASH = 3452586360;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -46,20 +50,20 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
-        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
+        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0, strikeTiles: [],
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
-        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12,
+        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12, strikeTiles: [],
       },
     ],
     projectiles: [
       {
         id: 4, kind: 'pea', faction: 'plants', lane: 2, x: 3.5, speed: 0.2, damage: 20, ownerId: 1, spawnTick: 118,
         flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25,
-        pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
+        pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90, fadeX: 7.5,
       },
     ],
     hazards: [
@@ -102,6 +106,7 @@ function makeState(): SimState {
       invulnerableBase: 'zombies',
       boss: { key: 'elderOak', faction: 'plants', lane: 2 },
       endless: { cards: ['brainEater', 'veryFastWalker'], firstWaveTicks: 90 },
+      lawn: { rocks: [3, 17], fog: 5, ice: { lanes: [1, 3], speed: 1.6 }, lava: { tiles: [12, 44], dps: 15, burnTicks: 60 } },
     },
     scriptIndex: 1,
     belt: ['peashooter'],
@@ -316,6 +321,24 @@ describe('hashState', () => {
     ['an incoming x', (s) => { s.incoming[0]!.x = 9; }],
     ['an incoming level', (s) => { s.incoming[0]!.level = 3; }],
     ['an incoming index', (s) => { s.incoming[0]!.index = 0; }],
+    // Lawn twists.
+    ['a unit strikeTiles from none to one', (s) => { unit(s, 1).strikeTiles = [23]; }],
+    ['a projectile fadeX', (s) => { s.projectiles[0]!.fadeX = 7.25; }],
+    ['a projectile fadeX null', (s) => { s.projectiles[0]!.fadeX = null; }],
+    ['config a rock tile', (s) => { s.config.lawn.rocks[1] = 18; }],
+    ['config the number of rocks', (s) => { s.config.lawn.rocks.pop(); }],
+    ['config the rock order', (s) => { s.config.lawn.rocks.reverse(); }],
+    ['config fog', (s) => { s.config.lawn.fog = 4; }],
+    ['config fog null', (s) => { s.config.lawn.fog = null; }],
+    ['config ice null', (s) => { s.config.lawn.ice = null; }],
+    ['config an ice lane', (s) => { s.config.lawn.ice!.lanes[0] = 0; }],
+    ['config the number of ice lanes', (s) => { s.config.lawn.ice!.lanes.pop(); }],
+    ['config ice speed', (s) => { s.config.lawn.ice!.speed = 1.5; }],
+    ['config lava null', (s) => { s.config.lawn.lava = null; }],
+    ['config a lava tile', (s) => { s.config.lawn.lava!.tiles[0] = 13; }],
+    ['config the number of lava tiles', (s) => { s.config.lawn.lava!.tiles.pop(); }],
+    ['config lava dps', (s) => { s.config.lawn.lava!.dps = 16; }],
+    ['config lava burnTicks', (s) => { s.config.lawn.lava!.burnTicks = 59; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -347,6 +370,29 @@ describe('hashState', () => {
     unit(a, 0).x = -0;
     unit(b, 0).x = 0;
     expect(hashState(a)).toBe(hashState(b));
+  });
+});
+
+describe('a boss strike being wound up (strikeTiles)', () => {
+  it('adds no bytes while empty, so a state with no strike hashes as before strikes (the golden is unchanged)', () => {
+    expect(hashState(makeState())).toBe(GOLDEN_HASH);
+  });
+
+  it('tells its tiles, their number and their order apart', () => {
+    const hashes = [[23], [24], [23, 24], [24, 23]].map((tiles) => {
+      const s = makeState();
+      unit(s, 1).strikeTiles = tiles;
+      return hashState(s);
+    });
+    expect(new Set([...hashes, GOLDEN_HASH]).size).toBe(5);
+  });
+
+  it('a snapshot made before strikes (units without strikeTiles) restores with none, and the same checksum', () => {
+    const old = JSON.parse(snapshotState(makeState())) as { units: Record<string, unknown>[] };
+    for (const u of old.units) delete u.strikeTiles;
+    const restored = restoreState(JSON.stringify(old));
+    expect(restored.units.map((u) => u.strikeTiles)).toEqual([[], []]);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
   });
 });
 
@@ -397,7 +443,7 @@ describe('snapshotState / restoreState', () => {
     expect(restored.units[0]).toMatchObject({ blind: 15, burn: 40, burnDps: 10, ownerId: null });
     expect(restored.units[1]).toMatchObject({ stun: 20, tied: 7, poison: 60, poisonDps: 15, stacks: 2, ownerId: 9, auraTimer: 33 });
     expect(restored.projectiles[0]).toMatchObject({
-      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90,
+      flight: 'piercing', sourceKey: 'peashooter', level: 2, targetId: 3, targetX: 6.25, pierceLeft: 2, hitIds: [2], burning: true, burnDps: 20, burnTicks: 90, fadeX: 7.5,
     });
     expect(restored.hazards).toEqual(s.hazards);
     expect(restored.hazards).not.toBe(s.hazards);

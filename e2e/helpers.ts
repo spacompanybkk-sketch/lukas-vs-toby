@@ -325,3 +325,23 @@ export function lawnCorners(page: Page): Promise<Point[]> {
     return corners as { x: number; y: number }[];
   });
 }
+
+/** A name must be visible, on one line, and fully inside its tile. */
+export async function nameFitsTile(page: Page, tile: string, name: string, word: string): Promise<void> {
+  const label = page.locator(`${tile} ${name}`);
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(new RegExp(`^${word}$`, 'i'));
+  const r = await page.evaluate(([t, n]) => {
+    const a = document.querySelector(t!)!.getBoundingClientRect();
+    const el = document.querySelector(`${t} ${n}`)! as HTMLElement;
+    const b = el.getBoundingClientRect();
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    return { l: b.left - a.left, r: a.right - b.right, t: b.top - a.top, b: a.bottom - b.bottom, h: b.height, lh, over: el.scrollWidth - el.clientWidth };
+  }, [tile, name]);
+  expect(r.l).toBeGreaterThanOrEqual(4);
+  expect(r.r).toBeGreaterThanOrEqual(4);
+  expect(r.t).toBeGreaterThanOrEqual(0);
+  expect(r.b).toBeGreaterThanOrEqual(4);
+  expect(r.h).toBeLessThanOrEqual(r.lh * 1.5); // one line
+  expect(r.over).toBeLessThanOrEqual(0);
+}

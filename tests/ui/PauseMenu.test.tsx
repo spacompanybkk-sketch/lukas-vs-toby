@@ -28,6 +28,15 @@ const quit = (): HTMLButtonElement => {
 };
 
 describe('PauseMenu', () => {
+  it('Quit shows where it goes: a house home (the default), the path with its flag to the map', () => {
+    expect(quit().querySelector('[data-quit-to="home"]')).not.toBeNull();
+    expect(quit().querySelector('[data-quit-to="map"]')).toBeNull();
+    act(() => render(<PauseMenu {...props} quitTo="map" />, root));
+    expect(quit().querySelector('[data-quit-to="map"] svg')).not.toBeNull();
+    expect(quit().querySelector('[data-quit-to="home"]')).toBeNull();
+    expect(quit().querySelector('.ico--home')).toBeNull();
+  });
+
   it('has no Restart when none is given (a Free Play run: Quit banks it, nothing throws it away)', () => {
     expect(root.querySelector('[data-action="restart"]')).not.toBeNull();
     const { onRestart: _, ...rest } = props;

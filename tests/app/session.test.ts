@@ -98,9 +98,11 @@ describe('create', () => {
   it('Lukas keeps Medium; Toby gets Easy on both sides', async () => {
     const lukas = asSave(await s.create('Lukas', 'peashooter', '123', 'p01'));
     expect(lukas.difficulty).toEqual({ plants: 'medium', zombies: 'medium' });
+    expect(lukas.adventureDifficulty).toEqual({ plants: 'medium', zombies: 'medium' });
     s.logout();
     const toby = asSave(await s.create('Toby', 'brainEater', '456', 'p02'));
     expect(toby.difficulty).toEqual({ plants: 'easy', zombies: 'easy' });
+    expect(toby.adventureDifficulty).toEqual({ plants: 'easy', zombies: 'easy' });
   });
 
   it("imports that boy's old save on this device when he is created, once", async () => {

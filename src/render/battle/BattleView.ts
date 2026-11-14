@@ -29,6 +29,7 @@ import { SpellFx } from './SpellFx';
 import { HealthBars } from './HealthBars';
 import { StatusMarks } from './StatusMarks';
 import type { AimPreview, Feel } from './types';
+import { MARKS_QUIET } from '../world/PlaceMarks';
 import { GROW_PER_STACK, RELEASE_SECONDS, UnitView, type UnitHooks } from './UnitView';
 
 export type { AimPreview, Feel, PlacementPreview } from './types';
@@ -53,6 +54,9 @@ const STACK_X = 0.14;
 const LATE_FLIGHT = 0.08;
 /** A finger may miss a unit by this many CSS pixels and still pick it. */
 export const PICK_TOLERANCE_PX = 28;
+/** A shot fading in the fog leaves a puff of this pale mist blue. */
+const FADE_PUFF = 0xdde6ff;
+
 /** The placement ghost draws after the lawn's highlight marks. */
 export const GHOST_RENDER_ORDER = 10;
 const GHOST_OPACITY = 0.85;
@@ -364,6 +368,19 @@ export class BattleView {
    */
   setMergeCue(unit: UnitKey | null): void {
     this.mergeCue = unit;
+  }
+
+  /**
+   * Marks the tiles the picked card may go on (the controller's `placeable`), or none (null). Call
+   * it when they change (the controller's version), not every frame: it uploads the marks.
+   */
+  setPlaceable(mask: Uint8Array | null): void {
+    this.lawn.showPlaceable(mask);
+  }
+
+  /** How strongly the place marks show (see `PlaceMarks`); cheap, but call it when it changes. */
+  setPlaceStrength(strength: number): void {
+    this.lawn.setPlaceStrength(strength);
   }
 
   /** The view of a unit, for tools and tests. */
@@ -833,6 +850,8 @@ export class BattleView {
     for (const { light, base } of this.lights) light.color.copy(base);
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
+    this.lawn.showPlaceable(null);
+    this.lawn.setPlaceStrength(MARKS_QUIET); // the lawn stays for the next battle
     this.resolveCelebrate?.();
     this.resolveCelebrate = null;
   }
@@ -1006,6 +1025,7 @@ export class BattleView {
         break;
       case 'matchEnded':
         this.onFeel({ slowMo: 1.5 });
+        this.bossFx.clear(); // a slam or strike wound up when the match ended never lands: its warnings go
         break;
       case 'statusApplied':
       case 'statusEnded': {
@@ -1054,6 +1074,10 @@ export class BattleView {
       case 'bossDefeated':
         // The winning blow: a long slow motion while it falls (the fall and burst are its unitDied's).
         this.onFeel({ slowMo: 2.5 });
+        break;
+      case 'bossStrike': this.bossFx.strike(e, state); break;
+      case 'projectileFaded': // fog: a puff where the shot gave out; its object leaves with it
+        this.fadeProjectile(e.id, e.x, e.lane);
         break;
       case 'commandRejected':
       case 'heroReady': // the HUD's button pulses; the call is a sound
@@ -1452,6 +1476,15 @@ export class BattleView {
       return;
     }
     this.impact(v1, blocked, target);
+    if (view) this.release(view);
+  }
+
+  /** A shot has flown as far as the fog lets it: it melts into a puff of mist where it is. */
+  private fadeProjectile(id: number, x: number, lane: number): void {
+    const view = this.projectiles.get(id);
+    if (view && view.shown && !view.doomed) v1.copy(view.object.position);
+    else v1.set(x, 0.55, lane + 0.5);
+    this.fx.puff(v1, FADE_PUFF);
     if (view) this.release(view);
   }
 

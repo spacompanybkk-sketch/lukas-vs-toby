@@ -12,6 +12,7 @@ import { PadHead } from './Players';
 import { PlayerPicture } from './PlayerPicture';
 import { ARROW, CHECK, CLOUD_OFF, COIN, CROSS, KEY, LOCK, TABLET } from './pictures';
 import './players.css';
+import { BackButton } from '../BackButton';
 
 type Step =
   | { name: 'code' }
@@ -137,9 +138,7 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
     case 'offline':
       return (
         <div data-screen="grownup" data-step="offline" class="layer layer--menu create">
-          <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={toPlayers}>
-            <span class="ico ico--back" aria-hidden="true" />
-          </button>
+          <BackButton data-action="back" class="screen-back" onClick={toPlayers} />
           <div class="stack">
             <span class="problem px pal-slate" aria-label="No connection"><PixelIcon art={CLOUD_OFF} class="problem__icon" /></span>
             <button type="button" data-action="retry" class="btn btn--big pal-leaf" aria-label="Try again" onClick={() => void (code.current ? openList() : setStep({ name: 'code' }))}>
@@ -151,9 +150,7 @@ export function GrownUp({ portraits = {} }: { portraits?: Record<string, string>
     case 'list':
       return (
         <div data-screen="grownup" data-step="list" class="layer layer--menu grown">
-          <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={toPlayers}>
-            <span class="ico ico--back" aria-hidden="true" />
-          </button>
+          <BackButton data-action="back" class="screen-back" onClick={toPlayers} />
           <div class="grown__panel panel px pal-cream">
             <h2 class="grown__title">Players</h2>
             {step.note !== undefined && <p class="grown__note" data-note>{step.note}</p>}
@@ -246,9 +243,7 @@ function ResetWarning({ who, portraits, onBack, onGo }: { who: RosterEntry; port
   const [armed, setArmed] = useState(false);
   return (
     <div data-screen="grownup" data-step="warn" class="layer layer--menu grown">
-      <button type="button" data-action="back" class="btn btn--square pal-wood screen-back" aria-label="Back" onClick={onBack}>
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="screen-back" onClick={onBack} />
       <div class="grown__panel grown__warn panel px pal-cream">
         <div class="grown__warn-pics">
           <PlayerPicture picture={who.picture} portraits={portraits} class="grown__warn-me" frame={frameColor(who.slot)} />

@@ -62,7 +62,7 @@ const PRIORITY: Record<SfxName, number> = {
   mineBoom: 2, cherryBoom: 2, squash: 2, heroReady: 2, spellReady: 2, vines: 2, sunShower: 2, healingRain: 2,
   rockWall: 2, fog: 2, brainFeast: 2, frenzy: 2, graveRise: 2,
   megaMower: 3, boneStorm: 3, thunderbolt: 3, meteor: 3,
-  titanRoar: 3, titanDefeat: 3, oakCreak: 3, oakDefeat: 3,
+  titanRoar: 3, titanDefeat: 3, oakCreak: 3, oakDefeat: 3, strikeWindup: 3, strikeImpact: 3,
 };
 
 interface Graph { master: GainNode; sfx: GainNode; music: GainNode; noise: AudioBuffer }
@@ -299,11 +299,19 @@ export class AudioEngine {
   }
 
   /**
+   * The theme last asked for by `startMusic` (playing, or waiting for the unlock), or null after
+   * `stopMusic` or before any. Read by tests and tools.
+   */
+  get musicTheme(): Theme | null {
+    return this.wantedTheme;
+  }
+
+  /**
    * Starts a theme from its first bar (the same theme already playing carries on; another one
    * crossfades). Asked before the unlock, it starts at the unlock. It starts straight at the
    * latest `setIntensity` target, even one given before the unlock or before this call.
    */
-  startMusic(theme: 'menu' | 'backyard'): void {
+  startMusic(theme: Theme): void {
     this.wantedTheme = theme;
     if (!this.ready || this.playback?.theme === theme) return;
     this.beginMusic(theme);

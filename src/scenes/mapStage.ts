@@ -1,11 +1,13 @@
 import { BufferAttribute, Color, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import type { BufferGeometry } from 'three';
 import type { Director, StageLike } from '../app/Stage';
-import { LAWN_COLS } from '../render/coords';
+import type { WorldKey } from '../data/worlds';
+import { GRAVE_FROM_COL, LAWN_COLS } from '../render/coords';
 import { MATTE_PLASTIC } from '../render/look';
 import { PALETTE } from '../render/palette';
-import { BoxBatch, seededRandom, shade } from '../render/world/boxes';
-import { buildIslet } from '../render/world/island';
+import { BoxBatch, hash2, seededRandom, shade } from '../render/world/boxes';
+import { buildIsland, buildIslet, inLawn, insideIsland, onGraveSide } from '../render/world/island';
+import { NO_TWIST } from '../sim/lawn';
 import type { Faction } from '../sim/types';
 import { HOP_MS } from '../ui/screens/mapModel';
 import type { StoneState } from '../ui/screens/mapModel';
@@ -16,6 +18,11 @@ export interface Pt { x: number; y: number }
 /** What the map shows: whose path, the stones' states in path order, and the marker's colour. */
 export interface MapView {
   side: Faction;
+  /** The island shown: its arena (its colours) and whether it is locked (grey; no stones then). */
+  arena: WorldKey;
+  locked: boolean;
+  /** All five islands in the side's order; the four not shown hang small in the sky. */
+  islands: { arena: WorldKey; locked: boolean }[];
   stones: { id: string; state: StoneState }[];
   /** The player's frame colour, for the flag on the next stone. */
   frame: string;
@@ -48,10 +55,34 @@ export function pathFor(side: Faction): [number, number][] {
   return PLANT_PATH.map(([x, z]) => [side === 'plants' ? x : LAWN_COLS - x, z]);
 }
 
-/** The four later worlds, greyed, adrift in the sky behind the island: x, y, z, scale. */
-const WORLDS: readonly [number, number, number, number][] = [
-  [-1.9, 0.6, -2.9, 1.2], [1.6, 1.4, -4.6, 1.05], [8.4, 1.4, -4.6, 1.05], [11.9, 0.6, -2.9, 1.2],
+/**
+ * Each world's colours for its small island in the sky on the map (the big island is the stage's
+ * own lawn in the world's real look, `src/render/world/looks.ts`): the lawn's
+ * two tiles, the rim round it, the lip and soil of its side, the rock below, and one accent for
+ * its props. Backyard green; the Meadow a night blue-teal; the Desert orange sand; the Tundra snow
+ * over blue ice; the Citadel dark purple stone with an orange glow.
+ */
+export const ISLAND_COLORS: Readonly<Record<WorldKey, { top: string; topAlt: string; rim: string; side: string; rock: string; accent: string }>> = {
+  backyard: { top: PALETTE.grassLight, topAlt: PALETTE.grassDark, rim: PALETTE.rimGrass, side: PALETTE.soil, rock: PALETTE.islandRock, accent: '#FFD54A' },
+  meadow: { top: '#2F7F86', topAlt: '#28707A', rim: '#25626E', side: '#24435E', rock: '#1F2F4A', accent: '#9FF3E6' },
+  desert: { top: '#E8A85C', topAlt: '#DB9A4E', rim: '#D08F4A', side: '#B66E36', rock: '#8E5532', accent: '#4E9A3A' },
+  tundra: { top: '#F2F8FC', topAlt: '#DDEBF5', rim: '#CFE2EF', side: '#93B4D0', rock: '#64819E', accent: '#7FD0FF' },
+  citadel: { top: '#47375E', topAlt: '#3C2E50', rim: '#352947', side: '#2A2036', rock: '#1E1828', accent: '#FF8A2A' },
+};
+
+/**
+ * Where the islands not shown hang in the sky behind the big one, x, y, z, scale: the worlds after
+ * the shown one on the right (the next one nearest the middle), the worlds before it mirrored on
+ * the left, so the right arrow always leads to an island on the right and the left arrow to one
+ * on the left.
+ */
+const RIGHT_OF_SHOWN: readonly (readonly [number, number, number, number])[] = [
+  [7.4, 1.1, -4.2, 0.85], [9.0, 0.9, -3.8, 0.85], [10.6, 0.7, -3.3, 0.85], [12.2, 0.4, -2.6, 0.85],
 ];
+const skySpot = (offset: number): readonly [number, number, number, number] => {
+  const [x, y, z, scale] = RIGHT_OF_SHOWN[Math.min(Math.abs(offset), RIGHT_OF_SHOWN.length) - 1]!;
+  return offset > 0 ? [x, y, z, scale] : [LAWN_COLS - x, y, z, scale];
+};
 
 /** Stone sizes: 0.1-tile voxels, a disc 11 voxels across, two high. */
 const VOX = 0.1;
@@ -125,9 +156,8 @@ function padlockGeometry(): BufferGeometry {
   return batch.build();
 }
 
-/** An islet greyed out: every vertex colour turned to a cool grey of its brightness. */
-function greyIslet(random: () => number, grave: boolean): BufferGeometry {
-  const geometry = buildIslet(grave, random);
+/** Every vertex colour turned to a cool grey of its brightness (a locked island). */
+function greyOut(geometry: BufferGeometry): BufferGeometry {
   const colors = geometry.getAttribute('color') as BufferAttribute;
   for (let i = 0; i < colors.count; i++) {
     const l = 0.2126 * colors.getX(i) + 0.7152 * colors.getY(i) + 0.0722 * colors.getZ(i);
@@ -136,6 +166,120 @@ function greyIslet(random: () => number, grave: boolean): BufferGeometry {
   }
   colors.needsUpdate = true;
   return geometry;
+}
+
+const luma = (c: Color): number => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+const ref = new Color();
+const tint = new Color();
+
+/**
+ * Repaints a Backyard island (or islet) in `world`'s colours, quad by quad (the geometry is a
+ * `BoxBatch`: four vertices a quad). Each part takes its world colour, with the light and dark
+ * the Backyard had there kept as a factor of the Backyard colour of that part: the tiles' creases,
+ * the rim's edge, the rock's blocks and fade. Tops above the ground are props, painted the accent.
+ */
+function repaint(geometry: BufferGeometry, world: WorldKey): BufferGeometry {
+  const pal = ISLAND_COLORS[world];
+  const pos = geometry.getAttribute('position') as BufferAttribute;
+  const nor = geometry.getAttribute('normal') as BufferAttribute;
+  const col = geometry.getAttribute('color') as BufferAttribute;
+  for (let q = 0; q + 3 < pos.count; q += 4) {
+    const cx = (pos.getX(q) + pos.getX(q + 2)) / 2;
+    const cy = (pos.getY(q) + pos.getY(q + 2)) / 2;
+    const cz = (pos.getZ(q) + pos.getZ(q + 2)) / 2;
+    const ny = nor.getY(q);
+    const grave = onGraveSide(cx, cz);
+    let want: string;
+    let was: string;
+    if (cy > 0.01) {
+      // A prop (a bush, a flower, a gravestone): the world's accent, its faces kept apart by the old light.
+      want = pal.accent;
+      was = PALETTE.leafDark;
+    } else if (ny > 0.5) {
+      if (inLawn(cx, cz)) {
+        const light = (Math.floor(cx) + Math.floor(cz)) % 2 === 0;
+        const graveTile = Math.floor(cx) >= GRAVE_FROM_COL;
+        want = light ? pal.top : pal.topAlt;
+        was = graveTile ? (light ? PALETTE.graveLight : PALETTE.graveDark) : light ? PALETTE.grassLight : PALETTE.grassDark;
+      } else {
+        want = pal.rim;
+        was = grave ? PALETTE.rimGrave : PALETTE.rimGrass;
+      }
+    } else if (ny < -0.5) {
+      want = pal.rock;
+      was = grave ? PALETTE.graveRock : PALETTE.islandRock;
+    } else if (cy > -0.25) {
+      want = pal.rim;
+      was = grave ? PALETTE.rimGrave : PALETTE.leafDark;
+    } else if (cy > -0.8) {
+      want = pal.side;
+      was = grave ? PALETTE.graveSoil : PALETTE.soil;
+    } else {
+      want = pal.rock;
+      was = grave ? PALETTE.graveRock : PALETTE.islandRock;
+    }
+    const base = luma(ref.set(was));
+    // A little speckle per quad, so a big flat colour still reads as blocks.
+    const speckle = 1 + (hash2(Math.floor(cx * 4), Math.floor(cz * 4) + Math.floor(cy * 4) * 97, 61) - 0.5) * 0.05;
+    for (let v = q; v < q + 4; v++) {
+      const factor = Math.min(1.3, Math.max(0.5, luma(tint.setRGB(col.getX(v), col.getY(v), col.getZ(v))) / base)) * speckle;
+      tint.set(want).multiplyScalar(factor);
+      col.setXYZ(v, tint.r, tint.g, tint.b);
+    }
+  }
+  col.needsUpdate = true;
+  return geometry;
+}
+
+/** Spots on the rim, round the lawn, where a world's props stand (kept only where there is island). */
+const PROP_SPOTS: readonly (readonly [number, number])[] = [
+  [-1.3, -0.4], [-1.5, 1.4], [-1.1, 3.4], [-1.4, 5.3], [1.2, -0.45], [3.4, 5.5], [5.2, -0.5], [7.0, 5.5], [8.8, -0.45],
+  [11.3, -0.4], [11.5, 1.6], [11.1, 3.6], [11.4, 5.3],
+];
+
+/** One world's props on the rim, in its accent: glowing mushrooms, cacti, ice crystals or lava with obsidian. */
+function propsGeometry(world: WorldKey): BufferGeometry {
+  const batch = new BoxBatch();
+  const pal = ISLAND_COLORS[world];
+  const random = seededRandom(31 + world.length);
+  for (const [x, z] of PROP_SPOTS) {
+    if (insideIsland(x, z) < 0.2) continue;
+    const s = 0.8 + random() * 0.5;
+    switch (world) {
+      case 'meadow':
+        batch.boxOn(x, 0, z, 0.12 * s, 0.3 * s, 0.12 * s, PALETTE.boneShadow, PALETTE.bone);
+        batch.boxOn(x, 0.3 * s, z, 0.42 * s, 0.14 * s, 0.42 * s, shade(pal.accent, -0.12), pal.accent);
+        break;
+      case 'desert':
+        batch.boxOn(x, 0, z, 0.22 * s, 0.9 * s, 0.22 * s, shade(pal.accent, -0.1), pal.accent);
+        batch.boxOn(x - 0.2 * s, 0.35 * s, z, 0.2 * s, 0.12 * s, 0.16 * s, shade(pal.accent, -0.1), pal.accent);
+        batch.boxOn(x - 0.26 * s, 0.35 * s, z, 0.12 * s, 0.36 * s, 0.14 * s, shade(pal.accent, -0.1), pal.accent);
+        break;
+      case 'tundra':
+        batch.boxOn(x, 0, z, 0.2 * s, 0.7 * s, 0.2 * s, shade(pal.accent, -0.15), pal.accent);
+        batch.boxOn(x + 0.18 * s, 0, z + 0.1, 0.14 * s, 0.42 * s, 0.14 * s, shade(pal.accent, -0.15), '#FFFFFF');
+        break;
+      case 'citadel':
+        batch.boxOn(x, 0, z, 0.6 * s, 0.03, 0.45 * s, shade(pal.accent, -0.2), pal.accent);
+        batch.boxOn(x + 0.38 * s, 0, z - 0.2, 0.18 * s, 0.75 * s, 0.18 * s, '#1A1422', '#2A2036');
+        break;
+      default:
+        batch.boxOn(x, 0, z, 0.08, 0.3 * s, 0.08, PALETTE.leafDark);
+        batch.boxOn(x, 0.3 * s, z, 0.24 * s, 0.12 * s, 0.24 * s, shade(pal.accent, -0.1), pal.accent);
+    }
+  }
+  return batch.build();
+}
+
+/** A locked world's big island: the Backyard's shape in grey, with that world's props in grey. */
+function islandGeometry(world: WorldKey): { ground: BufferGeometry; props: BufferGeometry } {
+  return { ground: greyOut(buildIsland()), props: greyOut(propsGeometry(world)) };
+}
+
+/** A small island in the sky in `world`'s colours, grey when locked. */
+function skyIslet(world: WorldKey, locked: boolean, random: () => number): BufferGeometry {
+  const geometry = repaint(buildIslet(world === 'citadel' || world === 'tundra', random), world);
+  return locked ? greyOut(geometry) : geometry;
 }
 
 const at = new Vector3();
@@ -152,9 +296,11 @@ export function hopHeight(seconds: number): number {
 
 /**
  * The world map, a director on the app's one stage (no renderer, canvas or light of its own). The
- * camera rises so the island reads as a board; eight voxel stones wind across the Backyard, the
- * next one hops with the player's flag on it, and the four later worlds hang greyed in the sky
- * with padlocks. The HTML over it (numbers, stars, pictures, the tap targets) is placed from
+ * camera rises so the island reads as a board: the shown world's island is the stage's own lawn
+ * dressed in that world's look (`stage.setWorld`; a locked one is a grey island of the map's own),
+ * with eight voxel stones winding across it; the next one hops
+ * with the player's flag on it. The side's four other islands hang in the sky, in their colours
+ * when open and greyed with padlocks when locked. The HTML over it (numbers, stars, pictures, the tap targets) is placed from
  * `layout()`. `open` puts it on stage; `close` (or any other director taking the stage) takes
  * everything back out and frees what it made.
  */
@@ -177,12 +323,16 @@ export class MapStage implements Director {
   private stones: { id: string; mesh: Mesh; x: number; z: number }[] = [];
   private nextStone: Mesh | null = null;
   private flag: Mesh | null = null;
+  /** The islands: the big one when it is not the stage's own Backyard lawn, and the four in the sky. */
+  private readonly islands = new Group();
+  private islandsKey = '';
   private worlds: { mesh: Group; y: number; phase: number }[] = [];
 
   constructor(stage: StageLike, { clock = () => performance.now() / 1000 }: { clock?: () => number } = {}) {
     this.stage = stage;
     this.clock = clock;
     this.root.name = 'map';
+    this.islands.name = 'map-islands';
   }
 
   get isOpen(): boolean {
@@ -201,7 +351,7 @@ export class MapStage implements Director {
       this.stage.show(this);
       this.material = new MeshStandardMaterial(MATTE_PLASTIC);
       this.stage.scene.add(this.root);
-      this.buildWorlds();
+      this.root.add(this.islands);
       this.measure();
     }
     this.update(view);
@@ -215,12 +365,20 @@ export class MapStage implements Director {
   update(view: MapView): void {
     const material = this.material;
     if (!this.isOpen || material === null) return;
+    const key = `${view.arena}:${Number(view.locked)}|${view.islands.map((i) => `${i.arena}:${Number(i.locked)}`).join(',')}`;
+    if (key !== this.islandsKey) {
+      this.buildIslands(view);
+      this.islandsKey = key;
+    }
     this.clearPath();
     const path = pathFor(view.side);
-    const pebbles = new Mesh(pebblesGeometry(path), material);
-    pebbles.name = 'map-pebbles';
-    pebbles.receiveShadow = true;
-    this.root.add(pebbles);
+    // A locked island has no stones, so no path between them either.
+    if (view.stones.length > 0) {
+      const pebbles = new Mesh(pebblesGeometry(path.slice(0, view.stones.length)), material);
+      pebbles.name = 'map-pebbles';
+      pebbles.receiveShadow = true;
+      this.root.add(pebbles);
+    }
     const points: Record<string, Pt> = {};
     view.stones.forEach((s, i) => {
       points[s.id] = { x: 0, y: 0 };
@@ -321,40 +479,76 @@ export class MapStage implements Director {
 
   detach(): void {
     this.clearPath();
-    for (const w of this.worlds) {
-      w.mesh.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose(); });
-      this.root.remove(w.mesh);
-    }
-    this.worlds = [];
+    this.clearIslands();
+    this.root.remove(this.islands);
     this.stage.scene.remove(this.root);
     this.material?.dispose();
     this.material = null;
     this.stage.rig.frameSubject(null);
   }
 
-  private buildWorlds(): void {
+  /**
+   * The big island and the four in the sky. An open Backyard is the stage's own lawn (as it is in
+   * battle); any other island hides that lawn and shows its own. The four others hang in the sky
+   * in the side's order, earlier ones on the left: in their colours when open, grey with a
+   * padlock when locked.
+   */
+  private buildIslands(view: MapView): void {
     const material = this.material as MeshStandardMaterial;
+    this.clearIslands();
+    // An open island is the stage's own lawn dressed in that world's look (sky, lights and weather
+    // too); a locked one is a grey island of the map's own, under the Backyard's sky.
+    const own = view.locked;
+    this.stage.lawn.group.visible = !own;
+    this.stage.setWorld(own ? 'backyard' : view.arena, NO_TWIST);
+    if (own) {
+      const { ground, props } = islandGeometry(view.arena);
+      const island = new Mesh(ground, material);
+      island.name = 'map-island';
+      island.castShadow = true;
+      island.receiveShadow = true;
+      const extras = new Mesh(props, material);
+      extras.name = 'map-island-props';
+      extras.castShadow = true;
+      this.islands.add(island, extras);
+    }
     const random = seededRandom(77);
-    WORLDS.forEach(([x, y, z, scale], i) => {
+    const shown = view.islands.findIndex((i) => i.arena === view.arena);
+    view.islands.forEach((other, index) => {
+      if (index === shown) return;
+      const i = this.worlds.length;
+      const [x, y, z, scale] = skySpot(index - shown);
       const group = new Group();
-      group.name = `map-world-${i + 2}`;
-      const islet = new Mesh(greyIslet(random, i >= 2), material);
+      group.name = `map-world-${other.arena}`;
+      const islet = new Mesh(skyIslet(other.arena, other.locked, random), material);
       islet.scale.setScalar(scale);
       islet.rotation.y = (random() - 0.5) * 0.6;
       islet.castShadow = true;
-      const lock = new Mesh(padlockGeometry(), material);
-      lock.position.set(0.1, 0.05, 0.2);
-      lock.castShadow = true;
-      group.add(islet, lock);
+      group.add(islet);
+      if (other.locked) {
+        const lock = new Mesh(padlockGeometry(), material);
+        lock.position.set(0.1, 0.05, 0.2);
+        lock.castShadow = true;
+        group.add(lock);
+      }
       group.position.set(x, y, z);
-      this.root.add(group);
+      this.islands.add(group);
       this.worlds.push({ mesh: group, y, phase: i * 1.7 });
     });
   }
 
+  /** Frees the islands and shows the stage's lawn again. */
+  private clearIslands(): void {
+    this.islands.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose(); });
+    this.islands.clear();
+    this.worlds = [];
+    this.islandsKey = '';
+    this.stage.lawn.group.visible = true;
+  }
+
   private clearPath(): void {
     for (const o of [...this.root.children]) {
-      if (o.name.startsWith('map-world-')) continue;
+      if (o === this.islands) continue;
       o.traverse((c) => { if (c instanceof Mesh) c.geometry.dispose(); });
       this.root.remove(o);
     }

@@ -186,9 +186,12 @@ describe('the tutorial through the app (Task 6)', () => {
     act(() => go({ name: 'map', side: 'plants', card: 'p1-1' }));
     tap('[data-action="start-level"]');
     expect(made[made.length - 1]!.c.tutorial).toBeNull();
-    const stars = Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`p1-${i + 1}`, 1 as const]));
+    const stars = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`p1-${i + 1}`, 1 as const]));
     session.update((s) => ({ ...s, plants: { stars, unlocked: ['potatoMine'] } }));
+    // The conveyor level teaches the belt now; the survive level after it teaches nothing.
     act(() => go({ name: 'map', side: 'plants', card: 'p1-5' }));
+    expect(q('[data-action="replay-tutorial"]')).not.toBeNull();
+    act(() => go({ name: 'map', side: 'plants', card: 'p1-6' }));
     expect(q('[data-screen="level-card"]')).not.toBeNull();
     expect(q('[data-action="replay-tutorial"]')).toBeNull();
   });

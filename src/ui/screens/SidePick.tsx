@@ -5,6 +5,7 @@ import { go } from '../../app/store';
 import type { CardKey, Faction } from '../../sim/types';
 import type { BoyPortraits } from '../hud/BaseBars';
 import './screens.css';
+import { BackButton } from '../BackButton';
 
 export interface SidePickProps {
   portraits?: BoyPortraits;
@@ -71,9 +72,7 @@ export function SidePick({ portraits = {}, seed = () => Date.now(), difficulty, 
   const nudge = nudges === 0 ? '' : nudges % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b';
   return (
     <div data-screen="sidepick" class="layer layer--menu sidepick">
-      <button type="button" data-action="back" class="btn btn--square pal-wood sidepick__back" aria-label="Back" onClick={onBack}>
-        <span class="ico ico--back" aria-hidden="true" />
-      </button>
+      <BackButton data-action="back" class="sidepick__back" onClick={onBack} />
       <div class="sidepick__body stack">
         <div class="sidepick__sides">
           {SIDES.map((s) => {

@@ -235,6 +235,14 @@ button {
   padding: 0 0 var(--px-bev);
   --ico-size: calc(var(--btn-h) * 0.58);
 }
+/* The shared Back button (src/ui/BackButton.tsx): the arrow, then the word BACK, on one line. */
+.back {
+  min-width: var(--btn-h);
+  padding: 0 calc(var(--btn-h) * 0.24) var(--px-bev) calc(var(--btn-h) * 0.18);
+  gap: calc(var(--btn-h) * 0.12);
+  --ico-size: calc(var(--btn-h) * 0.5);
+}
+.back__word { font-size: calc(var(--btn-h) * 0.34); line-height: 1; color: var(--white); white-space: nowrap; position: relative; top: 0.04em; }
 .btn--square.btn--small {
   width: max(var(--tap-min), var(--hud-h));
   min-height: max(var(--tap-min), var(--hud-h));

@@ -31,6 +31,7 @@ import { CameraRig } from './CameraRig';
 import { BLOOM_THRESHOLD, EXPOSURE, SUN_TRAVEL } from './look';
 import { PALETTE } from './palette';
 import { RenderScale } from './RenderScale';
+import { LOOKS, type Grade, type Look } from './world/looks';
 
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -110,6 +111,12 @@ export class Renderer {
   private height = 1;
   private lastFrameAt = 0;
   private contextLost = false;
+  /** The current world's colour grade, which every rebuild of the chain applies. */
+  private grade: Grade = LOOKS.backyard.grade;
+  private hueSaturation: HueSaturationEffect | null = null;
+  private brightnessContrast: BrightnessContrastEffect | null = null;
+  private vignette: VignetteEffect | null = null;
+  private bloom: BloomEffect | null = null;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.canvas = canvas;
@@ -214,6 +221,38 @@ export class Renderer {
    */
   get webgl(): WebGLRenderer {
     return this.gl;
+  }
+
+  /**
+   * Lights, grade and backdrop of a world's look (art bible section 4 holds the Backyard's).
+   * Changes values only: no pass, buffer or shader is made.
+   */
+  setLook(look: Pick<Look, 'lights' | 'grade' | 'backdrop'>): void {
+    const l = look.lights;
+    this.sun.color.set(l.sun);
+    this.sun.intensity = l.sunIntensity;
+    this.fill.color.set(l.fillSky);
+    this.fill.groundColor.set(l.fillGround);
+    this.fill.intensity = l.fillIntensity;
+    this.bounce.color.set(l.bounce);
+    this.bounce.intensity = l.bounceIntensity;
+    (this.scene.background as Color).set(look.backdrop);
+    this.grade = look.grade;
+    this.applyGrade();
+  }
+
+  private applyGrade(): void {
+    const g = this.grade;
+    if (this.hueSaturation) this.hueSaturation.saturation = g.saturation;
+    if (this.brightnessContrast) {
+      this.brightnessContrast.brightness = g.brightness;
+      this.brightnessContrast.contrast = g.contrast;
+    }
+    if (this.vignette) this.vignette.darkness = g.vignette;
+    if (this.bloom) {
+      this.bloom.intensity = g.bloom.intensity;
+      this.bloom.mipmapBlurPass.radius = g.bloom.radius;
+    }
   }
 
   /** `low`: no ambient occlusion, no bloom, 1024 shadows. `medium`: bloom, 2048 shadows. `high`: everything. */
@@ -377,23 +416,25 @@ export class Renderer {
     if (quality !== 'low') {
       // The threshold sits above anything sunlight alone can reach, so only glowing parts bloom.
       effects.push(
-        new BloomEffect({
+        (this.bloom = new BloomEffect({
           luminanceThreshold: BLOOM_THRESHOLD,
           luminanceSmoothing: 0.35,
           mipmapBlur: true,
-          intensity: 0.9,
-          radius: 0.7,
+          intensity: this.grade.bloom.intensity,
+          radius: this.grade.bloom.radius,
           levels: 6,
-        }),
+        })),
       );
+    } else {
+      this.bloom = null;
     }
     effects.push(
       // "Cineon" is postprocessing's name for the Hejl and Burgess-Dawson filmic curve. It
       // works on each colour channel alone and so keeps the palette saturated.
       new ToneMappingEffect({ mode: ToneMappingMode.CINEON }),
-      new HueSaturationEffect({ saturation: 0.1 }),
-      new BrightnessContrastEffect({ brightness: 0, contrast: 0.04 }),
-      new VignetteEffect({ offset: 0.3, darkness: 0.34 }),
+      (this.hueSaturation = new HueSaturationEffect({ saturation: this.grade.saturation })),
+      (this.brightnessContrast = new BrightnessContrastEffect({ brightness: this.grade.brightness, contrast: this.grade.contrast })),
+      (this.vignette = new VignetteEffect({ offset: 0.3, darkness: this.grade.vignette })),
     );
     const lookPass = new EffectPass(camera, ...effects);
     composer.addPass(lookPass);

@@ -1,8 +1,8 @@
 import { type BufferGeometry, type Color } from 'three';
 import { GRAVE_FROM_COL, LAWN_COLS, LAWN_LANES, PLANT_BASE_X, ZOMBIE_BASE_X } from '../coords';
-import { PALETTE } from '../palette';
 import { BoxBatch, hash2, shade, valueNoise } from './boxes';
-import { bone, bush, flower, gravestone } from './props';
+import { LOOKS, type Ground, type Look } from './looks';
+
 
 /** Island voxels are a quarter of a tile. */
 const CELL = 0.25;
@@ -50,7 +50,7 @@ export function onGraveSide(x: number, z: number): boolean {
 export const inLawn = (x: number, z: number): boolean => x > 0 && x < LAWN_COLS && z > 0 && z < LAWN_LANES;
 
 /** Colour of the top face of the ground voxel centred on (x, z). */
-function groundColor(x: number, z: number, i: number, k: number): Color {
+function groundColor(g: Ground, x: number, z: number, i: number, k: number): Color {
   const speckle = (hash2(i, k, 1) - 0.5) * 0.022;
   const patch = (valueNoise(x * 0.55, z * 0.55, 7) - 0.5) * 0.04;
   if (inLawn(x, z)) {
@@ -58,8 +58,8 @@ function groundColor(x: number, z: number, i: number, k: number): Color {
     const lane = Math.floor(z);
     const light = (col + lane) % 2 === 0;
     const tile = (hash2(col, lane, 2) - 0.5) * 0.014;
-    if (col < GRAVE_FROM_COL) return shade(light ? PALETTE.grassLight : PALETTE.grassDark, speckle + patch + tile);
-    return shade(light ? PALETTE.graveLight : PALETTE.graveDark, speckle * 0.8 + patch * 0.6 + tile);
+    if (col < GRAVE_FROM_COL) return shade(light ? g.grassLight : g.grassDark, speckle + patch + tile);
+    return shade(light ? g.graveLight : g.graveDark, speckle * 0.8 + patch * 0.6 + tile);
   }
   // The rim falls away a little towards the island's edge, which gives the slab some form.
   const edge = 1 - 0.14 * (1 - Math.min(1, Math.max(0, insideIsland(x, z) / 0.9)));
@@ -67,9 +67,9 @@ function groundColor(x: number, z: number, i: number, k: number): Color {
     // Toby's base stands on worn flagstones, half a tile each.
     const paved = x > ZOMBIE_BASE_X[0] && x < ZOMBIE_BASE_X[1] + 0.25 && z > 0 && z < LAWN_LANES;
     const slab = paved ? (hash2(Math.floor(x / 0.5), Math.floor(z / 0.5), 31) - 0.5) * 0.05 + 0.02 : 0;
-    return shade(PALETTE.rimGrave, speckle + patch * 0.7 + slab).multiplyScalar(edge);
+    return shade(g.rimGrave, speckle + patch * 0.7 + slab).multiplyScalar(edge);
   }
-  return shade(PALETTE.rimGrass, speckle * 1.3 + patch * 1.2).multiplyScalar(edge);
+  return shade(g.rimGrass, speckle * 1.3 + patch * 1.2).multiplyScalar(edge);
 }
 
 /**
@@ -95,7 +95,7 @@ function crease(vx: number, vz: number): number {
 }
 
 /** Colour of the side of the island voxel in layer `n` (0 is the lip) at (x, z). */
-function wallColor(x: number, z: number, n: number): Color {
+function wallColor(g: Ground, x: number, z: number, n: number): Color {
   const grave = onGraveSide(x, z);
   // Colours are picked per half-tile block so the rock reads as big chunks.
   const bx = Math.floor(x / 0.5);
@@ -104,24 +104,24 @@ function wallColor(x: number, z: number, n: number): Color {
   const block = hash2(bx * 31 + by * 7, bz * 17 - by * 3, 21);
   const speckle = (hash2(Math.floor(x / CELL) * 13 + n * 5, Math.floor(z / CELL) * 11 - n, 23) - 0.5) * 0.02;
 
-  if (n === 0) return shade(grave ? PALETTE.rimGrave : PALETTE.leafDark, grave ? -0.02 + speckle : 0.02 + speckle);
+  if (n === 0) return shade(grave ? g.rimGrave : g.lip, grave ? -0.02 + speckle : 0.02 + speckle);
 
   // The soil band is two or three layers thick depending on the block.
   const soilLayers = 2 + (block > 0.55 ? 1 : 0);
   if (n <= soilLayers) {
     const dark = n === soilLayers || block < 0.18;
-    const soil = grave ? PALETTE.graveSoil : dark ? PALETTE.soilDark : PALETTE.soil;
+    const soil = grave ? g.graveSoil : dark ? g.soilDark : g.soil;
     return shade(soil, (grave && dark ? -0.035 : 0) + speckle + (block - 0.5) * 0.03);
   }
 
   const depth = n * CELL;
   const fade = 1 - 0.24 * Math.min(1, Math.max(0, (depth - 0.9) / 3.6));
   const tone = block < 0.2 ? -0.07 : block < 0.5 ? -0.025 : block < 0.82 ? 0.015 : 0.06;
-  return shade(grave ? PALETTE.graveRock : PALETTE.islandRock, tone + speckle).multiplyScalar(fade);
+  return shade(grave ? g.graveRock : g.islandRock, tone + speckle).multiplyScalar(fade);
 }
 
 /** The island as one mesh: grass, tiles and graveyard strip on top, soil rim and rock underneath. */
-export function buildIsland(): BufferGeometry {
+export function buildIsland(g: Ground = LOOKS.backyard.ground): BufferGeometry {
   const depth = new Float32Array(GRID_NX * GRID_NZ);
   for (let k = 0; k < GRID_NZ; k++) {
     for (let i = 0; i < GRID_NX; i++) {
@@ -145,7 +145,7 @@ export function buildIsland(): BufferGeometry {
       const cx = x0 + CELL / 2;
       const cz = z0 + CELL / 2;
 
-      const top = groundColor(cx, cz, i, k);
+      const top = groundColor(g, cx, cz, i, k);
       const lawn = inLawn(cx, cz);
       // Outside the lawn only the vertices that lie on its outline are darkened.
       const tint = (vx: number, vz: number): Color => {
@@ -160,12 +160,12 @@ export function buildIsland(): BufferGeometry {
         tint(x0, z0),
       ]);
       // The underside is never seen but it is what casts the island's own shadow.
-      batch.quad([x0, -d, z0], [x1, -d, z0], [x1, -d, z1], [x0, -d, z1], [0, -1, 0], wallColor(cx, cz, Math.round(d / CELL)));
+      batch.quad([x0, -d, z0], [x1, -d, z0], [x1, -d, z1], [x0, -d, z1], [0, -1, 0], wallColor(g, cx, cz, Math.round(d / CELL)));
 
       const layers = Math.round(d / CELL);
       const wall = (neighbour: number, face: (yb: number, yt: number, color: Color) => void): void => {
         for (let n = Math.round(neighbour / CELL); n < layers; n++) {
-          face(-(n + 1) * CELL, -n * CELL, wallColor(cx, cz, n));
+          face(-(n + 1) * CELL, -n * CELL, wallColor(g, cx, cz, n));
         }
       };
       wall(depthAt(i, k + 1), (yb, yt, c) => batch.quad([x0, yb, z1], [x1, yb, z1], [x1, yt, z1], [x0, yt, z1], [0, 0, 1], c));
@@ -178,27 +178,22 @@ export function buildIsland(): BufferGeometry {
 }
 
 /**
- * A small rock adrift beside the island, its top at y = 0: a garden one with a shrub and
- * flowers, or a `grave` one with a gravestone and a bone.
+ * A small rock adrift beside the island, its top at y = 0: a garden one, or a `grave` one off
+ * the zombies' end, in `look`'s ground with what that look stands on it (the Backyard: a shrub
+ * and flowers, or a gravestone and a bone).
  */
-export function buildIslet(grave: boolean, random: () => number): BufferGeometry {
+export function buildIslet(grave: boolean, random: () => number, look: Pick<Look, 'ground' | 'islet'> = LOOKS.backyard): BufferGeometry {
+  const g = look.ground;
   const batch = new BoxBatch();
-  const top = grave ? PALETTE.rimGrave : PALETTE.rimGrass;
-  const lip = grave ? shade(PALETTE.rimGrave, -0.03) : PALETTE.leafDark;
-  const rock = grave ? PALETTE.graveRock : PALETTE.islandRock;
+  const top = grave ? g.rimGrave : g.rimGrass;
+  const lip = grave ? shade(g.rimGrave, -0.03) : g.lip;
+  const rock = grave ? g.graveRock : g.islandRock;
   batch.boxOn(0, -0.25, 0, 1.5, 0.25, 1.25, lip, top);
   batch.boxOn(0.5, -0.25, 0.5, 0.75, 0.25, 0.75, lip, top);
-  batch.boxOn(-0.05, -0.75, 0.05, 1.25, 0.5, 1.0, grave ? PALETTE.graveSoil : PALETTE.soil);
+  batch.boxOn(-0.05, -0.75, 0.05, 1.25, 0.5, 1.0, grave ? g.graveSoil : g.soil);
   batch.boxOn(0.1, -1.25, 0, 1.0, 0.5, 0.75, shade(rock, -0.02));
   batch.boxOn(-0.1, -1.75, 0.1, 0.5, 0.5, 0.5, shade(rock, -0.06));
   batch.boxOn(0.35, -1.5, -0.1, 0.25, 0.25, 0.25, shade(rock, 0.03));
-  if (grave) {
-    gravestone(batch, -0.1, 0, 0.42, 0.2, 0.1);
-    bone(batch, 0.4, 0.35, 0.8, 1.3);
-  } else {
-    bush(batch, -0.15, -0.1, 0.9, random);
-    flower(batch, 0.45, 0.3, PALETTE.petal, 1.6);
-    flower(batch, 0.25, 0.42, PALETTE.bone, 1.4);
-  }
+  look.islet(batch, grave, random);
   return batch.build();
 }

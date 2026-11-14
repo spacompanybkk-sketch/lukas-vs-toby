@@ -9,6 +9,7 @@ import { factionOf, isCard } from '../data/units';
 import { checkBeltConfig, plantAt } from './belt';
 import { checkBoss, spawnBoss } from './boss';
 import { checkEndless } from './endless';
+import { checkLawn } from './lawn';
 import { spawnAtLevel } from './spawn';
 
 export { spawnAtLevel } from './spawn'; // where the level code looked for it first
@@ -39,7 +40,8 @@ const NON_CARDS: ReadonlySet<UnitKey> = new Set<UnitKey>(['boneMinion', 'rock'])
  *   Bone Minion or rock; never a boss, which comes through `boss`), its own side, a lane 0..4, a level 1..`MAX_LEVEL`; a plant's `x` the
  *   middle of a plant tile (col + 0.5, col 0..7), a zombie's (optional in the script) a number
  *   0..`ZOMBIE_SPAWN_X`; no two prepared plants on one tile;
- * - script ticks whole, not below 0, in order (ties keep list order), and before `goalTicks`.
+ * - script ticks whole, not below 0, in order (ties keep list order), and before `goalTicks`;
+ * - the lawn's twists (see `checkLawn`).
  */
 export function checkLevel(c: MatchConfig, b: Balance): void {
   if (!MODES.includes(c.mode)) throw new RangeError(`mode "${String(c.mode)}" is none of ${MODES.join(', ')}`);
@@ -57,6 +59,7 @@ export function checkLevel(c: MatchConfig, b: Balance): void {
   if (c.belt !== null) checkBeltConfig(c.belt, b);
   checkBoss(c, b);
   checkEndless(c, b);
+  checkLawn(c, b);
   if (typeof c.noEnergy !== 'boolean') throw new RangeError(`noEnergy ${String(c.noEnergy)} is not true or false`);
   if (c.invulnerableBase !== null && c.invulnerableBase !== 'zombies') {
     // The clock's winner is always the plants, so a plant base that cannot be hurt would make a

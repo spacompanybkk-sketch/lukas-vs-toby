@@ -28,8 +28,11 @@ export type Screen =
   | { name: 'play' }
   /** Adventure or Free Play: which side (the two boys). */
   | { name: 'side'; mode: 'adventure' | 'free' }
-  /** The Adventure map of `side`; with `card`, that level's card is open over it. */
-  | { name: 'map'; side: Faction; card?: string }
+  /**
+   * The Adventure map of `side`; with `card`, that level's card is open over it. `world`: the
+   * island shown (left out: the card's world, else the world of the next level).
+   */
+  | { name: 'map'; side: Faction; card?: string; world?: LevelDef['world'] }
   | { name: 'battle'; options: BattleOptions }
   | { name: 'unsupported'; reason: 'webgl2' | 'context-lost' };
 

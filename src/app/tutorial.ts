@@ -151,6 +151,7 @@ export class Tutorial {
         case 'card': case 'tile': case 'unit': return has(st.card);
         case 'hero': return s.config.heroes[me];
         case 'spell': return st.index < s.players[me].spells.length;
+        case 'belt': case 'belt-tile': return s.config.belt?.side === me;
       }
     });
     this.update();
@@ -164,7 +165,8 @@ export class Tutorial {
   /** True when the tutorial starts with a card to pick (the controller then picks none for the player). */
   get startsWithCard(): boolean {
     const first = this.steps[0];
-    return first !== undefined && first.after === undefined && (first.show === 'card' || first.show === 'tile' || first.show === 'unit');
+    return first !== undefined && first.after === undefined
+      && (first.show === 'card' || first.show === 'tile' || first.show === 'unit' || first.show === 'belt' || first.show === 'belt-tile');
   }
 
   /**
@@ -229,13 +231,20 @@ export class Tutorial {
         if (action.kind === 'spell') return action.key === key;
         return action.kind === 'command' && action.cmd.type === 'spell' && action.cmd.spell === key;
       }
+      // Any card the belt brings will do: the belt is the only place a card can be picked from.
+      case 'belt':
+        return action.kind === 'select';
+      case 'belt-tile':
+        if (action.kind === 'select') return true;
+        return action.kind === 'command' && this.host.selected() !== null && this.isStepTile(action.cmd);
     }
   }
 
-  /** The player picked `card` (tray or belt): a `card` step for it is done (when armed or usable). */
+  /** The player picked `card` (tray or belt): a `card` step for it, or a `belt` step, is done (when armed or usable). */
   selected(card: CardKey): void {
     const step = this.current;
-    if (step !== null && step.show === 'card' && step.card === card && this.started && this.ready) this.done();
+    const ends = step !== null && ((step.show === 'card' && step.card === card) || step.show === 'belt');
+    if (ends && this.started && this.ready) this.done();
     else this.update();
   }
 
@@ -249,7 +258,7 @@ export class Tutorial {
     if (this.current === null) return;
     this.sent = cmd;
     const step = this.current;
-    this.sentIsStep = step.show !== 'tile' || this.isStepTile(cmd);
+    this.sentIsStep = (step.show !== 'tile' && step.show !== 'belt-tile') || this.isStepTile(cmd);
   }
 
   /** The events of one match step: a step's action that landed ends it. */
@@ -392,6 +401,23 @@ export class Tutorial {
         if (target === null) break;
         this.aim = this.host.spellPicked() !== key ? { kind: 'spell', index: step.index, key } : { kind: 'tile', lane: target.lane, col: target.col };
         this.ready = true; // spellTarget checked the command
+        break;
+      }
+      case 'belt': {
+        const front = s.config.belt?.side === side ? s.belt[0] : undefined;
+        if (front === undefined) break;
+        this.aim = { kind: 'card', card: front };
+        this.ready = true; // a card waiting on the belt can always be picked
+        break;
+      }
+      case 'belt-tile': {
+        const picked = this.host.selected();
+        const card = picked ?? s.belt[0];
+        if (card === undefined) break;
+        this.tile = this.placeTile(card, { lane: step.lane, col: step.col });
+        if (this.tile === null) break;
+        this.aim = picked === null ? { kind: 'card', card } : { kind: 'tile', lane: this.tile.lane, col: this.tile.col };
+        this.ready = true; // placeTile checked the command
         break;
       }
     }
