@@ -4,11 +4,11 @@ import { BACKYARD } from './backyard';
 
 import { TEACHES } from './teaches';
 
-/**
- * Every Adventure level there is (the Backyard for now; worlds 2–5 join with their content plans),
- * each with its tutorial from `TEACHES` (a level's own `teaches` when the map has none).
- */
-export const LEVELS: readonly LevelDef[] = BACKYARD.map((def) => {
+/** The per-world level files, joined (the Backyard for now; worlds 2–5 join with their content plans). */
+const ALL: readonly LevelDef[] = [...BACKYARD];
+
+/** Every Adventure level there is, each with its tutorial from `TEACHES` (a level's own `teaches` when the map has none). */
+export const LEVELS: readonly LevelDef[] = ALL.map((def) => {
   const steps = TEACHES[def.id];
   return steps === undefined ? def : { ...def, teaches: [...steps] };
 });
