@@ -22,7 +22,7 @@
   gap: 12px;
 }
 .battle__left { justify-self: start; }
-.battle__right { justify-self: end; }
+.battle__right { justify-self: end; grid-column: 3; } /* stays right when there is no clock */
 .battle__bases {
   position: absolute;
   top: calc(var(--gutter-top) + var(--hud-h) + var(--px-lip) + clamp(10px, 1.8vh, 20px));

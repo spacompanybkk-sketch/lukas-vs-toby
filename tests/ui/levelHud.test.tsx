@@ -159,6 +159,19 @@ describe('the battle screen in a level', () => {
     expect(q('[data-hud="energy"]')).not.toBeNull();
   });
 
+  it('one picture of time: a level with a clock bar (survive, conveyor, breakthrough) has no count-up clock; a battle keeps it', () => {
+    for (const id of ['p1-6', 'p1-5', 'z1-3', 'z1-5']) {
+      const { s } = levelSession(id);
+      screen(s);
+      expect(q('[data-hud="clock-goal"]'), id).not.toBeNull();
+      expect(q('[data-hud="topbar"]'), id).toBeNull();
+      expect(q('[data-hud="pause"]'), id).not.toBeNull();
+    }
+    const { s } = levelSession('p1-4');
+    screen(s);
+    expect(q('[data-hud="topbar"]')).not.toBeNull();
+  });
+
   it('a script with no clock (the boss level): the wave bar alone', () => {
     const { s } = levelSession('p1-8');
     screen(s);

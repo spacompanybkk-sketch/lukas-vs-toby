@@ -181,7 +181,9 @@ export function BattleScreen(props: BattleScreenProps) {
         <div class="battle__left">
           {ctl.level?.noEnergy !== true && <LiveEnergy hud={hud} side={side} anchorRef={energyRef} teach={ctl.tutorial?.sunPulse} />}
         </div>
-        {ctl.endless != null ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} /> : <LiveClock hud={hud} />}
+        {ctl.endless != null
+          ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} />
+          : countsUp(ctl.level ?? null) && <LiveClock hud={hud} />}
         <div class="battle__right">
           <LivePause ctl={ctl} />
         </div>
@@ -230,6 +232,14 @@ function ResultClears({ hud, resultReady, clear, children }: { hud: HudSignals; 
   const up = hud.result.value !== null && (resultReady === undefined || resultReady.value);
   if (clear && up) return null;
   return <>{children}</>;
+}
+
+/**
+ * Whether the count-up clock shows at the top: not in a level whose goal bar is a clock that drains
+ * (two pictures of time that disagree), so a child sees one clock only.
+ */
+export function countsUp(info: LevelHudInfo | null): boolean {
+  return info === null || info.goalSeconds === null;
 }
 
 /** A level's goal: the clock bar (with the star marks for Breakthrough) and the wave bar; gone at the end. */
