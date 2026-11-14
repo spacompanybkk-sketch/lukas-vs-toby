@@ -32,6 +32,7 @@
 //                                           when named
 //   --no-portraits                          skip the portrait warm-up timing
 //   --reuse-build                           serve dist/ as it is (default: build first)
+//   --dpr=2                                 only these device scales (default: 1,2)
 //   --adaptive                              let the render scale adapt as in the game (default:
 //                                           held at 1, the resolution the budget is set for)
 // It reports; it never fails the build. It warns loudly if the GPU is software or the window is
@@ -56,6 +57,7 @@ const SCENES = [
   { name: 'oak-30', query: '', setup: 'oak' },
   { name: 'free-w20', query: '', setup: 'free20' },
   { name: 'map', query: '', setup: 'map' },
+  { name: 'map-zombies', query: '', setup: 'mapZombies', optIn: true },
   // Worlds (opt-in, by name): mix-150 in each look with its weather and sample twist tiles.
   ...['backyard', 'meadow', 'desert', 'tundra', 'citadel'].map((world) => ({
     name: `mix-150-${world}`, query: `scene=stress&mix&units=150&world=${world}`, optIn: true,
@@ -68,7 +70,9 @@ const SCENES = [
  *             with a scripted wave walking, both bases and the boss kept whole while it is measured;
  * - oak       z1-8 mid-barrage: 30 zombies on the lawn, the Elder Oak lobbing acorns;
  * - free20    Free Play survive at wave 20: a full garden against the twentieth wave;
- * - map       the Adventure map of the plants, half-way done.
+ * - map       the Adventure map of the plants, half-way done (the Backyard island);
+ * - mapZombies the zombies' map (opt-in, `--scenes=map-zombies`): the Citadel island in its real
+ *             look, embers and all.
  * Every tutorial is marked done first, so no glove holds the match.
  */
 const GAME_SETUPS = {
@@ -216,13 +220,17 @@ const GAME_SETUPS = {
       return { wave: s.wave, units: s.units.length, plants: s.units.filter((u) => u.faction === 'plants').length, zombies: s.units.filter((u) => u.faction === 'zombies').length, incoming: s.incoming.length };
     });
   },
-  async map(page) {
+  async map(page, side = 'plants') {
     await this.login(page);
     await page.click('[data-home="play"]');
     await page.click('[data-play="adventure"]');
-    await page.click('[data-side="plants"]');
+    await page.click(`[data-side="${side}"]`);
     await page.waitForFunction(() => window.__lvt.map?.isOpen === true);
-    return { map: 'plants' };
+    const world = await page.evaluate(() => window.__lvt.stage.lawn.world);
+    return { map: side, world };
+  },
+  async mapZombies(page) {
+    return this.map(page, 'zombies');
   },
 };
 const BUDGET_MS = { 1: 10, 2: 16.6 };
@@ -231,7 +239,7 @@ const args = process.argv.slice(2);
 const listArg = (name) => args.find((a) => a.startsWith(`--${name}=`))?.split('=')[1].split(',');
 const IPAD_NOTE = 'iPad speed is UNPROVEN: nothing here ran on an iPad. These numbers are a MacBook Air M3 in Chromium. '
   + 'Measure on the kids\' iPad in Safari with ?fps (see the README).';
-const SCALE_FACTORS = [1, 2];
+const SCALE_FACTORS = (listArg('dpr') ?? ['1', '2']).map(Number);
 const MODES = [
   { name: 'vsync', args: [], throttle: 1 },
   { name: 'novsync', args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'], throttle: 1 },
