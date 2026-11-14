@@ -53,7 +53,7 @@ export function lavaTile(index: number): { lane: number; col: number } {
   return { lane: Math.floor(index / COLS), col: index % COLS };
 }
 
-// ---- Fog: low sheets of blocky mist ----------------------------------------------------------
+// ---- Fog: one low sheet of blocky mist -------------------------------------------------------
 
 const MIST_VERTEX = /* glsl */ `
   varying vec2 vXZ;
@@ -64,42 +64,49 @@ const MIST_VERTEX = /* glsl */ `
   }
 `;
 
-// Value noise sampled on an eighth-tile grid, so the mist is made of hard-edged pixels that
-// drift a cell at a time. Thin over the lawn's ends, where the bases stand.
+// One sheet in eighth-tile pixels: two drifting layers of value noise, each pixel either clear or
+// one of two hard steps of thin mist (no smooth gradient anywhere). Its edge round the lawn is an
+// ordered (Bayer) dither on the same pixel grid, so it breaks up in blocks rather than fading.
 const MIST_FRAGMENT = /* glsl */ `
   uniform float uTime;
-  uniform float uSeed;
   uniform float uOpacity;
   uniform vec3 uColor;
   varying vec2 vXZ;
   ${DISPLAY_TO_SCENE_GLSL}
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453); }
-  float noise(vec2 p) {
+  float hash(vec2 p, float seed) { return fract(sin(dot(p, vec2(127.1, 311.7)) + seed) * 43758.5453); }
+  float noise(vec2 p, float seed) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+    return mix(mix(hash(i, seed), hash(i + vec2(1.0, 0.0), seed), f.x),
+               mix(hash(i + vec2(0.0, 1.0), seed), hash(i + vec2(1.0, 1.0), seed), f.x), f.y);
   }
+  float layer(vec2 xz, vec2 drift, float seed) {
+    vec2 p = floor((xz + drift) * 8.0) / 8.0;
+    return noise(p * 0.7, seed) * 0.65 + noise(p * 1.9 + 7.3, seed) * 0.35;
+  }
+  float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+  float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
   void main() {
-    vec2 p = floor((vXZ + vec2(uTime * 0.18, uTime * 0.05)) * 8.0) / 8.0;
-    float n = noise(p * 0.7) * 0.65 + noise(p * 1.9 + 7.3) * 0.35;
-    float a = smoothstep(0.42, 0.78, n);
-    // Fades out past the lawn's edges.
-    float edge = smoothstep(-1.2, 0.4, vXZ.x) * (1.0 - smoothstep(9.6, 11.2, vXZ.x))
-               * smoothstep(-1.0, 0.2, vXZ.y) * (1.0 - smoothstep(4.8, 6.0, vXZ.y));
-    a *= edge * uOpacity;
-    if (a < 0.01) discard;
-    gl_FragColor = vec4(displayToScene(uColor), a);
+    vec2 cell = floor(vXZ * 8.0);
+    vec2 c = (cell + 0.5) / 8.0;
+    // 1 well inside the lawn, 0 a tile and a bit past its edges; dithered to whole pixels.
+    float inside = min(min(c.x + 0.9, 10.9 - c.x), min(c.y + 0.7, 5.7 - c.y)) / 1.4;
+    if (clamp(inside, 0.0, 1.0) <= bayer4(cell)) discard;
+    float low = layer(vXZ, vec2(uTime * 0.18, uTime * 0.05), 0.0);
+    float high = layer(vXZ, vec2(-uTime * 0.11, uTime * 0.07), 3.7);
+    float steps = step(0.56, low) + step(0.66, high);
+    if (steps < 0.5) discard;
+    // Thinner still over the zombies' dark strip (columns 8-9), where pale mist shows the most.
+    float strip = c.x > 8.0 ? 0.6 : 1.0;
+    gl_FragColor = vec4(displayToScene(uColor), uOpacity * strip * (0.6 + 0.4 * (steps - 1.0)));
   }
 `;
 
-/** The mist sheets: height above the lawn and opacity, the low ones thicker. */
-const MIST_SHEETS: readonly [number, number][] = [
-  [0.08, 0.17],
-  [0.22, 0.12],
-  [0.4, 0.08],
-];
-const MIST_COLOR = '#BCCBF0';
+/** The mist sheet's height above the lawn and its strongest opacity: light, so the checker and the zombies show through. */
+const MIST_Y = 0.12;
+const MIST_OPACITY = 0.16;
+const MIST_COLOR = '#C8D4F2';
 
 // ---- Rocks: a boulder on each rock tile ---------------------------------------------
 
@@ -292,23 +299,20 @@ export class TwistTiles {
   private buildMist(): void {
     const geometry = new PlaneGeometry(14, 8);
     geometry.rotateX(-Math.PI / 2);
-    for (let i = 0; i < MIST_SHEETS.length; i++) {
-      const [y, opacity] = MIST_SHEETS[i] as [number, number];
-      const material = new ShaderMaterial({
-        vertexShader: MIST_VERTEX,
-        fragmentShader: MIST_FRAGMENT,
-        uniforms: { uTime: this.time, uSeed: { value: i * 3.7 }, uOpacity: { value: opacity }, uColor: { value: new Color(MIST_COLOR) } },
-        transparent: true,
-        depthWrite: false,
-      });
-      this.materials.push(material);
-      const sheet = new Mesh(i === 0 ? geometry : geometry.clone(), material);
-      sheet.name = 'mist';
-      sheet.position.set(5, y, 2.5);
-      // Under the placement marks (2) and the health bars (20).
-      sheet.renderOrder = 1;
-      this.group.add(sheet);
-    }
+    const material = new ShaderMaterial({
+      vertexShader: MIST_VERTEX,
+      fragmentShader: MIST_FRAGMENT,
+      uniforms: { uTime: this.time, uOpacity: { value: MIST_OPACITY }, uColor: { value: new Color(MIST_COLOR) } },
+      transparent: true,
+      depthWrite: false,
+    });
+    this.materials.push(material);
+    const sheet = new Mesh(geometry, material);
+    sheet.name = 'mist';
+    sheet.position.set(5, MIST_Y, 2.5);
+    // One draw call, under the placement marks (2) and the health bars (20).
+    sheet.renderOrder = 1;
+    this.group.add(sheet);
   }
 
   /** Frees every geometry and material it made. Take `group` out of the scene first. */

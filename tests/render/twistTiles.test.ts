@@ -22,11 +22,15 @@ describe('TwistTiles', () => {
     tiles.dispose();
   });
 
-  it('lays a few low sheets of mist over a foggy lawn, under the placement marks and the health bars', () => {
+  it('lays one low sheet of light, blocky mist over a foggy lawn (one draw call), under the placement marks and the health bars', () => {
     const tiles = new TwistTiles(SAMPLE_LAWNS.meadow);
     const sheets = named(tiles, 'mist');
-    expect(sheets.length).toBeGreaterThan(0);
-    expect(sheets.length).toBeLessThanOrEqual(4);
+    expect(sheets).toHaveLength(1);
+    const shader = (sheets[0]!.material as ShaderMaterial);
+    expect(shader.uniforms.uOpacity!.value).toBeLessThanOrEqual(0.25);
+    // A hard, dithered edge: no smoothstep anywhere in the mist.
+    expect(shader.fragmentShader).not.toContain('smoothstep');
+    expect(shader.fragmentShader).toContain('bayer4');
     for (const sheet of sheets) {
       expect(sheet.position.y).toBeLessThan(0.6);
       expect(sheet.renderOrder).toBeLessThan(2);
