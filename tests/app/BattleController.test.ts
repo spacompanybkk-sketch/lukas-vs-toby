@@ -474,7 +474,7 @@ describe('BattleController merging, as a child plays it', () => {
     expect(c.mergeCue()).toBeNull();
   });
 
-  it('aimAt: an exact ray hit on the player\'s own unit of the selected type (or any, with the shovel) names its tile', () => {
+  it('aimAt (plants): a card never goes by a body, only the ground; the shovel goes by the body when the ground tile is bare', () => {
     const c = make();
     c.match.state.players.plants.energy = 900;
     c.select('peashooter');
@@ -482,26 +482,42 @@ describe('BattleController merging, as a child plays it', () => {
     c.step();
     const p = playerUnits(c)[0];
     if (p === undefined) throw new Error('no peashooter');
-    expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
-    c.select('sunflower');
-    expect(c.aimAt(p.id)).toBeNull(); // another card: the ground under the pointer decides
-    c.toggleShovel();
-    expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
-    expect(c.aimAt(99999)).toBeNull();
+    const behind = { lane: 1, col: 3 }; // the bare tile the top of its model stands over
+    for (const level of [1, 2, 3, 4, 5]) {
+      p.level = level;
+      c.select('peashooter');
+      expect(c.aimAt(p.id, behind)).toBeNull(); // its own card: the ground decides, no merge steals the tile
+      expect(c.aimAt(p.id, null)).toBeNull();
+      c.select('sunflower');
+      expect(c.aimAt(p.id, behind)).toBeNull();
+      c.toggleShovel();
+      expect(c.aimAt(p.id, behind)).toEqual({ lane: 2, col: 3 }); // bare ground: the body under the finger is dug
+      expect(c.aimAt(p.id, null)).toEqual({ lane: 2, col: 3 });
+      expect(c.aimAt(p.id, { lane: 2, col: 3 })).toBeNull(); // its own tile: the ground names it anyway
+      c.toggleShovel();
+    }
+    expect(c.aimAt(99999, behind)).toBeNull();
   });
 
-  it('aimAt: the player\'s own unit at the top level names no tile for its card (the ground decides), only for the shovel', () => {
+  it('aimAt (plants, shovel): a plant on the tile under the finger wins over the tall body in front of it', () => {
     const c = make();
     c.match.state.players.plants.energy = 900;
     c.select('peashooter');
     c.click({ lane: 2, col: 3 }, null);
     c.step();
-    const p = playerUnits(c)[0];
-    if (p === undefined) throw new Error('no peashooter');
-    p.level = 5;
-    expect(c.aimAt(p.id)).toBeNull();
+    c.match.state.players.plants.recharge = {};
+    c.select('sunflower');
+    c.click({ lane: 1, col: 3 }, null);
+    c.step();
+    const front = playerUnits(c).find((u) => u.lane === 2);
+    const back = playerUnits(c).find((u) => u.lane === 1);
+    if (front === undefined || back === undefined) throw new Error('no plants');
+    front.level = 5;
     c.toggleShovel();
-    expect(c.aimAt(p.id)).toEqual({ lane: 2, col: 3 });
+    expect(c.aimAt(front.id, { lane: 1, col: 3 })).toBeNull();
+    expect(c.click({ lane: 1, col: 3 }, front.id)).toBeNull();
+    c.step();
+    expect(playerUnits(c).map((u) => u.id)).toEqual([front.id]);
   });
 
   it('plants: a low tap on a level-5 plant\'s own tile with its card selected is refused max-level (no nearby merge for plants)', () => {
@@ -515,7 +531,7 @@ describe('BattleController merging, as a child plays it', () => {
     p.level = 5;
     c.match.state.players.plants.recharge = {};
     // The ray missed the model (a low tap): the ground names the plant's own tile.
-    expect(c.aimAt(p.id)).toBeNull();
+    expect(c.aimAt(p.id, { lane: 2, col: 3 })).toBeNull();
     expect(c.hover({ lane: 2, col: 3 }, null)).toMatchObject({ ok: false, mergeTargetId: p.id });
     const denied = c.hud.denied.value;
     expect(c.click({ lane: 2, col: 3 }, null)).toBe('max-level');

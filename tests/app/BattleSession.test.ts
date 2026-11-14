@@ -196,7 +196,7 @@ describe('BattleSession', () => {
     expect(session.pick((at.x + right.x) / 2 + (right.x - at.x) / 2, at.y).tile).toEqual({ lane: 1, col: 9 });
   });
 
-  it('as plants: a tap on the top of the own Peashooter, with its card, merges into it (not a new plant on the lane behind)', () => {
+  it('as plants: with its card, a tap on the Peashooter\'s tile merges into it; a tap on the top of its model goes to the grass behind', () => {
     const stage = fakeStage();
     const { session } = make(stage);
     session.begin();
@@ -207,14 +207,20 @@ describe('BattleSession', () => {
     run(stage, 0.6);
     const plant = session.controller.match.state.units.find((u) => u.key === 'peashooter');
     if (plant === undefined) throw new Error('no peashooter');
-    // The top of the model lies over the grass of the lane behind.
-    const top = onModel(session, stage, plant.id, 0.85);
-    expect(session.pick(top.x, top.y).tile?.lane).toBe(2);
+    // The feet: its own tile, a merge.
     ready(session);
-    tap(stage, top.x, top.y);
+    tap(stage, at.x, at.y, 'touch');
     run(stage, 0.1);
     expect(plant.level).toBe(2);
-    expect(session.controller.match.state.units.filter((u) => u.key === 'peashooter')).toHaveLength(1);
+    // The top of the model lies over the grass of the lane behind: the ground decides, a new plant goes there.
+    const top = onModel(session, stage, plant.id, 0.85);
+    const ground = session.pick(top.x, top.y).tile;
+    expect(ground?.lane).toBeLessThan(2);
+    ready(session);
+    tap(stage, top.x, top.y, 'touch');
+    run(stage, 0.1);
+    expect(plant.level).toBe(2);
+    expect(session.controller.match.state.units.filter((u) => u.key === 'peashooter')).toHaveLength(2);
   });
 
   it('as zombies: a tap on the top of the own zombie, or on the grass under it, merges into it', () => {
@@ -237,7 +243,7 @@ describe('BattleSession', () => {
     expect(session.controller.match.state.units.filter((u) => u.faction === 'zombies' && u.key === 'brainEater')).toHaveLength(1);
   });
 
-  it('shows a level-up marker over each own unit a merge is possible into, and a tap on the marker merges', () => {
+  it('shows a level-up marker over each own unit a merge is possible into, and a tap on the unit\'s tile merges', () => {
     const stage = fakeStage();
     const { session } = make(stage);
     session.begin();
@@ -257,8 +263,8 @@ describe('BattleSession', () => {
     expect(session.view.mergeMarkers).toBe(0); // no Sunflower to merge into
     session.controller.select('peashooter');
     run(stage, 0.05);
-    const marker = onModel(session, stage, plant.id, 1, 0.45);
-    tap(stage, marker.x, marker.y);
+    expect(session.view.mergeMarkers).toBe(1);
+    tap(stage, at.x, at.y);
     run(stage, 0.1);
     expect(plant.level).toBe(2);
   });
@@ -599,4 +605,63 @@ describe('BattleSession hero powers and spells (wiring B)', () => {
     session.view.onHero('zombies', 2);
     expect(session.heroBanner.value).toMatchObject({ side: 'zombies' });
   });
+});
+
+// The iPad report: a level-3+ plant is so tall that, seen from the raised camera, its body covers
+// the tile behind it (a lane further back, higher on the screen), and a tap or a drop meant for
+// that tile was taken by the plant. Placing goes by the ground tile under the finger alone.
+describe('tall plants never cover the tiles behind them', () => {
+  const LANE = 3;
+  const COL = 3;
+
+  /** A plant of the player's at `level`, standing on (lane, col), drawn at that level's size. */
+  function tallPlant(session: BattleSession, stage: StageLike, key: 'peashooter' | 'sunflower', lane: number, col: number, level: number) {
+    const { match } = session.controller;
+    const u = spawnUnit(match.state, match.balance, key, lane, col + 0.5);
+    u.level = level;
+    u.hp = u.maxHp = 1e6; // nothing knocks it down during the test
+    run(stage, 0.05); // the view joins it at its level's size
+    expect(session.view.unit(u.id)?.level).toBe(level);
+    return u;
+  }
+
+  /** The unit whose model the pointer at a client point hits (the canvas fills the window in jsdom). */
+  function bodyAt(session: BattleSession, at: { x: number; y: number }): number | null {
+    return session.view.unitHitByRay((at.x / window.innerWidth) * 2 - 1, 1 - (at.y / window.innerHeight) * 2);
+  }
+
+  function plantsAt(session: BattleSession, lane: number, col: number) {
+    return session.controller.match.state.units.filter((u) => u.faction === 'plants' && u.lane === lane && Math.floor(u.x) === col);
+  }
+
+  function battle(): { stage: ReturnType<typeof fakeStage>; session: BattleSession } {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    ready(session);
+    return { stage, session };
+  }
+
+  for (const level of [1, 2, 3, 4, 5]) {
+    for (const card of ['peashooter', 'sunflower'] as const) {
+      it(`a level-${level} Peashooter in front: a tap with the ${card} card on each tile behind it places there`, () => {
+        const { stage, session } = battle();
+        const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+        session.controller.select(card);
+        // The tile right behind is covered by the body from level 3 on (the report's case).
+        if (level >= 3) expect(bodyAt(session, session.tileToClient(LANE - 1, COL))).toBe(tall.id);
+        for (let lane = LANE - 1; lane >= 0; lane--) {
+          ready(session);
+          const at = session.tileToClient(lane, COL);
+          expect(session.pick(at.x, at.y).tile, `lane ${lane}`).toEqual({ lane, col: COL });
+          expect(session.hover(session.pick(at.x, at.y).tile, session.pick(at.x, at.y).unitId)).toMatchObject({ lane, col: COL, ok: true });
+          tap(stage, at.x, at.y, 'touch');
+          run(stage, 0.1);
+          expect(plantsAt(session, lane, COL).map((u) => u.key), `lane ${lane}`).toEqual([card]);
+        }
+        expect(tall.level).toBe(level); // never merged into by a tap meant for another tile
+        expect(session.controller.hud.denied.value).toBe(0);
+      });
+    }
+  }
 });

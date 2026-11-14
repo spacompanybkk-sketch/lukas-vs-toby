@@ -707,15 +707,26 @@ export class BattleController {
   }
 
   /**
-   * The tile to act on when the pointer's ray hits a unit's model itself: the unit's own tile,
-   * when it is the player's own standing unit and the selected card is its type (a merge) or
-   * the shovel is on. Otherwise null, and the ground under the pointer decides. A tap on the
-   * upper half of a model would otherwise land on the grass behind it, a lane further back.
+   * The tile to act on when the pointer's ray hits a unit's model itself (`unitId`), with `ground`
+   * the tile under the pointer on the lawn plane (null off the lawn). Null means the ground decides.
+   *
+   * Plants stand on tiles, and seen from the raised camera a tall plant's body covers the tiles of
+   * the lanes behind it: a card (tray or belt), the hero and an aimed spell therefore always go by
+   * the ground, so every free tile can be reached however tall its neighbours are (a merge is a
+   * drop on the plant's own tile, its feet). Only the shovel looks at bodies, and only when the
+   * ground tile holds no plant: then the plant whose body is under the finger is dug.
+   *
+   * Zombies are not tied to tiles: the player's own standing zombie of the selected card's type
+   * (a merge) or, with the shovel, any of its own, names its own tile.
    */
-  aimAt(unitId: number): Tile | null {
+  aimAt(unitId: number, ground: Tile | null): Tile | null {
     const u = this.match.state.units.find((x) => x.id === unitId);
     if (u === undefined || u.faction !== this.playerFaction || !isStanding(u)) return null;
     const shovel = this.hud.shovel.peek();
+    if (this.playerFaction === 'plants') {
+      if (!shovel || (ground !== null && this.plantAt(ground) !== undefined)) return null;
+      return { lane: u.lane, col: Math.floor(u.x) };
+    }
     // A unit at the top level cannot take its card: the tap falls through to the ground under it.
     if (!shovel && (this.hud.selected.peek() !== u.key || u.level >= MAX_LEVEL)) return null;
     return { lane: u.lane, col: Math.floor(u.x) };
