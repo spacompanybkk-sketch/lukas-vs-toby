@@ -101,7 +101,7 @@ export function freePlayConfig(save: Save, side: Faction, seed: number, levels: 
   }
   return freePlayMatch(side, seed, {
     hand: unlockedCards(save, side), waves: freePlayEnemyCards(save, side, levels),
-    income: ADVENTURE.income[save.difficulty[side]], upgrades,
+    income: ADVENTURE.income[save.adventureDifficulty[side]], upgrades,
   }, balance);
 }
 

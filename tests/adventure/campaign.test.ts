@@ -95,10 +95,11 @@ describe('levelConfig', () => {
 
   it.each<[Save['difficulty']['plants'], number]>([['easy', 1.25], ['medium', 1], ['hard', 0.75]])(
     'Adventure difficulty %s multiplies only the player\'s income, by %f', (skill, mult) => {
-      const s: Save = { ...fresh(), difficulty: { plants: skill, zombies: 'medium' } };
+      // Quick Battle's own difficulty is set the other way round: it must change nothing here.
+      const s: Save = { ...fresh(), adventureDifficulty: { plants: skill, zombies: 'medium' }, difficulty: { plants: 'hard', zombies: 'easy' } };
       expect(levelConfig(SAMPLE_BATTLE, s, 1).incomeMultiplier).toEqual({ plants: mult, zombies: 0.8 });
       expect(levelConfig(SAMPLE_SURVIVE, s, 1).incomeMultiplier).toEqual({ plants: mult, zombies: 1 });
-      const z: Save = { ...fresh(), difficulty: { plants: 'medium', zombies: skill } };
+      const z: Save = { ...fresh(), adventureDifficulty: { plants: 'medium', zombies: skill }, difficulty: { plants: 'easy', zombies: 'hard' } };
       expect(levelConfig(Z1, z, 1).incomeMultiplier).toEqual({ plants: 1.1, zombies: mult });
     },
   );

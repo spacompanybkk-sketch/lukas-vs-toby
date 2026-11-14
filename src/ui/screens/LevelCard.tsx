@@ -95,7 +95,7 @@ export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, o
   const goals = starGoals(def, { base: ADVENTURE.baseStars, clock: ADVENTURE.clockStars });
   const cards = dealtCards(save, def);
   const enemies = enemyUnits(def);
-  const skill = save.difficulty[def.side];
+  const skill = save.adventureDifficulty[def.side];
   const reward = def.unlocks !== null && stars === 0 ? def.unlocks : null;
   return (
     <div class="card-veil" data-veil onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>

@@ -61,7 +61,7 @@ export function standInSave(kind: LevelStandIn, def: LevelDef, levels: readonly 
     ...fresh,
     upgrades,
     [side]: { ...fresh[side], unlocked },
-    difficulty: { ...fresh.difficulty, [side]: STAND_IN_DIFFICULTY[kind] },
+    adventureDifficulty: { ...fresh.adventureDifficulty, [side]: STAND_IN_DIFFICULTY[kind] },
   };
 }
 

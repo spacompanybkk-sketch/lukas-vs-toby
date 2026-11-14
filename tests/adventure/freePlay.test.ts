@@ -37,7 +37,8 @@ describe('the Free Play setup', () => {
 
   it('the player brings their unlocked cards, their Marketplace upgrades and their difficulty\'s income', () => {
     const save: Save = {
-      ...fresh(), upgrades: { peashooter: 3, brainEater: 2 }, difficulty: { plants: 'easy', zombies: 'hard' },
+      ...fresh(), upgrades: { peashooter: 3, brainEater: 2 }, adventureDifficulty: { plants: 'easy', zombies: 'hard' },
+      difficulty: { plants: 'hard', zombies: 'easy' }, // Quick Battle's: not read here
       plants: { stars: {}, unlocked: ['potatoMine'] },
     };
     const c = freePlayConfig(save, 'plants', 1);
@@ -97,7 +98,7 @@ describe('the score and the reward', () => {
 describe('the shipped Free Play is the measured one', () => {
   it('the screen\'s match equals the level checks\' freePlayConfig for the same player (five cards a side, his difficulty\'s income)', () => {
     const save: Save = {
-      ...fresh(), difficulty: { plants: 'easy', zombies: 'hard' },
+      ...fresh(), adventureDifficulty: { plants: 'easy', zombies: 'hard' },
       plants: { stars: {}, unlocked: ['potatoMine', 'kernelPult'] },
       zombies: { stars: {}, unlocked: ['desertZombie', 'skeletonArcher'] },
     };

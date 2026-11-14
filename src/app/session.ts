@@ -22,6 +22,11 @@ export const BOYS = Object.freeze({
 });
 type BoySlot = keyof typeof BOYS;
 const isBoy = (slot: Slot): slot is BoySlot => slot === 'p01' || slot === 'p02';
+/** Toby (almost 5) starts on Easy everywhere: Quick Battle, and the Adventure and Free Play. */
+const tobyEasy = (): Pick<Save, 'difficulty' | 'adventureDifficulty'> => ({
+  difficulty: { plants: 'easy', zombies: 'easy' },
+  adventureDifficulty: { plants: 'easy', zombies: 'easy' },
+});
 
 /** Three wrong numbers in a row lock that player for this long (spec 20). */
 export const LOCK_MS = 30_000;
@@ -249,7 +254,7 @@ export class PlayerSession {
       const who = list.find((p) => p.slot === slot);
       if (who === undefined) return 'refused';
       save = newSave(slot, who.name, who.picture, this.now());
-      if (slot === 'p02') save = { ...save, difficulty: { plants: 'easy', zombies: 'easy' } };
+      if (slot === 'p02') save = { ...save, ...tobyEasy() };
     }
     return sync.adopt(save, pin);
   }
@@ -294,7 +299,7 @@ export class PlayerSession {
       }
       const now = this.now();
       let save = newSave(target, nick, picture, now);
-      if (target === 'p02') save = { ...save, difficulty: { plants: 'easy', zombies: 'easy' } };
+      if (target === 'p02') save = { ...save, ...tobyEasy() };
       const boyOld = isBoy(target) && readKey(storage, oldImportKey(target)) === null ? readKey(storage, BOYS[target].old) : null;
       if (boyOld !== null) save = importOldSave(save, boyOld, now);
       const r = await sync.create(save, pin);

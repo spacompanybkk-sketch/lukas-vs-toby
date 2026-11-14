@@ -103,10 +103,13 @@ describe('Level card', () => {
     await openCard('z1-1');
     const pressed = (): string[] => all('[data-skill][aria-pressed="true"]').map((b) => b.dataset.skill ?? '');
     expect(all('[data-skill]').map((b) => b.dataset.skill)).toEqual(['easy', 'medium', 'hard']);
-    const saved = session.player.value!.difficulty.zombies;
+    const saved = session.player.value!.adventureDifficulty.zombies;
+    const quick = session.player.value!.difficulty;
     expect(pressed()).toEqual([saved]);
     tap('[data-skill="hard"]');
-    expect(session.player.value!.difficulty.zombies).toBe('hard');
+    expect(session.player.value!.adventureDifficulty.zombies).toBe('hard');
+    // Quick Battle keeps its own difficulty.
+    expect(session.player.value!.difficulty).toEqual(quick);
     expect(pressed()).toEqual(['hard']);
     expect(sounds.at(-1)).toBe('click');
   });

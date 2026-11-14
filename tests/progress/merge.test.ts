@@ -14,6 +14,7 @@ const older: Save = {
   zombies: { stars: { w1: 1 }, unlocked: ['brainEater'] },
   bestWave: 20, versusWins: 1, computerWins: 9, importedOld: true, updatedAt: T0 + 100,
   lastBattle: 'old-battle', teached: ['p1-1:0', 'p1-2:0'], bestGarden: 9,
+  adventureDifficulty: { plants: 'hard', zombies: 'hard' },
 };
 const newer: Save = {
   ...base,
@@ -23,6 +24,7 @@ const newer: Save = {
   zombies: { stars: {}, unlocked: [] },
   bestWave: 7, versusWins: 4, computerWins: 2, importedOld: false, updatedAt: T0 + 200,
   lastBattle: 'new-battle', teached: ['z1-1:0', 'p1-1:0'], bestGarden: 3,
+  adventureDifficulty: { plants: 'easy', zombies: 'medium' },
 };
 
 describe('mergeSaves: nothing either side earned is lost', () => {
@@ -42,6 +44,7 @@ describe('mergeSaves: nothing either side earned is lost', () => {
     ['name from the newer', m.name === 'LukasK'],
     ['picture from the newer', m.picture === 'torchwood'],
     ['difficulty from the newer', JSON.stringify(m.difficulty) === JSON.stringify({ plants: 'hard', zombies: 'medium' })],
+    ['adventureDifficulty from the newer (as difficulty)', JSON.stringify(m.adventureDifficulty) === JSON.stringify({ plants: 'easy', zombies: 'medium' })],
     ['importedOld = either', m.importedOld === true],
     ['lastBattle from the newer', m.lastBattle === 'new-battle'],
     ['teached = the union (the older copy\'s own steps, then the newer\'s)', JSON.stringify(m.teached) === JSON.stringify(['p1-2:0', 'z1-1:0', 'p1-1:0'])],

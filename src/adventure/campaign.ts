@@ -129,7 +129,7 @@ export function levelConfig(
       [enemy]: def.opponent === null ? [] : [...def.opponent.cards],
     } as Record<Faction, CardKey[]>,
     incomeMultiplier: {
-      [player]: ADVENTURE.income[save.difficulty[player]],
+      [player]: ADVENTURE.income[save.adventureDifficulty[player]],
       [enemy]: def.opponent === null ? 1 : def.opponent.incomeScale,
     } as Record<Faction, number>,
     suddenDeath: def.kind === 'battle' || def.kind === 'boss',

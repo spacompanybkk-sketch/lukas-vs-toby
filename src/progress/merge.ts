@@ -8,7 +8,8 @@ import type { Save, SideProgress } from './save';
  *
  * - stars: the best per level, per side; unlocked cards: the union;
  * - coins, bestWave, bestGarden, versusWins, computerWins, upgrade levels: the larger;
- * - name, picture, difficulty, lastBattle: from the copy with the newer `updatedAt`;
+ * - name, picture, difficulty, adventureDifficulty, lastBattle: from the copy with the newer
+ *   `updatedAt` (no setting has a stamp of its own: the whole newer copy's choice wins);
  * - importedOld: true if either copy imported the old save;
  * - teached (tutorial steps seen): the union, the older copy's own steps first, then the newer
  *   copy's in its order; the newest `MAX_TEACHED` are kept (as `rememberTaught` keeps them).
@@ -50,5 +51,6 @@ export function mergeSaves(a: Save, b: Save, now: number): Save {
     lastBattle: newer.lastBattle,
     teached: [...older.teached.filter((t) => !newer.teached.includes(t)), ...newer.teached].slice(-MAX_TEACHED),
     bestGarden: Math.max(a.bestGarden, b.bestGarden),
+    adventureDifficulty: { ...newer.adventureDifficulty },
   };
 }
