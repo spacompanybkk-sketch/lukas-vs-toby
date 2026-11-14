@@ -307,8 +307,8 @@ const TUNDRA: Look = {
   props: buildTundraProps,
   islet: tundraIslet,
   weather: WORLDS.tundra.weather,
-  // White brackets vanish on the snow: dark navy ones, inked white so they still show on the ice.
-  marks: { line: '#14305C', lineGain: 1, ink: '#F4FAFF', gamma: 1.2 },
+  // White brackets vanish on the snow: dark navy ones with a darker outline, which show on the snow and the ice alike.
+  marks: { line: '#123468', lineGain: 1, ink: '#050E22', gamma: 0.9 },
 };
 
 /** The Citadel, Toby's home: dark stone under a smouldering sky, lava glow and embers. */
