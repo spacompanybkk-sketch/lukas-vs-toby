@@ -711,10 +711,15 @@ export class BattleController {
    * the tile under the pointer on the lawn plane (null off the lawn). Null means the ground decides.
    *
    * Plants stand on tiles, and seen from the raised camera a tall plant's body covers the tiles of
-   * the lanes behind it: a card (tray or belt), the hero and an aimed spell therefore always go by
-   * the ground, so every free tile can be reached however tall its neighbours are (a merge is a
-   * drop on the plant's own tile, its feet). Only the shovel looks at bodies, and only when the
-   * ground tile holds no plant: then the plant whose body is under the finger is dug.
+   * the lanes behind it. So for plants the ground comes first, in two steps:
+   * - a card (tray or belt): the ground tile decides whenever the card can go there (a free tile,
+   *   or a plant of its kind to merge into), so a free tile behind a tall plant always wins. Only
+   *   when the ground tile cannot take it at all (another plant, a top-level one, a rock, past the
+   *   plant columns, off the lawn) and the body (or level-up marker) under the finger is a plant
+   *   of the card's kind the card can merge into, that plant's tile is used: a tap on its head merges;
+   * - the shovel: the plant on the ground tile, if any; otherwise the plant whose body is hit.
+   * The hero and aimed spells never look at bodies (no card is selected while they wait).
+   * Both steps ask the match (`check`), as a tap does.
    *
    * Zombies are not tied to tiles: the player's own standing zombie of the selected card's type
    * (a merge) or, with the shovel, any of its own, names its own tile.
@@ -723,13 +728,23 @@ export class BattleController {
     const u = this.match.state.units.find((x) => x.id === unitId);
     if (u === undefined || u.faction !== this.playerFaction || !isStanding(u)) return null;
     const shovel = this.hud.shovel.peek();
+    const own = { lane: u.lane, col: Math.floor(u.x) };
     if (this.playerFaction === 'plants') {
-      if (!shovel || (ground !== null && this.plantAt(ground) !== undefined)) return null;
-      return { lane: u.lane, col: Math.floor(u.x) };
+      if (shovel) return ground !== null && this.plantAt(ground) !== undefined ? null : own;
+      const card = this.hud.selected.peek();
+      if (card === null || u.key !== card || u.level >= MAX_LEVEL) return null;
+      if (ground !== null && this.match.check(this.cardCommandAt(card, ground)) === null) return null;
+      return this.match.check(this.cardCommandAt(card, own)) === null ? own : null;
     }
     // A unit at the top level cannot take its card: the tap falls through to the ground under it.
     if (!shovel && (this.hud.selected.peek() !== u.key || u.level >= MAX_LEVEL)) return null;
-    return { lane: u.lane, col: Math.floor(u.x) };
+    return own;
+  }
+
+  /** What the picked plant card (tray, or the belt's picked slot) would do on `tile`. */
+  private cardCommandAt(card: UnitKey, tile: Tile): Command {
+    const slot = this.levelHud.beltSlot.peek();
+    return slot !== null ? this.beltCommand(slot, tile) : this.commandFor(card, tile, this.plantAt(tile) ?? null);
   }
 
   /**

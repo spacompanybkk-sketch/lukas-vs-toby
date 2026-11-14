@@ -345,3 +345,18 @@ export async function nameFitsTile(page: Page, tile: string, name: string, word:
   expect(r.h).toBeLessThanOrEqual(r.lh * 1.5); // one line
   expect(r.over).toBeLessThanOrEqual(0);
 }
+
+/** A plant of `key` put on (lane, col) through the controller (debug hooks): paid for and recharged first. */
+export async function plantVia(page: Page, key: string, lane: number, col: number): Promise<void> {
+  await page.evaluate(([k, l, c]) => {
+    const lvt = window.__lvt as any;
+    const ctl = lvt.session.controller;
+    const me = ctl.match.state.players.plants;
+    me.energy = Math.max(me.energy, 9999);
+    me.recharge = {};
+    ctl.select(k);
+    ctl.click({ lane: l, col: c }, null);
+    lvt.fastForward(1);
+  }, [key, lane, col] as const);
+  await expect.poll(async () => plantAt(await snapshot(page), lane, col)?.key ?? null).toBe(key);
+}

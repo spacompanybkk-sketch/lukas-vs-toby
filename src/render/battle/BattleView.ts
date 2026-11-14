@@ -629,7 +629,7 @@ export class BattleView {
       if (target && !target.dying) {
         target.pulsing = true;
         this.pulseTarget = target;
-        if (target.faction === 'plants') this.lawn.highlightTile(target.lane, Math.floor(target.currX), state, 'plants');
+        if (target.faction === 'plants') this.lawn.highlightTile(target.lane, Math.floor(target.currX), state, 'plants', true);
         else this.lawn.highlightLane(target.lane, state, 'zombies');
         return;
       }
