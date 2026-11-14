@@ -278,6 +278,9 @@ test('a conveyor level: the belt replaces the tray, a belt card goes on a tile f
 
   await press(page.locator('[data-hud="pause"]'));
   await expect(page.locator('[data-screen="pause"] [data-action="map"]')).toHaveCount(0);
+  // Quit leads to the map, and shows the map's picture (path and flag), not the house.
+  await expect(page.locator('[data-screen="pause"] [data-action="quit"] [data-quit-to="map"]')).toBeVisible();
+  await expect(page.locator('[data-screen="pause"] [data-action="quit"] .ico--home')).toHaveCount(0);
   await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
   await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
   await expect(page.locator('[data-screen="map"]')).toBeVisible();
