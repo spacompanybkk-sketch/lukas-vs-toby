@@ -7,6 +7,7 @@ import { seededRandom } from './boxes';
 import { buildGrass } from './grass';
 import { buildIsland, buildIslet } from './island';
 import { LOOKS, type Look } from './looks';
+import { PlaceMarks } from './PlaceMarks';
 import { TileMark, type MarkState } from './TileMark';
 import { Weather } from './Weather';
 import { TwistTiles, coveredTile, sameLawn } from './TwistTiles';
@@ -40,6 +41,7 @@ export class Lawn {
   private readonly wind = { value: 0 };
   private readonly tileMark = new TileMark('tile-mark', 1, 1);
   private readonly laneMark = new TileMark('lane-mark', LAWN_COLS, 1);
+  private readonly placeMarks = new PlaceMarks();
   private readonly islets: Islet[] = [];
   /** What the current world built: island, props, grass, islets, twist tiles. */
   private readonly dressing = new Group();
@@ -58,7 +60,8 @@ export class Lawn {
     this.twist = twist;
     this.group.add(this.dressing);
     this.build(LOOKS[world], twist);
-    this.group.add(this.tileMark.mesh, this.laneMark.mesh);
+    this.placeMarks.setLook(LOOKS[world].marks);
+    this.group.add(this.tileMark.mesh, this.laneMark.mesh, this.placeMarks.mesh);
     this.update(0);
   }
 
@@ -82,6 +85,7 @@ export class Lawn {
     this.worldKey = world;
     this.twist = twist;
     this.build(LOOKS[world], twist);
+    this.placeMarks.setLook(LOOKS[world].marks);
     this.update(this.time);
     return true;
   }
@@ -199,10 +203,24 @@ export class Lawn {
     this.laneMark.show(LAWN_COLS / 2, Math.floor(lane) + 0.5, state, side);
   }
 
+  /**
+   * Marks every tile the picked card may go on (`mask`: 1 at `lane * LAWN_COLS + col`); null
+   * clears them. Call it when the tiles change, not every frame.
+   */
+  showPlaceable(mask: Uint8Array | null): void {
+    this.placeMarks.show(mask);
+  }
+
+  /** How strongly the place marks show (`MARKS_QUIET` while a card stays picked, `MARKS_LOUD` while dragging). */
+  setPlaceStrength(strength: number): void {
+    this.placeMarks.setStrength(strength);
+  }
+
   /** Frees every geometry and material the lawn made. Take `group` out of the scene first. */
   dispose(): void {
     this.clear();
     this.tileMark.dispose();
     this.laneMark.dispose();
+    this.placeMarks.dispose();
   }
 }

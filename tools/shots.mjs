@@ -493,7 +493,8 @@ const SCENARIOS = [
  * Each world at the iPad window (1024x704): `world-<key>` the busy seed-7 battle in that look with
  * its sample twist tiles, `-lawn` the bare lawn with them, `-crowd` the mixed 150-unit crowd (30 a
  * lane, live), `-game` a real Quick Battle on the game page dressed through `__lvt.setWorld`. The
- * Meadow adds `-fade`: every shot in the air fading in the fog at once.
+ * Meadow adds `-fade`: every shot in the air fading in the fog at once. `-marks`: the place marks
+ * of a picked card on that world's ground.
  */
 function worldShots() {
   const ipad = { width: 1024, height: 704 };
@@ -518,6 +519,26 @@ function worldShots() {
         },
       },
     ];
+    // The place marks on this world's ground: a Quick Battle early on, dressed with the world's
+    // sample twist (the match told about it too, so rocks refuse and stay dark), a Peashooter picked.
+    shots.push({
+      name: `world-${world}-marks`,
+      url: '/?scene=battle&side=plants&skill=medium&seed=7',
+      viewport: ipad,
+      steps: async (page) => {
+        await battleAt(page, 8);
+        await page.evaluate((w) => {
+          const lvt = window.__lvt;
+          lvt.setWorld(w);
+          const c = lvt.session.controller;
+          c.match.state.config.lawn = lvt.lawn.lawnConfig;
+          c.match.state.players.plants.energy = 900;
+          c.match.state.players.plants.recharge = {};
+          c.select('peashooter');
+        }, world);
+        await settleUi(page);
+      },
+    });
     if (world === 'meadow') {
       shots.push({
         name: 'world-meadow-fade',

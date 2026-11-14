@@ -9,7 +9,7 @@ import { SILHOUETTES } from '../hud/CardTray';
 import { GLOVE } from '../hud/PointingHand';
 import { PixelIcon } from '../hud/PixelIcon';
 import type { PixelArt } from '../hud/PixelIcon';
-import { BOW, CLOCK, FACE_EASY, FACE_HARD, FACE_MEDIUM, FLAG, KIND_ART, SKULL_CROWN, TOWER } from './adventurePictures';
+import { BOW, CLOCK, DIFF_EASY, DIFF_HARD, DIFF_NORMAL, FLAG, KIND_ART, SKULL_CROWN, TOWER } from './adventurePictures';
 import { STAR, SWORDS } from './boardPictures';
 import { dealtCards, enemyUnits, starGoals } from './mapModel';
 import type { StarGoal } from './mapModel';
@@ -49,9 +49,9 @@ export function UnitPic({ unit, portraits, class: cls = '' }: { unit: UnitKey; p
 }
 
 const FACES: { skill: Skill; art: PixelArt; label: string }[] = [
-  { skill: 'easy', art: FACE_EASY, label: 'Easy' },
-  { skill: 'medium', art: FACE_MEDIUM, label: 'Normal' },
-  { skill: 'hard', art: FACE_HARD, label: 'Hard' },
+  { skill: 'easy', art: DIFF_EASY, label: 'Easy' },
+  { skill: 'medium', art: DIFF_NORMAL, label: 'Normal' },
+  { skill: 'hard', art: DIFF_HARD, label: 'Hard' },
 ];
 
 /**
@@ -87,7 +87,7 @@ export interface LevelCardProps {
 /**
  * An open level's card: its kind and number, the cards to be dealt (portraits), the enemy's
  * pictures, the three stars with what each asks drawn under it (filled as won), a reward
- * silhouette when the level unlocks a unit, a big play button and three faces for the difficulty
+ * silhouette when the level unlocks a unit, a big play button and three skull pictures for the difficulty
  * (the player's saved one ringed). No words needed.
  */
 export function LevelCard({ def, save, portraits, onPlay, onTutorial, onSkill, onClose }: LevelCardProps) {

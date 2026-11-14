@@ -36,26 +36,6 @@ export const STAR = art(outlined([
   '................',
 ]));
 
-/** The best Free Play wave: a breaking wave. */
-export const WAVE = art(outlined([
-  '................',
-  '................',
-  '......kkkk......',
-  '....kkkkkkkk....',
-  '...kkkcccckkk...',
-  '..kkkc....ckk...',
-  '..kkc.....ck....',
-  '.kkkc...........',
-  '.kkkkc..........',
-  '.kkkkkc....k....',
-  '.KkkkkkkkkkkkK..',
-  '.KKkkkkkkkkkkKK.',
-  '.KKKKkkkkkkKKKK.',
-  '..KKKKKKKKKKKK..',
-  '................',
-  '................',
-]));
-
 /** Versus wins: two crossed swords. */
 export const SWORDS = art(outlined([
   '................',
@@ -132,4 +112,4 @@ export const UP = art(outlined([
   '............',
 ]));
 
-export const BOARD_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({ STAR, WAVE, SWORDS, ROBOT, PODIUM, UP });
+export const BOARD_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({ STAR, SWORDS, ROBOT, PODIUM, UP });

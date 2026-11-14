@@ -29,6 +29,7 @@ import { SpellFx } from './SpellFx';
 import { HealthBars } from './HealthBars';
 import { StatusMarks } from './StatusMarks';
 import type { AimPreview, Feel } from './types';
+import { MARKS_QUIET } from '../world/PlaceMarks';
 import { GROW_PER_STACK, RELEASE_SECONDS, UnitView, type UnitHooks } from './UnitView';
 
 export type { AimPreview, Feel, PlacementPreview } from './types';
@@ -367,6 +368,19 @@ export class BattleView {
    */
   setMergeCue(unit: UnitKey | null): void {
     this.mergeCue = unit;
+  }
+
+  /**
+   * Marks the tiles the picked card may go on (the controller's `placeable`), or none (null). Call
+   * it when they change (the controller's version), not every frame: it uploads the marks.
+   */
+  setPlaceable(mask: Uint8Array | null): void {
+    this.lawn.showPlaceable(mask);
+  }
+
+  /** How strongly the place marks show (see `PlaceMarks`); cheap, but call it when it changes. */
+  setPlaceStrength(strength: number): void {
+    this.lawn.setPlaceStrength(strength);
   }
 
   /** The view of a unit, for tools and tests. */
@@ -836,6 +850,8 @@ export class BattleView {
     for (const { light, base } of this.lights) light.color.copy(base);
     this.lawn.highlightTile(0, 0, null);
     this.lawn.highlightLane(null, 'ok');
+    this.lawn.showPlaceable(null);
+    this.lawn.setPlaceStrength(MARKS_QUIET); // the lawn stays for the next battle
     this.resolveCelebrate?.();
     this.resolveCelebrate = null;
   }

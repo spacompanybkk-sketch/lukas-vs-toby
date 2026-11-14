@@ -26,13 +26,23 @@ export const ADVENTURE = Object.freeze({
   beltSlots: 5,
 });
 
+/** What a level's second and third stars are measured on, and the share each asks (at or above). */
+export interface StarRule { measure: 'base' | 'clock'; two: number; three: number }
+
+/**
+ * The star rule of `def`: the player's base health kept, or for Breakthrough (no player base) the
+ * share of the clock left. `starsFor` counts by it, and the result screen draws it.
+ */
+export function starRule(def: LevelDef): StarRule {
+  return def.kind === 'breakthrough' ? { measure: 'clock', ...ADVENTURE.clockStars } : { measure: 'base', ...ADVENTURE.baseStars };
+}
+
 export function starsFor(
   def: LevelDef, result: { won: boolean; baseHpShare: number; clockShareLeft: number },
 ): Stars {
   if (!result.won) return 0;
-  const [share, t] = def.kind === 'breakthrough'
-    ? [result.clockShareLeft, ADVENTURE.clockStars]
-    : [result.baseHpShare, ADVENTURE.baseStars];
+  const t = starRule(def);
+  const share = t.measure === 'clock' ? result.clockShareLeft : result.baseHpShare;
   if (share >= t.three) return 3;
   if (share >= t.two) return 2;
   return 1;

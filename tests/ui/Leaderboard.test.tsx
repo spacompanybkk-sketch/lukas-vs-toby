@@ -18,6 +18,8 @@ import { ResultOverlay } from '../../src/ui/hud/ResultOverlay';
 import type { BattleSessionLike, SessionFactory } from '../../src/ui/screens/BattleScreen';
 import { Home } from '../../src/ui/screens/Home';
 import { MemoryStorage } from '../progress/memoryStorage';
+import { ENDLESS } from '../../src/ui/screens/adventurePictures';
+import { pixelPaths } from '../../src/ui/hud/PixelIcon';
 
 let root: HTMLElement;
 let db: FakeDatabase;
@@ -149,6 +151,19 @@ describe('leaderboard', () => {
     expect(order()).toEqual(['p03']);
     tap('[data-tab="computer"]');
     expect(order()).toEqual(['p01']);
+  });
+
+  it('the best-wave table carries the Free Play picture (zombie heads growing under an arrow), in its tab and its scores', async () => {
+    await loginAs('p01', 'Lukas', 'peashooter', 2);
+    seed('p03', 'hotTopic', { wave: 7 });
+    act(() => go({ name: 'leaderboard' }));
+    mount();
+    await see('[data-row]');
+    tap('[data-tab="wave"]');
+    const drawn = (sel: string): string[] => [...need(sel).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+    const endless = pixelPaths(ENDLESS).map((p) => p.d);
+    expect(drawn('[data-tab="wave"] svg')).toEqual(endless);
+    expect(drawn('[data-row] .board__score svg')).toEqual(endless);
   });
 
   it('offline: the board last fetched on this device, with the no-connection picture', async () => {

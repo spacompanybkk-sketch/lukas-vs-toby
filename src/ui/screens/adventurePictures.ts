@@ -28,6 +28,29 @@ export const PATH_FLAG = art(outlined([
   '.eEEe...........',
 ]));
 
+/**
+ * Free Play: three boxy zombie heads in a row, each bigger than the last, under a fat arrow - "they
+ * keep coming, more and bigger". Wider than the 16 × 16 pictures (the heads need the room).
+ */
+export const ENDLESS = art(outlined([
+  '.......................',
+  '........yy.............',
+  '........yyy............',
+  '.llllllllyyy...........',
+  '.yyyyyyyyyyyy..........',
+  '.YYYYYYYYYYY...........',
+  '........YYY............',
+  '........YY....gggggggg.',
+  '..............gggggggg.',
+  '.......gggggg.gwwggwwg.',
+  '.ggggg.gggggg.gwPggwPg.',
+  '.gPgPg.gPggPg.gggggggg.',
+  '.ggggg.gggggg.ggeeeegg.',
+  '.geGeg.geGGeg.ggPPPPgg.',
+  '.GGGGG.GGGGGG.GGGGGGGG.',
+  '.......................',
+]));
+
 /** Survive: a wooden shield. */
 export const SHIELD = art(outlined([
   '................',
@@ -168,49 +191,25 @@ export const FLAG = art(outlined([
   '................',
 ]));
 
-const FACE_ROWS = (fill: string, mouth: readonly string[], brows: readonly string[] = []): string[] => {
-  const head = [
-    '................',
-    '....xxxxxxxx....',
-    '...xxxxxxxxxx...',
-    '..xxxxxxxxxxxx..',
-    '..xxxxxxxxxxxx..',
-    '..xxxooxxooxxx..',
-    '..xxxooxxooxxx..',
-    '..xxxxxxxxxxxx..',
-    '..xxxxxxxxxxxx..',
-    '..xxxxxxxxxxxx..',
-    '..xxxxxxxxxxxx..',
-    '...xxxxxxxxxx...',
-    '....xxxxxxxx....',
-    '................',
-    '................',
-    '................',
-  ].map((r) => r.replace(/x/g, fill));
-  const draw = (rows: string[], top: readonly string[], at: number): string[] => rows.map((r, y) => {
-    const t = top[y - at];
-    if (t === undefined) return r;
-    return [...r].map((ch, x) => (t.charAt(x) !== '.' && t.charAt(x) !== '' ? t.charAt(x) : ch)).join('');
-  });
-  return outlined(draw(draw(head, mouth, 8), brows, 3));
+/** A boxy skull, six pixels square: bone white, dark eyes (`P`; red `r` for the hardest), a jaw. */
+const SKULL = (eye: string): string[] => ['.eeee.', 'eeeeee', 'eXeeXe', 'eXeeXe', 'eeeeee', '.eEeE.'].map((r) => r.replace(/X/g, eye));
+
+/** Skulls placed on a 16 × 16 picture at their top-left corners (x, y), outlined. */
+const SKULLS = (eye: string, at: readonly (readonly [number, number])[]): string[] => {
+  const rows = Array.from({ length: 16 }, () => [...'................']);
+  for (const [x, y] of at) {
+    SKULL(eye).forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== '.') rows[y + dy]![x + dx] = ch; }));
+  }
+  return outlined(rows.map((r) => r.join('')));
 };
 
-/** The three Adventure difficulties as faces: a happy green one, a calm yellow one, a cross red one. */
-export const FACE_EASY = art(FACE_ROWS('g', [
-  '....o......o....',
-  '.....oooooo.....',
-]));
-export const FACE_MEDIUM = art(FACE_ROWS('y', [
-  '................',
-  '.....oooooo.....',
-]));
-export const FACE_HARD = art(FACE_ROWS('r', [
-  '.....oooooo.....',
-  '....o......o....',
-], [
-  '....oo....oo....',
-  '.....oo..oo.....',
-]));
+/**
+ * The three Adventure difficulties as more and more skulls - one, two, a pile of three with red
+ * eyes - so a child who cannot read sees "a little, more, a lot" (not moods, as faces were).
+ */
+export const DIFF_EASY = art(SKULLS('P', [[5, 5]]));
+export const DIFF_NORMAL = art(SKULLS('P', [[1, 5], [9, 5]]));
+export const DIFF_HARD = art(SKULLS('r', [[5, 1], [1, 9], [9, 9]]));
 
 /** A "?" block (a surprise to win), golden, with rivets. */
 export const QUESTION = art(outlined([
@@ -263,5 +262,5 @@ export const KIND_ART: Readonly<Record<LevelKind, readonly PixelArt[]>> = Object
 
 /** Every picture here, for the tests. */
 export const ADVENTURE_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({
-  PATH_FLAG, SHIELD, HAMMER, CLOCK, BELT, SKULL_CROWN, TOWER, FLAG, QUESTION, BOW, FACE_EASY, FACE_MEDIUM, FACE_HARD,
+  PATH_FLAG, SHIELD, HAMMER, CLOCK, BELT, SKULL_CROWN, TOWER, FLAG, QUESTION, BOW, DIFF_EASY, DIFF_NORMAL, DIFF_HARD,
 });

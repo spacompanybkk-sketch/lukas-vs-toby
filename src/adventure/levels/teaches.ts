@@ -6,7 +6,7 @@ import type { TutorialStep } from '../types';
  *
  * Levels 1–3 of each side teach by pointing and doing, with no words (the younger player cannot
  * read); level 2 introduces the hero when it first becomes ready, level 4 the spells when the first
- * one does. Tiles are chosen in lanes the level's first arrivals use (plants) or that nothing
+ * one does, level 5 (the conveyor) the belt. Tiles are chosen in lanes the level's first arrivals use (plants) or that nothing
  * guards (zombies), so the first unit placed does its job where the child can see it.
  */
 export const TEACHES: Readonly<Record<string, readonly TutorialStep[]>> = {
@@ -31,6 +31,11 @@ export const TEACHES: Readonly<Record<string, readonly TutorialStep[]>> = {
     { id: 'p1-3.merge', show: 'unit', card: 'peashooter', until: 'merged' },
   ],
   'p1-4': [{ id: 'p1-4.spell', show: 'spell', index: 0, until: 'fired', after: 'spell' }],
+  // The belt: tap whatever card it brings first, put it in the lane the first Brain Eater walks.
+  'p1-5': [
+    { id: 'p1-5.belt', show: 'belt', until: 'selected' },
+    { id: 'p1-5.belt-tile', show: 'belt-tile', lane: 2, col: 1, until: 'placed' },
+  ],
   // Pick the Brain Eater, send it down the lane nothing guards.
   'z1-1': [
     { id: 'z1-1.card', show: 'card', card: 'brainEater', until: 'selected' },
@@ -50,4 +55,9 @@ export const TEACHES: Readonly<Record<string, readonly TutorialStep[]>> = {
     { id: 'z1-3.merge', show: 'unit', card: 'brainEater', until: 'merged' },
   ],
   'z1-4': [{ id: 'z1-4.spell', show: 'spell', index: 0, until: 'fired', after: 'spell' }],
+  // The belt: tap the card it brings first, send it down the middle lane.
+  'z1-5': [
+    { id: 'z1-5.belt', show: 'belt', until: 'selected' },
+    { id: 'z1-5.belt-tile', show: 'belt-tile', lane: 2, col: 9, until: 'placed' },
+  ],
 };

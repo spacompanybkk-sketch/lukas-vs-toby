@@ -13,6 +13,10 @@ import type { BossKey, CardKey, Faction, UnitKey } from '../sim/types';
  *   with the level-up arrow). While `card` is not picked, the glove points at the card first.
  * - `hero` … `fired`: the hero button, then a lane.
  * - `spell` … `fired`: the spell button `index` (deal order), then a tile for an aimed spell.
+ * - `belt` … `selected`: a conveyor level's belt brings cards at random, so no card is named: the
+ *   glove points at the card at the front of the belt, and picking any belt card ends the step.
+ * - `belt-tile` … `placed`: the picked belt card is put on the tile (zombies: the lane). While no
+ *   belt card is picked, the glove points at the front one first.
  *
  * `after`: the step waits (no glove, nothing held) until the hero, or the spell it points at, is
  * first ready. Steps run in order.
@@ -23,6 +27,8 @@ export type TutorialStep = { id: string; after?: 'hero' | 'spell' } & (
   | { show: 'unit'; card: CardKey; until: 'merged' }
   | { show: 'hero'; until: 'fired' }
   | { show: 'spell'; index: number; until: 'fired' }
+  | { show: 'belt'; until: 'selected' }
+  | { show: 'belt-tile'; lane: number; col: number; until: 'placed' }
 );
 
 export type LevelKind = 'battle' | 'survive' | 'breakthrough' | 'conveyor' | 'boss';

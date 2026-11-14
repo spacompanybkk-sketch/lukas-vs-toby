@@ -3,7 +3,7 @@ import { levelConfig } from '../../src/adventure/campaign';
 import type { LevelDef } from '../../src/adventure/types';
 import { BACKYARD } from '../../src/adventure/levels/backyard';
 import { TEACHES } from '../../src/adventure/levels/teaches';
-import { LEVELS, levelById, levelsFor } from '../../src/adventure/levels';
+import { LEVELS, heroHidden, levelById, levelsFor } from '../../src/adventure/levels';
 import { ALL_CARDS, factionOf } from '../../src/data/units';
 import { newSave } from '../../src/progress/save';
 import { BALANCE } from '../../src/data/balance';
@@ -91,5 +91,15 @@ describe('the Backyard', () => {
     const conveyors = BACKYARD.filter((l) => l.kind === 'conveyor');
     expect(conveyors.map((l) => l.id)).toEqual(['p1-5', 'z1-5']);
     for (const l of conveyors) expect(l.opponent, l.id).toBeNull();
+  });
+});
+
+describe('heroHidden', () => {
+  it('a level before the one whose lesson brings the hero hides it; that level and later ones show it', () => {
+    const hidden = LEVELS.filter((d) => heroHidden(d)).map((d) => d.id);
+    expect(hidden).toEqual(['p1-1', 'z1-1']);
+    // Read from the lessons, not a list: with the hero lesson on level 3 instead, levels 1 and 2 hide it.
+    const moved = LEVELS.map((d) => (d.id === 'p1-2' ? { ...d, teaches: null } : d.id === 'p1-3' ? { ...d, teaches: [{ id: 'x', show: 'hero' as const, until: 'fired' as const }] } : d));
+    expect(moved.filter((d) => heroHidden(d, moved)).map((d) => d.id)).toEqual(['p1-1', 'p1-2', 'z1-1']);
   });
 });

@@ -2,6 +2,7 @@ import { BufferGeometry, Material, Scene, Texture } from 'three';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WorldWanted } from '../../src/app/Stage';
 import { WORLD_ORDER } from '../../src/data/worlds';
+import { LAWN_COLS, LAWN_LANES } from '../../src/render/coords';
 import { Lawn } from '../../src/render/world/Lawn';
 import { Sky } from '../../src/render/world/Sky';
 import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
@@ -49,7 +50,7 @@ const live = (): Record<Kind, number> => ({
 });
 
 describe('one stage through every world', () => {
-  it('keeps the live geometry, material and texture counts flat over ten rounds of all five worlds (lawn and sky)', () => {
+  it('keeps the live geometry, material and texture counts flat over ten rounds of all five worlds (lawn with its place marks, and sky)', () => {
     // The stage's world-dressed tree: the sky and the lawn in one scene, put on as the Stage does.
     const scene = new Scene();
     const lawn = new Lawn();
@@ -58,10 +59,18 @@ describe('one stage through every world', () => {
     const renderer = { setLook() {} };
     const wanted = new WorldWanted();
     const parts = { lawn, sky, renderer };
+    // The place marks stay up across every change of world (they are the lawn's, not the dressing's).
+    const mask = new Uint8Array(LAWN_COLS * LAWN_LANES).fill(1);
+    lawn.showPlaceable(mask);
+    const marks = lawn.group.getObjectByName('place-marks');
     const round = (): void => {
       for (const world of WORLD_ORDER) {
         wanted.want(world, SAMPLE_LAWNS[world]);
         wanted.apply(parts);
+        expect(lawn.group.getObjectByName('place-marks')).toBe(marks);
+        expect(marks?.visible).toBe(true);
+        lawn.showPlaceable(null);
+        lawn.showPlaceable(mask);
         sky.update(1);
         lawn.update(1);
       }
@@ -82,5 +91,7 @@ describe('one stage through every world', () => {
     scene.remove(sky.group, lawn.group);
     lawn.dispose();
     sky.dispose();
+    // Dispose frees everything, the place marks' texture too: only the moon's kept parts would remain.
+    expect(live().textures).toBe(0);
   });
 });

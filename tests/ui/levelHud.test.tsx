@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { levelById } from '../../src/adventure/levels';
-import { ADVENTURE } from '../../src/adventure/rewards';
+import { ADVENTURE, starRule } from '../../src/adventure/rewards';
 import { BattleController } from '../../src/app/BattleController';
 import type { BeltCardVM } from '../../src/app/BattleController';
 import { levelOptions, prepareLevel } from '../../src/app/levelSession';
@@ -159,6 +159,37 @@ describe('the battle screen in a level', () => {
     expect(q('[data-hud="energy"]')).not.toBeNull();
   });
 
+  it('one picture of time: a level with a clock bar (survive, conveyor, breakthrough) has no count-up clock; a battle keeps it', () => {
+    for (const id of ['p1-6', 'p1-5', 'z1-3', 'z1-5']) {
+      const { s } = levelSession(id);
+      screen(s);
+      expect(q('[data-hud="clock-goal"]'), id).not.toBeNull();
+      expect(q('[data-hud="topbar"]'), id).toBeNull();
+      expect(q('[data-hud="pause"]'), id).not.toBeNull();
+    }
+    const { s } = levelSession('p1-4');
+    screen(s);
+    expect(q('[data-hud="topbar"]')).not.toBeNull();
+  });
+
+  it('no hero button before the level that teaches it (p1-1, z1-1); there from that level on', () => {
+    for (const [id, shown] of [['p1-1', false], ['z1-1', false], ['p1-2', true], ['z1-2', true]] as const) {
+      const { s } = levelSession(id);
+      screen(s);
+      expect(q('[data-hero]') !== null, id).toBe(shown);
+    }
+  });
+
+  it('a boss level has no count-up clock (the boss comes at once: it would read 0:00 when he arrives)', () => {
+    for (const id of ['p1-8', 'z1-8']) {
+      const { s, c } = levelSession(id);
+      screen(s);
+      act(() => { c.step(); });
+      expect(q('[data-hud="topbar"]'), id).toBeNull();
+      expect(q('[data-hud="pause"]'), id).not.toBeNull();
+    }
+  });
+
   it('a script with no clock (the boss level): the wave bar alone', () => {
     const { s } = levelSession('p1-8');
     screen(s);
@@ -221,6 +252,12 @@ describe('the battle screen in a level', () => {
     act(() => { sess.controller.setPaused(true); });
     expect(q('[data-screen="pause"] [data-action="quit"]')).not.toBeNull();
     expect(q('[data-screen="pause"] [data-action="map"]')).toBeNull();
+    // In a level Quit leads to the map, and shows the map's picture, not the house.
+    expect(q('[data-screen="pause"] [data-action="quit"] [data-quit-to="map"]')).not.toBeNull();
+    const quick = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 1 });
+    screen({ controller: quick, begin() {}, dispose() {}, skipIntro: true });
+    act(() => { quick.setPaused(true); });
+    expect(q('[data-screen="pause"] [data-action="quit"] [data-quit-to="home"]')).not.toBeNull();
   });
 });
 
@@ -280,6 +317,36 @@ describe('the level result', () => {
     expect(q('[data-action="map"]')).not.toBeNull();
     wait(5000);
     expect(sounds.filter((n) => n.startsWith('merge'))).toEqual([]);
+  });
+
+  it('why a star was lost: the base bar filled to what was kept, a star mark at each share the rule asks; a mark not reached stays grey', () => {
+    const rule = starRule(levelById('p1-3')!);
+    show(<ResultOverlay {...base} level={{ ...win, stars: 2, share: 0.62 }} onMap={() => {}} />);
+    const meter = need('[data-star-meter]');
+    expect(meter.dataset.starMeter).toBe('base');
+    expect(need('[data-star-meter] .lmeter__fill').style.width).toBe('62%');
+    expect(all('[data-star-meter] [data-mark]').map((m) => `${m.dataset.mark} ${m.style.left} ${m.dataset.reached !== undefined}`))
+      .toEqual([`2 ${rule.two * 100}% true`, `3 ${rule.three * 100}% false`]);
+    expect(meter.textContent?.trim()).toBe(''); // pictures only
+    expect(q('[data-star-meter] svg')).not.toBeNull();
+  });
+
+  it('a Breakthrough measures the clock left (its own rule), drawn with the clock', () => {
+    const rule = starRule(levelById('z1-3')!);
+    expect(rule.measure).toBe('clock');
+    const z: LevelOutcome = { levelId: 'z1-3', won: true, stars: 3, coins: 0, newStars: 0, unlocked: null, next: null, share: 0.7 };
+    show(<ResultOverlay {...base} playerFaction="zombies" result={{ winner: 'zombies', playerWon: true }} level={z} onMap={() => {}} />);
+    expect(need('[data-star-meter]').dataset.starMeter).toBe('clock');
+    expect(all('[data-star-meter] [data-mark]').map((m) => m.style.left)).toEqual([`${rule.two * 100}%`, `${rule.three * 100}%`]);
+    expect(all('[data-star-meter] [data-mark][data-reached]')).toHaveLength(2);
+  });
+
+  it('no meter on a loss (losing is the reason), nor when the share is not known (a record from before)', () => {
+    const lost: LevelOutcome = { levelId: 'p1-1', won: false, stars: 0, coins: ADVENTURE.loss, newStars: 0, unlocked: null, next: null, share: 0 };
+    show(<ResultOverlay {...base} result={{ winner: 'zombies', playerWon: false }} level={lost} />);
+    expect(q('[data-star-meter]')).toBeNull();
+    show(<ResultOverlay {...base} level={win} />);
+    expect(q('[data-star-meter]')).toBeNull();
   });
 
   it('a replayed win already paid shows no coins', () => {

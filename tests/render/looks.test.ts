@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Material, Mesh, Texture, type Object3D } from 'three';
+import { BufferGeometry, Color, Material, Mesh, ShaderMaterial, Texture, type Object3D } from 'three';
 import { BLOOM_THRESHOLD } from '../../src/render/look';
 import { describe, expect, it } from 'vitest';
 import { battleWorld } from '../../src/app/BattleSession';
@@ -108,6 +108,28 @@ describe('world looks', () => {
     expect(looks).toHaveLength(1);
     lawn.dispose();
     sky.dispose();
+  });
+});
+
+describe('place marks in every world', () => {
+  it('stay the same mesh with the same tiles across setWorld, recoloured for the ground: dark on the Tundra snow', () => {
+    const lawn = new Lawn();
+    const mask = new Uint8Array(50);
+    mask[7] = 1;
+    lawn.showPlaceable(mask);
+    const marks = lawn.group.getObjectByName('place-marks') as Mesh;
+    const line = (): Color => ((marks.material as ShaderMaterial).uniforms.uLine!.value as Color).clone();
+    const white = line();
+    for (const key of WORLD_ORDER) {
+      lawn.setWorld(key, SAMPLE_LAWNS[key]);
+      expect(lawn.group.getObjectByName('place-marks')).toBe(marks);
+      expect(marks.visible).toBe(true);
+      const c = line();
+      const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+      if (key === 'tundra') expect(lum).toBeLessThan(0.1);
+      else expect(c.equals(white)).toBe(true);
+    }
+    lawn.dispose();
   });
 });
 

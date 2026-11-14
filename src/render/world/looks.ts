@@ -2,6 +2,7 @@ import type { BufferGeometry } from 'three';
 import type { WorldKey } from '../../data/worlds';
 import { WORLDS } from '../../data/worlds';
 import { PALETTE } from '../palette';
+import { MARKS_BACKYARD, type MarksLook } from './PlaceMarks';
 import type { BoxBatch } from './boxes';
 import { bush, buildProps, flower, gravestone, bone } from './props';
 import {
@@ -102,6 +103,8 @@ export interface Look {
   /** What stands on a small islet adrift beside the island (`grave`: one off the zombies' end). */
   islet: (batch: BoxBatch, grave: boolean, random: () => number) => void;
   weather: (typeof WORLDS)[WorldKey]['weather'];
+  /** The place marks' colours on this ground. */
+  marks: MarksLook;
 }
 
 /** The bloom every world but the Meadow has (the Backyard's, as it always was). */
@@ -160,6 +163,7 @@ const BACKYARD: Look = {
     }
   },
   weather: WORLDS.backyard.weather,
+  marks: MARKS_BACKYARD,
 };
 
 /** The Meadow at night: blue-green grass under a moon, stars, fireflies and glowing mushrooms. */
@@ -207,6 +211,7 @@ const MEADOW: Look = {
   props: buildMeadowProps,
   islet: meadowIslet,
   weather: WORLDS.meadow.weather,
+  marks: MARKS_BACKYARD,
 };
 
 /** The Desert: warm sand under a hot sky, orange mesas, cacti, blown dust. */
@@ -254,6 +259,7 @@ const DESERT: Look = {
   props: buildDesertProps,
   islet: desertIslet,
   weather: WORLDS.desert.weather,
+  marks: MARKS_BACKYARD,
 };
 
 /** The Tundra: snow in white and pale blue under a cold sky, pines, ice shards, snowfall. */
@@ -301,6 +307,8 @@ const TUNDRA: Look = {
   props: buildTundraProps,
   islet: tundraIslet,
   weather: WORLDS.tundra.weather,
+  // White brackets vanish on the snow: dark navy ones, inked white so they still show on the ice.
+  marks: { line: '#14305C', lineGain: 1, ink: '#F4FAFF', gamma: 1.2 },
 };
 
 /** The Citadel, Toby's home: dark stone under a smouldering sky, lava glow and embers. */
@@ -348,6 +356,7 @@ const CITADEL: Look = {
   props: buildCitadelProps,
   islet: citadelIslet,
   weather: WORLDS.citadel.weather,
+  marks: MARKS_BACKYARD,
 };
 
 /** Every world's look. */

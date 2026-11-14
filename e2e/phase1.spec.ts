@@ -55,7 +55,8 @@ test('the lawn is drawn where the hooks say: grass green, graveyard purple, a pl
 
   await place(page, 'peashooter', 2, 3);
   await page.mouse.move(5, 5);
-  await frames(page, 20);
+  // The place marks show loud for a second after the card was tapped: let them go quiet again.
+  await frames(page, 90);
   const after = await shootCanvas(page);
   // The unit stands above its tile's centre: look at a patch there, against a tile nothing happened on.
   const changed = await analyse(page, [after, before], [around(grass, 50, -25), around(control, 50, -25)]);
