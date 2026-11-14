@@ -34,6 +34,11 @@ export interface RestCloudOptions {
   newVer?: () => string;
   /** Whether a browser test or tool drives this page (default: `navigator.webdriver`). */
   automated?: () => boolean;
+  /**
+   * Told when a save is stored but this build cannot read it (most likely a newer build wrote
+   * it); the answer is still `refused`. The app may reload once for the newer build.
+   */
+  onUnreadableSave?: () => void;
 }
 
 /** True when the page is driven by automation (Playwright, WebDriver). */
@@ -122,7 +127,10 @@ export class RestCloud implements Cloud {
     if (this.blocked) console.warn('RestCloud: automation may not use the live database; every call is refused.');
     this.fetch = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+    this.onUnreadableSave = opts.onUnreadableSave;
   }
+
+  private readonly onUnreadableSave: (() => void) | undefined;
 
   private readonly blocked: boolean;
 
@@ -188,7 +196,9 @@ export class RestCloud implements Cloud {
     const s = isObj(a.data) ? saveFromWire(a.data.save) : null;
     const ver = isObj(a.data) ? a.data.ver : undefined;
     // Something is stored but unreadable (a newer game's save?): never treat it as "nothing".
-    return s && s.slot === slot && typeof ver === 'string' && VER.test(ver) ? { save: s, ver } : 'refused';
+    if (s && s.slot === slot && typeof ver === 'string' && VER.test(ver)) return { save: s, ver };
+    if (isObj(a.data) && typeof a.data.save === 'string' && s === null) this.onUnreadableSave?.();
+    return 'refused';
   }
 
   async writeSave(save: Save, hash: string, ver: string, prev: string | null): Promise<'ok' | 'conflict' | CloudError> {
@@ -284,8 +294,10 @@ export function pageCloudMode(): CloudMode {
 }
 
 /** A cloud over a fake database, with the real client on top. */
-export function createFakeCloud(db: FakeDatabase, root: CloudRoot = 'v2', timeoutMs = TIMEOUT_MS): Cloud {
-  return new RestCloud({ baseUrl: FAKE_DATABASE_URL, root, fetch: db.fetch, timeoutMs });
+export function createFakeCloud(
+  db: FakeDatabase, root: CloudRoot = 'v2', timeoutMs = TIMEOUT_MS, hooks: Pick<RestCloudOptions, 'onUnreadableSave'> = {},
+): Cloud {
+  return new RestCloud({ baseUrl: FAKE_DATABASE_URL, root, fetch: db.fetch, timeoutMs, ...hooks });
 }
 
 /**
@@ -317,23 +329,23 @@ export function lazyCloud(load: () => Promise<Cloud>): Cloud {
   });
 }
 
-export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cloud {
+export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}, hooks: Pick<RestCloudOptions, 'onUnreadableSave'> = {}): Cloud {
   if (mode === 'fake') {
     return lazyCloud(async () => {
       const { FakeDatabase } = await import('./fakeCloud');
-      return createFakeCloud(new FakeDatabase(fake));
+      return createFakeCloud(new FakeDatabase(fake), 'v2', TIMEOUT_MS, hooks);
     });
   }
-  return new RestCloud({ root: mode === 'test' ? 'v2test' : 'v2' });
+  return new RestCloud({ root: mode === 'test' ? 'v2test' : 'v2', ...hooks });
 }
 
 /** The cloud this page should use. */
-export function defaultCloud(): Cloud {
+export function defaultCloud(hooks: Pick<RestCloudOptions, 'onUnreadableSave'> = {}): Cloud {
   let storage: Storage | undefined;
   try {
     storage = typeof localStorage === 'undefined' ? undefined : localStorage;
   } catch {
     storage = undefined;
   }
-  return createCloud(pageCloudMode(), storage ? { storage } : {});
+  return createCloud(pageCloudMode(), storage ? { storage } : {}, hooks);
 }

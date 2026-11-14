@@ -30,6 +30,7 @@ import { AlmanacStage } from '../scenes/almanacStage';
 import { MapStage } from '../scenes/mapStage';
 import { mapLevels } from '../ui/screens/Map';
 import { previewWorlds } from './previewWorlds';
+import { reloadForUnreadableSave } from './staleBuild';
 
 /** CSS pixels a card portrait is drawn at (the card art is at most about 116 px wide). */
 export const PORTRAIT_SIZE = 120;
@@ -70,7 +71,15 @@ export function mountGame(
   // be moved on by tests (`__lvt.skipClock(ms)`), so a 30 s lock-out need not be waited out.
   let skew = 0;
   // The leaderboard reads the same cloud (one fake database for the page).
-  const cloud = defaultCloud();
+  // A save this (older, cached) build cannot read: reload once for the current build, at the pin pad only.
+  const cloud = defaultCloud({
+    onUnreadableSave: () => {
+      reloadForUnreadableSave({
+        session: browserSession(), online: () => navigator.onLine !== false,
+        loggedIn: () => session.player.peek() !== null, reload: () => location.reload(),
+      });
+    },
+  });
   // Each cloud keeps its own device keys (lvt2_ live, lvt2f_ fake, lvt2t_ test).
   const mode = pageCloudMode();
   announceCloudMode(mode);
@@ -236,4 +245,13 @@ export function mountGame(
     stage?.dispose();
     audio.stopMusic(0);
   };
+}
+
+/** `sessionStorage`, or undefined where there is none or touching it throws (Safari private mode). */
+function browserSession(): Storage | undefined {
+  try {
+    return typeof sessionStorage === 'undefined' ? undefined : sessionStorage;
+  } catch {
+    return undefined;
+  }
 }
