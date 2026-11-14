@@ -13,7 +13,7 @@ import { checkHero, useHero } from './hero';
 import { castSpell, checkSpell, dealSpells } from './spells';
 import { restoreState, hashState, snapshotState } from './hash';
 import { levelUp } from './levelUp';
-import { cloneLawn, NO_TWIST } from './lawn';
+import { cloneLawn, isRock, NO_TWIST } from './lawn';
 import { inLane, isBoss, isStanding, statsFor } from './lookup';
 import { tickMovement } from './movement';
 import { checkLevel, tickScript } from './script';
@@ -134,15 +134,15 @@ export class Match {
    * this same method before carrying out any command, so the two can never disagree.
    *
    * Every command: `match-over` once a winner is set.
-   * - place: `wrong-side`, `not-in-hand`, `bad-lane`, `bad-column` and `occupied` (plants only),
+   * - place: `wrong-side`, `not-in-hand`, `bad-lane`, `bad-column`, `rock` and `occupied` (plants only),
    *   `recharging`, `no-energy`.
    * - merge: `wrong-side`, `not-in-hand`, `no-target` (no living unit has that id), `not-yours`,
    *   `wrong-type`, `max-level`, `recharging`, `no-energy`.
    * - remove: `plants-only`, `no-target`, `not-yours`, `boss`.
    * - hero: `hero-off`, `bad-lane`, `hero-charging` (see `checkHero`).
-   * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `occupied`, `spell-charging`
+   * - spell: `spells-off`, `spell-not-dealt`, `bad-lane`, `bad-column`, `rock`, `occupied`, `spell-charging`
    *   (see `checkSpell`).
-   * - belt: `no-belt`, `bad-slot`, `bad-lane`, `bad-column`, `occupied`, `max-level` (see `checkBelt`).
+   * - belt: `no-belt`, `bad-slot`, `bad-lane`, `bad-column`, `rock`, `occupied`, `max-level` (see `checkBelt`).
    * With the level's `noEnergy`, place and merge are refused `no-energy` once the card, lane and
    * tile (place) or target (merge) checks have passed.
    */
@@ -249,6 +249,7 @@ export class Match {
     if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
     if (cmd.faction === 'plants') {
       if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
+      if (isRock(this.state.config, cmd.lane, cmd.col)) return 'rock';
       const taken = this.state.units.some(
         (u) => u.faction === 'plants' && inLane(u, cmd.lane) && Math.floor(u.x) === cmd.col,
       );

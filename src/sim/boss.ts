@@ -24,6 +24,7 @@ import { seconds } from '../data/balance';
 import type { Balance, BossPattern, BossStats } from '../data/balance';
 import { factionOf } from '../data/units';
 import { damageUnit } from './damage';
+import { isRock } from './lawn';
 import { inLane, isBoss, isStanding, shieldOf } from './lookup';
 import { randomInt } from './rng';
 import { spawnAtLevel, spawnUnit } from './spawn';
@@ -191,7 +192,7 @@ function slam(s: SimState, b: Balance, u: Unit, p: Slam, events: SimEvent[]): vo
 /**
  * The summon: `bossPattern`, then `count` of `unit` at `level` (each with its `unitSpawned`): a
  * zombie in as many different lanes, drawn with `randomInt` from those not drawn yet, at the spawn
- * edge; a plant on as many different free tiles (no standing plant there) in columns
+ * edge; a plant on as many different free tiles (no standing plant there, no rock of the lawn) in columns
  * `minCol`..`maxCol`, drawn the same way from the free ones in lane-then-column order.
  */
 function summon(s: SimState, b: Balance, u: Unit, p: Summon, events: SimEvent[]): void {
@@ -212,7 +213,7 @@ function summon(s: SimState, b: Balance, u: Unit, p: Summon, events: SimEvent[])
   for (let lane = 0; lane < LANES; lane++) {
     for (let col = minCol; col <= maxCol; col++) {
       const taken = s.units.some((v) => v.faction === 'plants' && isStanding(v) && inLane(v, lane) && Math.floor(v.x) === col);
-      if (!taken) free.push(lane * PLANT_COLS + col);
+      if (!taken && !isRock(s.config, lane, col)) free.push(lane * PLANT_COLS + col);
     }
   }
   for (let i = 0; i < p.count && free.length > 0; i++) {

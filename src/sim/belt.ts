@@ -5,6 +5,7 @@
 
 import type { Balance } from '../data/balance';
 import { UNIT_INFO, isCard } from '../data/units';
+import { isRock } from './lawn';
 import { levelUp } from './levelUp';
 import { inLane, isStanding } from './lookup';
 import { randomInt } from './rng';
@@ -54,7 +55,7 @@ export function tickBelt(s: SimState, events: SimEvent[]): void {
 /**
  * Why a belt command would be refused, or null: `no-belt` (no belt, or it is the other side's),
  * `bad-slot` (no card waits there), `bad-lane`; a plant card: `bad-column` (not a plant column),
- * then on the tile a plant of the card's type at `MAX_LEVEL` is `max-level` and any other plant
+ * `rock` (a rock of the lawn lies there), then on the tile a plant of the card's type at `MAX_LEVEL` is `max-level` and any other plant
  * `occupied`; a zombie card: `bad-column` (not a lawn column, 0..9; it only aims a merge).
  * Energy and recharge play no part.
  */
@@ -64,6 +65,7 @@ export function checkBelt(s: SimState, cmd: BeltCommand): CommandRejection | nul
   if (!isWholeBetween(cmd.lane, 0, LANES - 1)) return 'bad-lane';
   if (cmd.faction === 'zombies') return isWholeBetween(cmd.col, 0, COLS - 1) ? null : 'bad-column';
   if (!isWholeBetween(cmd.col, 0, PLANT_COLS - 1)) return 'bad-column';
+  if (isRock(s.config, cmd.lane, cmd.col)) return 'rock';
   const there = plantAt(s, cmd.lane, cmd.col);
   if (there === undefined) return null;
   if (there.key !== s.belt[cmd.slot]) return 'occupied';

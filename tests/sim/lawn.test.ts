@@ -159,3 +159,61 @@ describe('checkLawn (Review Focus 2): a level that makes no sense is refused at 
     expect(() => new Match({ ...defaultConfig(1), lawn: null as unknown as LawnConfig })).toThrow(/no lawn/);
   });
 });
+
+describe('rocks: no plant can be put on a rock tile', () => {
+  const ROCK = tile(2, 3);
+  const rocky = (more: Partial<MatchConfig> = {}): MatchConfig => lawnConfig(1, { rocks: [ROCK] }, { startEnergy: { plants: 1000, zombies: 1000 }, ...more });
+
+  it('a card: match.check says rock, the step refuses it, the tile next to it is fine', () => {
+    const m = new Match(rocky());
+    const onRock = { type: 'place', faction: 'plants', unit: 'peashooter', lane: 2, col: 3 } as const;
+    expect(m.check(onRock)).toBe('rock');
+    const events = m.step([onRock, { type: 'place', faction: 'plants', unit: 'sunflower', lane: 2, col: 4 }]);
+    expect(events).toContainEqual({ type: 'commandRejected', command: onRock, reason: 'rock' });
+    expect(m.state.units.map((u) => [u.key, u.lane, u.x])).toEqual([['sunflower', 2, 4.5]]);
+    expect(m.state.players.plants.energy).toBe(1000 - 50); // nothing paid for the refused one
+  });
+
+  it('zombies walk over rocks and are placed in a lane with rocks', () => {
+    const m = new Match(rocky());
+    const z = { type: 'place', faction: 'zombies', unit: 'veryFastWalker', lane: 2, col: 0 } as const;
+    expect(m.check(z)).toBeNull();
+    m.step([z]);
+    while (m.state.tick < 400 && m.state.units[0]!.x > 3) m.step();
+    expect(m.state.units[0]!.x).toBeLessThan(3); // it passed column 3
+  });
+
+  it('a belt card: refused rock, the rest of the belt rules unchanged', () => {
+    const m = new Match(rocky({ mode: 'conveyor', goalTicks: 900, noEnergy: true, invulnerableBase: 'zombies', belt: { side: 'plants', everyTicks: 30, cards: ['peashooter'], slots: 5 } }));
+    m.step();
+    const cmd = { type: 'belt', faction: 'plants', slot: 0, lane: 2, col: 3 } as const;
+    expect(m.check(cmd)).toBe('rock');
+    expect(m.check({ ...cmd, col: 2 })).toBeNull();
+  });
+
+  it('the Rock Wall spell: refused rock', () => {
+    const m = new Match(rocky());
+    m.state.players.plants.spells = [{ key: 'rockWall', timer: 0 }];
+    const cmd = { type: 'spell', faction: 'plants', spell: 'rockWall', lane: 2, col: 3 } as const;
+    expect(m.check(cmd)).toBe('rock');
+    expect(m.check({ ...cmd, col: 4 })).toBeNull();
+  });
+
+  it("a plant boss's summon leaves rock tiles out", () => {
+    // The Elder Oak summons Peashooters on free tiles in columns 1..4: rocks on all but two of them.
+    const open = [tile(0, 2), tile(3, 4)];
+    const rocks: number[] = [];
+    for (let lane = 0; lane < 5; lane++) for (let col = 1; col <= 4; col++) if (!open.includes(tile(lane, col))) rocks.push(tile(lane, col));
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const m = new Match(lawnConfig(seed, { rocks }, { mode: 'boss', boss: { key: 'elderOak', faction: 'plants', lane: 2 }, cards: { plants: [], zombies: [] } }));
+      while (m.state.tick < 30 * 25) m.step();
+      const summoned = m.state.units.filter((u) => u.key === 'peashooter').map((u) => tile(u.lane, Math.floor(u.x))).sort((a, b) => a - b);
+      expect(summoned).toEqual(open);
+    }
+  });
+
+  it('without rocks nothing is refused rock', () => {
+    const m = new Match(defaultConfig(1));
+    expect(m.check({ type: 'place', faction: 'plants', unit: 'peashooter', lane: 2, col: 3 })).toBeNull();
+  });
+});
