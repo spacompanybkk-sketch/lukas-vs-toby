@@ -10,6 +10,20 @@ import { classicConfig, place } from './helpers';
  */
 const log = vi.hoisted(() => [] as string[]);
 
+vi.mock('../../src/sim/script', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/sim/script')>()),
+  tickScript: (s: SimState) => { log.push(`script tick=${s.tick} units=${s.units.length}`); },
+}));
+vi.mock('../../src/sim/endless', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/sim/endless')>()),
+  tickEndless: (s: SimState) => { log.push(`endless tick=${s.tick} units=${s.units.length}`); },
+  tickEndlessGarden: (s: SimState) => { log.push(`garden tick=${s.tick}`); },
+  endlessClockOut: (s: SimState) => { log.push(`clock tick=${s.tick}`); },
+}));
+vi.mock('../../src/sim/belt', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/sim/belt')>()),
+  tickBelt: (s: SimState) => { log.push(`belt tick=${s.tick} units=${s.units.length}`); },
+}));
 vi.mock('../../src/sim/economy', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/sim/economy')>()),
   tickEconomy: (s: SimState) => { log.push(`economy tick=${s.tick} units=${s.units.length}`); },
@@ -40,10 +54,13 @@ beforeEach(() => {
 });
 
 describe('step order', () => {
-  it('runs commands, economy, movement, attacks, base defense, abilities, projectiles, hazards, deaths, endgame, then the tick', () => {
+  it('runs script, belt, commands, economy, movement, attacks, base defense, abilities, projectiles, hazards, deaths, endgame, then the tick', () => {
     const m = new Match(classicConfig(1));
     m.step([place('plants', 'peashooter', 0, 0)]);
     expect(log).toEqual([
+      'script tick=0 units=0', // before the command
+      'endless tick=0 units=0', // Free Play's waves, before the command too
+      'belt tick=0 units=0',
       'economy tick=0 units=1', // the command already ran
       'movement tick=0',
       'attacks tick=0',
@@ -52,7 +69,9 @@ describe('step order', () => {
       'projectiles tick=0',
       'hazards tick=0',
       'deaths tick=0',
+      'garden tick=0', // a broken Free Play garden, before the winner is decided
       'endgame tick=0',
+      'clock tick=0', // Free Play's clock, once no base has fallen
     ]);
     expect(m.state.tick).toBe(1);
   });
@@ -70,6 +89,6 @@ describe('step order', () => {
       'economy tick=2 units=1',
       'economy tick=3 units=1',
     ]);
-    expect(log).toHaveLength(4 * 9);
+    expect(log).toHaveLength(4 * 14);
   });
 });

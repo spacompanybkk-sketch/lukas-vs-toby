@@ -10,10 +10,10 @@
 
 import { seconds } from '../data/balance';
 import type { Balance, UnitStats } from '../data/balance';
-import { damageUnit, distance, explode } from './damage';
-import { isStanding, levelScale, nearestEnemyAhead, statsFor } from './lookup';
+import { capHit, damageUnit, distance, explode } from './damage';
+import { isBoss, isStanding, levelScale, nearestEnemyAhead, statsFor, upgradeScale } from './lookup';
 import { abilityUsed as used, spawnMinion } from './spawn';
-import { applyStatus, canAct } from './status';
+import { applyStatus, canAct, inflictStatus } from './status';
 import type { Projectile, SimEvent, SimState, Unit } from './types';
 
 type Mine = NonNullable<UnitStats['mine']>;
@@ -41,7 +41,7 @@ export function tickAbilities(s: SimState, b: Balance, events: SimEvent[]): void
     if (stats.mine && potatoMine(s, b, u, stats.mine, events)) continue;
     if (stats.fuse && cherryFuse(s, b, u, stats.fuse, events)) continue;
     if (stats.leap) pumpkinLeap(s, b, u, stats.leap, events);
-    if (stats.lasso) lasso(s, u, stats.lasso, events);
+    if (stats.lasso) lasso(s, b, u, stats.lasso, events);
     if (stats.healAura) healAura(s, b, u, stats.healAura, events);
     if (stats.raise) raise(s, b, u, stats.raise, events);
   }
@@ -90,7 +90,7 @@ function cherryFuse(s: SimState, b: Balance, u: Unit, fuse: Fuse, events: SimEve
 /**
  * Pumpkin Squash: when ready and a standing zombie is within `range` ahead, it crushes the nearest
  * one (`abilityUsed 'leap'` with it): every standing zombie in the lane within `radius` of the
- * target's x takes `damage` times the damage level curve, in id order, and it needs
+ * target's x takes `damage` times the damage level curve (a boss at most its `hitCap`, as for a blast), in id order, and it needs
  * `recoverSeconds` to be ready again. The Pumpkin itself does not move.
  */
 function pumpkinLeap(s: SimState, b: Balance, u: Unit, leap: Leap, events: SimEvent[]): void {
@@ -102,41 +102,41 @@ function pumpkinLeap(s: SimState, b: Balance, u: Unit, leap: Leap, events: SimEv
   const at = target.x;
   for (const z of s.units) {
     if (z.faction === u.faction || z.lane !== u.lane || !isStanding(z)) continue;
-    if (Math.abs(z.x - at) <= leap.radius) damageUnit(s, b, z, amount, events);
+    if (Math.abs(z.x - at) <= leap.radius) damageUnit(s, b, z, capHit(b, z, amount), events); // a boss: at most its hitCap
   }
   u.abilityTimer = seconds(leap.recoverSeconds);
 }
 
 /**
  * Cowboy Zombie: when ready and a standing plant is within `range` ahead in its lane, it ties the
- * strongest such plant (highest level, then highest `maxHp`, then lowest id) for `seconds`:
+ * strongest such plant (highest level, then highest `maxHp`, then lowest id; never a boss) for `seconds`:
  * `abilityUsed 'lasso'` with it, then the status, and `interval` until it is ready again.
  */
-function lasso(s: SimState, u: Unit, rope: Lasso, events: SimEvent[]): void {
+function lasso(s: SimState, b: Balance, u: Unit, rope: Lasso, events: SimEvent[]): void {
   if (u.abilityTimer > 0) return;
   let target: Unit | null = null;
   for (const p of s.units) { // ascending id: a later one must be strictly stronger to win
-    if (p.faction === u.faction || p.lane !== u.lane || !isStanding(p)) continue;
+    if (p.faction === u.faction || p.lane !== u.lane || !isStanding(p) || isBoss(p.key)) continue; // a boss cannot be lassoed
     const ahead = u.faction === 'zombies' ? u.x - p.x : p.x - u.x;
     if (ahead < 0 || ahead > rope.range) continue;
     if (target === null || p.level > target.level || (p.level === target.level && p.maxHp > target.maxHp)) target = p;
   }
   if (!target) return;
   used(u, 'lasso', target.id, events);
-  applyStatus(s, target, 'tied', seconds(rope.seconds), 0, u.id, events);
+  inflictStatus(s, b, target, 'tied', seconds(rope.seconds), 0, u.id, events);
   u.abilityTimer = seconds(rope.interval);
 }
 
 /**
  * Necromancer's heal, on `auraTimer`: when ready and any other standing unit of its side within
- * `radius` (straight-line, lanes one apart) is hurt, `abilityUsed 'heal'`, and each of those, in
+ * `radius` (straight-line, lanes one apart) is hurt (a boss is never healed), `abilityUsed 'heal'`, and each of those, in
  * id order, gains `amount` times the special level curve, never above its `maxHp` (`unitHealed`
  * with what it really gained); then `interval` until it is ready again.
  */
 function healAura(s: SimState, b: Balance, u: Unit, aura: HealAura, events: SimEvent[]): void {
   if (u.auraTimer > 0) return;
   const hurt = s.units.filter((z) =>
-    z !== u && z.faction === u.faction && isStanding(z) && z.hp < z.maxHp && distance(z, u) <= aura.radius);
+    z !== u && z.faction === u.faction && isStanding(z) && !isBoss(z.key) && z.hp < z.maxHp && distance(z, u) <= aura.radius);
   if (hurt.length === 0) return;
   used(u, 'heal', null, events);
   const amount = aura.amount * levelScale(b, u.faction, u.level, 'special');
@@ -170,12 +170,12 @@ function raise(s: SimState, b: Balance, u: Unit, rise: Raise, events: SimEvent[]
 /**
  * Hot Topic, called by its bite when the bite brought a plant to 0: below `maxStacks` it gains a
  * stack (`abilityUsed 'grow'`), and its health and max each rise by `hpShare` of its base health
- * times its `hp` level curve, rounded. Its bite grows through `grownBite`.
+ * times its `hp` level curve and its Marketplace `hp` multiplier, rounded. Its bite grows through `grownBite`.
  */
-export function grow(b: Balance, u: Unit, g: Grow, events: SimEvent[]): void {
+export function grow(s: SimState, b: Balance, u: Unit, g: Grow, events: SimEvent[]): void {
   if (u.stacks >= g.maxStacks) return;
   u.stacks += 1;
-  const gain = Math.round(g.hpShare * statsFor(b, u.key).hp * levelScale(b, u.faction, u.level, 'hp'));
+  const gain = Math.round(g.hpShare * statsFor(b, u.key).hp * levelScale(b, u.faction, u.level, 'hp') * upgradeScale(b, s.config, u, 'hp'));
   u.maxHp += gain;
   u.hp += gain;
   used(u, 'grow', null, events);

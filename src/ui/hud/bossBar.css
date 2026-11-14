@@ -1,0 +1,130 @@
+/* The boss bar: wide, top centre, under the clock (see BossBar.tsx). Pixel-crisp, no soft edges. */
+.hud-boss {
+  position: absolute;
+  top: calc(var(--gutter-top) + var(--hud-h) + var(--px-lip) + clamp(10px, 1.8vh, 20px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(46vw, 640px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  --boss-h: calc(var(--hud-h) * 0.62);
+  --boss-fill: var(--c-purple);
+  --boss-fill-hi: var(--c-purple-hi);
+  pointer-events: none;
+}
+.hud-boss--elderOak { --boss-fill: var(--c-wood); --boss-fill-hi: var(--c-wood-hi); }
+
+.hud-boss__face {
+  flex: none;
+  width: calc(var(--hud-h) * 0.95);
+  height: calc(var(--hud-h) * 0.95);
+  display: grid;
+  place-items: center;
+}
+.hud-boss__face-art { width: 78%; height: 78%; image-rendering: pixelated; }
+
+.hud-boss__bar {
+  --fill: var(--c-slate-lo);
+  --hi: var(--c-slate);
+  --lo: #2f2645;
+  position: relative;
+  flex: 1;
+  height: var(--boss-h);
+  overflow: visible;
+}
+.hud-boss__fill {
+  position: absolute;
+  left: var(--px-bev);
+  top: var(--px-bev);
+  bottom: var(--px-bev);
+  max-width: calc(100% - 2 * var(--px-bev));
+  background: var(--boss-fill);
+  box-shadow: inset 0 var(--px-bev) 0 0 var(--boss-fill-hi);
+}
+/* Block seams over the fill, every 1/40 of the bar. */
+.hud-boss__blocks {
+  position: absolute;
+  inset: var(--px-bev);
+  background: repeating-linear-gradient(90deg, transparent 0 calc(2.5% - 2px), rgba(42, 27, 14, 0.35) calc(2.5% - 2px) 2.5%);
+}
+/* A notch at each health mark where the shield goes up: an ink post sticking out above and below. */
+.hud-boss__notch {
+  position: absolute;
+  top: calc(var(--px-line) * -2);
+  bottom: calc(var(--px-line) * -2);
+  width: 6px;
+  margin-left: -3px;
+  background: var(--ink);
+}
+.hud-boss__notch::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 2px;
+  height: 6px;
+  background: #9fe7ff;
+}
+.hud-boss__notch.is-passed::after { background: var(--c-stone-lo); }
+
+/* The shield up: glass over the bar, a shield picture at its middle, blinking in two steps. */
+.hud-boss.is-shielded .hud-boss__bar::after {
+  content: '';
+  position: absolute;
+  inset: var(--px-bev);
+  background: repeating-linear-gradient(135deg, rgba(159, 231, 255, 0.55) 0 10px, rgba(255, 255, 255, 0.35) 10px 14px);
+  animation: hud-boss-blink 500ms steps(2, jump-none) infinite;
+}
+.hud-boss__shield {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--boss-h) * 1.25);
+  height: calc(var(--boss-h) * 1.4);
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+.hud-boss__shield-icon { width: 100%; height: 100%; }
+@keyframes hud-boss-blink { 0% { opacity: 1; } 100% { opacity: 0.55; } }
+
+/* Beaten: the face is knocked grey and the bar sits empty. */
+.hud-boss.is-down .hud-boss__face { filter: grayscale(0.8); }
+
+/* The entrance: the boss's face card, bigger than the bar's face, shaking just left of the bar
+   with its foot on the bar's foot, so it stays in the top band and never covers the lanes; it
+   pops in and then slides into the bar's face. A tap on it ends it (and the lawn's entrance show). */
+.hud-boss-intro {
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 0;
+  width: calc(var(--hud-h) * 1.5);
+  height: calc(var(--hud-h) * 1.5);
+  min-width: 56px;
+  min-height: 56px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
+  transform-origin: 100% 100%;
+  animation: hud-boss-in 1500ms steps(15, end) forwards;
+}
+.hud-boss-intro__card {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  animation: hud-boss-shake 240ms steps(2, jump-none) infinite;
+}
+.hud-boss-intro__card .hud-boss__face-art { width: 82%; height: 82%; }
+@keyframes hud-boss-in {
+  0% { opacity: 0; transform: scale(0.3); }
+  15% { opacity: 1; transform: scale(1.12); }
+  25% { transform: scale(1); }
+  85% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translateX(calc(var(--hud-h) * 1.2)) scale(0.6); }
+}
+@keyframes hud-boss-shake { 0% { transform: translate(-3px, 0) rotate(-2deg); } 100% { transform: translate(3px, -2px) rotate(2deg); } }

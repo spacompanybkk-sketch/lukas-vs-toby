@@ -62,9 +62,11 @@ function buildInfo(): Record<CardKey, UnitInfo> {
 export const UNIT_INFO: Record<CardKey, UnitInfo> = buildInfo();
 
 /** The side of each unit that is not a card. */
-const NON_CARD_FACTION: Record<Exclude<UnitKey, CardKey>, Faction> = { boneMinion: 'zombies', rock: 'plants' };
+const NON_CARD_FACTION: Record<Exclude<UnitKey, CardKey>, Faction> = {
+  boneMinion: 'zombies', rock: 'plants', brainTitan: 'zombies', elderOak: 'plants',
+};
 
-/** Which side a unit fights for: a card's own side, the zombies' for a Bone Minion, the plants' for a rock. */
+/** Which side a unit fights for: a card's own side, the zombies' for a Bone Minion and the Brain Titan, the plants' for a rock and the Elder Oak. */
 export function factionOf(key: UnitKey): Faction {
   return isCard(key) ? UNIT_INFO[key].faction : NON_CARD_FACTION[key];
 }

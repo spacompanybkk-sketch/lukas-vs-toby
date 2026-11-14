@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { batch, signal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { createBasicBot } from '../ai/basicBot';
 import type { Bot, Skill } from '../ai/bot';
@@ -11,11 +11,51 @@ import { spellArea } from '../sim/spells';
 import type { SpellTile } from '../sim/spells';
 import { isStanding, statsFor } from '../sim/lookup';
 import { MAX_LEVEL, TICKS_PER_SECOND } from '../sim/types';
-import type { Command, CommandRejection, Faction, SimEvent, SpellKey, Unit, UnitKey } from '../sim/types';
+import type { BossKey, CardKey, Command, CommandRejection, Faction, SimEvent, SimState, SpellKey, Unit, UnitKey } from '../sim/types';
 import type { PlacementPreview } from '../render/battle/types';
+import { bigWaveRuns, freePlayRecord, levelProblem, levelRecord } from './levelSession';
+import type { FreePlayPlay, LevelPlay, LevelRecord } from './levelSession';
+import type { FreePlayRecord } from '../adventure/freePlay';
+import { Tutorial } from './tutorial';
+import type { TutorialAction } from './tutorial';
 
-/** `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). */
-export interface BattleOptions { playerFaction: Faction; skill: Skill; seed: number }
+/**
+ * `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). `upgrades`: the
+ * logged-in player's Marketplace levels (their save holds both sides; only the cards of
+ * `playerFaction` are used, the computer never has any). `versus`: a match between two people,
+ * where upgrades never apply (spec 7).
+ */
+export interface BattleOptions {
+  playerFaction: Faction; skill: Skill; seed: number;
+  upgrades?: Partial<Record<CardKey, number>>;
+  versus?: boolean;
+  /** The player's hand instead of all ten cards (an Adventure level deals only its own; [] deals none). */
+  cards?: CardKey[];
+  /** The Adventure level this battle plays (its id), or none for a Quick Battle. */
+  level?: string;
+  /**
+   * The prepared Adventure level (`prepareLevel`): the match is its config (scripted waves, the
+   * clock, the belt), the computer is the level's opponent or none. `skill`, `cards` and
+   * `upgrades` are then not used: the config already holds them.
+   */
+  play?: LevelPlay;
+  /**
+   * A Free Play run (`prepareFreePlay`): the match is its config (endless waves or gardens), and no
+   * computer plays (the waves are the other side). `skill`, `cards` and `upgrades` are not used.
+   */
+  free?: FreePlayPlay;
+}
+
+/** The player's upgrades for their own side: the cards of `side` in `upgrades`, none in Versus. */
+export function sideUpgrades(opts: BattleOptions): Partial<Record<CardKey, number>> {
+  const own: Partial<Record<CardKey, number>> = {};
+  if (opts.versus === true || opts.upgrades === undefined) return own;
+  for (const key of ALL_CARDS[opts.playerFaction]) {
+    const level = opts.upgrades[key];
+    if (level !== undefined) own[key] = level;
+  }
+  return own;
+}
 
 export interface CardVM {
   unit: UnitKey; name: string; price: number; hotkey: string;
@@ -36,6 +76,94 @@ export interface HudSignals {
   heroSelected: Signal<boolean>; // the hero power is picked and waits for a lane
   spells: Signal<SpellVM[]>; // the player's dealt spells, in deal order
   spellSelected: Signal<SpellKey | null>; // the aimed spell picked and waiting for a tile
+  boss: Signal<BossVM | null>; // the level's boss while it stands (the HUD's boss bar), else null
+}
+
+/**
+ * The boss of a boss level: which, its health (never below 0, rounded up to the bar's blocks) and
+ * max, whether its shield is up, and the health marks (shares of max) where its shield goes up.
+ */
+export interface BossVM { key: BossKey; hp: number; max: number; shield: boolean; notches: readonly number[] }
+
+/** The boss bar fills in this many blocks: `hud.boss` changes only when a block does. */
+export const BOSS_BAR_BLOCKS = 40;
+
+/**
+ * The boss as the HUD shows it: null in a level with no boss (or before it has come on); once it
+ * has fallen, 0 health. Health is rounded up to the next of the bar's `BOSS_BAR_BLOCKS` blocks, so
+ * the signal changes only when the bar does, not on every hit. Notches from `balance`.
+ */
+export function bossOf(s: Readonly<SimState>, balance: Balance): BossVM | null {
+  const key = s.config.boss?.key;
+  if (key === undefined || s.tick === 0) return null;
+  let notches: readonly number[] = [];
+  for (const p of balance.bosses[key].patterns) if (p.kind === 'shield') notches = p.atHealth;
+  const u = s.units.find((x) => x.key === key);
+  if (u === undefined) return { key, hp: 0, max: 1, shield: false, notches };
+  const block = u.maxHp / BOSS_BAR_BLOCKS;
+  const hp = u.hp > 0 ? Math.min(u.maxHp, Math.ceil(u.hp / block) * block) : 0;
+  return { key, hp, max: u.maxHp, shield: u.shieldLeft > 0, notches };
+}
+
+/**
+ * A Free Play run's HUD, each signal written only when what it shows changes (so a 40-minute run
+ * costs the HUD nothing between changes).
+ */
+export interface EndlessSignals {
+  mode: 'survive' | 'breakthrough';
+  /** The cards the waves (or gardens) are made of. */
+  cards: readonly CardKey[];
+  /** The score: waves started (survive) or gardens broken (breakthrough). */
+  wave: Signal<number>;
+  /** Survive: twelfths of the gap left before the next wave (12 = a whole gap, 0 = now). */
+  nextWave: Signal<number>;
+  /** Breakthrough: whole seconds left on the clock. */
+  clock: Signal<number>;
+  /** The last wave (survive) or garden (breakthrough) to start: its number, the big one's, numbered. */
+  banner: Signal<{ wave: number; big: boolean; n: number } | null>;
+  /** Gardens broken this run, for the clock's "+30" pop (breakthrough). */
+  bonus: Signal<number>;
+  /** The player ended the run from the pause menu (`quitRun`): it is over, and pays like a loss. */
+  quit: Signal<boolean>;
+}
+
+/** The survive countdown ring is drawn in this many steps. */
+export const RING_STEPS = 12;
+
+/** A level's own HUD signals (all quiet in a Quick Battle). */
+export interface LevelSignals {
+  /** The player's conveyor belt (oldest first); empty when the level has none for the player. */
+  belt: Signal<BeltCardVM[]>;
+  /** The belt card picked (its slot), waiting for a tile; null when none. */
+  beltSlot: Signal<number | null>;
+  /** The last unit of a big wave to come on, numbered so each one cues: where it enters. */
+  incoming: Signal<IncomingVM | null>;
+}
+
+/** A card waiting on the belt; `id` stays with the card while it moves along (a new card, a new id). */
+export interface BeltCardVM { card: CardKey; id: number }
+
+/** A unit of a big wave entering `lane` from `side`'s end; `n` counts them. */
+export interface IncomingVM { lane: number; side: Faction; n: number }
+
+/** What a level's HUD shows beside the usual: fixed for the whole battle. */
+export interface LevelHudInfo {
+  mode: LevelPlay['config']['mode'];
+  /** The clock, in seconds (survive, breakthrough, conveyor), or null. */
+  goalSeconds: number | null;
+  /** Breakthrough: the stars are counted on the clock left, at these shares of it. */
+  clockStars: boolean;
+  /**
+   * The scripted waves: when the last unit comes (seconds; 0 when there is no script) and the big
+   * waves' flags (seconds). With a clock the waves ride on the clock bar; without one, on their own bar.
+   */
+  lastWave: number; flags: number[];
+  /** Whose units the script brings. */
+  enemy: Faction;
+  /** The belt is the player's: it replaces the card tray. */
+  belt: boolean;
+  /** No energy in this level: the energy counter is not shown. */
+  noEnergy: boolean;
 }
 
 /** One of the player's dealt spells: castable now, and how far it has recharged (0..1). */
@@ -88,7 +216,24 @@ export class BattleController {
   readonly match: Match;
   readonly hud: HudSignals;
   readonly playerFaction: Faction;
+  /** The Adventure level being played, or null (Quick Battle). */
+  readonly play: LevelPlay | null;
+  /** A level's extra HUD (clock, waves, belt), or null. */
+  readonly level: LevelHudInfo | null;
+  readonly levelHud: LevelSignals;
+  /** The Free Play run being played, or null. */
+  readonly free: FreePlayPlay | null;
+  /** A Free Play run's HUD, or null. */
+  readonly endless: EndlessSignals | null;
+  /** The level's tutorial (`play.teach`), or null: none, or every step already done. */
+  readonly tutorial: Tutorial | null;
   private readonly bot: Bot;
+  /** The ids of the cards on the belt, in belt order (see `BeltCardVM`). */
+  private readonly beltIds: number[] = [];
+  private nextBeltId = 1;
+  /** The big waves (first and last arrival tick), and the units of a big wave cued so far. */
+  private readonly bigRuns: { from: number; to: number }[] = [];
+  private incomingN = 0;
   private readonly opponent: Faction;
   /** The one player command accepted for the coming tick, if any. */
   private queued: Command | null = null;
@@ -106,14 +251,49 @@ export class BattleController {
     // checks measure for this side and difficulty.
     // Both sides are dealt all ten of their cards (ruling R52). The computer's strategy may know
     // only some of them; its random moves (`randomLegal`) play any card in its hand.
-    const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
-    config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
-    this.match = new Match(config, balance);
-    const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
-    this.bot = createBasicBot(
-      this.opponent, computerSkill, (Math.imul(opts.seed, 2654435761) + 1) >>> 0,
-      computerTable(opts.playerFaction, opts.skill),
-    );
+    this.play = opts.play ?? null;
+    this.free = opts.free ?? null;
+    const botSeed = (Math.imul(opts.seed, 2654435761) + 1) >>> 0;
+    if (this.play !== null) {
+      // An Adventure level: its own match, and its own computer (none for a scripted level).
+      const { def, config } = this.play;
+      if (def.side !== opts.playerFaction) throw new Error(`level ${def.id} is played on the ${def.side} side`);
+      this.match = new Match(config, balance);
+      const problem = levelProblem(def);
+      if (problem !== null) throw new Error(problem);
+      this.bot = def.opponent === null
+        ? { faction: this.opponent, think: () => [] }
+        : createBasicBot(this.opponent, def.opponent.skill, botSeed);
+      const runs = bigWaveRuns(config.script);
+      this.bigRuns.push(...runs);
+      const flags = runs.map((r) => r.from);
+      const last = config.script[config.script.length - 1];
+      this.level = {
+        mode: config.mode,
+        goalSeconds: config.goalTicks === null ? null : config.goalTicks / TICKS_PER_SECOND,
+        clockStars: config.mode === 'breakthrough',
+        lastWave: last === undefined ? 0 : last.tick / TICKS_PER_SECOND,
+        flags: flags.map((t) => t / TICKS_PER_SECOND),
+        enemy: this.opponent,
+        belt: config.belt !== null && config.belt.side === this.playerFaction,
+        noEnergy: config.noEnergy,
+      };
+    } else if (this.free !== null) {
+      // Free Play: the endless source is the other side; nobody else plays.
+      if (this.free.side !== opts.playerFaction) throw new Error(`a Free Play run on the ${this.free.side} side`);
+      this.match = new Match(this.free.config, balance);
+      this.bot = { faction: this.opponent, think: () => [] };
+      this.level = null;
+    } else {
+      const config = battleConfig(opts.seed, opts.playerFaction, opts.skill, balance);
+      config.cards = { plants: [...ALL_CARDS.plants], zombies: [...ALL_CARDS.zombies] };
+      if (opts.cards !== undefined) config.cards[opts.playerFaction] = [...opts.cards];
+      config.upgrades = { plants: {}, zombies: {}, [opts.playerFaction]: sideUpgrades(opts) };
+      this.match = new Match(config, balance);
+      const computerSkill = DIFFICULTY[opts.skill][opts.playerFaction].skill;
+      this.bot = createBasicBot(this.opponent, computerSkill, botSeed, computerTable(opts.playerFaction, opts.skill));
+      this.level = null;
+    }
     this.hud = {
       energy: signal(0), cards: signal<CardVM[]>([]),
       base: signal({ plants: { hp: 0, max: 0 }, zombies: { hp: 0, max: 0 } }),
@@ -123,17 +303,53 @@ export class BattleController {
       hero: signal<HeroVM>({ ready: false, fraction: 0 }),
       heroSelected: signal(false),
       spells: signal<SpellVM[]>([]), spellSelected: signal<SpellKey | null>(null),
+      boss: signal<BossVM | null>(null),
+    };
+    this.levelHud = {
+      belt: signal<BeltCardVM[]>([]), beltSlot: signal<number | null>(null),
+      incoming: signal<IncomingVM | null>(null),
+    };
+    const mode = this.match.state.config.mode;
+    this.endless = this.free === null || (mode !== 'survive' && mode !== 'breakthrough') ? null : {
+      mode, cards: [...(this.match.state.config.endless?.cards ?? [])], wave: signal(0), nextWave: signal(RING_STEPS), clock: signal(0),
+      banner: signal<{ wave: number; big: boolean; n: number } | null>(null), bonus: signal(0), quit: signal(false),
     };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
-    // A first tap on the lawn should do something: start with the first card the player can pay for.
+    const teach = this.play?.teach ?? [];
+    this.tutorial = teach.length === 0 ? null : new Tutorial(teach, {
+      match: this.match, playerFaction: this.playerFaction,
+      selected: () => this.hud.selected.peek() as CardKey | null,
+      heroPicked: () => this.hud.heroSelected.peek(),
+      spellPicked: () => this.hud.spellSelected.peek(),
+      putDownPower: () => this.powerDone(),
+    });
+    // A first tap on the lawn should do something: start with the first card the player can pay
+    // for. Not when the tutorial's first step is to pick a card: the glove points at it instead.
     const first = this.hud.cards.peek().find((c) => c.affordable);
-    if (first !== undefined) this.hud.selected.value = first.unit;
+    if (first !== undefined && this.tutorial?.startsWithCard !== true) this.hud.selected.value = first.unit;
+  }
+
+  /** A tutorial step waits: anything but its own action is ignored (no denial, no buzz). */
+  private refused(action: TutorialAction): boolean {
+    return this.tutorial !== null && !this.tutorial.allows(action);
+  }
+
+  /** Queues the player's command for the next tick (and tells the tutorial, whose step it may end). */
+  private queue(cmd: Command): void {
+    this.queued = cmd;
+    this.tutorial?.queued(cmd);
   }
 
   /** One tick: the computer's commands and the player's queued one go to the match together. */
   step(): SimEvent[] {
     if (this.hud.paused.peek() || this.over()) return [];
+    const tutorial = this.tutorial;
+    if (tutorial !== null) {
+      tutorial.tick();
+      // Held: the match waits for the step's action; the tick that carries it goes through.
+      if (tutorial.holding && this.queued === null) return [];
+    }
     const mine: Command[] = this.queued === null ? [] : [this.queued];
     this.queued = null;
     const theirs = this.bot.think(this.match);
@@ -145,8 +361,17 @@ export class BattleController {
         this.heroPeriod = seconds(this.match.balance.hero[this.playerFaction].chargeSeconds);
       }
       if (e.type === 'spellCast' && e.faction === this.playerFaction) this.castOnce.add(e.spell);
+      if (e.type === 'beltCard') this.beltIds.push(this.nextBeltId++);
+      if (e.type === 'beltUsed') this.beltLeft(e.slot);
+      if (e.type === 'waveSpawned') this.cueWave(e.index, e.lane);
+      if (e.type === 'waveStarted' && this.endless !== null) {
+        const old = this.endless.banner.peek();
+        this.endless.banner.value = { wave: e.wave, big: e.wave % this.match.balance.endless.bossEvery === 0, n: (old?.n ?? 0) + 1 };
+      }
+      if (e.type === 'gardenBroken' && this.endless !== null) this.endless.bonus.value += 1;
     }
     this.refresh();
+    tutorial?.events(events);
     const winner = this.match.state.winner;
     if (winner !== null && this.hud.result.peek() === null) {
       this.hud.result.value = { winner, playerWon: winner === this.playerFaction };
@@ -154,23 +379,62 @@ export class BattleController {
     return events;
   }
 
+  /** A decided level's record (`levelRecord`); null while it runs, and in a Quick Battle. */
+  levelResult(): LevelRecord | null {
+    return levelRecord(this);
+  }
+
+  /** A finished Free Play run's record (`freePlayRecord`); null while it runs, and in any other battle. */
+  freeResult(): FreePlayRecord | null {
+    return freePlayRecord(this);
+  }
+
   select(unit: UnitKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
     if (unit !== null && !(isCard(unit) && this.match.state.config.cards[this.playerFaction].includes(unit))) return;
+    if (this.refused(unit === null ? { kind: 'other' } : { kind: 'select', card: unit as CardKey })) return;
+    this.levelHud.beltSlot.value = null;
     this.hud.selected.value = unit;
     if (unit !== null) {
       this.hud.shovel.value = false;
       this.clearPowers();
       this.cardBeforePower = null;
+      this.tutorial?.selected(unit as CardKey);
     }
+  }
+
+  /**
+   * A tap on a belt card (its slot): it is picked and waits for a tile, like a card from the tray
+   * (and puts down the shovel and any power). Null, or a slot with no card, puts it down.
+   */
+  selectBelt(slot: number | null): void {
+    if (this.hud.paused.peek() || this.over() || this.level?.belt !== true) return;
+    const card = slot === null ? undefined : this.match.state.belt[slot];
+    if (this.refused(card === undefined ? { kind: 'other' } : { kind: 'select', card })) return;
+    if (slot === null || card === undefined) {
+      if (this.levelHud.beltSlot.peek() !== null) {
+        this.levelHud.beltSlot.value = null;
+        this.hud.selected.value = null;
+      }
+      return;
+    }
+    batch(() => {
+      this.hud.shovel.value = false;
+      this.clearPowers();
+      this.cardBeforePower = null;
+      this.levelHud.beltSlot.value = slot;
+      this.hud.selected.value = card;
+    });
+    this.tutorial?.selected(card);
   }
 
   toggleShovel(): void {
     if (this.hud.paused.peek() || this.over()) return;
-    if (this.playerFaction !== 'plants') return;
+    if (this.playerFaction !== 'plants' || this.refused({ kind: 'other' })) return;
     const on = !this.hud.shovel.peek();
     this.hud.shovel.value = on;
     if (on) {
+      this.levelHud.beltSlot.value = null;
       this.hud.selected.value = null;
       this.clearPowers();
       this.cardBeforePower = null;
@@ -184,6 +448,7 @@ export class BattleController {
    */
   selectHero(on: boolean): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.refused(on ? { kind: 'hero' } : { kind: 'other' })) return;
     if (!on) {
       if (this.hud.heroSelected.peek()) this.powerDone();
       return;
@@ -196,6 +461,7 @@ export class BattleController {
     this.pickPower();
     this.hud.spellSelected.value = null;
     this.hud.heroSelected.value = true;
+    this.tutorial?.refresh();
   }
 
   /** The hero button (or key H): picks the hero power, or puts it down when it is picked. */
@@ -212,6 +478,7 @@ export class BattleController {
    */
   selectSpell(key: SpellKey | null): void {
     if (this.hud.paused.peek() || this.over()) return;
+    if (this.refused(key === null || key === this.hud.spellSelected.peek() ? { kind: 'other' } : { kind: 'spell', key })) return;
     if (key === null || key === this.hud.spellSelected.peek()) {
       if (this.hud.spellSelected.peek() !== null) this.powerDone();
       return;
@@ -227,6 +494,7 @@ export class BattleController {
       this.pickPower();
       this.hud.heroSelected.value = false;
       this.hud.spellSelected.value = key;
+      this.tutorial?.refresh();
       return;
     }
     if (this.queued !== null) return;
@@ -236,7 +504,7 @@ export class BattleController {
       this.deny(reason);
       return;
     }
-    this.queued = cmd;
+    this.queue(cmd);
     // Cast: nothing is waiting to be aimed any more (and a card put aside for it comes back).
     if (this.hud.heroSelected.peek() || this.hud.spellSelected.peek() !== null) this.powerDone();
   }
@@ -265,6 +533,14 @@ export class BattleController {
     const target = this.resolveTile(tile, unitId, unit);
     if (target === null) return null;
     const cmd = this.commandFor(unit, target.tile, target.unit);
+    const slot = this.levelHud.beltSlot.peek();
+    if (slot !== null) {
+      return {
+        unit, lane: target.tile.lane, col: target.tile.col,
+        ok: this.match.check(this.beltCommand(slot, target.tile)) === null,
+        mergeTargetId: cmd.type === 'merge' ? cmd.targetId : null,
+      };
+    }
     return {
       unit, lane: target.tile.lane, col: target.tile.col,
       ok: this.match.check(cmd) === null,
@@ -280,18 +556,52 @@ export class BattleController {
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.tutorial?.holding === true && !this.tutorialTap(tile, unitId)) return 'ignored';
     if (this.hud.heroSelected.peek()) return tile === null ? this.deny('bad-lane') : this.heroLane(tile.lane);
     const spell = this.hud.spellSelected.peek();
     if (spell !== null) return this.castAt(spell, tile);
     const target = this.resolveTile(tile, unitId, this.hud.shovel.peek() ? null : this.hud.selected.peek());
+    const slot = this.levelHud.beltSlot.peek();
+    if (slot !== null && !this.hud.shovel.peek()) {
+      if (target === null) return this.deny('bad-lane');
+      const play = this.beltCommand(slot, target.tile);
+      const refused = this.match.check(play);
+      if (refused !== null) return this.deny(refused);
+      this.queue(play);
+      return null;
+    }
     const cmd = this.buildClickCommand(target);
     if (cmd === 'no-selection') return this.deny('not-in-hand');
     if (cmd === 'no-tile') return this.deny('bad-lane');
     if (cmd === 'no-target') return this.deny('no-target');
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queued = cmd;
+    this.queue(cmd);
     return null;
+  }
+
+  /**
+   * While a tutorial step holds the match: whether this lawn tap is the step's own action (the
+   * command it would make, allowed by the step and by the match). Anything else is ignored.
+   */
+  private tutorialTap(tile: Tile | null, unitId: number | null): boolean {
+    const me = this.playerFaction;
+    let cmd: Command | null = null;
+    const spell = this.hud.spellSelected.peek();
+    const slot = this.levelHud.beltSlot.peek();
+    if (this.hud.heroSelected.peek()) {
+      if (tile !== null) cmd = { type: 'hero', faction: me, lane: tile.lane };
+    } else if (spell !== null) {
+      if (tile !== null) cmd = { type: 'spell', faction: me, spell, lane: tile.lane, col: tile.col };
+    } else if (!this.hud.shovel.peek()) {
+      const target = this.resolveTile(tile, unitId, this.hud.selected.peek());
+      if (target !== null && slot !== null) cmd = this.beltCommand(slot, target.tile);
+      else {
+        const built = this.buildClickCommand(target);
+        if (typeof built !== 'string') cmd = built;
+      }
+    }
+    return cmd !== null && this.tutorial!.allows({ kind: 'command', cmd }) && this.match.check(cmd) === null;
   }
 
   /**
@@ -304,7 +614,8 @@ export class BattleController {
     const unit = this.hud.selected.peek();
     if (unit === null || !isCard(unit) || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
     const me = this.match.state.players[this.playerFaction];
-    if ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit)) return null;
+    // A belt card is free and never recharges.
+    if (this.levelHud.beltSlot.peek() === null && ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit))) return null;
     const units = this.match.state.units;
     for (let i = 0; i < units.length; i++) {
       const u = units[i] as Unit;
@@ -337,9 +648,10 @@ export class BattleController {
     if (this.over()) return 'match-over';
     if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
     const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
+    if (this.refused({ kind: 'command', cmd })) return 'ignored';
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queued = cmd;
+    this.queue(cmd);
     this.powerDone();
     return null;
   }
@@ -351,6 +663,8 @@ export class BattleController {
     }
     if (this.hud.paused.peek() || this.over()) return;
     if (key === 'Escape') {
+      if (this.refused({ kind: 'other' })) return;
+      this.levelHud.beltSlot.value = null;
       this.hud.selected.value = null;
       this.hud.shovel.value = false;
       this.clearPowers();
@@ -368,8 +682,27 @@ export class BattleController {
       return;
     }
     const index = HOTKEYS.indexOf(key);
+    if (this.level?.belt === true) {
+      if (index >= 0) this.selectBelt(index);
+      return;
+    }
     const card = index < 0 ? undefined : this.match.state.config.cards[this.playerFaction][index];
     if (card !== undefined) this.select(card);
+  }
+
+  /**
+   * Ends a Free Play run from the pause menu: the run is over (as if the base had fallen; the
+   * player has not won) and its record pays for the waves cleared so far (`freeResult`). Does
+   * nothing outside a running Free Play run.
+   */
+  quitRun(): void {
+    const endless = this.endless;
+    if (endless === null || this.over()) return;
+    batch(() => {
+      endless.quit.value = true;
+      this.hud.paused.value = false;
+      this.hud.result.value = { winner: this.opponent, playerWon: false };
+    });
   }
 
   setPaused(paused: boolean): void {
@@ -382,7 +715,7 @@ export class BattleController {
     const cmd: Command = { type: 'spell', faction: this.playerFaction, spell, lane: tile.lane, col: tile.col };
     const reason = this.match.check(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queued = cmd;
+    this.queue(cmd);
     this.powerDone();
     return null;
   }
@@ -392,7 +725,11 @@ export class BattleController {
    * aside, to come back when the power is cast or put down; the card and the shovel go down.
    */
   private pickPower(): void {
-    if (!this.hud.heroSelected.peek() && this.hud.spellSelected.peek() === null) this.cardBeforePower = this.hud.selected.peek();
+    if (!this.hud.heroSelected.peek() && this.hud.spellSelected.peek() === null) {
+      // A belt card is not put aside: the belt moves on while the power is aimed.
+      this.cardBeforePower = this.levelHud.beltSlot.peek() === null ? this.hud.selected.peek() : null;
+    }
+    this.levelHud.beltSlot.value = null;
     this.hud.selected.value = null;
     this.hud.shovel.value = false;
   }
@@ -408,6 +745,34 @@ export class BattleController {
   private clearPowers(): void {
     this.hud.heroSelected.value = false;
     this.hud.spellSelected.value = null;
+  }
+
+  /** The belt command for the card in `slot` on `tile`. */
+  private beltCommand(slot: number, tile: Tile): Command {
+    return { type: 'belt', faction: this.playerFaction, slot, lane: tile.lane, col: tile.col };
+  }
+
+  /** A belt card left `slot` (played): the later ones move down; a picked card follows its slot. */
+  private beltLeft(slot: number): void {
+    this.beltIds.splice(slot, 1);
+    const picked = this.levelHud.beltSlot.peek();
+    if (picked === null) return;
+    if (picked === slot) {
+      this.levelHud.beltSlot.value = null;
+      this.hud.selected.value = null;
+    } else if (picked > slot) {
+      this.levelHud.beltSlot.value = picked - 1;
+    }
+  }
+
+  /** A scripted unit came on: one of a big wave (its first 3 s from a flag tick) is cued at its lane. */
+  private cueWave(index: number, lane: number): void {
+    const play = this.play;
+    const entry = play?.config.script[index];
+    if (entry === undefined) return;
+    if (!this.bigRuns.some((r) => entry.tick >= r.from && entry.tick <= r.to)) return;
+    this.incomingN += 1;
+    this.levelHud.incoming.value = { lane, side: entry.faction, n: this.incomingN };
   }
 
   private over(): boolean {
@@ -534,5 +899,30 @@ export class BattleController {
       return n !== undefined && o.key === n.key && o.ready === n.ready && o.fraction === n.fraction;
     });
     if (!same) this.hud.spells.value = spells;
+
+    const boss = bossOf(s, this.match.balance);
+    const oldBoss = this.hud.boss.peek();
+    const sameBoss = boss === null ? oldBoss === null
+      : oldBoss !== null && oldBoss.key === boss.key && oldBoss.hp === boss.hp && oldBoss.max === boss.max && oldBoss.shield === boss.shield;
+    if (!sameBoss) this.hud.boss.value = boss;
+
+    const endless = this.endless;
+    if (endless !== null) {
+      set(endless.wave, s.wave);
+      if (endless.mode === 'survive') {
+        const gap = s.wave === 0 ? (s.config.endless?.firstWaveTicks ?? 0) : seconds(this.match.balance.endless.gapSeconds);
+        set(endless.nextWave, gap > 0 ? Math.ceil((Math.max(0, s.waveTimer) / gap) * RING_STEPS) : 0);
+      } else {
+        set(endless.clock, Math.ceil(Math.max(0, s.clock) / TICKS_PER_SECOND));
+      }
+    }
+
+    if (this.level?.belt === true) {
+      const old = this.levelHud.belt.peek();
+      const now = s.belt;
+      let sameBelt = old.length === now.length;
+      for (let i = 0; sameBelt && i < now.length; i++) sameBelt = old[i]!.card === now[i] && old[i]!.id === this.beltIds[i];
+      if (!sameBelt) this.levelHud.belt.value = now.map((card, i) => ({ card, id: this.beltIds[i] ?? 0 }));
+    }
   }
 }

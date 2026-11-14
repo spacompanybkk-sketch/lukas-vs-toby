@@ -4,7 +4,23 @@ import type { SimState } from '../../src/sim/types';
 
 /**
  * Checksum of `makeState()`, cross-checked against a separate implementation of the byte
- * layout documented in src/sim/hash.ts (standard FNV-1a over 1420 bytes). Re-pinned in phase 2
+ * layout documented in src/sim/hash.ts (standard FNV-1a over 2254 bytes). Re-pinned in phase 3
+ * Task 8 (levels) when units gained `stunFatigue` (a boss's stun resistance; 8 bytes per unit, after
+ * `phase`), cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()` (3852161195 over 2254 bytes; the same script without `stunFatigue` gives the
+ * earlier 1176279507 over 2238 bytes); before that it was
+ * 1176279507 over 2238 bytes, re-pinned in phase 3 Task 7a (Free Play) when the setup gained `endless` and the state `wave`, `waveTimer`, `clock` and
+ * `incoming` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()`; the same script gives the earlier 2646483390 over 2057 bytes with the new
+ * fields left out); before that it was 2646483390 over 2057 bytes, re-pinned in phase 3
+ * Task 3 (bosses) when units gained `pattern`, `patternTimer`, `shieldLeft` and `phase` and the setup
+ * its `boss` (cross-checked by a separate Python FNV-1a written from the documented layout, fed the
+ * JSON of `makeState()`); before that it was 525061730 over 1940 bytes, re-pinned in phase 3
+ * (Adventure) when the setup gained its level fields (`mode` .. `invulnerableBase`) and the state
+ * `scriptIndex` and `belt` (cross-checked by a separate Python FNV-1a feeding the 456 new bytes on
+ * from the earlier checksum); before that it was 1403206276 over 1484 bytes, re-pinned in phase 4a
+ * when the setup gained its Marketplace `upgrades` (cross-checked by feeding the 64 new bytes on
+ * from the earlier checksum); before that it was 2247931455 over 1420 bytes, re-pinned in phase 2
  * for the owner's Sunflower rule, when units gained `hurt`; in Task 4b it was 1072679369 over 1404
  * bytes, when units gained `expires`, `haste` and `hasteCarry`, players their dealt spells and
  * the setup its `spells`; for the Task 3 review it was 3875909580 over 1232 bytes, when hazards
@@ -17,7 +33,7 @@ import type { SimState } from '../../src/sim/types';
  * was 3642874464 over 841 bytes, and before the base defence timers were added 1810640202 over
  * 793 bytes.
  */
-const GOLDEN_HASH = 2247931455;
+const GOLDEN_HASH = 3852161195;
 
 /** A fresh hand-built state each call, so a test can mutate its copy freely. */
 function makeState(): SimState {
@@ -30,13 +46,13 @@ function makeState(): SimState {
         id: 1, key: 'peashooter', faction: 'plants', lane: 2, x: 1, level: 2,
         hp: 80, maxHp: 120, spent: 150, armor: 0, meleeTimer: 0, shotTimer: 12, abilityTimer: 0, auraTimer: 0, blocked: false,
         stun: 0, blind: 15, tied: 0, poison: 0, poisonDps: 0, burn: 40, burnDps: 10, stacks: 0, ownerId: null,
-        expires: 0, haste: 0, hasteCarry: 0, hurt: 0,
+        expires: 0, haste: 0, hasteCarry: 0, hurt: 0, pattern: 0, patternTimer: 0, shieldLeft: 0, phase: 0, stunFatigue: 0,
       },
       {
         id: 3, key: 'brainEater', faction: 'zombies', lane: 2, x: 6.25, level: 1,
         hp: 90, maxHp: 100, spent: 100, armor: 3, meleeTimer: 4, shotTimer: 9, abilityTimer: 0, auraTimer: 33, blocked: true,
         stun: 20, blind: 0, tied: 7, poison: 60, poisonDps: 15, burn: 0, burnDps: 0, stacks: 2, ownerId: 9,
-        expires: 0, haste: 45, hasteCarry: 1, hurt: 15,
+        expires: 0, haste: 45, hasteCarry: 1, hurt: 15, pattern: 1, patternTimer: 77, shieldLeft: 90, phase: 2, stunFatigue: 12,
       },
     ],
     projectiles: [
@@ -73,7 +89,26 @@ function makeState(): SimState {
       suddenDeath: true,
       heroes: { plants: true, zombies: false },
       spells: { plants: 2, zombies: 1 },
+      upgrades: { plants: { peashooter: 3, sunflower: 0 }, zombies: { brainEater: 10 } },
+      mode: 'conveyor',
+      script: [
+        { tick: 30, unit: 'brainEater', faction: 'zombies', lane: 1, x: 8.5, level: 2 },
+        { tick: 60, unit: 'veryFastWalker', faction: 'zombies', lane: 3, level: 1 },
+      ],
+      prepared: [{ unit: 'walnutBomb', faction: 'plants', lane: 2, x: 3.5, level: 1 }],
+      goalTicks: 2700,
+      belt: { side: 'plants', everyTicks: 90, cards: ['peashooter', 'walnutBomb'], slots: 5 },
+      noEnergy: true,
+      invulnerableBase: 'zombies',
+      boss: { key: 'elderOak', faction: 'plants', lane: 2 },
+      endless: { cards: ['brainEater', 'veryFastWalker'], firstWaveTicks: 90 },
     },
+    scriptIndex: 1,
+    belt: ['peashooter'],
+    wave: 3,
+    waveTimer: 250,
+    clock: 1200,
+    incoming: [{ tick: 130, unit: 'brainEater', lane: 4, x: 9.5, level: 2, index: 1 }],
   };
 }
 
@@ -215,6 +250,72 @@ describe('hashState', () => {
     ['the number of dealt spells', (s) => { s.players.zombies.spells.pop(); }],
     ['config spells.plants', (s) => { s.config.spells.plants = 1; }],
     ['config spells.zombies', (s) => { s.config.spells.zombies = 2; }],
+    // Marketplace upgrades.
+    ['config an upgrade level', (s) => { s.config.upgrades.plants.peashooter = 4; }],
+    ['config an upgrade of 0 versus absent', (s) => { delete s.config.upgrades.plants.sunflower; }],
+    ['config an upgrade on another card', (s) => { s.config.upgrades.plants.walnutBomb = 1; }],
+    ['config upgrades moved to the other side', (s) => { s.config.upgrades = { plants: { brainEater: 10 } as never, zombies: { peashooter: 3, sunflower: 0 } as never }; }],
+    ['config a zombie upgrade level', (s) => { s.config.upgrades.zombies.brainEater = 9; }],
+    // Level modes.
+    ['config mode', (s) => { s.config.mode = 'survive'; }],
+    ['config the number of script entries', (s) => { s.config.script.pop(); }],
+    ['config a script tick', (s) => { s.config.script[0]!.tick = 31; }],
+    ['config a script unit', (s) => { s.config.script[0]!.unit = 'skeletonWarrior'; }],
+    ['config a script faction', (s) => { s.config.script[0]!.faction = 'plants'; }],
+    ['config a script lane', (s) => { s.config.script[0]!.lane = 2; }],
+    ['config a script x', (s) => { s.config.script[0]!.x = 8; }],
+    ['config a script x given versus absent', (s) => { delete s.config.script[0]!.x; }],
+    ['config a script x absent versus given', (s) => { s.config.script[1]!.x = 9.5; }],
+    ['config a script level', (s) => { s.config.script[1]!.level = 2; }],
+    ['config the script order', (s) => { s.config.script.reverse(); }],
+    ['config the number of prepared units', (s) => { s.config.prepared.pop(); }],
+    ['config a prepared unit', (s) => { s.config.prepared[0]!.unit = 'peashooter'; }],
+    ['config a prepared faction', (s) => { s.config.prepared[0]!.faction = 'zombies'; }],
+    ['config a prepared lane', (s) => { s.config.prepared[0]!.lane = 0; }],
+    ['config a prepared x', (s) => { s.config.prepared[0]!.x = 4.5; }],
+    ['config a prepared level', (s) => { s.config.prepared[0]!.level = 3; }],
+    ['config goalTicks', (s) => { s.config.goalTicks = 2699; }],
+    ['config goalTicks null', (s) => { s.config.goalTicks = null; }],
+    ['config belt null', (s) => { s.config.belt = null; }],
+    ['config belt side', (s) => { s.config.belt!.side = 'zombies'; }],
+    ['config belt everyTicks', (s) => { s.config.belt!.everyTicks = 91; }],
+    ['config belt cards', (s) => { s.config.belt!.cards = ['walnutBomb', 'peashooter']; }],
+    ['config the number of belt cards', (s) => { s.config.belt!.cards.pop(); }],
+    ['config belt slots', (s) => { s.config.belt!.slots = 4; }],
+    ['config noEnergy', (s) => { s.config.noEnergy = false; }],
+    ['config invulnerableBase', (s) => { s.config.invulnerableBase = 'plants'; }],
+    ['config invulnerableBase null', (s) => { s.config.invulnerableBase = null; }],
+    ['scriptIndex', (s) => { s.scriptIndex = 2; }],
+    ['a belt card', (s) => { s.belt[0] = 'walnutBomb'; }],
+    ['the number of belt cards', (s) => { s.belt.push('peashooter'); }],
+    ['an empty belt', (s) => { s.belt = []; }],
+    // Bosses.
+    ['a unit pattern', (s) => { unit(s, 1).pattern = 0; }],
+    ['a unit pattern of 0 becoming 1', (s) => { unit(s, 0).pattern = 1; }],
+    ['a unit patternTimer', (s) => { unit(s, 1).patternTimer -= 1; }],
+    ['a unit shieldLeft', (s) => { unit(s, 1).shieldLeft -= 1; }],
+    ['a unit stunFatigue', (s) => { unit(s, 1).stunFatigue -= 1; }],
+    ['a unit phase', (s) => { unit(s, 1).phase = 1; }],
+    ['config boss null', (s) => { s.config.boss = null; }],
+    ['config boss key', (s) => { s.config.boss!.key = 'brainTitan'; }],
+    ['config boss faction', (s) => { s.config.boss!.faction = 'zombies'; }],
+    ['config boss lane', (s) => { s.config.boss!.lane = 1; }],
+    // Free Play.
+    ['config endless null', (s) => { s.config.endless = null; }],
+    ['config endless cards', (s) => { s.config.endless!.cards = ['veryFastWalker', 'brainEater']; }],
+    ['config the number of endless cards', (s) => { s.config.endless!.cards.pop(); }],
+    ['config endless firstWaveTicks', (s) => { s.config.endless!.firstWaveTicks = 91; }],
+    ['wave', (s) => { s.wave = 4; }],
+    ['waveTimer', (s) => { s.waveTimer -= 1; }],
+    ['clock', (s) => { s.clock -= 1; }],
+    ['no incoming unit', (s) => { s.incoming = []; }],
+    ['the number of incoming units', (s) => { s.incoming.push({ tick: 140, unit: 'veryFastWalker', lane: 0, x: 9.5, level: 1, index: 2 }); }],
+    ['an incoming tick', (s) => { s.incoming[0]!.tick = 131; }],
+    ['an incoming unit', (s) => { s.incoming[0]!.unit = 'veryFastWalker'; }],
+    ['an incoming lane', (s) => { s.incoming[0]!.lane = 3; }],
+    ['an incoming x', (s) => { s.incoming[0]!.x = 9; }],
+    ['an incoming level', (s) => { s.incoming[0]!.level = 3; }],
+    ['an incoming index', (s) => { s.incoming[0]!.index = 0; }],
   ];
 
   it.each(mutations)('changes when %s changes', (_name, mutate) => {
@@ -236,6 +337,7 @@ describe('hashState', () => {
     };
     b.baseHp = { zombies: 480, plants: 500 };
     b.config.incomeMultiplier = { zombies: 1.25, plants: 1 };
+    b.config.upgrades = { zombies: { brainEater: 10 }, plants: { sunflower: 0, peashooter: 3 } };
     expect(hashState(b)).toBe(hashState(a));
   });
 
@@ -299,6 +401,33 @@ describe('snapshotState / restoreState', () => {
     });
     expect(restored.hazards).toEqual(s.hazards);
     expect(restored.hazards).not.toBe(s.hazards);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
+  });
+
+  it('restores a snapshot made before the Marketplace with no upgrades on either side', () => {
+    const old = JSON.parse(snapshotState(makeState())) as { config: Record<string, unknown> };
+    delete old.config.upgrades;
+    const restored = restoreState(JSON.stringify(old));
+    const expected = makeState();
+    expected.config.upgrades = { plants: {}, zombies: {} };
+    expect(restored).toEqual(expected);
+    expect(hashState(restored)).toBe(hashState(expected));
+  });
+
+  it('round-trips the level fields and the belt', () => {
+    const s = makeState();
+    const restored = restoreState(snapshotState(s));
+    expect(restored.config.script).toEqual(s.config.script);
+    expect(Object.hasOwn(restored.config.script[1]!, 'x')).toBe(false);
+    expect([restored.config.mode, restored.config.goalTicks, restored.config.belt, restored.config.noEnergy, restored.config.invulnerableBase])
+      .toEqual(['conveyor', 2700, s.config.belt, true, 'zombies']);
+    expect([restored.scriptIndex, restored.belt]).toEqual([1, ['peashooter']]);
+    expect(hashState(restored)).toBe(GOLDEN_HASH);
+  });
+
+  it('round-trips the upgrades', () => {
+    const restored = restoreState(snapshotState(makeState()));
+    expect(restored.config.upgrades).toEqual({ plants: { peashooter: 3, sunflower: 0 }, zombies: { brainEater: 10 } });
     expect(hashState(restored)).toBe(GOLDEN_HASH);
   });
 

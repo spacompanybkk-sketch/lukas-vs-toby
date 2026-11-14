@@ -1,4 +1,5 @@
 import { Box3, Color, Group, Mesh, Vector3, type Object3D } from 'three';
+import { BOSS_HALF_WIDTH } from '../../sim/types';
 import type { Faction, UnitKey } from '../../sim/types';
 import { getModelDef } from '../models/registry';
 import { ModelInstance } from '../voxel/rig';
@@ -13,6 +14,8 @@ export const MERGE_SECONDS = 0.6;
 const MERGE_PEAK = 1.35;
 /** A view is taken away this long after its unit died. */
 export const DEATH_SECONDS = 0.5;
+/** A boss plays its whole fall before it bursts, and is taken away this long after the burst. */
+const BOSS_AFTER_BURST = 0.3;
 /** Art bible section 5, Hit: 60 ms white, then it fades as the recoil returns. */
 const FLASH_HOLD = 0.06;
 const FLASH_FADE = 0.08;
@@ -183,6 +186,10 @@ export class UnitView {
   private readonly hasPad: boolean;
   private cracked = false;
   private time = 0;
+  /** A boss: it plays its whole fall before it bursts (see `die`). */
+  readonly boss: boolean;
+  /** Seconds left of a looping clip played for a while (`playFor`), or −1. */
+  private holdLeft = -1;
 
   constructor(id: number, key: UnitKey, faction: Faction, lane: number, x: number, level: number, hooks: UnitHooks) {
     this.id = id;
@@ -203,6 +210,7 @@ export class UnitView {
     this.hasCracks = parts.has('cracks');
     this.hasBrain = parts.has('brain');
     this.hasPad = key === 'pumpkinSquash';
+    this.boss = Object.hasOwn(BOSS_HALF_WIDTH, key);
     this.loopName = faction === 'zombies' && this.def.clips.walk ? 'walk' : 'idle';
     this.model.play(this.loopName);
   }
@@ -225,6 +233,21 @@ export class UnitView {
   play(clip: ClipName): void {
     if (this.dying) return;
     this.model.play(clip);
+  }
+
+  /**
+   * Plays a clip for `seconds`, then goes back to what it was doing: for a looping clip (a boss's
+   * roar is its cheer) that would otherwise play on.
+   */
+  playFor(clip: ClipName, seconds: number): void {
+    if (this.dying) return;
+    this.model.play(clip);
+    this.holdLeft = seconds;
+  }
+
+  /** Holds a part off where its clip puts it (see `ModelInstance.shiftPart`), if the model has it. */
+  shiftPart(name: string, x: number, y: number, z = 0): void {
+    if (this.hasPart(name)) this.model.shiftPart(name, x, y, z);
   }
 
   /** The newest simulation numbers, once per step. */
@@ -294,7 +317,7 @@ export class UnitView {
       return;
     }
     const clip = this.def.clips.die;
-    this.burstAt = clip ? Math.min(clip.duration, 0.35) : 0;
+    this.burstAt = clip ? (this.boss ? clip.duration : Math.min(clip.duration, 0.35)) : 0;
     this.model.play('die');
   }
 
@@ -362,7 +385,11 @@ export class UnitView {
         this.model.root.visible = false;
       }
       this.model.update(dt);
-      return this.dyingFor >= DEATH_SECONDS;
+      return this.dyingFor >= (this.boss ? this.burstAt + BOSS_AFTER_BURST : DEATH_SECONDS);
+    }
+    if (this.holdLeft >= 0) {
+      this.holdLeft -= dt;
+      if (this.holdLeft < 0) this.model.play(this.loopName);
     }
 
     const x = this.prevX + (this.currX - this.prevX) * alpha;

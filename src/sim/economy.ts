@@ -1,5 +1,6 @@
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
+import { energyOff } from './endless';
 import { levelScale } from './lookup';
 import { canAct } from './status';
 import { TICKS_PER_SECOND } from './types';
@@ -26,6 +27,9 @@ const FACTIONS: readonly Faction[] = ['plants', 'zombies'];
  *     T+1 .. T+n and carries on from where it stopped on T+n+1;
  * (b) trickle income is added to each side's carry and paid out in whole energy;
  * (c) every ready Sunflower that can act and is not hurt pays.
+ * With the level's `noEnergy` neither (b) nor (c) pays anything (a Sun maker's timer stays at 0),
+ * and `payBounty` pays nothing: energy stays where it started, at 0. In Free Play the same holds
+ * for the waves' side alone (see `energyOff`).
  */
 export function tickEconomy(s: SimState, b: Balance, events: SimEvent[]): void {
   countDownTimers(s, b);
@@ -110,6 +114,7 @@ function expireUnits(s: SimState, events: SimEvent[]): void {
 
 function payTrickle(s: SimState, b: Balance): void {
   for (const faction of FACTIONS) {
+    if (energyOff(s.config, faction)) continue;
     const player = s.players[faction];
     player.carry += Math.round(b.trickle[faction] * s.config.incomeMultiplier[faction] * 1000);
     while (player.carry >= CARRY_PER_ENERGY) {
@@ -122,7 +127,7 @@ function payTrickle(s: SimState, b: Balance): void {
 function paySunflowers(s: SimState, b: Balance, events: SimEvent[]): void {
   for (const u of s.units) {
     const sun = b.units[u.key]?.sun;
-    if (!sun || u.abilityTimer > 0 || !canAct(u) || u.hurt > 0) continue;
+    if (!sun || energyOff(s.config, u.faction) || u.abilityTimer > 0 || !canAct(u) || u.hurt > 0) continue;
     const amount = Math.round(sun.amount * levelScale(b, u.faction, u.level, 'special')); // keeps energy whole if a tuned table is fractional
     s.players[u.faction].energy += amount;
     u.abilityTimer = seconds(sun.interval);
@@ -133,9 +138,10 @@ function paySunflowers(s: SimState, b: Balance, events: SimEvent[]): void {
   }
 }
 
-/** The side that did not lose `victim` gains a share of what the victim cost, rounded down. */
+/** The side that did not lose `victim` gains a share of what the victim cost, rounded down; nothing with `noEnergy`. */
 export function payBounty(s: SimState, b: Balance, victim: Unit, events: SimEvent[]): void {
   const faction: Faction = victim.faction === 'plants' ? 'zombies' : 'plants';
+  if (energyOff(s.config, faction)) return;
   const amount = Math.floor(b.bountyShare[faction] * victim.spent);
   if (amount <= 0) return;
   s.players[faction].energy += amount;

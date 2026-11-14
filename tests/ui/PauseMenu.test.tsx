@@ -28,6 +28,15 @@ const quit = (): HTMLButtonElement => {
 };
 
 describe('PauseMenu', () => {
+  it('has no Restart when none is given (a Free Play run: Quit banks it, nothing throws it away)', () => {
+    expect(root.querySelector('[data-action="restart"]')).not.toBeNull();
+    const { onRestart: _, ...rest } = props;
+    act(() => render(<PauseMenu {...rest} />, root));
+    expect(root.querySelector('[data-action="restart"]')).toBeNull();
+    expect(root.querySelector('[data-action="settings"]')).not.toBeNull();
+    expect(root.querySelector('[data-action="quit"]')).not.toBeNull();
+  });
+
   it('Quit takes two taps: the first arms it (a tick shows), the second quits', () => {
     act(() => quit().click());
     expect(props.onQuit).not.toHaveBeenCalled();

@@ -3,7 +3,8 @@
  * The engine's repeat limits keep a burst of identical events from stacking up.
  */
 import type { AudioEngine, PlayOptions, SfxName } from './AudioEngine';
-import type { Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../sim/types';
+import { BALANCE } from '../data/balance';
+import type { AbilityName, Faction, ProjectileKind, SimEvent, SimState, UnitKey } from '../sim/types';
 import { TICKS_PER_SECOND } from '../sim/types';
 
 /** The lawn runs from x 0 (the plant base, left) to x 10 (the zombie base, right). */
@@ -16,10 +17,42 @@ const FULL_FIELD = 24;
 /** Each projectile kind's sound as it is fired. */
 const SHOT_SOUND: Record<ProjectileKind, SfxName> = {
   pea: 'pea', brain: 'brainThrow', kernel: 'kernel', butter: 'butter', mango: 'mango',
-  sand: 'sand', arrow: 'arrow', bullet: 'bullet', trident: 'trident', rot: 'rot',
+  sand: 'sand', arrow: 'arrow', bullet: 'bullet', trident: 'trident', rot: 'rot', acorn: 'mango',
 };
 /** Blasts with a sound of their own; any other is the Walnut Bomb's `explode`. */
 const BLAST_SOUND: Partial<Record<UnitKey, SfxName>> = { potatoMine: 'mineBoom', cherryBomber: 'cherryBoom' };
+/** A bite, wherever it is. */
+const BITE_SOUND: SfxName = 'chomp';
+/**
+ * Each ability's own sound when it is used; null: heard otherwise (a mine's trigger as its blast, a
+ * heal as the units it heals, a Torchwood's ignite through the burn gate).
+ */
+const ABILITY_SOUND: Readonly<Record<AbilityName, SfxName | null>> = {
+  arm: 'mineArm', fuse: 'fuse', leap: 'squash', grow: 'grow', lasso: 'lasso', raise: 'raise',
+  trigger: null, heal: null, ignite: null,
+};
+
+/**
+ * The sound of a unit's move as the Almanac plays it (`clip` from the turntable): a shot as its
+ * projectile is heard when fired, a bite as a bite, an ability as its `abilityUsed` (a Potato
+ * Mine's trigger as its blast). Null for no move, or one the unit does not have.
+ */
+export function actionSound(key: UnitKey, clip: string | null): SfxName | null {
+  const stats = BALANCE.units[key];
+  if (stats === undefined) return null;
+  switch (clip) {
+    case 'shoot': return stats.shot ? SHOT_SOUND[stats.shot.kind] : null;
+    case 'melee': return stats.melee ? BITE_SOUND : null;
+    case 'ability': {
+      if (stats.mine) return BLAST_SOUND[key] ?? 'explode';
+      const ability: AbilityName | null = stats.fuse ? 'fuse' : stats.leap ? 'leap' : stats.lasso ? 'lasso'
+        : stats.raise ? 'raise' : stats.grow ? 'grow' : null;
+      return ability === null ? null : ABILITY_SOUND[ability];
+    }
+    default: return null;
+  }
+}
+
 /** A Torchwood setting a pea alight is a soft crackle, under the burn's own. */
 const IGNITE_VOLUME = 0.5;
 /** The once-a-second damage tick of poison and burn is quieter than their start. */
@@ -47,6 +80,14 @@ export interface SoundContext {
   state?: SimState;
   /** Without one, poison and burn sounds are not limited. */
   gate?: SoundGate;
+}
+
+/** Each boss's signature call: its entrance and its patterns. */
+const BOSS_CALL = { brainTitan: 'titanRoar', elderOak: 'oakCreak' } as const;
+
+/** The key of unit `id` in the state, if it is there. */
+function unitKey(state: SimState | undefined, id: number): UnitKey | undefined {
+  return state?.units.find((u) => u.id === id)?.key;
 }
 
 /** x of unit `id` in the state, or NaN (centred) when it is not there. */
@@ -90,6 +131,10 @@ export function playEventSounds(
     switch (e.type) {
       case 'unitSpawned':
         if (e.key === 'rock') break; // heard as its Rock Wall
+        if (e.key === 'brainTitan' || e.key === 'elderOak') { // a boss's entrance: its signature call
+          audio.play(BOSS_CALL[e.key], at(e.x));
+          break;
+        }
         audio.play(e.faction === 'plants' ? 'place' : 'spawnZombie', at(e.x));
         break;
       case 'projectileSpawned':
@@ -99,7 +144,7 @@ export function playEventSounds(
         audio.play(e.blocked ? 'block' : 'hit', at(e.x));
         break;
       case 'unitAttacked':
-        if (e.attack === 'melee') audio.play('chomp'); // the event says who, not where: centred
+        if (e.attack === 'melee') audio.play(BITE_SOUND); // the event says who, not where: centred
         break;
       case 'unitDied':
         if (e.cause === 'shovel') audio.play('click', at(e.x)); // other deaths are carried by the picture
@@ -156,28 +201,36 @@ export function playEventSounds(
         audio.play('heal', at(unitX(state, e.unitId))); // a pulse healing several is heard once (repeat limit)
         break;
       case 'abilityUsed':
-        switch (e.ability) {
-          case 'arm': audio.play('mineArm', at(e.x)); break;
-          case 'fuse': audio.play('fuse', at(e.x)); break;
-          case 'leap': audio.play('squash', at(e.x)); break;
-          case 'grow': audio.play('grow', at(e.x)); break;
-          case 'lasso': audio.play('lasso', at(e.x)); break;
-          case 'raise': audio.play('raise', at(e.x)); break;
-          case 'ignite': dot('burn', e.x, IGNITE_VOLUME); break;
-          case 'trigger': // heard as its blast
-          case 'heal': // heard as the units it heals
-            break;
-          default: {
-            const unhandled: never = e.ability;
-            void unhandled;
-          }
+        if (e.ability === 'ignite') {
+          dot('burn', e.x, IGNITE_VOLUME);
+        } else {
+          const sound = ABILITY_SOUND[e.ability]; // trigger: heard as its blast; heal: as the units it heals
+          if (sound !== null) audio.play(sound, at(e.x));
         }
+        break;
+      case 'bossPattern': {
+        // The boss's call when it winds up, summons, throws or shields; the slam's blow is a thump.
+        const key = unitKey(state, e.unitId);
+        if (e.kind === 'slam' && !e.windup) audio.play('explode', at(unitX(state, e.unitId)));
+        else if (key === 'brainTitan' || key === 'elderOak') audio.play(BOSS_CALL[key], at(unitX(state, e.unitId)));
+        break;
+      }
+      case 'bossDefeated':
+        audio.play(e.key === 'brainTitan' ? 'titanDefeat' : 'oakDefeat');
         break;
       case 'unitDamaged':
       case 'matchEnded': // the app plays win or lose
       case 'statusEnded':
       case 'hazardSpawned': // the rot's landing splat is the shot's own sound
       case 'hazardEnded':
+      case 'waveSpawned': // level events: no sound of their own yet (the level HUD task gives them one)
+      case 'waveSkipped':
+      case 'beltCard':
+      case 'beltUsed':
+      case 'goalReached':
+      case 'waveStarted': // Free Play: the HUD shows the wave number
+      case 'gardenBroken':
+      case 'bossPhase': // its shield's bossPattern is the sound
         break;
       default: {
         const unhandled: never = e;

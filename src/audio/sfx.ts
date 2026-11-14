@@ -19,7 +19,9 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   | 'kernel' | 'butter' | 'mango' | 'sand' | 'arrow' | 'bullet' | 'trident' | 'rot' | 'stun' | 'blind' | 'lasso'
   | 'poison' | 'burn' | 'heal' | 'raise' | 'mineArm' | 'mineBoom' | 'fuse' | 'cherryBoom' | 'squash' | 'grow'
   | 'miss' | 'heroReady' | 'megaMower' | 'boneStorm' | 'spellReady' | 'thunderbolt' | 'vines' | 'sunShower'
-  | 'healingRain' | 'rockWall' | 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise';
+  | 'healingRain' | 'rockWall' | 'meteor' | 'fog' | 'brainFeast' | 'frenzy' | 'graveRise'
+  // phase 3: the bosses, two each (a signature call for the entrance and the patterns, a defeat sting)
+  | 'titanRoar' | 'titanDefeat' | 'oakCreak' | 'oakDefeat';
 
 export type Recipe = (v: Voice, t: number, p: number) => void;
 
@@ -564,12 +566,94 @@ function graveRise(v: Voice, t: number, p: number): void {
   tone(v, { type: 'sine', freq: 523.25 * p, at: t + 0.3, attack: 0.04, peak: 0.08, decay: 0.2 });
 }
 
+/**
+ * The Brain Titan's roar: a big, goofy "BLAAARGH" (two detuned saws sliding down through a vowel
+ * filter that opens and closes, wobbling) over a rumble, ending in a silly hiccup. Loud, not scary.
+ */
+function titanRoar(v: Voice, t: number, p: number): void {
+  const vowel = filter(v, 'bandpass', 420, 3);
+  vowel.frequency.setValueAtTime(420, t);
+  vowel.frequency.linearRampToValueAtTime(1100, t + 0.25);
+  vowel.frequency.linearRampToValueAtTime(380, t + 0.75);
+  const env = envelope(v, t, 0.05, 0.35, 0.35, 0.4);
+  const saws = [1, 1.015].map((detune) => {
+    const o = v.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(95 * p * detune, t);
+    o.frequency.exponentialRampToValueAtTime(62 * p * detune, t + 0.75);
+    o.connect(vowel);
+    v.play(o, t, env.end);
+    return o;
+  });
+  vibrato(v, saws.map((o) => o.frequency), 9, 4 * p, t, 0, env.end);
+  vowel.connect(env.gain);
+  env.gain.connect(v.input);
+  noise(v, { at: t, attack: 0.03, peak: 0.25, hold: 0.2, decay: 0.4, filter: 'lowpass', freq: 260 });
+  tone(v, { type: 'triangle', freq: 330 * p, to: 520 * p, glide: 0.05, at: t + 0.82, attack: 0.004, peak: 0.18, decay: 0.08 });
+}
+
+/**
+ * The Brain Titan beaten: a sad-trombone "wah wah wah waaah" (a soft saw, filtered round, down four
+ * notes, the last wobbling) that makes the fall funny, then a soft thump as it lands.
+ */
+function titanDefeat(v: Voice, t: number, p: number): void {
+  const notes = [196, 185, 174.6, 164.8];
+  notes.forEach((f, i) => {
+    const last = i === notes.length - 1;
+    tone(v, {
+      type: 'sawtooth', freq: f * p, to: last ? f * 0.94 * p : undefined, glide: last ? 0.5 : undefined,
+      at: t + i * 0.22, attack: 0.02, peak: 0.22, hold: last ? 0.3 : 0.08, decay: last ? 0.3 : 0.08, lowpass: 900,
+    });
+  });
+  tone(v, { type: 'sine', freq: 90 * p, to: 45 * p, glide: 0.15, at: t + 1.15, attack: 0.003, peak: 0.4, decay: 0.2 });
+}
+
+/**
+ * The Elder Oak's creak: an old wooden "crrreeak" (a buzzy low saw whose pitch and filter jitter in
+ * steps) and two hollow knocks of wood, like a grumpy grandpa getting up.
+ */
+function oakCreak(v: Voice, t: number, p: number): void {
+  const body = filter(v, 'bandpass', 700, 5);
+  const env = envelope(v, t, 0.04, 0.3, 0.3, 0.3);
+  const o = v.ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(70 * p, t);
+  body.frequency.setValueAtTime(600, t);
+  // Quick little ramps between creak points: the jitter of old wood, with no clicks.
+  for (let i = 1; i <= 8; i++) {
+    o.frequency.linearRampToValueAtTime((70 + (i % 2 === 0 ? 14 : -6) + i * 4) * p, t + i * 0.07);
+    body.frequency.linearRampToValueAtTime(600 + (i % 3) * 220, t + i * 0.07);
+  }
+  o.connect(body);
+  body.connect(env.gain);
+  env.gain.connect(v.input);
+  v.play(o, t, env.end);
+  [0.62, 0.78].forEach((off, i) => {
+    tone(v, { type: 'triangle', freq: (330 - i * 60) * p, to: (180 - i * 30) * p, glide: 0.05, at: t + off, attack: 0.002, peak: 0.3, decay: 0.09 });
+    noise(v, { at: t + off, attack: 0.001, peak: 0.1, decay: 0.03, filter: 'bandpass', freq: 1400, q: 3 });
+  });
+}
+
+/**
+ * The Elder Oak beaten: leaves rustling down (bursts of airy noise, falling), then a little wooden
+ * tune tumbling down five notes, like acorns bouncing away.
+ */
+function oakDefeat(v: Voice, t: number, p: number): void {
+  [0, 0.12, 0.26].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.02, peak: 0.16 - i * 0.03, decay: 0.25, filter: 'highpass', freq: 3000 - i * 600, to: 1200, glide: 0.25 });
+  });
+  [784, 659.25, 587.33, 493.88, 392].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + 0.45 + i * 0.13, attack: 0.002, peak: 0.24, decay: 0.12 });
+  });
+}
+
 export const SFX: Record<SfxName, Recipe> = {
   place, spawnZombie, pea, brainThrow, hit, chomp, block, explode, merge, sun, bounty, baseHit,
   click, deny, suddenDeath, win: sting('win'), lose: sting('lose'), collapse, baseStrike,
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
+  titanRoar, titanDefeat, oakCreak, oakDefeat,
 };
 
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];

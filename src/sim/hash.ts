@@ -1,7 +1,7 @@
 import { ALL_CARDS } from '../data/units';
 import { LANES } from './types';
 import type {
-  CardKey, Faction, Hazard, MatchConfig, PlayerState, Projectile, SimState, Unit,
+  BeltConfig, BossConfig, CardKey, EndlessConfig, Faction, Hazard, IncomingUnit, MatchConfig, PlayerState, PreparedUnit, Projectile, ScriptEntry, SimState, Unit,
 } from './types';
 
 /**
@@ -85,6 +85,27 @@ const nullableNum: Write<number | null> = (f, v) => {
     f.num(v);
   }
 };
+/** An optional number (a script entry's `x`): presence byte, then the number. */
+const optionalNum: Write<number | undefined> = (f, v) => {
+  if (v === undefined) {
+    f.byte(0);
+  } else {
+    f.byte(1);
+    f.num(v);
+  }
+};
+const nullableStr: Write<string | null> = (f, v) => {
+  if (v === null) {
+    f.byte(0);
+  } else {
+    f.byte(1);
+    f.str(v);
+  }
+};
+const strs: Write<readonly string[]> = (f, v) => {
+  f.num(v.length);
+  for (const item of v) f.str(item);
+};
 const nums: Write<readonly number[]> = (f, v) => {
   f.num(v.length);
   for (const n of v) f.num(n);
@@ -109,6 +130,7 @@ const UNIT: Fields<Unit> = {
   stun: num, blind: num, tied: num, poison: num, poisonDps: num, burn: num, burnDps: num,
   stacks: num, ownerId: nullableNum,
   expires: num, haste: num, hasteCarry: num, hurt: num,
+  pattern: num, patternTimer: num, shieldLeft: num, phase: num, stunFatigue: num,
 };
 
 const PROJECTILE: Fields<Projectile> = {
@@ -124,36 +146,78 @@ const HAZARD: Fields<Hazard> = {
   id: num, kind: str, faction: str, lane: num, x: num, radius: num, ticksLeft: num, dps: num, poisonTicks: num,
 };
 
+/** A per-card table with gaps (recharge timers, upgrade levels): for every card in order, presence then value. */
+const perCard: Write<Partial<Record<CardKey, number>>> = (f, table) => {
+  for (const key of CARD_KEYS) {
+    const v = table[key];
+    if (v === undefined) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      f.num(v);
+    }
+  }
+};
+
 const PLAYER: Fields<PlayerState> = {
   energy: num,
   carry: num,
-  recharge: (f, recharge) => {
-    for (const key of CARD_KEYS) {
-      const left = recharge[key];
-      if (left === undefined) {
-        f.byte(0);
-      } else {
-        f.byte(1);
-        f.num(left);
-      }
-    }
-  },
+  recharge: perCard,
   heroTimer: num,
   spells: list<PlayerState['spells'][number]>({ key: str, timer: num }),
 };
 
+const SCRIPT_ENTRY: Fields<ScriptEntry> = { tick: num, unit: str, faction: str, lane: num, x: optionalNum, level: num };
+const PREPARED_UNIT: Fields<PreparedUnit> = { unit: str, faction: str, lane: num, x: num, level: num };
+const BELT: Fields<BeltConfig> = { side: str, everyTicks: num, cards: strs, slots: num };
+const BOSS: Fields<BossConfig> = { key: str, faction: str, lane: num };
+const ENDLESS: Fields<EndlessConfig> = { cards: strs, firstWaveTicks: num };
+const INCOMING: Fields<IncomingUnit> = { tick: num, unit: str, lane: num, x: num, level: num, index: num };
+
+/**
+ * The level fields (`mode` .. `invulnerableBase`) come last, after everything the setup had before
+ * them, so an old checksum continued over their bytes is today's (see tests/sim/modes.test.ts).
+ */
 const CONFIG: Fields<MatchConfig> = {
   seed: num,
   startEnergy: perFaction(num),
   baseHp: perFaction(num),
-  cards: perFaction((f, cards: readonly string[]) => {
-    f.num(cards.length);
-    for (const card of cards) f.str(card);
-  }),
+  cards: perFaction(strs),
   incomeMultiplier: perFaction(num),
   suddenDeath: bool,
   heroes: perFaction(bool),
   spells: perFaction(num),
+  upgrades: perFaction(perCard), // a level of 0 and no entry play alike, but hash apart, as a recharge does
+  mode: str,
+  script: list(SCRIPT_ENTRY),
+  prepared: list(PREPARED_UNIT),
+  goalTicks: nullableNum,
+  belt: (f, belt) => {
+    if (belt === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      record(f, BELT, belt);
+    }
+  },
+  noEnergy: bool,
+  invulnerableBase: nullableStr,
+  boss: (f, boss) => {
+    if (boss === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      record(f, BOSS, boss);
+    }
+  },
+  endless: (f, endless) => {
+    if (endless === null) {
+      f.byte(0);
+    } else {
+      f.byte(1);
+      record(f, ENDLESS, endless);
+    }
+  },
 };
 
 const STATE: Fields<SimState> = {
@@ -175,6 +239,12 @@ const STATE: Fields<SimState> = {
     }
   },
   config: (f, config) => record(f, CONFIG, config),
+  scriptIndex: num, // after the setup, so the level fields all come after the old layout
+  belt: strs,
+  wave: num, // Free Play, after everything else
+  waveTimer: num,
+  clock: num,
+  incoming: list(INCOMING),
 };
 
 /** Unsigned 32-bit checksum of everything in the state. */
@@ -193,11 +263,13 @@ export function snapshotState(s: SimState): string {
  * Rebuilds a state from `snapshotState` output, as fresh objects sharing nothing with any other
  * state. A snapshot missing any top-level key of the state is refused with an error, with one
  * exception: a snapshot made before the plant base had a defence has no `baseDefenseTimers`; it
- * gets one timer per lane, all at 0, which is what the timers read whenever the defence is off.
+ * gets one timer per lane, all at 0, which is what the timers read whenever the defence is off;
+ * and one made before the Marketplace has no `config.upgrades`: it gets none on either side.
  */
 export function restoreState(json: string): SimState {
   const s = JSON.parse(json) as SimState;
   s.baseDefenseTimers ??= new Array<number>(LANES).fill(0);
+  if (typeof s.config === 'object' && s.config !== null) s.config.upgrades ??= { plants: {}, zombies: {} };
   const missing = Object.keys(STATE).filter((key) => !Object.hasOwn(s, key));
   if (missing.length > 0) throw new Error(`The snapshot has no ${missing.join(', ')}`);
   return s;

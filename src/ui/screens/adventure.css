@@ -1,0 +1,215 @@
+/* Play menu, side pick for Adventure / Free Play, the map and the level card. Tokens: ../theme.css. */
+
+.play svg.pixel-icon, .map svg.pixel-icon, .card-veil svg.pixel-icon { display: block; width: 100%; height: 100%; }
+
+/* ---- Play menu ---- */
+.play { place-items: center; }
+.play__modes { display: flex; gap: clamp(16px, 3vw, 44px); align-items: center; justify-content: center; }
+.play__mode {
+  position: relative;
+  width: clamp(180px, min(26vw, 40vh), 320px);
+  height: clamp(180px, min(26vw, 40vh), 320px);
+  padding: 0;
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.play__mode:nth-child(2) { animation-delay: 60ms; }
+.play__mode:nth-child(3) { animation-delay: 120ms; }
+.play__mode .play__art { width: 72% !important; height: 72% !important; }
+.play__duo { position: relative; display: grid; place-items: center; width: 100%; height: 100%; }
+.play__duo .play__art { width: 72% !important; height: 72% !important; }
+.play__corner { position: absolute; right: 6%; bottom: 6%; width: 44% !important; height: 44% !important; }
+.play__mode.is-locked .play__art { filter: grayscale(0.85) brightness(0.8); }
+.play__mode.is-nudged-a { animation: px-hop-a 420ms steps(6, end) both; }
+.play__mode.is-nudged-b { animation: px-hop-b 420ms steps(6, end) both; }
+.play__lock {
+  position: absolute; right: -14px; top: -14px;
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px;
+}
+.play__lock-pic { width: clamp(40px, 6vh, 60px); }
+.play__lock-icon { width: clamp(36px, 5.4vh, 54px) !important; height: clamp(36px, 5.4vh, 54px) !important; }
+
+/* Which mode the side pick is for: its picture, small, at the top. */
+.play__mode-mark { position: absolute; top: var(--gutter-top); left: 50%; translate: -50% 0; width: var(--btn-h); height: var(--btn-h); padding: 8px; }
+.play__sides { display: flex; gap: clamp(20px, 4vw, 60px); justify-content: center; }
+.play__side {
+  position: relative;
+  width: clamp(220px, min(32vw, 54vh), 380px);
+  height: clamp(220px, min(32vw, 54vh), 380px);
+  padding: 0;
+  overflow: visible;
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.play__side.side-zombies { animation-delay: 80ms; }
+.play__side.is-mine { animation: px-pop var(--t-pop) steps(4, end) both, px-breathe 1200ms steps(2, jump-none) 300ms infinite; }
+.play__side-mark { position: absolute; right: 10px; top: 10px; --ico-size: calc(var(--btn-h) * 0.6); }
+
+/* A boy in front of his side's first unit. */
+.duo { position: relative; display: block; width: 100%; height: 100%; }
+.duo__unit { position: absolute; right: -2%; top: 0; width: 72%; background: none !important; box-shadow: none !important; }
+.duo__unit .pic__img { filter: drop-shadow(4px 4px 0 rgba(42, 27, 14, 0.55)); }
+.duo__boy { position: absolute; left: 4%; bottom: 4%; width: 56%; height: 62%; display: grid; place-items: end center; }
+.duo__boy img { width: 100%; height: 100%; object-fit: contain; object-position: bottom; image-rendering: pixelated; filter: drop-shadow(4px 4px 0 rgba(42, 27, 14, 0.55)); }
+
+/* Free Play, not built yet: a wave behind a padlock. */
+
+/* ---- Map ---- */
+.map { background: transparent; pointer-events: none; }
+.map > * { pointer-events: auto; }
+.map--flat { background: var(--menu-dim); }
+.map__tabs { position: absolute; top: var(--gutter-top); left: 50%; translate: -50% 0; display: flex; gap: clamp(10px, 1.6vw, 22px); z-index: 3; }
+.map__tab {
+  position: relative;
+  width: calc(var(--btn-h) * 1.25); height: var(--btn-h);
+  padding: 0; overflow: hidden;
+  display: grid; place-items: end center;
+}
+.map__tab-boy { width: 100%; height: 100%; object-fit: cover; object-position: top; image-rendering: pixelated; }
+.map__tab-mark { position: absolute; right: 2px; bottom: 2px; --ico-size: calc(var(--btn-h) * 0.32); }
+.map__tab:not(.is-on) { filter: saturate(0.5) brightness(0.8); }
+.map__tab.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: calc(var(--px-line) * 2); }
+.map__stones { position: absolute; inset: 0; pointer-events: none; }
+
+/* A stone: a tap target over the 3D stone (its anchor is the stone's top middle). */
+.stone {
+  --stone: clamp(64px, min(7.4vw, 11vh), 96px);
+  position: absolute;
+  left: 0; top: 0;
+  width: var(--stone);
+  min-height: var(--stone);
+  padding: 0;
+  border: 0;
+  background: none;
+  translate: -50% calc(-100% + var(--stone) * 0.22);
+  display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end;
+  pointer-events: auto;
+  will-change: transform;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+.map--flat .stone { translate: -50% -50%; }
+/* Over the 3D map, a stone shows once it has been placed over its 3D stone. */
+.map:not(.map--flat) .stone:not([data-placed]), .map:not(.map--flat) .map__marker:not([data-placed]) { visibility: hidden; }
+.stone__body { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; }
+/* The next stone and the player's picture hop with the 3D stone: the same beat, the same eight steps. */
+@keyframes map-hop {
+  0% { translate: 0 0; } 12.5% { translate: 0 calc(var(--hop, 0px) * -0.4375); }
+  25% { translate: 0 calc(var(--hop, 0px) * -0.75); } 37.5% { translate: 0 calc(var(--hop, 0px) * -0.9375); }
+  50% { translate: 0 calc(var(--hop, 0px) * -1); } 62.5% { translate: 0 calc(var(--hop, 0px) * -0.9375); }
+  75% { translate: 0 calc(var(--hop, 0px) * -0.75); } 87.5% { translate: 0 calc(var(--hop, 0px) * -0.4375); }
+  100% { translate: 0 0; }
+}
+.stone.is-next .stone__body, .map__marker-pic { animation: map-hop var(--hop-ms, 625ms) step-end var(--hop-delay, 0ms) infinite; }
+.stone__badge {
+  position: relative;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px;
+  width: 100%; height: calc(var(--stone) * 0.62);
+  padding: 4px 6px;
+}
+.stone:active .stone__badge { translate: 0 2px; filter: brightness(var(--press-dim)); }
+.stone__kind { display: block; position: relative; width: calc(var(--stone) * 0.48); height: calc(var(--stone) * 0.48); }
+.stone__n { display: flex; height: calc(var(--stone) * 0.36); }
+.stone__n svg { width: auto !important; aspect-ratio: 7 / 9; }
+.stone.is-closed .stone__badge { filter: grayscale(0.4) brightness(0.85); }
+.stone__lock { position: absolute; right: -12px; top: -14px; width: calc(var(--stone) * 0.42); height: calc(var(--stone) * 0.42); }
+.stone__stars { display: flex; gap: 1px; margin-top: 2px; }
+.stone__star { width: calc(var(--stone) * 0.3); height: calc(var(--stone) * 0.3); filter: grayscale(1) brightness(0.55) opacity(0.85); }
+.stone__star.is-on { filter: none; }
+.stone.is-fresh .stone__star.is-on { animation: px-pop 360ms steps(4, end) both; }
+.stone.is-fresh .stone__star.is-on:nth-child(2) { animation-delay: 240ms; }
+.stone.is-fresh .stone__star.is-on:nth-child(3) { animation-delay: 480ms; }
+.stone.is-next .stone__badge { outline: var(--px-line) solid var(--c-sun); outline-offset: 3px; animation: px-breathe 1000ms steps(2, jump-none) infinite; }
+/* The unit a level unlocks: its grey silhouette and a "?" block in a bubble over its own stone,
+   leaning away from the next stone on the path, with a pointer down to the stone. */
+.stone__unlock { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; flex-direction: column; align-items: center; }
+.stone[data-lean='left'] .stone__unlock { translate: -78% 0; }
+.stone[data-lean='right'] .stone__unlock { translate: -22% 0; }
+.stone__gift { position: relative; display: block; width: calc(var(--stone) * 0.8); padding: 4px; }
+.stone__unlock-pic { width: 100%; background: var(--c-sky-hi) !important; }
+.stone__unlock-pic img, .stone__unlock-pic svg { filter: brightness(0) invert(0.42); }
+.stone__q { position: absolute; right: -12px; top: -12px; width: calc(var(--stone) * 0.34) !important; height: calc(var(--stone) * 0.34) !important; }
+.stone__pointer { width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 10px solid var(--ink); margin-top: -1px; }
+.stone[data-lean='left'] .stone__pointer { align-self: flex-end; margin-right: 12%; }
+.stone[data-lean='right'] .stone__pointer { align-self: flex-start; margin-left: 12%; }
+
+/* The player's picture on the flag of the next stone. */
+.map__marker { position: absolute; left: 0; top: 0; translate: -50% -50%; will-change: transform; width: clamp(50px, min(5.6vw, 8.4vh), 76px); pointer-events: none; z-index: 1; }
+.map--flat .map__marker { translate: -50% -100%; }
+.map__marker-pic { width: 100%; }
+
+/* ---- Level card ---- */
+.card-veil {
+  position: absolute; inset: 0; z-index: 5;
+  display: grid; place-items: center;
+  background: var(--dim);
+  padding: var(--gutter-top) var(--gutter-x) var(--gutter-bottom);
+  animation: px-pop var(--t-pop) steps(3, end) both;
+}
+.lcard {
+  position: relative;
+  width: min(760px, 94vw);
+  max-height: calc(100vh - var(--gutter-top) - var(--gutter-bottom));
+  padding: clamp(14px, 2.4vh, 26px) clamp(16px, 2.4vw, 30px);
+  display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.8vh, 18px);
+}
+.lcard__close { position: absolute; right: -16px; top: -16px; }
+.lcard__close-icon { width: 60% !important; height: 60% !important; }
+.lcard__head { display: flex; align-items: center; gap: 12px; }
+.lcard__kind { display: block; width: clamp(64px, 11vh, 104px); height: clamp(64px, 11vh, 104px); padding: 8px; }
+.lcard__kind .kind { width: 100%; height: 100%; }
+.lcard__n { display: flex; height: clamp(44px, 8vh, 76px); }
+.lcard__n svg { width: auto !important; aspect-ratio: 7 / 9; }
+.lcard__sides { display: flex; align-items: center; justify-content: center; gap: clamp(8px, 1.4vw, 18px); width: 100%; }
+.lcard__row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 6px; border-radius: 4px; background: rgba(42, 27, 14, 0.18); }
+.lcard__row--enemy { background: rgba(226, 85, 63, 0.28); }
+.lcard__pic { width: clamp(46px, 8vh, 72px); }
+.lcard__vs { display: block; width: clamp(36px, 6vh, 56px); height: clamp(36px, 6vh, 56px); }
+.lcard__boss { display: block; width: clamp(46px, 8vh, 72px); height: clamp(46px, 8vh, 72px); padding: 4px; }
+.lcard__stars { display: flex; align-items: flex-end; justify-content: center; gap: clamp(10px, 2vw, 26px); }
+.lcard__star { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.lcard__star-icon { width: clamp(44px, 8vh, 72px) !important; height: clamp(44px, 8vh, 72px) !important; filter: grayscale(1) brightness(0.55); }
+.lcard__star.is-won .lcard__star-icon { filter: none; }
+.goal { display: flex; flex-direction: column; align-items: center; gap: 4px; width: clamp(68px, 12vh, 112px); }
+.goal__icon { width: 64% !important; height: auto !important; aspect-ratio: 1; }
+/* A big bar: half full and yellow for the second star, nearly full and green for the third. */
+.goal__bar {
+  position: relative; display: block; width: 100%; height: clamp(16px, 2.8vh, 26px);
+  background: #4f5762; box-shadow: 0 0 0 var(--px-line) var(--ink); overflow: hidden;
+}
+.goal__fill { position: absolute; left: 0; top: 0; bottom: 0; }
+.goal__fill[data-fill='yellow'] { background: var(--c-hp-mid); box-shadow: inset 0 -4px 0 var(--c-sun-lo); }
+.goal__fill[data-fill='green'] { background: var(--c-hp-good); box-shadow: inset 0 -4px 0 var(--c-leaf-lo); }
+.lcard__plus { display: block; width: clamp(28px, 5vh, 44px); height: clamp(28px, 5vh, 44px); align-self: center; }
+.lcard__reward { position: relative; display: flex; flex-direction: column; align-items: center; align-self: center; }
+.lcard__bow { width: clamp(60px, 11vh, 96px) !important; height: clamp(30px, 5.5vh, 48px) !important; margin-bottom: -10px; position: relative; z-index: 1; }
+.lcard__bow { object-fit: cover; }
+.lcard__gift { display: block; width: clamp(64px, 11vh, 100px); padding: 8px; background-image: linear-gradient(90deg, transparent 44%, var(--c-sun) 44%, var(--c-sun) 56%, transparent 56%); }
+.lcard__reward-pic { width: 100%; background: var(--c-sky-hi) !important; }
+.lcard__reward-pic img, .lcard__reward-pic svg { filter: brightness(0) invert(0.42); }
+.lcard__foot { display: flex; align-items: center; justify-content: center; gap: clamp(14px, 3vw, 40px); width: 100%; }
+.lcard__faces { display: flex; gap: clamp(6px, 1vw, 12px); }
+.lcard__face { width: clamp(52px, 8.6vh, 80px); height: clamp(52px, 8.6vh, 80px); padding: 6px; }
+.lcard__face:not(.is-on) svg { filter: grayscale(0.6) brightness(0.85); }
+.lcard__face.is-on { outline: var(--px-line) solid var(--c-sun); outline-offset: calc(var(--px-line) * 2); }
+/* The small glove button: plays the level with its tutorial again. */
+.lcard__teach { flex: none; padding: 6px; }
+.lcard__teach svg { display: block; width: clamp(30px, 4.6vh, 44px); height: auto; }
+.lcard__play { min-width: clamp(160px, 22vw, 260px); animation: px-breathe 1200ms steps(2, jump-none) infinite; }
+
+/* A closed level: its picture behind a padlock, and an arrow to the level to play now. */
+.lcard--locked { width: min(460px, 90vw); }
+.lcard__locked { position: relative; padding: 8px 18px 0 0; }
+.lcard__kind.is-dim { filter: grayscale(0.8) brightness(0.75); }
+.lcard__padlock { position: absolute; right: -6px; bottom: -14px; width: clamp(54px, 9vh, 84px); height: clamp(54px, 9vh, 84px); }
+.lcard__go { display: flex; align-items: center; gap: 10px; padding: 8px 18px; }
+.lcard__go-arrow { width: clamp(40px, 7vh, 64px) !important; height: clamp(40px, 7vh, 64px) !important; }
+.lcard__go-kind { display: block; width: clamp(40px, 7vh, 64px); height: clamp(40px, 7vh, 64px); }
+.lcard__go-kind .kind { width: 100%; height: 100%; }
+.lcard__go-n { display: flex; height: clamp(34px, 6vh, 56px); }
+.lcard__go-n svg { width: auto !important; aspect-ratio: 7 / 9; }
+
+/* A kind's picture: the main one, and a smaller one on its corner. */
+.kind { position: relative; display: block; }
+.kind__main { width: 100% !important; height: 100% !important; }
+.kind__corner { position: absolute; right: -14%; bottom: -14%; width: 56% !important; height: 56% !important; }
+.digits { display: inline-flex; }

@@ -9,6 +9,8 @@ export interface LvtDebug {
   renderer?: Renderer;
   /** The lawn of the current 3D scene, if it has one. */
   lawn?: Lawn;
+  /** True: a boss's entrance card stays up until it is tapped (its 1.5 s timer does nothing). */
+  holdBossIntro?: boolean;
   [key: string]: unknown;
 }
 

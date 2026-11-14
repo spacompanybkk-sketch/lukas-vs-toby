@@ -99,6 +99,30 @@ describe('the deal', () => {
     }
   });
 
+  it('without energy (a conveyor) the income spells are left out: the deal is from the other four, same draws', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const c = {
+        ...defaultConfig(seed), mode: 'conveyor' as const, goalTicks: 3000, noEnergy: true, suddenDeath: false,
+        belt: { side: 'plants' as const, everyTicks: 30, cards: ['peashooter' as const], slots: 5 },
+      };
+      const m = new Match(c);
+      const rng = { rng: seed };
+      for (const side of ['plants', 'zombies'] as const) {
+        const pool = SPELLS[side].filter((k) => k !== 'sunShower' && k !== 'brainFeast');
+        const expected = [pool.splice(randomInt(rng, pool.length), 1)[0], pool.splice(randomInt(rng, pool.length), 1)[0]];
+        expect(m.state.players[side].spells.map((x) => x.key), `seed ${seed}`).toEqual(expected);
+      }
+      expect(m.state.rng).toBe(rng.rng);
+    }
+    const five = {
+      ...defaultConfig(4), mode: 'conveyor' as const, goalTicks: 3000, noEnergy: true, suddenDeath: false,
+      belt: { side: 'zombies' as const, everyTicks: 30, cards: ['brainEater' as const], slots: 5 }, spells: { plants: 5, zombies: 5 },
+    };
+    const m = new Match(five);
+    expect(m.state.players.plants.spells.map((x) => x.key).sort()).toEqual(['healingRain', 'rockWall', 'thunderbolt', 'vines']);
+    expect(m.state.players.zombies.spells.map((x) => x.key).sort()).toEqual(['fog', 'frenzy', 'graveRise', 'meteor']);
+  });
+
   it('same seed, same deal; the deal differs across seeds', () => {
     const deal = (seed: number) => JSON.stringify(new Match(defaultConfig(seed)).state.players);
     expect(deal(9)).toBe(deal(9));

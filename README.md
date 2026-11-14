@@ -13,6 +13,8 @@ TypeScript on Vite.
 | `npm run preview` | Serve the build on port 5274 |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests (Vitest) |
+| `npm run test:balance` | The long level checks (`tests/ai/long`, three workers, about 15–25 minutes): every Backyard level played by the stand-in children on many seeds, against its win and star bands |
+| `npm run build:live` / `npm run check:live` | A build for the real cloud, and the check that `dist/` is one (a plain build is the fake cloud and shows a test-tube badge on the title) |
 | `npm run shots -- <scenario...>` | Screenshots into `artifacts/shots/` (add `--headed` to watch) |
 | `npm run e2e` | Browser tests (Playwright, Chromium: `desktop` and `ipad` projects). Builds and serves its own copy on port 5314, so a dev server can keep running |
 | `npm run perf` | Frame-rate measurement (headed Chromium, port 5315 or `LVT_PERF_PORT`): the phase-1 stress crowd (60 and 150 units) and the mixed roster (`mix-150`), device scale 1 and 2, plus the time to draw the twenty card portraits; prints the budget verdict (unthrottled frame ≤ 10 ms at scale 1, ≤ 16.6 ms at scale 2, on the MacBook Air M3) and writes `artifacts/perf.json`. `--modes=novsync --scenes=mix-150` for a short run. It measures a Mac, never an iPad (see `?fps` below) |
@@ -88,6 +90,76 @@ zombie in it; Toby's **Bone Storm** does the same to the plants in a lane.
 **Healing Rain**, **Rock Wall**; zombies **Meteor**, **Fog**, **Brain Feast**, **Frenzy**,
 **Grave Rise**.
 
+## Adventure
+
+Home → **Play** → **Adventure** → a side opens that side's map: a path of eight stones across the
+Backyard (Lukas's plant levels `p1-1` … `p1-8`, Toby's zombie levels `z1-1` … `z1-8`; the other
+worlds show locked). A stone shows the level's kind, its number, the stars won and, when winning
+it brings a new unit, that unit's silhouette with a "?". The player's picture hops on the next
+stone. A tap on a stone opens the level card: the cards dealt, the enemies, what each star asks,
+the reward, a big play button, three faces for the difficulty, and a glove button that plays the
+level's tutorial again. Guests get Quick Battle only. Levels are data:
+`src/adventure/levels/backyard.ts` (the lessons in `teaches.ts`), the rules in `src/adventure/`.
+
+**Five kinds of level**
+
+| Kind | What the player does |
+|--|--|
+| Battle | Knock down the other base, against scripted arrivals or a computer player |
+| Survive | Plants hold out until the clock runs down; the zombie base cannot fall |
+| Breakthrough | Zombies break a prepared garden's base before the clock runs out |
+| Conveyor | No energy: cards come along a belt, and whatever it brings is played for free |
+| Boss | A boss with its own bar (see below) |
+
+A level's goal shows at the top: a clock bar that drains (with the waves' flags riding on it), or
+a wave bar when there is no clock; the boss bar under it in a boss level.
+
+**Stars.** One for winning, a second and a third for keeping the player's base healthy (for
+Breakthrough, which has no player base: for time left on the clock). The level card draws what
+each star asks. Stars never go down.
+
+**Coins.** Every star pays the first time it is earned on a level; winning a level again pays a
+little; a loss pays a consolation. Coins buy upgrades in the Marketplace, which no level needs.
+The amounts are in `src/adventure/rewards.ts`. A result is saved exactly once, also across a
+reload on the result screen.
+
+**Unlocks.** Each side starts Adventure with its first three cards; level 3 and level 6 of the
+Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: Desert Zombie,
+Skeleton Archer), shown turning on a turntable on the result screen. A level deals only the
+cards it lists that the player has. Quick Battle always has all ten.
+
+**Difficulty.** The three faces on the level card (kept per player and side; Toby starts on
+Easy) change only the player's income. A Conveyor level has no energy, so it shows no faces.
+
+**The tutorial.** No words: a white glove points at one thing at a time (a card, then the tile
+or lane to put it on; the hero's button when it is first ready; a spell at level 4), the rest of
+the screen dims a little and the match waits until the child does it. Taps elsewhere do nothing.
+The glove only waits for something that can be done now (a card still recharging is not pointed
+at). Levels 1–3 of each side teach this way; each step is remembered for the player.
+
+**The bosses.** Level 8 of each side. Lukas meets the **Brain Titan**, who walks the middle lane,
+slams the plants in front of him and puts up a shield that peas bounce off (lobbed shots still
+hurt). Toby meets the **Elder Oak**, who guards the plant base across the middle lanes, lobs
+acorns, grows Peashooters and armours up. The boss bar shows the boss's face and its health in
+blocks, with a notch where its shield comes up; a short face card announces the boss beside the
+bar (a tap skips it).
+
+## Free Play
+
+Home → **Play** → **Free Play** → a side, straight into an endless run with the player's
+Adventure cards and Marketplace upgrades:
+
+- **Plants: survive.** Waves come one after another, each bigger, and the zombie base cannot
+  fall. A flag counter counts the waves; a ring fills to the next wave; a banner announces each
+  wave and its biggest unit.
+- **Zombies: breakthrough.** Break one garden after another against the clock; each broken
+  garden adds time. The counter counts the gardens broken.
+
+The run ends when the player's base falls (or the clock runs out); **Quit** in the pause menu
+ends it the same way, showing first what it banks. Coins are paid for each wave (or garden)
+cleared; the best wave and the best garden are kept, with a crown when beaten, and the best wave
+goes on the leaderboard. There is no Restart in a run's pause menu: Quit is its one way out.
+
 ### The demos
 
 With the dev server running (`npm run dev`, port 5273):
@@ -101,6 +173,7 @@ With the dev server running (`npm run dev`, port 5273):
 | `/?scene=fx-gallery` | The effects, statuses and projectiles |
 | `/?scene=hud-gallery` | The HUD in every state |
 | `/?scene=stress&units=150` | The phase-1 crowd for the perf tool; `&mix` for the mixed roster |
+| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak) |
 
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.

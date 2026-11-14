@@ -14,7 +14,10 @@
 //   novsync-cpu4x  the same with the CPU slowed 4x (CDP Emulation.setCPUThrottlingRate), a rough tablet proxy
 // Each run waits 3 s, then records 600 animation-frame intervals, and reports their median,
 // 95th percentile and worst; the whole frame callback's time on the CPU (simulation + view +
-// render submit, measured by wrapping requestAnimationFrame); the renderer's draw call alone;
+// render submit, measured by wrapping requestAnimationFrame);
+// Phase 3 adds four scenes of the real game page set up through the debug hooks (GAME_SETUPS):
+//   titan, oak-30, free-w20, map   the Titan mid-fight, the Oak mid-barrage with 30 zombies, Free
+//                                  Play survive at wave 20, and the Adventure map the renderer's draw call alone;
 // a draw call bounded by gl.finish() (CPU + GPU for one frame, from 120 extra frames); the final
 // render scale; and the draw calls and triangles per frame. It also times the card portraits'
 // warm-up (all twenty drawn on the title) at both scale factors. Writes artifacts/perf.json.
@@ -23,7 +26,7 @@
 // MacBook Air M3. It says nothing about an iPad: that is unmeasured (see the README's `?fps`).
 //
 //   --modes=novsync[,vsync,novsync-cpu4x]   only these modes (default: all three)
-//   --scenes=mix-150[,p1-60,p1-150]         only these scenes (default: all three)
+//   --scenes=mix-150[,p1-60,p1-150,titan,oak-30,free-w20,map]   only these scenes (default: all)
 //   --no-portraits                          skip the portrait warm-up timing
 //   --reuse-build                           serve dist/ as it is (default: build first)
 //   --adaptive                              let the render scale adapt as in the game (default:
@@ -45,7 +48,176 @@ const SCENES = [
   { name: 'p1-60', query: 'scene=stress&units=60' },
   { name: 'p1-150', query: 'scene=stress&units=150' },
   { name: 'mix-150', query: 'scene=stress&mix&units=150' },
+  // Phase 3 (Adventure): the real game page, set up through the debug hooks (see GAME_SETUPS).
+  { name: 'titan', query: '', setup: 'titan' },
+  { name: 'oak-30', query: '', setup: 'oak' },
+  { name: 'free-w20', query: '', setup: 'free20' },
+  { name: 'map', query: '', setup: 'map' },
 ];
+
+/**
+ * The Adventure scenes, run in the page after it loads (as a test would, through `window.__lvt`):
+ * - titan     p1-8 mid-fight: a full garden (lanes 0–4, columns 0–5), the Brain Titan on the lawn
+ *             with a scripted wave walking, both bases and the boss kept whole while it is measured;
+ * - oak       z1-8 mid-barrage: 30 zombies on the lawn, the Elder Oak lobbing acorns;
+ * - free20    Free Play survive at wave 20: a full garden against the twentieth wave;
+ * - map       the Adventure map of the plants, half-way done.
+ * Every tutorial is marked done first, so no glove holds the match.
+ */
+const GAME_SETUPS = {
+  async login(page) {
+    await page.click('[data-action="play"]');
+    await page.click('[data-player="p01"]');
+    for (let i = 0; i < 2; i++) {
+      for (const d of '123') await page.click(`[data-key="${d}"]`);
+      if ((await page.locator('[data-pin-step]').count()) === 0) break;
+    }
+    await page.waitForSelector('[data-screen="home"]');
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const all = lvt.levels;
+      const stars = (l) => Object.fromEntries(all.filter((d) => d.id.startsWith(l)).map((d) => [d.id, 2]));
+      lvt.players.update((s) => ({
+        ...s,
+        plants: { stars: stars('p'), unlocked: ['potatoMine', 'kernelPult'] },
+        zombies: { stars: stars('z'), unlocked: ['desertZombie', 'skeletonArcher'] },
+        teached: all.flatMap((d) => (d.teaches ?? []).map((t) => t.id)),
+      }));
+    });
+  },
+  async level(page, side, id) {
+    await page.click('[data-home="play"]');
+    await page.click('[data-play="adventure"]');
+    await page.click(`[data-side="${side}"]`);
+    await page.click(`[data-stone="${id}"]`);
+    await page.click('[data-action="start-level"]');
+    await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 60_000 });
+    await page.waitForSelector('[data-banner]', { state: 'detached', timeout: 30_000 });
+  },
+  /** Plants on lanes 0–4, columns 0–5 (Sunflowers at the back, then the level's shooters and walls). */
+  async garden(page) {
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const c = lvt.session.controller;
+      const s = c.match.state;
+      const kinds = ['sunflower', 'peashooter', 'peashooter', 'kernelPult', 'peashooter', 'walnutBomb'];
+      for (let col = 0; col < 6; col++) {
+        for (let lane = 0; lane < 5; lane++) {
+          s.players.plants.energy = 1000;
+          const card = s.config.cards.plants.includes(kinds[col]) ? kinds[col] : 'peashooter';
+          for (let t = 0; t < 400 && (s.players.plants.recharge[card] ?? 0) > 0; t++) { lvt.fastForward(1); lvt.keepAlive(); }
+          c.select(card);
+          c.click({ lane, col }, null);
+          lvt.fastForward(1);
+          lvt.keepAlive();
+        }
+      }
+      c.select(null);
+    });
+  },
+  /** Keeps both bases (and a boss) whole while the scene is measured, so it never ends. */
+  async hold(page) {
+    await page.evaluate(() => {
+      setInterval(() => {
+        const s = window.__lvt.session?.controller.match.state;
+        if (!s) return;
+        s.baseHp.plants = s.baseMaxHp.plants;
+        s.baseHp.zombies = s.baseMaxHp.zombies;
+        // Nobody dies while it is measured: the crowd stays the crowd (the boss at 60%, under its shield marks).
+        for (const u of s.units) u.hp = Math.max(u.hp, u.maxHp * (s.config.boss && u.key === s.config.boss.key ? 0.6 : 1));
+      }, 200);
+      window.__lvt.keepAlive = () => {
+        const s = window.__lvt.session.controller.match.state;
+        s.baseHp.plants = s.baseMaxHp.plants;
+        s.baseHp.zombies = s.baseMaxHp.zombies;
+        for (const u of s.units) u.hp = Math.max(u.hp, u.maxHp * 0.6);
+      };
+    });
+  },
+  async titan(page) {
+    await this.login(page);
+    await this.level(page, 'plants', 'p1-8');
+    await this.hold(page);
+    await this.garden(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const s = lvt.session.controller.match.state;
+      // On until the Titan stands on the lawn with a wave walking beside him.
+      for (let t = 0; t < 30 * 90; t += 5) {
+        lvt.fastForward(5);
+        lvt.keepAlive();
+        const titan = s.units.some((u) => u.key === 'brainTitan');
+        const walkers = s.units.filter((u) => u.faction === 'zombies' && u.key !== 'brainTitan').length;
+        if (titan && walkers >= 3) break;
+      }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { units: s.units.length, titan: s.units.some((u) => u.key === 'brainTitan'), plants: s.units.filter((u) => u.faction === 'plants').length, zombies: s.units.filter((u) => u.faction === 'zombies').length };
+    });
+  },
+  async oak(page) {
+    await this.login(page);
+    await this.level(page, 'zombies', 'z1-8');
+    await this.hold(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const c = lvt.session.controller;
+      const s = c.match.state;
+      const cards = s.config.cards.zombies;
+      for (let i = 0; s.units.filter((u) => u.faction === 'zombies').length < 30 && i < 400; i++) {
+        s.players.zombies.energy = 1000;
+        const card = cards[i % cards.length];
+        for (let t = 0; t < 400 && (s.players.zombies.recharge[card] ?? 0) > 0; t++) { lvt.fastForward(1); lvt.keepAlive(); }
+        c.select(card);
+        c.click({ lane: i % 5, col: 9 }, null);
+        lvt.fastForward(2);
+        lvt.keepAlive();
+      }
+      c.select(null);
+      // On to the Oak's barrage: acorns in the air.
+      for (let t = 0; t < 30 * 40; t++) {
+        lvt.fastForward(1);
+        lvt.keepAlive();
+        if (s.projectiles.some((p) => p.kind === 'acorn')) break;
+      }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { units: s.units.length, zombies: s.units.filter((u) => u.faction === 'zombies').length, acorns: s.projectiles.filter((p) => p.kind === 'acorn').length, projectiles: s.projectiles.length };
+    });
+  },
+  async free20(page) {
+    await this.login(page);
+    await page.click('[data-home="play"]');
+    await page.click('[data-play="free"]');
+    await page.click('[data-side="plants"]');
+    await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 60_000 });
+    await page.waitForSelector('[data-banner="ready"], [data-banner="fight"]', { state: 'detached', timeout: 30_000 });
+    await this.hold(page);
+    await this.garden(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const s = lvt.session.controller.match.state;
+      // Straight to the twentieth wave (the debug hook way the shots use), then let it walk on.
+      s.wave = 19;
+      s.waveTimer = 1;
+      for (let t = 0; t < 30 * 12; t++) { lvt.keepAlive(); lvt.fastForward(1); }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { wave: s.wave, units: s.units.length, plants: s.units.filter((u) => u.faction === 'plants').length, zombies: s.units.filter((u) => u.faction === 'zombies').length, incoming: s.incoming.length };
+    });
+  },
+  async map(page) {
+    await this.login(page);
+    await page.click('[data-home="play"]');
+    await page.click('[data-play="adventure"]');
+    await page.click('[data-side="plants"]');
+    await page.waitForFunction(() => window.__lvt.map?.isOpen === true);
+    return { map: 'plants' };
+  },
+};
 const BUDGET_MS = { 1: 10, 2: 16.6 };
 const PORTRAIT_RUNS = 2;
 const args = process.argv.slice(2);
@@ -163,7 +335,7 @@ function measure(page, warmUpMs, intervals, finishFrames, pinScale) {
     });
     const frameCpu = window.__frameCpu;
     window.__frameCpu = null;
-    const contents = lvt.stress.contents ? lvt.stress.contents() : null;
+    const contents = lvt.stress?.contents ? lvt.stress.contents() : null;
     const info = gl.info.render;
     const calls = Math.round(info.calls / times.length);
     const triangles = Math.round(info.triangles / times.length);
@@ -199,7 +371,7 @@ function measure(page, warmUpMs, intervals, finishFrames, pinScale) {
       renderScale: lvt.renderer.stats.scale,
       drawCallsPerFrame: calls,
       trianglesPerFrame: triangles,
-      unitsAlive: lvt.stress.count,
+      unitsAlive: lvt.stress?.count ?? lvt.session?.controller.match.state.units.length ?? null,
       contents,
       windowVisible: visible,
     };
@@ -214,7 +386,7 @@ async function portraitWarmUp() {
     for (let run = 0; run < PORTRAIT_RUNS; run++) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor });
       const page = await context.newPage();
-      await page.goto(`${ORIGIN}/?debug`);
+      await page.goto(`${ORIGIN}/?debug&cloud=fake`);
       const t = await page.evaluate(async () => {
         const lvt = window.__lvt;
         await lvt.ready;
@@ -254,8 +426,15 @@ async function main() {
           const cdp = await context.newCDPSession(page);
           await cdp.send('Emulation.setCPUThrottlingRate', { rate: mode.throttle });
         }
-        await page.goto(`${ORIGIN}/?debug&${scene.query}`);
+        await page.goto(`${ORIGIN}/?debug&cloud=fake${scene.query ? `&${scene.query}` : ''}`);
+        let setup = null;
+        if (scene.setup) {
+          await page.evaluate(() => window.__lvt.ready);
+          setup = await GAME_SETUPS[scene.setup](page);
+          console.log(`${scene.name} set up: ${JSON.stringify(setup)}`);
+        }
         const stats = await measure(page, WARM_UP_MS, INTERVALS, FINISH_FRAMES, !args.includes('--adaptive'));
+        stats.contents = stats.contents ?? setup;
         const renderer = await page.evaluate(() => {
           const gl = document.createElement('canvas').getContext('webgl2');
           const ext = gl?.getExtension('WEBGL_debug_renderer_info');

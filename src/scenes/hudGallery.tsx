@@ -53,7 +53,7 @@ function fakeSession(side: Faction, cards: CardVM[]): BattleSessionLike {
     selected: signal<UnitKey | null>(cards[0]?.unit ?? null), shovel: signal(false),
     result: signal(null), denied: signal(0),
     hero: signal({ ready: false, fraction: 0 }), heroSelected: signal(false),
-    spells: signal([]), spellSelected: signal(null),
+    spells: signal([]), spellSelected: signal(null), boss: signal(null),
   };
   return {
     controller: {

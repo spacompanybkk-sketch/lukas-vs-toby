@@ -7,8 +7,8 @@
 
 import { seconds } from '../data/balance';
 import type { Balance } from '../data/balance';
-import { damageUnit } from './damage';
-import { isStanding } from './lookup';
+import { capHit, damageUnit } from './damage';
+import { inLane, isStanding } from './lookup';
 import { LANES } from './types';
 import type { Command, CommandRejection, SimEvent, SimState } from './types';
 
@@ -25,7 +25,8 @@ export function checkHero(s: SimState, cmd: HeroCommand): CommandRejection | nul
 /**
  * Carries out a hero command that `checkHero` has passed: `heroUsed`, then every standing enemy
  * unit in the lane, in ascending id, takes the side's `hero.damage` through `damageUnit` with armor
- * ignored (a shield only stops shots, so it never stops this). It touches no base, projectile or
+ * ignored (a shield only stops shots, so it never stops this); a boss at most its `hitCap` share
+ * of its max (`capHit`), and a wide one once, whichever of its lanes is aimed at. It touches no base, projectile or
  * hazard. A unit it brings to 0 is removed by `resolveDeaths` (cause `'damage'`, bounty paid).
  */
 export function useHero(s: SimState, b: Balance, cmd: HeroCommand, events: SimEvent[]): void {
@@ -33,7 +34,7 @@ export function useHero(s: SimState, b: Balance, cmd: HeroCommand, events: SimEv
   s.players[cmd.faction].heroTimer = seconds(power.chargeSeconds);
   events.push({ type: 'heroUsed', faction: cmd.faction, lane: cmd.lane });
   for (const u of s.units) {
-    if (u.faction === cmd.faction || u.lane !== cmd.lane || !isStanding(u)) continue;
-    damageUnit(s, b, u, power.damage, events, true);
+    if (u.faction === cmd.faction || !inLane(u, cmd.lane) || !isStanding(u)) continue;
+    damageUnit(s, b, u, capHit(b, u, power.damage), events, true);
   }
 }

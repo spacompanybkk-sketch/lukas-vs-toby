@@ -11,6 +11,220 @@
     "challenges": {
       ".read": true,
       ".write": true
+    },
+    "v2": {
+      "players": {
+        ".read": true,
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (newData.parent().parent().child('secrets/' + $slot).isString() && newData.parent().parent().child('saves/' + $slot + '/' + newData.parent().parent().child('secrets/' + $slot).val() + '/touch').val() === now)) || (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.hasChildren(['name', 'picture'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 10 && newData.val().matches(/^[A-Za-z0-9]+$/)"
+          },
+          "picture": {
+            ".validate": "newData.isString() && newData.val().matches(/^(peashooter|sunflower|walnutBomb|potatoMine|kernelPult|mangoPult|avocadoBunker|torchwood|cherryBomber|pumpkinSquash|brainEater|veryFastWalker|skeletonWarrior|desertZombie|skeletonArcher|hotTopic|cowboyZombie|necromancer|tridentZombie|brainRot)$/)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "secrets": {
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((!data.exists() && !data.parent().parent().child('players/' + $slot).exists() && newData.parent().parent().child('players/' + $slot).exists()) || (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)"
+        }
+      },
+      "saves": {
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now)",
+          "$hash": {
+            ".read": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2/secrets/' + $slot).val() === $hash",
+            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && newData.exists() && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
+            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val() || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
+            "save": {
+              ".validate": "newData.isString() && newData.val().length <= 20000"
+            },
+            "touch": {
+              ".validate": "newData.val() === now"
+            },
+            "ver": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/) && newData.val() !== data.val()"
+            },
+            "prev": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/)"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      },
+      "board": {
+        ".read": true,
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (newData.parent().parent().child('secrets/' + $slot).isString() && newData.parent().parent().child('saves/' + $slot + '/' + newData.parent().parent().child('secrets/' + $slot).val() + '/touch').val() === now)) || (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.hasChildren(['slot', 'name', 'picture', 'stars', 'wave', 'versusWins', 'computerWins', 'updatedAt'])",
+          "slot": {
+            ".validate": "newData.val() === $slot"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 10 && newData.val().matches(/^[A-Za-z0-9]+$/)"
+          },
+          "picture": {
+            ".validate": "newData.isString() && newData.val().matches(/^(peashooter|sunflower|walnutBomb|potatoMine|kernelPult|mangoPult|avocadoBunker|torchwood|cherryBomber|pumpkinSquash|brainEater|veryFastWalker|skeletonWarrior|desertZombie|skeletonArcher|hotTopic|cowboyZombie|necromancer|tridentZombie|brainRot)$/)"
+          },
+          "stars": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 240"
+          },
+          "wave": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 9999"
+          },
+          "versusWins": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 99999"
+          },
+          "computerWins": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 99999"
+          },
+          "updatedAt": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "admin": {
+        "secret": {
+          ".write": "newData.exists() && (!data.exists() || (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)"
+        },
+        "proof": {
+          "$hash": {
+            ".write": "root.child('v2/admin/secret').val() === $hash",
+            ".validate": "newData.hasChildren(['touch'])",
+            "touch": {
+              ".validate": "newData.val() === now"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "$other": {
+        ".validate": false
+      }
+    },
+    "v2test": {
+      "players": {
+        ".read": true,
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (newData.parent().parent().child('secrets/' + $slot).isString() && newData.parent().parent().child('saves/' + $slot + '/' + newData.parent().parent().child('secrets/' + $slot).val() + '/touch').val() === now)) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.hasChildren(['name', 'picture'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 10 && newData.val().matches(/^[A-Za-z0-9]+$/)"
+          },
+          "picture": {
+            ".validate": "newData.isString() && newData.val().matches(/^(peashooter|sunflower|walnutBomb|potatoMine|kernelPult|mangoPult|avocadoBunker|torchwood|cherryBomber|pumpkinSquash|brainEater|veryFastWalker|skeletonWarrior|desertZombie|skeletonArcher|hotTopic|cowboyZombie|necromancer|tridentZombie|brainRot)$/)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "secrets": {
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((!data.exists() && !data.parent().parent().child('players/' + $slot).exists() && newData.parent().parent().child('players/' + $slot).exists()) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)"
+        }
+      },
+      "saves": {
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now)",
+          "$hash": {
+            ".read": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2test/secrets/' + $slot).val() === $hash",
+            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && newData.exists() && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val()",
+            ".validate": "newData.hasChildren(['save', 'touch', 'ver']) && $hash === newData.parent().parent().parent().child('secrets/' + $slot).val() && (!data.exists() || newData.child('prev').val() === data.child('ver').val() || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
+            "save": {
+              ".validate": "newData.isString() && newData.val().length <= 20000"
+            },
+            "touch": {
+              ".validate": "newData.val() === now"
+            },
+            "ver": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/) && newData.val() !== data.val()"
+            },
+            "prev": {
+              ".validate": "newData.isString() && newData.val().length === 16 && newData.val().matches(/^[0-9a-f]+$/)"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      },
+      "board": {
+        ".read": true,
+        "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (newData.parent().parent().child('secrets/' + $slot).isString() && newData.parent().parent().child('saves/' + $slot + '/' + newData.parent().parent().child('secrets/' + $slot).val() + '/touch').val() === now)) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.hasChildren(['slot', 'name', 'picture', 'stars', 'wave', 'versusWins', 'computerWins', 'updatedAt'])",
+          "slot": {
+            ".validate": "newData.val() === $slot"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 10 && newData.val().matches(/^[A-Za-z0-9]+$/)"
+          },
+          "picture": {
+            ".validate": "newData.isString() && newData.val().matches(/^(peashooter|sunflower|walnutBomb|potatoMine|kernelPult|mangoPult|avocadoBunker|torchwood|cherryBomber|pumpkinSquash|brainEater|veryFastWalker|skeletonWarrior|desertZombie|skeletonArcher|hotTopic|cowboyZombie|necromancer|tridentZombie|brainRot)$/)"
+          },
+          "stars": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 240"
+          },
+          "wave": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 9999"
+          },
+          "versusWins": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 99999"
+          },
+          "computerWins": {
+            ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 99999"
+          },
+          "updatedAt": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "admin": {
+        "secret": {
+          ".write": "newData.exists() && (!data.exists() || (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now))",
+          ".validate": "newData.isString() && newData.val().length === 64 && newData.val().matches(/^[0-9a-f]+$/)"
+        },
+        "proof": {
+          "$hash": {
+            ".write": "root.child('v2test/admin/secret').val() === $hash",
+            ".validate": "newData.hasChildren(['touch'])",
+            "touch": {
+              ".validate": "newData.val() === now"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "$other": {
+        ".validate": false
+      }
     }
   }
 }

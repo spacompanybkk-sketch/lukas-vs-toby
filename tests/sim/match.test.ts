@@ -21,6 +21,8 @@ describe('defaultConfig', () => {
       suddenDeath: true,
       heroes: { plants: true, zombies: true },
       spells: { plants: 2, zombies: 2 },
+      upgrades: { plants: {}, zombies: {} },
+      mode: 'battle', script: [], prepared: [], goalTicks: null, belt: null, noEnergy: false, invulnerableBase: null, boss: null, endless: null,
     });
   });
 
@@ -56,6 +58,8 @@ describe('new Match', () => {
       baseDefenseTimers: [0, 0, 0, 0, 0],
       suddenDeath: false, winner: null,
       config,
+      scriptIndex: 0, belt: [],
+      wave: 0, waveTimer: 0, clock: 0, incoming: [],
     });
   });
 

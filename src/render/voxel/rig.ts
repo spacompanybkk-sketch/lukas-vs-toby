@@ -55,6 +55,7 @@ interface Joint {
   /** Extra offset in tiles, set by the owner (see `shiftPart`), on top of the clip. */
   shiftX: number;
   shiftY: number;
+  shiftZ: number;
 }
 
 /** A material of this instance's own, standing in for a shared one while it flashes. */
@@ -141,6 +142,7 @@ export class ModelInstance {
         blinks: eyes.has(part.name),
         shiftX: 0,
         shiftY: 0,
+        shiftZ: 0,
       };
       this.joints.push(joint);
       this.pose[part.name] = joint.target;
@@ -337,16 +339,18 @@ export class ModelInstance {
   }
 
   /**
-   * Holds a part `x`, `y` tiles off where the clip puts it, until shifted back to 0, 0: a
-   * Pumpkin's soil pad stays home while the view carries the pumpkin off on its leap.
+   * Holds a part `x`, `y` (and `z`) tiles off where the clip puts it, in its parent's frame, until
+   * shifted back to 0: a Pumpkin's soil pad stays home while the view carries the pumpkin off on
+   * its leap; the Elder Oak's pupils look along the lawn.
    */
-  shiftPart(name: string, x: number, y: number): void {
+  shiftPart(name: string, x: number, y: number, z = 0): void {
     for (let i = 0; i < this.joints.length; i++) {
       const joint = this.joints[i] as Joint;
       if (joint.object.name !== name) continue;
-      if (joint.shiftX === x && joint.shiftY === y) return;
+      if (joint.shiftX === x && joint.shiftY === y && joint.shiftZ === z) return;
       joint.shiftX = x;
       joint.shiftY = y;
+      joint.shiftZ = z;
       this.apply();
       return;
     }
@@ -478,7 +482,7 @@ export class ModelInstance {
       object.position.set(
         joint.restX + shown.px * VOXEL + joint.shiftX,
         joint.restY + shown.py * VOXEL + joint.shiftY,
-        joint.restZ + shown.pz * VOXEL,
+        joint.restZ + shown.pz * VOXEL + joint.shiftZ,
       );
       // The clip's turn happens in the part's own rest frame: a torso that rests leaning
       // forward rolls about its own leaning axis, not about its parent's.

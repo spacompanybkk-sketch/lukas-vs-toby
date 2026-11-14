@@ -5,7 +5,7 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { SoundGate, battleIntensity, playEventSounds } from '../audio/bindings';
 import { BattleView } from '../render/battle/BattleView';
 import type { AimPreview } from '../render/battle/types';
-import { LAWN_COLS, LAWN_LANES, tileCenter, worldToClient } from '../render/coords';
+import { LAWN_COLS, LAWN_LANES, simToWorld, tileCenter, worldToClient } from '../render/coords';
 import type { CommandRejection, Faction, SimEvent } from '../sim/types';
 import { BattleController } from './BattleController';
 import type { BattleOptions } from './BattleController';
@@ -61,6 +61,11 @@ export class BattleSession implements Director, InputTarget {
   /** The last hero power used, by either side: the HUD shows its boy's banner. */
   readonly heroBanner = signal<HeroBanner | null>(null);
 
+  /** A tap on the boss's entrance card ends the lawn's entrance show. */
+  skipBossEntrance(): void {
+    this.view.bossFx.skipEntrance();
+  }
+
   private readonly stage: StageLike;
   private readonly audio: AudioEngine;
   private readonly input: BattleInput;
@@ -92,6 +97,7 @@ export class BattleSession implements Director, InputTarget {
     // The Bone Minion is no card, but a Necromancer or Grave Rise brings them: built ahead like the rest.
     this.view = new BattleView(stage.scene, stage.camera, stage.lawn, stage.fx, opts.playerFaction, {
       units: modelsFor(this.controller.match.state),
+      balance: this.controller.match.balance,
     });
     this.view.onFeel = (f) => this.clock.feel(f, stage.rig);
     this.view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);
@@ -162,6 +168,9 @@ export class BattleSession implements Director, InputTarget {
     this.detached = true;
     this.input.dispose();
     this.view.dispose();
+    // The next director (a turntable after a level's result, the map) starts in normal time.
+    this.stage.paused = false;
+    this.stage.timeScale = 1;
   }
 
   /**
@@ -196,6 +205,15 @@ export class BattleSession implements Director, InputTarget {
   tileToClient(lane: number, col: number): { x: number; y: number } {
     const rect = this.canvasRect();
     const at = worldToClient(tileCenter(lane, col, point), this.stage.camera, rect);
+    return { x: rect.left + at.x, y: rect.top + at.y };
+  }
+
+  /** Client pixel position of a unit's body (half a tile above its feet), or null when it is gone. */
+  unitToClient(id: number): { x: number; y: number } | null {
+    const u = this.controller.match.state.units.find((x) => x.id === id);
+    if (u === undefined) return null;
+    const rect = this.canvasRect();
+    const at = worldToClient(simToWorld(u.lane, u.x, point).setY(0.5), this.stage.camera, rect);
     return { x: rect.left + at.x, y: rect.top + at.y };
   }
 
@@ -276,6 +294,13 @@ export class BattleSession implements Director, InputTarget {
     const result = this.controller.hud.result.peek();
     if (this.ended || result === null) return;
     this.ended = true;
+    if (this.controller.endless?.quit.peek() === true) {
+      // A Free Play run ended from the pause menu: nothing fell; its result shows at once.
+      this.view.setPreview(null);
+      if (withSound) this.audio.stopMusic(0.8);
+      this.ready.value = true;
+      return;
+    }
     this.endSounds = withSound;
     this.view.setPreview(null);
     if (withSound) {
