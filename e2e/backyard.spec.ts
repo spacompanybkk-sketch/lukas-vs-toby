@@ -220,13 +220,12 @@ test('a conveyor level by taps and by drag; a breakthrough lost on the clock pay
   }, { timeout: 30_000 }).toBe(1);
   const card = page.locator('[data-belt][data-slot="0"]');
   const dragged = await card.getAttribute('data-card');
-  // A card that just arrived slides in along the belt for 600 ms: drag it once it stands still.
-  await expect.poll(async () => {
-    const a = await card.boundingBox();
-    await frames(page, 3);
-    const b = await card.boundingBox();
-    return a !== null && b !== null && Math.abs(a.x - b.x) < 0.5;
-  }).toBe(true);
+  // A card that just arrived slides in along the belt for 600 ms in six 100 ms steps: the press
+  // is aimed at where the card is measured, so wait for its slide (and any move along the belt)
+  // to finish. Comparing two boxes a few frames apart is not enough: inside one step the card
+  // holds still, then jumps a card-width on, and the press lands on the bare belt. (A child
+  // presses where the card is at that moment; grabbing it mid-slide is belt-slide.spec.ts.)
+  await expect.poll(() => card.evaluate((el) => el.getAnimations().every((a) => a.playState === 'finished'))).toBe(true);
   const box = (await card.boundingBox())!;
   const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const to = await tilePoint(page, 3, 2);
