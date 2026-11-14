@@ -30,7 +30,7 @@ import { inflictStatus } from './status';
 import { randomInt } from './rng';
 import { spawnAtLevel, spawnUnit } from './spawn';
 import { BOSS_HALF_WIDTH, COLS, LANES, PLANT_COLS, TICKS_PER_SECOND, ZOMBIE_SPAWN_X } from './types';
-import type { Faction, MatchConfig, Projectile, SimEvent, SimState, Unit } from './types';
+import type { Faction, MatchConfig, Projectile, SimEvent, SimState, StatusKind, Unit } from './types';
 
 type Slam = Extract<BossPattern, { kind: 'slam' }>;
 type Summon = Extract<BossPattern, { kind: 'summon' }>;
@@ -65,10 +65,14 @@ export function checkBoss(c: MatchConfig, b: Balance): void {
   for (const list of [stats.patterns, ...(stats.phases ?? [])]) for (const p of list) if (p.kind === 'strike') checkStrike(boss.key, p);
 }
 
+/** Every status a strike may leave (a `Record`, so a new `StatusKind` must be listed here). */
+const STRIKE_STATUS: Readonly<Record<StatusKind, true>> = { stun: true, blind: true, tied: true, poison: true, burn: true, haste: true };
+
 /**
  * A strike must wind up for a while above 0 and shorter than its gap (so its wind-up starts on a
  * tick of its own), hit at least one whole lane or tile, deal no negative damage, and aim at
- * lanes or tiles.
+ * lanes or tiles. Its status, if any, must be a known kind lasting at least a tick, with no
+ * negative `dps`.
  */
 function checkStrike(key: string, p: Strike): void {
   const what = `boss ${key} strike`;
@@ -78,6 +82,11 @@ function checkStrike(key: string, p: Strike): void {
   if (!(Number.isInteger(p.count) && p.count >= 1)) throw new RangeError(`${what}: count ${p.count} is not a whole number from 1`);
   if (!(p.damage >= 0)) throw new RangeError(`${what}: damage ${p.damage} must be a number from 0`);
   if (p.target !== 'lanes' && p.target !== 'tiles') throw new RangeError(`${what}: target "${String(p.target)}" is not lanes or tiles`);
+  const st = p.status;
+  if (st === undefined) return;
+  if (!Object.hasOwn(STRIKE_STATUS, st.kind)) throw new RangeError(`${what}: status "${String(st.kind)}" is no status (${Object.keys(STRIKE_STATUS).join(', ')})`);
+  if (!(seconds(st.seconds) > 0)) throw new RangeError(`${what}: status seconds ${st.seconds} must last at least a tick`);
+  if (st.dps !== undefined && !(st.dps >= 0)) throw new RangeError(`${what}: status dps ${st.dps} must be a number from 0`);
 }
 
 /**

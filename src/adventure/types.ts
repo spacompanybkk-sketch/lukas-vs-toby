@@ -32,7 +32,9 @@ export interface Spawn { at: number; unit: UnitKey; lane: number; level?: number
 
 /**
  * Which tiles of a level's lawn carry its world's twist; the numbers come from `Balance.twists`.
- * `rocks` and `lavaTiles` are tile indices, `iceLanes` lane indices, `fog` is on or absent.
+ * `iceLanes` are lane indices, `fog` is on or absent. The two tile lists count differently:
+ * - `rocks` index the plant tiles, `lane * PLANT_COLS + col` (8 plant columns: rock 13 = lane 1, col 5);
+ * - `lavaTiles` index the whole lawn, `lane * COLS + col` (10 columns: lava 13 = lane 1, col 3).
  */
 export interface LevelTwist { rocks?: number[]; fog?: true; iceLanes?: number[]; lavaTiles?: number[] }
 

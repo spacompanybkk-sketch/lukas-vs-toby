@@ -358,6 +358,11 @@ describe('the strike', () => {
     ['a count of 0', { count: 0 }, /strike: count 0 is not a whole number from 1/],
     ['a negative damage', { damage: -1 }, /strike: damage -1 must be a number from 0/],
     ['an unknown target', { target: 'rows' as never }, /strike: target "rows" is not lanes or tiles/],
+    ['an unknown status', { status: { kind: 'sleep' as never, seconds: 1 } }, /strike: status "sleep" is no status/],
+    ['a status lasting 0 s', { status: { kind: 'stun', seconds: 0 } }, /strike: status seconds 0 must last at least a tick/],
+    ['a status lasting less than 0 s', { status: { kind: 'blind', seconds: -1 } }, /strike: status seconds -1 must last at least a tick/],
+    ['a status lasting NaN s', { status: { kind: 'blind', seconds: Number.NaN } }, /strike: status seconds NaN must last at least a tick/],
+    ['a negative status dps', { status: { kind: 'burn', seconds: 2, dps: -5 } }, /strike: status dps -5 must be a number from 0/],
   ] as const)('refuses %s', (_name, more, message) => {
     expect(() => phasedFight(phasedBalance({ patterns: [strikeOf(more)] }))).toThrow(message);
     expect(() => phasedFight(phasedBalance({ patterns: [SLAM, SHIELD], phases: [[SUMMON_WALKER], [strikeOf(more)]] }))).toThrow(message);
