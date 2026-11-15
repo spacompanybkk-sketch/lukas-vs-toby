@@ -715,11 +715,13 @@ export class BattleController {
    * - a card (tray or belt): the ground tile decides whenever the card can go there (a free tile,
    *   or a plant of its kind to merge into), so a free tile behind a tall plant always wins. Only
    *   when the ground tile cannot take it at all (another plant, a top-level one, a rock, past the
-   *   plant columns, off the lawn) and the body (or level-up marker) under the finger is a plant
-   *   of the card's kind the card can merge into, that plant's tile is used: a tap on its head merges;
-   * - the shovel: the plant on the ground tile, if any; otherwise the plant whose body is hit.
+   *   plant columns, off the lawn, or a held tutorial step that would ignore it there, as
+   *   `placeTiles` marks it) and the body (or level-up marker) under the finger is a plant of the
+   *   card's kind the card can merge into, that plant's tile is used: a tap on its head merges.
+   *   Both tiles are asked of the match (`check`) and the tutorial, as a tap would be;
+   * - the shovel: the plant on the ground tile, if any; otherwise the plant whose body is hit (only
+   *   presence is looked at here: the removal itself is checked when the tap lands).
    * The hero and aimed spells never look at bodies (no card is selected while they wait).
-   * Both steps ask the match (`check`), as a tap does.
    *
    * Zombies are not tied to tiles: the player's own standing zombie of the selected card's type
    * (a merge) or, with the shovel, any of its own, names its own tile.
@@ -733,12 +735,18 @@ export class BattleController {
       if (shovel) return ground !== null && this.plantAt(ground) !== undefined ? null : own;
       const card = this.hud.selected.peek();
       if (card === null || u.key !== card || u.level >= MAX_LEVEL) return null;
-      if (ground !== null && this.match.check(this.cardCommandAt(card, ground)) === null) return null;
-      return this.match.check(this.cardCommandAt(card, own)) === null ? own : null;
+      if (ground !== null && this.cardFits(card, ground)) return null;
+      return this.cardFits(card, own) ? own : null;
     }
     // A unit at the top level cannot take its card: the tap falls through to the ground under it.
     if (!shovel && (this.hud.selected.peek() !== u.key || u.level >= MAX_LEVEL)) return null;
     return own;
+  }
+
+  /** Whether the picked plant card would be taken on `tile`: the match accepts it and no held tutorial step ignores it. */
+  private cardFits(card: UnitKey, tile: Tile): boolean {
+    const cmd = this.cardCommandAt(card, tile);
+    return this.match.check(cmd) === null && !this.refused({ kind: 'command', cmd });
   }
 
   /** What the picked plant card (tray, or the belt's picked slot) would do on `tile`. */

@@ -234,6 +234,35 @@ describe('p1-1 by the glove', () => {
     expect(c.tutorial!.current).toBeNull();
     expect(c.tutorial!.taught.peek()).toEqual(['p1-3.card', 'p1-3.tile', 'p1-3.merge-card', 'p1-3.merge']);
   });
+
+  it('the held merge: a pointer on the plant\'s head or arrow over a free tile behind merges, and the preview shows the plant\'s tile', () => {
+    const c = taught('p1-3');
+    run(c, 2);
+    c.select('peashooter');
+    c.click({ lane: 2, col: 1 }, null);
+    c.step();
+    run(c, seconds(25));
+    c.select('peashooter');
+    const pea = plantAt(c, 2, 1)!;
+    expect(c.tutorial!.holding).toBe(true);
+    // The head (lane 1) and the arrow (lane 0) stand over free grass the card could take, but the step would ignore it there.
+    for (const behind of [{ lane: 1, col: 1 }, { lane: 0, col: 1 }]) {
+      expect(plantAt(c, behind.lane, behind.col)).toBeUndefined();
+      expect(c.aimAt(pea.id, behind), `lane ${behind.lane}`).toEqual({ lane: 2, col: 1 });
+      expect(c.hover({ lane: 2, col: 1 }, pea.id)).toMatchObject({ unit: 'peashooter', lane: 2, col: 1, ok: true, mergeTargetId: pea.id });
+    }
+    expect(c.click(c.aimAt(pea.id, { lane: 1, col: 1 }), pea.id)).toBeNull();
+    c.step();
+    expect(pea.level).toBe(2);
+    expect(plantAt(c, 1, 1)).toBeUndefined();
+    expect(c.hud.denied.peek()).toBe(0);
+    expect(c.tutorial!.current).toBeNull();
+    // Nothing held any more: the free tile behind wins again.
+    while ((c.match.state.players.plants.recharge.peashooter ?? 0) > 0) c.step();
+    c.match.state.players.plants.energy = 500;
+    c.select('peashooter');
+    expect(c.aimAt(pea.id, { lane: 1, col: 1 })).toBeNull();
+  });
 });
 
 describe('p1-2: the Sunflower pays', () => {
