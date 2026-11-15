@@ -3,8 +3,23 @@ import { openTitle } from './helpers';
 
 // A phone gets only the notice: decided by the device screen, before the game mounts.
 // Chromium emulation: `screen` sets screen.width/height, hasTouch gives maxTouchPoints.
+// A phone also has no fine pointer: Playwright has no switch for `(any-pointer: fine)`, so in
+// case the host's mouse still shows through the touch emulation, this answers it as a phone does.
 
 const LINE = 'THIS GAME IS FOR iPAD AND COMPUTERS';
+
+/** Makes `matchMedia('(any-pointer: fine)')` report no fine pointer, as on a phone. */
+function noFinePointer(): void {
+  const original = window.matchMedia.bind(window);
+  window.matchMedia = ((query: string) => {
+    const result = original(query);
+    if (query.replace(/\s+/g, '') !== '(any-pointer:fine)') return result;
+    return {
+      matches: false, media: result.media, onchange: null,
+      addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+    } as MediaQueryList;
+  }) as typeof window.matchMedia;
+}
 
 for (const [w, h] of [[390, 844], [320, 568], [667, 375]] as const) {
   test(`a ${w}x${h} phone shows only the notice, no canvas, no database request`, async ({ browser }, info) => {
@@ -17,6 +32,7 @@ for (const [w, h] of [[390, 844], [320, 568], [667, 375]] as const) {
     const errors: string[] = [];
     page.on('request', (r) => { if (/^https?:/.test(r.url())) hosts.push(new URL(r.url()).host); });
     page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(noFinePointer);
     await page.addInitScript(() => {
       (window as unknown as { __gl: number }).__gl = 0;
       const original = HTMLCanvasElement.prototype.getContext;
