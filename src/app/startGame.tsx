@@ -40,29 +40,29 @@ const SCENES = new Map<string, SceneModule>([
 
 /** Mounts the game (or a development scene) on the page's canvas and UI layer. */
 export function startGame(): void {
-installDebug();
+  installDebug();
 
-const canvas = document.getElementById('game') as HTMLCanvasElement;
-const ui = document.getElementById('ui') as HTMLElement;
-const params = new URLSearchParams(location.search);
-const name = params.get('scene') ?? '';
-const scene = SCENES.get(name);
+  const canvas = document.getElementById('game') as HTMLCanvasElement;
+  const ui = document.getElementById('ui') as HTMLElement;
+  const params = new URLSearchParams(location.search);
+  const name = params.get('scene') ?? '';
+  const scene = SCENES.get(name);
 
-/** Frees everything when the page goes; a page restored from the back/forward cache reloads instead. */
-function tearDownOnLeave(teardown: Teardown): void {
-  window.addEventListener('pagehide', () => teardown(), { once: true });
-  window.addEventListener('pageshow', (event) => {
-    if (event.persisted) location.reload();
-  });
-}
+  /** Frees everything when the page goes; a page restored from the back/forward cache reloads instead. */
+  function tearDownOnLeave(teardown: Teardown): void {
+    window.addEventListener('pagehide', () => teardown(), { once: true });
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) location.reload();
+    });
+  }
 
-if (scene) {
-  if (scene.keepTitle) render(<App />, ui);
-  void Promise.resolve(scene.mount(canvas, params)).then((teardown) => {
-    if (teardown) tearDownOnLeave(teardown);
-  });
-} else {
-  // The game: the title (or, with `?scene=battle`, straight into a battle that has begun).
-  tearDownOnLeave(mountGame(canvas, ui, name === 'battle' ? battleOptionsFrom(params) : null, { fps: params.has('fps') }));
-}
+  if (scene) {
+    if (scene.keepTitle) render(<App />, ui);
+    void Promise.resolve(scene.mount(canvas, params)).then((teardown) => {
+      if (teardown) tearDownOnLeave(teardown);
+    });
+  } else {
+    // The game: the title (or, with `?scene=battle`, straight into a battle that has begun).
+    tearDownOnLeave(mountGame(canvas, ui, name === 'battle' ? battleOptionsFrom(params) : null, { fps: params.has('fps') }));
+  }
 }
