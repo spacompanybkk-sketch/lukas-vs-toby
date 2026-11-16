@@ -376,6 +376,11 @@ test('after all of it a reload shows the same stars, coins, unlocks and best wav
   expect(await progress(page)).toEqual(kept);
   for (const side of ['plants', 'zombies'] as const) {
     await toMap(page, side);
+    // Lukas's map opens on the Meadow he has opened; his Backyard is one arrow back.
+    if (side === 'plants') {
+      await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', 'meadow');
+      await press(page.locator('[data-action="world-prev"]'));
+    }
     for (const [id, n] of Object.entries(kept[side].stars)) {
       await expect(page.locator(`[data-stone="${id}"]`)).toHaveAttribute('data-stars', String(n));
     }
