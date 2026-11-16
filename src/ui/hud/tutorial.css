@@ -55,6 +55,23 @@
   80% { transform: translate(calc(var(--tip-x) * -1), calc(var(--tip-y) * -1 - 20px)); }
 }
 
+/* The twist pan (a level's twist shown by the camera): a clear catcher over everything takes the
+   tap that ends it; the cards and powers dim; Pause stays above it and usable. */
+.tut-twist {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: auto;
+  background: transparent;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* `is-twist` comes from the battle screen's own render (no `:has`: Safari before 15.4 lacks it). */
+.battle.is-twist .battle__top { z-index: 6; }
+.battle.is-twist .battle__bottom { filter: brightness(0.45) grayscale(0.6); }
+/* The "tap" hint marks no target: the glove alone taps the middle of the lawn. */
+.tut-mark--none { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .tut-mark, .tut-hand__pic { animation: none; }
 }

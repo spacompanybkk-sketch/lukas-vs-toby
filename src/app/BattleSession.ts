@@ -9,6 +9,7 @@ import { BattleView } from '../render/battle/BattleView';
 import type { AimPreview } from '../render/battle/types';
 import { LAWN_COLS, LAWN_LANES, simToWorld, tileCenter, worldToClient } from '../render/coords';
 import { MARKS_LOUD, MARKS_QUIET } from '../render/world/PlaceMarks';
+import { TwistShow } from '../render/world/TwistTiles';
 import { NO_TWIST } from '../sim/lawn';
 import type { CommandRejection, Faction, LawnConfig, SimEvent } from '../sim/types';
 import { BattleController } from './BattleController';
@@ -116,6 +117,8 @@ export class BattleSession implements Director, InputTarget {
   private placeStrength = MARKS_QUIET;
   /** Keeps poison and burn to one sound a second across the battle. */
   private readonly soundGate = new SoundGate();
+  /** The twist lesson's ghosts while its step holds the match (the camera pans over them). */
+  private twist: TwistShow | null = null;
 
   constructor(stage: StageLike, audio: AudioEngine, opts: BattleOptions, options: BattleSessionOptions = {}) {
     this.stage = stage;
@@ -213,6 +216,7 @@ export class BattleSession implements Director, InputTarget {
       this.view.setPlaceStrength(strength);
     }
     this.view.frame(state, alpha, gameDt, this.time);
+    this.twistFrame(realDt);
     if (!this.ended) this.audio.setIntensity(battleIntensity(state));
     else if (this.fallen && !this.ready.peek()) {
       this.cheerFor += realDt > 0 ? realDt : 0;
@@ -223,6 +227,7 @@ export class BattleSession implements Director, InputTarget {
   detach(): void {
     if (this.detached) return;
     this.detached = true;
+    this.endTwist();
     this.input.dispose();
     this.view.dispose();
     // The next director (a turntable after a level's result, the map) starts in normal time.
@@ -245,6 +250,11 @@ export class BattleSession implements Director, InputTarget {
   }
 
   // ---- Test hooks ----------------------------------------------------------------------------
+
+  /** The twist lesson's show while it plays, or null (tests and tools). */
+  get twistShow(): TwistShow | null {
+    return this.twist;
+  }
 
   /** Steps the match `ticks` times with no drawing in between, every step's events to the view. */
   fastForward(ticks: number): void {
@@ -333,6 +343,36 @@ export class BattleSession implements Director, InputTarget {
   denied(): void {}
 
   // ---- Inside --------------------------------------------------------------------------------
+
+  /**
+   * The twist lesson (a `twist` step holding the match): its ghosts on the lawn and the camera
+   * easing in to frame them (one `focus`, made when the show starts), from the moment the step holds until it ends (a tap), the battle leaves the
+   * stage or the stage shows another world. Paused, the show waits. Nothing here reaches the match.
+   */
+  private twistFrame(realDt: number): void {
+    const vm = this.controller.tutorial?.twist.peek() ?? null;
+    const want = vm !== null && vm.holding && this.live && this.stage.lawn.world === this.world;
+    if (!want) {
+      if (this.twist !== null) this.endTwist();
+      return;
+    }
+    if (this.twist === null || this.twist.kind !== vm.kind) {
+      this.endTwist();
+      this.twist = new TwistShow(vm.kind, this.controller.match.state.config.lawn, this.stage.fx);
+      this.stage.scene.add(this.twist.group);
+      // Once: the rig eases in on its own and keeps the shot through resizes.
+      this.stage.rig.focus(this.twist.box, this.twist.view);
+    }
+    if (!this.stage.paused) this.twist.update(realDt);
+  }
+
+  /** The twist show goes (ghosts freed) and the camera eases back to the lawn. */
+  private endTwist(): void {
+    if (this.twist === null) return;
+    this.twist.dispose();
+    this.twist = null;
+    this.stage.rig.focus(null);
+  }
 
   private advance(withSound: boolean): void {
     if (this.ended || this.controller.hud.paused.peek()) return;

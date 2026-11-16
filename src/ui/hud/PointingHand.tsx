@@ -91,9 +91,20 @@ function lawnBox(aim: GloveAim, host: GloveHost): Box | null {
       // From the side, at the body: the level-up arrow over the unit's head stays in sight.
       return { x: p.x, y: p.y, w, h: w * 1.1, ty: p.y, tx: p.x - w * 0.38 };
     }
+    case 'tap': {
+      // Fixed on the screen (it does not drift as the camera pans): the middle, at the bottom of the
+      // lawn's part of the screen, just above the cards. Any tap ends a twist pan.
+      const x = window.innerWidth / 2;
+      const y = window.innerHeight * TAP_HINT_Y;
+      const w = Math.max(48, window.innerWidth * 0.06);
+      return { x, y, w, h: w * 0.72, ty: y };
+    }
     default: return null;
   }
 }
+
+/** Where the twist pan's "tap" glove taps, as a share of the window's height (the tray is the bottom 22%). */
+export const TAP_HINT_Y = 0.68;
 
 /** Frames after an aim appears (or the window changes) during which an HTML target is measured every frame (its pop-in or a belt card's 600 ms slide-in settling: 40 frames is 667 ms at 60 fps). */
 const SETTLE_FRAMES = 40;
@@ -188,9 +199,10 @@ export function PointingHand({ glove, host, hidden }: { glove: ReadonlySignal<Gl
 
   if (vm === null) return null;
   const lawn = vm.aim.kind === 'tile' || vm.aim.kind === 'unit';
+  const markless = vm.aim.kind === 'tap';
   return (
     <div class={`tut${vm.holding ? ' is-holding' : ''}${hidden ? ' is-hidden' : ''}`} data-tutorial aria-hidden="true">
-      <div ref={markRef} class={`tut-mark${lawn ? ' tut-mark--lawn' : ''}`} style={{ visibility: 'hidden' }} />
+      <div ref={markRef} class={`tut-mark${lawn ? ' tut-mark--lawn' : ''}${markless ? ' tut-mark--none' : ''}`} style={{ visibility: 'hidden' }} />
       <div
         ref={handRef} class="tut-hand" style={{ visibility: 'hidden' }}
         data-glove={vm.aim.kind} data-glove-step={vm.step} data-holding={vm.holding ? 'true' : 'false'}

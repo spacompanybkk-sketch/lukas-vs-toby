@@ -293,3 +293,65 @@ describe('CameraRig.frameSubject', () => {
     }
   });
 });
+
+describe('CameraRig.focus (the twist lesson pan)', () => {
+  const LANE = { x: [0, 6], y: [0, 1], z: [1.6, 3.4] } as const;
+
+  function inFree(camera: PerspectiveCamera, box: { x: readonly number[]; y: readonly number[]; z: readonly number[] }): boolean {
+    camera.updateMatrixWorld(true);
+    for (const x of box.x) for (const y of box.y) for (const z of box.z) {
+      const p = new Vector3(x, y, z).project(camera);
+      if (p.x < -1 || p.x > 1 || p.y < -1 || p.y > 1) return false;
+    }
+    return true;
+  }
+
+  it('eases in to the box, closer than the lawn shot, keeping it on screen; follows the box as it moves', () => {
+    const { camera, rig } = framed(16 / 10);
+    const lawn = camera.position.clone();
+    rig.focus(LANE, { pitchDeg: 40 });
+    expect(rig.focusing).toBe(true);
+    expect(camera.position.distanceTo(lawn)).toBeLessThan(1e-9); // nothing jumps
+    rig.update(0.1);
+    const early = camera.position.clone();
+    expect(early.distanceTo(lawn)).toBeGreaterThan(0);
+    settle(rig, 1.5);
+    const near = camera.position.clone();
+    expect(near.distanceTo(lawn)).toBeGreaterThan(early.distanceTo(lawn));
+    expect(near.y).toBeLessThan(lawn.y);
+    expect(inFree(camera, LANE)).toBe(true);
+    // The box slides along the lane: the camera slides with it.
+    rig.focus({ x: [4, 10], y: [0, 1], z: [1.6, 3.4] }, { pitchDeg: 40 });
+    settle(rig, 0.1);
+    expect(camera.position.x).toBeGreaterThan(near.x + 1);
+  });
+
+  it('eases back to exactly the lawn shot; a resize while focused is kept', () => {
+    const { camera, rig } = framed(16 / 10);
+    const lawn = camera.position.clone();
+    const lawnQuat = camera.quaternion.clone();
+    rig.focus(LANE);
+    settle(rig, 1);
+    rig.frameLawn(4 / 3);
+    rig.frameLawn(16 / 10);
+    expect(inFree(camera, LANE)).toBe(true);
+    rig.focus(null);
+    expect(rig.focusing).toBe(true); // still on its way back
+    settle(rig, 0.3);
+    expect(camera.position.distanceTo(lawn)).toBeGreaterThan(0.01);
+    settle(rig, 1.2);
+    expect(rig.focusing).toBe(false);
+    expect(camera.position.toArray()).toEqual(lawn.toArray());
+    expect(camera.quaternion.toArray()).toEqual(lawnQuat.toArray());
+  });
+
+  it('reset drops a focus at once', () => {
+    const { camera, rig } = framed(16 / 10);
+    const lawn = camera.position.clone();
+    rig.focus(LANE);
+    settle(rig, 1);
+    rig.reset();
+    expect(rig.focusing).toBe(false);
+    expect(camera.position.toArray()).toEqual(lawn.toArray());
+  });
+});

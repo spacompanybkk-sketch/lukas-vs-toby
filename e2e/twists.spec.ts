@@ -25,26 +25,32 @@ async function tapAt(page: Page, at: { x: number; y: number }): Promise<void> {
 /**
  * Lukas, with every world-1 level won and every lesson learnt, the stand-in worlds 2–5 on the map;
  * the side's map (it opens on the next level's world), arrows back to `world`, its level 1 started.
+ * With `lessons`, the stand-ins carry the world-2 lessons (not yet learnt), every card unlocked,
+ * and level `n` of the world is started (the ones before it won).
  */
-async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5): Promise<void> {
+async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1, fog?: number): Promise<void> {
   await openTitle(page);
   await logIn(page);
-  await page.evaluate(([s, w]) => {
+  await page.evaluate(([s, w, withLessons, upTo, reach]) => {
     const lvt = window.__lvt as any;
-    lvt.previewWorlds(true, [2, 3, 4, 5]);
+    lvt.previewWorlds(true, [2, 3, 4, 5], withLessons, reach ?? undefined);
     const l = s === 'plants' ? 'p' : 'z';
-    // Every level before world `w`'s first won: the map opens on world w.
+    // Every level before world `w`'s level `upTo` won: the map opens on world w.
     const stars: Record<string, number> = {};
-    for (let k = 1; k < w; k++) for (let n = 1; n <= 8; n++) stars[`${l}${k}-${n}`] = 2;
+    for (let k = 1; k < w; k++) for (let m = 1; m <= 8; m++) stars[`${l}${k}-${m}`] = 2;
+    for (let m = 1; m < upTo; m++) stars[`${l}${w}-${m}`] = 2;
     const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((d) => (d.teaches ?? []).map((t) => t.id));
-    lvt.players.update((p: any) => ({ ...p, teached: ids, [s]: { ...p[s], stars } }));
-  }, [side, world] as const);
+    const unlocked = withLessons
+      ? (s === 'plants' ? ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] : ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'])
+      : undefined;
+    lvt.players.update((p: any) => ({ ...p, teached: ids, [s]: { ...p[s], stars, ...(unlocked ? { unlocked } : {}) } }));
+  }, [side, world, lessons, n, fog ?? null] as const);
   await press(page.locator('[data-home="play"]'));
   await press(page.locator('[data-play="adventure"]'));
   await press(page.locator(`[data-side="${side}"]`));
   const map = page.locator('[data-screen="map"]');
   await expect(map).toHaveAttribute('data-world', String(world));
-  const id = `${side === 'plants' ? 'p' : 'z'}${world}-1`;
+  const id = `${side === 'plants' ? 'p' : 'z'}${world}-${n}`;
   await expect.poll(() => page.locator(`[data-stone="${id}"][data-placed]`).count()).toBe(1);
   await press(page.locator(`[data-stone="${id}"]`));
   await expect(page.locator(`[data-screen="level-card"][data-level="${id}"]`)).toBeVisible();
@@ -204,4 +210,156 @@ test('lava: a Peashooter tapped onto a lava tile is planted and burns; a Brain E
   }
   expect(burning, 'a Brain Eater burning on (2,4)').toBeDefined();
   expect(await glContexts(page)).toBe(1);
+});
+
+// ---- Step 2, Task 3: the twist lessons (stand-in levels carrying the world-2 lessons) ----------
+
+const tick = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.match.state.tick as number);
+const showing = (page: Page): Promise<string | null> => page.evaluate(() => (window.__lvt as any).session?.twistShow?.kind ?? null);
+
+test('fog pan: p2-1 holds with the cards dimmed and Pause usable; the glove taps the lawn after 3 s; a tap ends it, the level plays; HELP shows it again', async ({ page }) => {
+  test.setTimeout(150_000);
+  await playStandIn(page, 'plants', 2, true);
+  await expect.poll(() => lawnWorld(page)).toBe('meadow');
+  const catcher = page.locator('[data-twist="fog"]');
+  await expect(catcher).toBeVisible();
+  // The cards are dimmed under the catcher; Pause is above it.
+  const bottomFilter = () => page.locator('.battle__bottom').evaluate((el) => getComputedStyle(el).filter);
+  await expect.poll(bottomFilter).toContain('brightness');
+  await expect.poll(() => showing(page)).toBe('fog');
+  const held = await tick(page);
+  expect(held).toBeLessThanOrEqual(2);
+  // Pause works over the pan, and the pan is still there after Resume.
+  await press(page.locator('[data-hud="pause"]'));
+  await expect(page.locator('[data-screen="pause"]')).toBeVisible();
+  await expect(catcher).toHaveCount(0);
+  await press(page.locator('[data-screen="pause"] [data-action="resume"]'));
+  await expect(catcher).toBeVisible();
+  // Nobody taps: after 3 s the glove taps the middle of the lawn.
+  await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
+  expect(await tick(page)).toBe(held);
+  // A tap on the lawn ends it and plants nothing.
+  await tapAt(page, await tilePoint(page, 1, 6));
+  await expect(catcher).toHaveCount(0);
+  await expect.poll(() => showing(page)).toBeNull();
+  await expect.poll(bottomFilter).toBe('none');
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
+  expect((await units(page)).filter((u) => u.faction === 'plants')).toHaveLength(0);
+  expect(await page.evaluate(() => (window.__lvt as any).players.player.value.teached as string[])).toContain('p2-1.fog');
+  // The level plays on by taps.
+  await place(page, 'peashooter', 2, 1);
+  await expect.poll(async () => (await plantOn(page, 2, 1))?.key).toBe('peashooter');
+  // Quit to the map; HELP on p2-1's card shows the pan again.
+  await press(page.locator('[data-hud="pause"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+  await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  await expect.poll(() => page.locator('[data-stone="p2-1"][data-placed]').count()).toBe(1);
+  await press(page.locator('[data-stone="p2-1"]'));
+  await press(page.locator('[data-screen="level-card"] [data-action="replay-tutorial"]'));
+  await waitLive(page);
+  await expect(page.locator('[data-twist="fog"]')).toBeVisible();
+  await press(page.locator('[data-twist="fog"]'));
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  expect(await glContexts(page)).toBe(1);
+});
+
+test('ice pan: z2-1 holds and pans; a tap anywhere (the sky) ends it and the level plays', async ({ page }) => {
+  test.setTimeout(120_000);
+  await playStandIn(page, 'zombies', 2, true);
+  await expect.poll(() => lawnWorld(page)).toBe('tundra');
+  await expect(page.locator('[data-twist="ice"]')).toBeVisible();
+  await expect.poll(() => showing(page)).toBe('ice');
+  const held = await tick(page);
+  const size = page.viewportSize()!;
+  await tapAt(page, { x: size.width / 2, y: Math.round(size.height * 0.2) });
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
+  await place(page, 'brainEater', 1, 9);
+  await expect.poll(async () => (await units(page)).filter((u) => u.faction === 'zombies').length).toBe(1);
+  expect(await glContexts(page)).toBe(1);
+});
+
+test('fog pan: a real pointer dragged from the cards across the lawn does nothing; the next plain tap ends the pan', async ({ page }) => {
+  test.setTimeout(120_000);
+  await playStandIn(page, 'plants', 2, true);
+  await expect(page.locator('[data-twist="fog"]')).toBeVisible();
+  const held = await tick(page);
+  const card = await page.locator('[data-hud="tray"] [data-card="peashooter"]').boundingBox();
+  const to = await tilePoint(page, 2, 3);
+  // Press on the (dimmed) card, slide to a lawn tile, let go: the catcher is over both.
+  await page.mouse.move(card!.x + card!.width / 2, card!.y + card!.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(card!.x + (to.x - card!.x) * i / 8, card!.y + (to.y - card!.y) * i / 8);
+  await page.mouse.up();
+  await frames(page, 10);
+  await expect(page.locator('[data-twist="fog"]')).toBeVisible();
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.tutorial.current?.id)).toBe('p2-1.fog');
+  expect(await tick(page)).toBe(held);
+  expect(await units(page)).toHaveLength(0);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value)).toBe(0);
+  await tapAt(page, to);
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 5);
+  expect(await units(page)).toHaveLength(0);
+});
+
+test('new card: p2-4 points at the Mango-pult, then its tile; tapping both plants it there', async ({ page }) => {
+  test.setTimeout(120_000);
+  await playStandIn(page, 'plants', 2, true, 4);
+  await page.evaluate(() => { const c = (window.__lvt as any).session.controller; c.match.state.players.plants.energy = 500; });
+  const glove = page.locator('[data-tutorial] [data-glove]');
+  await expect(glove).toHaveAttribute('data-glove-step', 'p2-4.mango-card');
+  await expect(glove).toHaveAttribute('data-glove', 'card');
+  await press(page.locator('[data-hud="tray"] [data-card="mangoPult"]'));
+  await expect(glove).toHaveAttribute('data-glove-step', 'p2-4.mango-tile');
+  await expect(glove).toHaveAttribute('data-glove', 'tile');
+  await tapAt(page, await tilePoint(page, 2, 2));
+  await expect.poll(async () => (await plantOn(page, 2, 2))?.key).toBe('mangoPult');
+  await expect(page.locator('[data-tutorial]')).toHaveCount(0);
+});
+
+// Screenshots for the report at the small iPad size (only when LVT_SHOTS_DIR is set; iPad project).
+test('shots: the fog pan mid-flight and its puff, the tap hint, the ice pan, a new-card glove', async ({ page }) => {
+  const dir = process.env.LVT_SHOTS_DIR;
+  test.skip(dir === undefined || test.info().project.name !== 'ipad', 'screenshots only on request');
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1024, height: 650 });
+  const shot = (name: string) => page.screenshot({ path: `${dir}/${name}.png` });
+  const peaState = () => page.evaluate(() => {
+    const show = (window.__lvt as any).session?.twistShow;
+    let pea: any = null;
+    show?.group.traverse((o: any) => { if (o.name === 'ghost-pea') pea = o; });
+    return pea === null ? null : { x: pea.position.x as number, visible: pea.visible as boolean, start: show.startX as number, fade: show.fadeX as number };
+  });
+  for (const reach of [7, 5]) {
+    await playStandIn(page, 'plants', 2, true, 1, reach);
+    await expect.poll(() => showing(page)).toBe('fog');
+    expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.fog)).toBe(reach);
+    await frames(page, 40); // the camera has eased in (the hint glove comes at 3 s)
+    // Mid-flight: the pea half way to where it vanishes.
+    await expect.poll(async () => { const p = await peaState(); return p !== null && p.visible && p.x > p.start + (p.fade - p.start) * 0.45 && p.x < p.start + (p.fade - p.start) * 0.7; }, { intervals: [16], timeout: 15_000 }).toBe(true);
+    await shot(`fog${reach}-pan-mid-flight`);
+    // The puff: just after the pea vanishes into the mist.
+    await expect.poll(async () => (await peaState())?.visible === true, { intervals: [16] }).toBe(true);
+    await expect.poll(async () => (await peaState())?.visible === false, { intervals: [16], timeout: 15_000 }).toBe(true);
+    await frames(page, 3);
+    await shot(`fog${reach}-pan-puff`);
+    await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
+    await frames(page, 10);
+    await shot(`fog${reach}-tap-hint`);
+  }
+  await playStandIn(page, 'zombies', 2, true);
+  await expect.poll(() => showing(page)).toBe('ice');
+  await frames(page, 100);
+  await shot('ice-pan');
+  await playStandIn(page, 'plants', 2, true, 4);
+  await page.evaluate(() => { const c = (window.__lvt as any).session.controller; c.match.state.players.plants.energy = 500; });
+  await expect(page.locator('[data-tutorial] [data-glove]')).toHaveAttribute('data-glove-step', 'p2-4.mango-card');
+  await frames(page, 30);
+  await shot('new-card-glove-card');
+  await press(page.locator('[data-hud="tray"] [data-card="mangoPult"]'));
+  await expect(page.locator('[data-tutorial] [data-glove]')).toHaveAttribute('data-glove-step', 'p2-4.mango-tile');
+  await frames(page, 30);
+  await shot('new-card-glove-tile');
 });

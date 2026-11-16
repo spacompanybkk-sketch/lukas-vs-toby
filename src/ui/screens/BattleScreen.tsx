@@ -30,7 +30,7 @@ import { PixelIcon } from '../hud/PixelIcon';
 import { TopBar } from '../hud/TopBar';
 import { PointingHand } from '../hud/PointingHand';
 import type { GloveHost } from '../hud/PointingHand';
-import type { GloveVM } from '../../app/tutorial';
+import type { GloveVM, TwistVM } from '../../app/tutorial';
 import type { EndlessSignals } from '../../app/BattleController';
 import type { FreePlayOutcome } from '../../app/levelSession';
 import { BALANCE } from '../../data/balance';
@@ -61,8 +61,10 @@ export interface BattleSessionLike {
     selectBelt?(slot: number | null): void;
     /** A Free Play run's HUD signals (none or null: no run). */
     endless?: EndlessSignals | null;
-    /** The level's tutorial: where its glove points (none or null: no tutorial). */
-    tutorial?: { glove: ReadonlySignal<GloveVM | null>; sunPulse?: ReadonlySignal<number> } | null;
+    /** The level's tutorial: where its glove points, and a twist pan (none or null: no tutorial). */
+    tutorial?: { glove: ReadonlySignal<GloveVM | null>; sunPulse?: ReadonlySignal<number>; twist?: ReadonlySignal<TwistVM | null> } | null;
+    /** A tap anywhere during a twist pan: it ends. */
+    tapTwist?(): void;
   };
   /** Client pixels of a tile's middle (the big-wave cue stands at a lane's end); none: no cue. */
   tileToClient?(lane: number, col: number): { x: number; y: number } | null;
@@ -149,9 +151,10 @@ export const HERO_BANNER_MS = 600;
 const SHAKE_MS = 300;
 
 /**
- * The HUD over the lawn. This component reads no signal itself: each HUD block below is a small
- * leaf that reads only the signals it shows, so a tick re-renders only what changed (the clock
- * when a second passes, a card when its recharge steps), never the whole screen.
+ * The HUD over the lawn. This component reads one signal only (whether a twist pan holds, which
+ * changes twice a lesson): each HUD block below is a small leaf that reads only the signals it
+ * shows, so a tick re-renders only what changed (the clock when a second passes, a card when its
+ * recharge steps), never the whole screen.
  */
 export function BattleScreen(props: BattleScreenProps) {
   const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null, rankUp = null } = props;
@@ -159,6 +162,13 @@ export function BattleScreen(props: BattleScreenProps) {
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
+  // The one signal this screen reads: a twist pan holding the match (it changes when the pan starts
+  // and ends, so it costs a re-render twice a lesson). `is-twist` raises Pause above the pan's tap
+  // catcher and dims the cards; a class in the screen's own render, so no re-render drops it.
+  const twistOn = useComputed(() => {
+    const vm = ctl.tutorial?.twist?.value ?? null;
+    return vm !== null && vm.holding && hud.result.value === null;
+  }).value;
 
   // A hidden tab always pauses; coming back never resumes by itself.
   useEffect(() => {
@@ -175,7 +185,7 @@ export function BattleScreen(props: BattleScreenProps) {
   }, [portrait, ctl, hud]);
 
   return (
-    <div data-screen="battle" class={`battle side-${side}`}>
+    <div data-screen="battle" class={`battle side-${side}${twistOn ? ' is-twist' : ''}`}>
       <ResultClears hud={hud} resultReady={session.resultReady} clear={level !== null || ctl.endless != null}>
       <div class="battle__top">
         <div class="battle__left">
@@ -209,6 +219,7 @@ export function BattleScreen(props: BattleScreenProps) {
       {ctl.levelHud !== undefined && session.tileToClient !== undefined && (
         <IncomingCues incoming={ctl.levelHud.incoming} at={(lane, side) => session.tileToClient?.(lane, side === 'zombies' ? 9 : 0) ?? null} />
       )}
+      {ctl.tutorial?.twist != null && <LiveTwist ctl={ctl} twist={ctl.tutorial.twist} />}
       {ctl.tutorial != null && <LiveGlove hud={hud} glove={ctl.tutorial.glove} host={session} />}
       {ctl.endless != null && (
         <WaveBanner banner={ctl.endless.banner} side={ctl.endless.mode === 'survive' ? 'zombies' : 'plants'} mode={ctl.endless.mode} big={bigOne(ctl.endless.cards)} portraits={portraits} />
@@ -268,6 +279,34 @@ function LiveLevel({ hud, info }: { hud: HudSignals; info: LevelHudInfo }) {
 function LiveGlove({ hud, glove, host }: { hud: HudSignals; glove: ReadonlySignal<GloveVM | null>; host: GloveHost }) {
   return <PointingHand glove={glove} host={host} hidden={hud.paused.value || hud.result.value !== null} />;
 }
+
+/**
+ * A twist pan holding the match: a clear catcher over the whole screen, so a tap anywhere (the lawn,
+ * the sky, the dimmed cards) ends it. While the pan holds, the screen's `is-twist` class dims the
+ * cards and keeps the Pause button above it. Gone under the pause menu (Pause is no tap on the
+ * pan) and at the result.
+ */
+function LiveTwist({ ctl, twist }: { ctl: Controller; twist: ReadonlySignal<TwistVM | null> }) {
+  const vm = twist.value;
+  const down = useRef<{ x: number; y: number } | null>(null);
+  if (vm === null || !vm.holding || ctl.hud.paused.value || ctl.hud.result.value !== null) return null;
+  // A tap ends the pan; a drag across it (a finger sliding off a card) does not.
+  const onClick = (e: MouseEvent): void => {
+    const from = down.current;
+    down.current = null;
+    if (from !== null && Math.hypot(e.clientX - from.x, e.clientY - from.y) > TWIST_TAP_SLOP_PX) return;
+    ctl.tapTwist?.();
+  };
+  return (
+    <div
+      class="tut-twist" data-twist={vm.kind} data-twist-step={vm.step} aria-hidden="true"
+      onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY }; }} onClick={onClick}
+    />
+  );
+}
+
+/** A press that moves further than this before it lets go is a drag, not a tap on the twist pan. */
+export const TWIST_TAP_SLOP_PX = 24;
 
 /** A Free Play run's bank on the armed Quit: its score and the coins ending now would pay. */
 function LiveBank({ endless }: { endless: EndlessSignals }) {
