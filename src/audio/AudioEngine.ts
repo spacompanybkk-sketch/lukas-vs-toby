@@ -63,6 +63,7 @@ const PRIORITY: Record<SfxName, number> = {
   rockWall: 2, fog: 2, brainFeast: 2, frenzy: 2, graveRise: 2,
   megaMower: 3, boneStorm: 3, thunderbolt: 3, meteor: 3,
   titanRoar: 3, titanDefeat: 3, oakCreak: 3, oakDefeat: 3, strikeWindup: 3, strikeImpact: 3,
+  howlerHowl: 3, howlerDefeat: 3,
 };
 
 interface Graph { master: GainNode; sfx: GainNode; music: GainNode; noise: AudioBuffer }

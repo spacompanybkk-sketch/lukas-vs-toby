@@ -35,7 +35,7 @@ function moves(key, frames) {
     frames: frames.map(([suffix, clip, t, part]) => ({
       suffix,
       run: async (page) => {
-        if (part) await showPart(page, part, true);
+        for (const p of part ? [part].flat() : []) await showPart(page, p, true);
         await pose(page, clip, t);
       },
     })),
@@ -382,6 +382,28 @@ const SCENARIOS = [
     return {
       name,
       url: url(times[0]),
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
+  // The world-2 bosses (step 2 Task 2) as models and their moves, then each in its own world at
+  // the iPad's size (1024x650): entrance, wind-ups, strike, shield, phase 2 and defeat.
+  { name: 'gallery-bosses-w2', url: '/?scene=gallery&models=moonHowler,frostMelon&t=0.4' },
+  moves('moonHowler', [['windup', 'ability', 1.3], ['slam', 'ability', 1.62], ['howl', 'shoot', 1.0], ['roar', 'cheer', 0.3], ['glow', 'idle', 0.4, ['glow', 'glowEyes']], ['topple', 'die', 0.9]]),
+  ...[
+    ['boss-howler-enter', 'moonHowler', [0.5, 1.0]],
+    ['boss-howler-windup', 'moonHowler', [7.4, 8.05]], // the claw slam winds up 6.5–8 s
+    ['boss-howler-shield', 'moonHowler', [27]], // the moon dome 25.9–30.9 s
+    ['boss-howler-summon', 'moonHowler', [14.05, 14.6]], // its pups, with wolf ears, at 14 s
+    ['boss-howler-strike', 'moonHowler', [31.3, 31.45, 31.6, 32.7]], // the howl winds up 30.9–33.4 s (a Kernel's butter holds it)
+    ['boss-howler-blind', 'moonHowler', [33.45, 34.5]], // the lane blinded
+    ['boss-howler-phase2', 'moonHowler', [35]],
+    ['boss-howler-defeat', 'moonHowler', [50.9, 51.4, 51.9]], // falls at 50.7 s, in its second howl's wind-up
+  ].map(([name, boss, times]) => {
+    const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
+    return {
+      name,
+      url: url(times[0]),
+      viewport: { width: 1024, height: 650 },
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),

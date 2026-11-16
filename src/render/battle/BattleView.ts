@@ -908,7 +908,10 @@ export class BattleView {
         v1.set(e.x, 0, e.lane + 0.5);
         this.fx.dirt(v1);
         if (view.boss) this.bossFx.enter(view, false);
-        else if (e.faction === 'zombies') this.raiseGrave(e.x, e.lane);
+        else {
+          this.bossFx.spawned(view); // a boss's pups get their ears
+          if (e.faction === 'zombies') this.raiseGrave(e.x, e.lane);
+        }
         break;
       }
       case 'unitMerged':
@@ -1070,7 +1073,7 @@ export class BattleView {
         if (e.spell !== 'rockWall') this.spells.cast(e.spell, e.lane, e.col, e.size);
         break;
       case 'bossPattern':
-        this.bossFx.pattern(e, this.views.get(e.unitId));
+        this.bossFx.pattern(e, this.views.get(e.unitId), state);
         break;
       case 'bossDefeated':
         // The winning blow: a long slow motion while it falls (the fall and burst are its unitDied's).

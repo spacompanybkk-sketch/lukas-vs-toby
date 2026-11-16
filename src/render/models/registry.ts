@@ -1,6 +1,7 @@
 import { prewarmModel } from '../voxel/build';
 import { brainTitan } from './bosses/brainTitan';
 import { elderOak } from './bosses/elderOak';
+import { moonHowler } from './bosses/moonHowler';
 import type { BossKey } from '../../sim/types';
 import type { ModelDef } from '../voxel/types';
 import { avocadoBunker } from './plants/avocadoBunker';
@@ -67,8 +68,8 @@ export function prewarmModels(keys: string[], levels: number[] = [1, 2, 3, 4, 5]
 export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   brainTitan,
   elderOak,
-  // stub: Task 2. The world-2 bosses stand in the Titan's and the Oak's models (under their own keys).
-  moonHowler: { ...brainTitan, key: 'moonHowler' },
+  moonHowler,
+  // stub: Task 2. The Frost Melon stands in the Oak's model (under its own key) until it is drawn.
   frostMelon: { ...elderOak, key: 'frostMelon' },
 };
 
