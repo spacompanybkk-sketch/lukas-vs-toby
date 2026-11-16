@@ -6,7 +6,7 @@ import { forceResult, frames, glContexts, logIn, openTitle, waitLive } from './h
 
 // Worlds machinery Task 7: one island per world in each side's order, arrow pictures between
 // them, locked islands that refuse; the level card's Adventure difficulty apart from Quick
-// Battle's; the twist picture on the level card (on stand-in worlds, through `__lvt.previewWorlds`).
+// Battle's; the twist picture on the level card (the real Moonlit Meadow, p2-*).
 
 /** A touch tap on the iPad project, a mouse click on the desktop. */
 async function press(target: Locator): Promise<void> {
@@ -75,7 +75,7 @@ test('arrows walk each side\'s islands in its own order; a locked island is grey
   await expect(page.locator('[data-action="world-next"]')).toHaveAttribute('data-locked', '');
   expect(await bigEnough(page)).toEqual([]);
 
-  // On to the Meadow: locked (no levels yet), grey, its own island, a padlock that refuses.
+  // On to the Meadow: locked (world 1 not finished), grey, its own island, a padlock that refuses.
   await press(page.locator('[data-action="world-next"]'));
   await expect(map).toHaveAttribute('data-arena', 'meadow');
   await expect(map).toHaveAttribute('data-locked', '');
@@ -144,24 +144,44 @@ test('the level card\'s difficulty is the Adventure\'s own: changing it leaves Q
   expect((await save()).adventureDifficulty.plants).toBe('hard');
 });
 
-test('stand-in world 2: the map opens on it after world 1, in its colours; its level card shows the fog picture', async ({ page }) => {
+test('the Moonlit Meadow: shut while p1-8 is unwon; won, the map opens on it in its colours with its eight levels, p2-1 next and its card shows the fog picture; the zombies\' world 2 stays padlocked', async ({ page }) => {
+  test.setTimeout(120_000);
   await openTitle(page);
   await logIn(page);
-  await page.evaluate(() => {
-    const lvt = window.__lvt as any;
-    lvt.previewWorlds(true);
-    lvt.players.update((s: any) => ({
-      ...s, plants: { ...s.plants, stars: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`p1-${i + 1}`, 2])) },
-    }));
-  });
-  await toMap(page, 'plants');
+  const won = (n: number): Promise<void> => page.evaluate((upTo) => (window.__lvt as any).players.update((s: any) => ({
+    ...s, plants: { ...s.plants, stars: Object.fromEntries(Array.from({ length: upTo }, (_, i) => [`p1-${i + 1}`, 2])) },
+  })), n);
   const map = page.locator('[data-screen="map"]');
+  // Seven of eight won: the map stays on the Backyard, the arrow on is locked, the Meadow padlocked.
+  await won(7);
+  await toMap(page, 'plants');
+  await expect(map).toHaveAttribute('data-world', '1');
+  await expect(page.locator('[data-stone="p1-8"]')).toHaveAttribute('data-state', 'next');
+  await expect(page.locator('[data-action="world-next"]')).toHaveAttribute('data-locked', '');
+  await press(page.locator('[data-action="world-next"]'));
+  await expect(map).toHaveAttribute('data-arena', 'meadow');
+  await expect(map).toHaveAttribute('data-locked', '');
+  await expect(page.locator('[data-stone]')).toHaveCount(0);
+  await expect(page.locator('[data-action="island-locked"]')).toBeVisible();
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await expect(page.locator('[data-screen="play"]')).toBeVisible();
+  // p1-8 won: the map opens on the Meadow.
+  await won(8);
+  await press(page.locator('[data-play="adventure"]'));
+  await press(page.locator('[data-side="plants"]'));
+  await expect(map).toBeVisible();
   await expect(map).toHaveAttribute('data-world', '2');
   await expect(map).toHaveAttribute('data-arena', 'meadow');
   await expect(map).not.toHaveAttribute('data-locked', '');
   await stonesOnScreen(page, 8);
+  expect(await page.locator('[data-stone]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.stone)))
+    .toEqual(Array.from({ length: 8 }, (_, i) => `p2-${i + 1}`));
+  await expect(page.locator('[data-stone="p2-1"]')).toHaveAttribute('data-state', 'next');
+  await expect(page.locator('[data-stone="p2-2"]')).not.toHaveAttribute('data-state', 'next');
+  await expect(page.locator('[data-stone="p2-8"]')).toHaveAttribute('data-kind', 'boss');
   expect(await lawnShown(page)).toBe(true);
   await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('meadow');
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).audio.musicTheme)).toBe('meadow');
   await press(page.locator('[data-stone="p2-1"]'));
   const card = page.locator('[data-screen="level-card"][data-level="p2-1"]');
   await expect(card).toBeVisible();
@@ -170,7 +190,18 @@ test('stand-in world 2: the map opens on it after world 1, in its colours; its l
   await press(page.locator('[data-action="world-prev"]'));
   await expect(map).toHaveAttribute('data-arena', 'backyard');
   await expect(page.locator('[data-stone="p1-8"]')).toHaveAttribute('data-state', 'done');
-  await page.evaluate(() => (window.__lvt as any).previewWorlds(false));
+  // Toby's side: world 1 all won too, but the Frozen Tundra has no levels: a padlocked island.
+  await page.evaluate(() => (window.__lvt as any).players.update((s: any) => ({
+    ...s, zombies: { ...s.zombies, stars: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`z1-${i + 1}`, 3])) },
+  })));
+  await press(page.locator('[data-tab="zombies"]'));
+  await expect(map).toHaveAttribute('data-arena', 'citadel');
+  await press(page.locator('[data-action="world-next"]'));
+  await expect(map).toHaveAttribute('data-arena', 'tundra');
+  await expect(map).toHaveAttribute('data-locked', '');
+  await expect(page.locator('[data-stone]')).toHaveCount(0);
+  await expect(page.locator('[data-action="island-locked"]')).toBeVisible();
+  expect(await glContexts(page)).toBe(1);
 });
 
 test('ten map ↔ level round trips through the Citadel look: one WebGL context, the GPU\'s geometry count flat, handed back as the Backyard', async ({ page }) => {

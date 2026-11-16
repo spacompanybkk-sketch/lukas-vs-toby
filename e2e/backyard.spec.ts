@@ -301,8 +301,10 @@ test('both boss levels start from the map, show the boss bar, and end with the r
     await win(page, id, enemy);
     await expect(page.locator(`[data-level-result="${id}"]`)).toHaveAttribute('data-stars', '3');
     await expect(page.locator('.lresult__stars[data-lit="3"]')).toBeVisible();
-    // Level 8 is the last of the Backyard: no next level.
-    await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
+    // Level 8 is the last of the Backyard: the plants go on to the Moonlit Meadow's first level;
+    // the zombies' world 2 (the Frozen Tundra) has no levels yet, so no next level.
+    if (side === 'plants') await expect(page.locator('[data-action="next-level"]')).toHaveAttribute('data-next', 'p2-1');
+    else await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
     expect((await progress(page)).coins).toBe(coins + 90);
     expect((await progress(page))[side].stars[id]).toBe(3);
     await press(page.locator('[data-screen="result"] [data-action="map"]'));

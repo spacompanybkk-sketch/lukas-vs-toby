@@ -3,11 +3,12 @@ import type { Locator } from '@playwright/test';
 import type { Page } from './fixtures';
 import { frames, glContexts, logIn, openTitle, tilePoint, waitLive } from './helpers';
 
-// Worlds machinery Task 9: each lawn twist in a level played by taps. The real levels of worlds
-// 2–5 do not exist yet, so the stand-in worlds on the debug hook (`__lvt.previewWorlds`, copies of
-// world 1 with their arena's twist) are opened from the map by taps:
-//   plants world 2 = Meadow, fog · world 3 = Desert, rocks [13, 21] (lane × 8 + col) ·
-//   world 5 = Citadel, lava [13, 24] (lane × 10 + col); zombies world 2 = Tundra, ice lanes 1 and 3.
+// Worlds machinery Task 9: each lawn twist in a level played by taps. Fog is the real Moonlit
+// Meadow (p2-*, reach 7, 7, 6, 6, 5, 5, 5, 5). The other worlds have no levels yet, so the stand-in
+// worlds on the debug hook (`__lvt.previewWorlds`, copies of world 1 with their arena's twist; it
+// never copies over a world with real levels) are opened from the map by taps:
+//   plants world 3 = Desert, rocks [13, 21] (lane × 8 + col) · world 5 = Citadel, lava [13, 24]
+//   (lane × 10 + col); zombies world 2 = Tundra, ice lanes 1 and 3 (parked: debug hook only).
 // The copies are of p1-1 (Peashooters only, Brain Eaters down lane 2 from 20 s) and z1-1 (Brain
 // Eaters against Peashooters on (1,2) and (3,2)). Energy and the card's recharge are topped up
 // by the test so that each placement is one tap on the card and one on the tile.
@@ -23,28 +24,35 @@ async function tapAt(page: Page, at: { x: number; y: number }): Promise<void> {
 }
 
 /**
- * Lukas, with every world-1 level won and every lesson learnt, the stand-in worlds 2–5 on the map;
- * the side's map (it opens on the next level's world), arrows back to `world`, its level 1 started.
- * With `lessons`, the stand-ins carry the world-2 lessons (not yet learnt), every card unlocked,
- * and level `n` of the world is started (the ones before it won).
+ * Lukas, with every level before world `world`'s level `n` won and every lesson learnt, the stand-in
+ * worlds on the map (only where a world has no real levels); the side's map (it opens on the next
+ * level's world), that level started by taps. The plants' world 2 is the real Moonlit Meadow, with
+ * the cards a player who got there by playing holds (the Mango-pult after p2-3, the Avocado Bunker
+ * after p2-6). With `lessons`, the world-2 lessons are not yet learnt (the stand-ins carry theirs)
+ * and every card is unlocked.
  */
-async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1, fog?: number): Promise<void> {
+async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1): Promise<void> {
   await openTitle(page);
   await logIn(page);
-  await page.evaluate(([s, w, withLessons, upTo, reach]) => {
+  await page.evaluate(([s, w, withLessons, upTo]) => {
     const lvt = window.__lvt as any;
-    lvt.previewWorlds(true, [2, 3, 4, 5], withLessons, reach ?? undefined);
+    lvt.previewWorlds(true, [2, 3, 4, 5], withLessons);
     const l = s === 'plants' ? 'p' : 'z';
     // Every level before world `w`'s level `upTo` won: the map opens on world w.
     const stars: Record<string, number> = {};
     for (let k = 1; k < w; k++) for (let m = 1; m <= 8; m++) stars[`${l}${k}-${m}`] = 2;
     for (let m = 1; m < upTo; m++) stars[`${l}${w}-${m}`] = 2;
-    const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((d) => (d.teaches ?? []).map((t) => t.id));
+    const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((d) => (d.teaches ?? []).map((t) => t.id))
+      .filter((id) => !withLessons || !/^[pz]2-/.test(id));
+    const meadow = s === 'plants' && w >= 2;
+    const earned = s === 'plants'
+      ? ['potatoMine', 'kernelPult', ...(meadow && (w > 2 || upTo > 3) ? ['mangoPult'] : []), ...(meadow && (w > 2 || upTo > 6) ? ['avocadoBunker'] : [])]
+      : ['desertZombie', 'skeletonArcher'];
     const unlocked = withLessons
       ? (s === 'plants' ? ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] : ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'])
-      : undefined;
-    lvt.players.update((p: any) => ({ ...p, teached: ids, [s]: { ...p[s], stars, ...(unlocked ? { unlocked } : {}) } }));
-  }, [side, world, lessons, n, fog ?? null] as const);
+      : earned;
+    lvt.players.update((p: any) => ({ ...p, teached: ids, [s]: { ...p[s], stars, unlocked } }));
+  }, [side, world, lessons, n] as const);
   await press(page.locator('[data-home="play"]'));
   await press(page.locator('[data-play="adventure"]'));
   await press(page.locator(`[data-side="${side}"]`));
@@ -116,11 +124,11 @@ test('rocks: a rock tile is not lit for a picked card and refuses a plant tapped
   expect(await glContexts(page)).toBe(1);
 });
 
-test('fog: a Peashooter at the back fades its peas (a puff each) and leaves the base alone; one at the front hurts the base', async ({ page }) => {
+test('fog (the real p2-1, reach 7): a Peashooter at the back fades its peas (a puff each) and leaves the base alone; one at the front hurts the base', async ({ page }) => {
   test.setTimeout(120_000);
   await playStandIn(page, 'plants', 2);
   await expect.poll(() => lawnWorld(page)).toBe('meadow');
-  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.fog)).toBe(5);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.fog)).toBe(7);
   // Every faded shot (the sim's event) and every puff the battle view makes for one.
   await page.evaluate(() => {
     const lvt = window.__lvt as any;
@@ -144,13 +152,13 @@ test('fog: a Peashooter at the back fades its peas (a puff each) and leaves the 
   await place(page, 'peashooter', 0, 0);
   await expect.poll(async () => (await plantOn(page, 0, 0))?.key).toBe('peashooter');
   const start = await read();
-  // Ten seconds of peas down an empty lane 0: every one fades five tiles out.
+  // Ten seconds of peas down an empty lane 0: every one fades seven tiles out, short of the base.
   await page.evaluate(() => (window.__lvt as any).fastForward(300));
   const back = await read();
   expect(back.faded).toBeGreaterThanOrEqual(3);
   expect(back.puffs).toBe(back.faded);
   expect(back.base).toBe(start.base);
-  // A Peashooter on column 6 of lane 4: the base is inside its five tiles.
+  // A Peashooter on column 6 of lane 4: the base is inside its seven tiles.
   await place(page, 'peashooter', 4, 6);
   await expect.poll(async () => (await plantOn(page, 4, 6))?.key).toBe('peashooter');
   await page.evaluate(() => (window.__lvt as any).fastForward(300));
@@ -212,7 +220,7 @@ test('lava: a Peashooter tapped onto a lava tile is planted and burns; a Brain E
   expect(await glContexts(page)).toBe(1);
 });
 
-// ---- Step 2, Task 3: the twist lessons (stand-in levels carrying the world-2 lessons) ----------
+// ---- Step 2, Task 3: the twist lessons (the real Meadow; the parked ice lesson on its stand-in) --
 
 const tick = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.match.state.tick as number);
 const showing = (page: Page): Promise<string | null> => page.evaluate(() => (window.__lvt as any).session?.twistShow?.kind ?? null);
@@ -304,20 +312,29 @@ test('fog pan: a real pointer dragged from the cards across the lawn does nothin
   expect(await units(page)).toHaveLength(0);
 });
 
-test('new card: p2-4 points at the Mango-pult, then its tile; tapping both plants it there', async ({ page }) => {
-  test.setTimeout(120_000);
-  await playStandIn(page, 'plants', 2, true, 4);
-  await page.evaluate(() => { const c = (window.__lvt as any).session.controller; c.match.state.players.plants.energy = 500; });
-  const glove = page.locator('[data-tutorial] [data-glove]');
-  await expect(glove).toHaveAttribute('data-glove-step', 'p2-4.mango-card');
-  await expect(glove).toHaveAttribute('data-glove', 'card');
-  await press(page.locator('[data-hud="tray"] [data-card="mangoPult"]'));
-  await expect(glove).toHaveAttribute('data-glove-step', 'p2-4.mango-tile');
-  await expect(glove).toHaveAttribute('data-glove', 'tile');
-  await tapAt(page, await tilePoint(page, 2, 2));
-  await expect.poll(async () => (await plantOn(page, 2, 2))?.key).toBe('mangoPult');
-  await expect(page.locator('[data-tutorial]')).toHaveCount(0);
-});
+for (const [id, n, card, step, lane, col] of [
+  ['p2-4', 4, 'mangoPult', 'mango', 2, 2],
+  ['p2-7', 7, 'avocadoBunker', 'avocado', 2, 4],
+] as const) {
+  test(`new card: the real ${id} points at the ${card}, then its tile; tapping both plants it there; remembered`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await playStandIn(page, 'plants', 2, true, n);
+    expect(await page.evaluate(() => (window.__lvt as any).screen.options.level)).toBe(id);
+    await page.evaluate(() => { const c = (window.__lvt as any).session.controller; c.match.state.players.plants.energy = 500; });
+    const glove = page.locator('[data-tutorial] [data-glove]');
+    await expect(glove).toHaveAttribute('data-glove-step', `${id}.${step}-card`);
+    await expect(glove).toHaveAttribute('data-glove', 'card');
+    await press(page.locator(`[data-hud="tray"] [data-card="${card}"]`));
+    await expect(glove).toHaveAttribute('data-glove-step', `${id}.${step}-tile`);
+    await expect(glove).toHaveAttribute('data-glove', 'tile');
+    await tapAt(page, await tilePoint(page, lane, col));
+    await expect.poll(async () => (await plantOn(page, lane, col))?.key).toBe(card);
+    await expect(page.locator('[data-tutorial]')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => (window.__lvt as any).players.player.value.teached as string[]))
+      .toEqual(expect.arrayContaining([`${id}.${step}-card`, `${id}.${step}-tile`]));
+    expect(await glContexts(page)).toBe(1);
+  });
+}
 
 // Screenshots for the report at the small iPad size (only when LVT_SHOTS_DIR is set; iPad project).
 test('shots: the fog pan mid-flight and its puff, the tap hint, the ice pan, a new-card glove', async ({ page }) => {
@@ -332,8 +349,8 @@ test('shots: the fog pan mid-flight and its puff, the tap hint, the ice pan, a n
     show?.group.traverse((o: any) => { if (o.name === 'ghost-pea') pea = o; });
     return pea === null ? null : { x: pea.position.x as number, visible: pea.visible as boolean, start: show.startX as number, fade: show.fadeX as number };
   });
-  for (const reach of [7, 5]) {
-    await playStandIn(page, 'plants', 2, true, 1, reach);
+  for (const reach of [7]) { // the real p2-1; every Meadow level's own reach is a unit test (twistShowSession)
+    await playStandIn(page, 'plants', 2, true, 1);
     await expect.poll(() => showing(page)).toBe('fog');
     expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.fog)).toBe(reach);
     await frames(page, 40); // the camera has eased in (the hint glove comes at 3 s)
