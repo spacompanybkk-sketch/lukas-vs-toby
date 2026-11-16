@@ -99,6 +99,11 @@ export function levelConfig(
   for (const [side, hp] of Object.entries(def.baseHp ?? {})) {
     if (!Number.isInteger(hp) || (hp as number) < 1) throw new RangeError(`level ${def.id}: the ${side} base needs a whole number of health from 1, not ${String(hp)}`);
   }
+  // A level's own fog reach is whole tiles (the beginner stand-in shifts his shooter columns by it).
+  const fog = def.twist?.fog;
+  if (typeof fog === 'number' && (!Number.isInteger(fog) || fog < 1)) {
+    throw new RangeError(`level ${def.id}: fog reach must be a whole number of tiles from 1, not ${String(fog)}`);
+  }
 
   const startEnergy = { ...base.startEnergy };
   if (def.startEnergy !== null) startEnergy[player] = def.startEnergy;

@@ -81,6 +81,16 @@ describe('the Moonlit Meadow (p2-1 … p2-8)', () => {
     }
   });
 
+  it('a level\'s fog reach must be whole tiles from 1 (the beginner shifts his shooter columns by it)', () => {
+    const l = levels[0]!;
+    const save = standInSave('beginner', l);
+    for (const fog of [5.5, 0, -1, Number.NaN]) {
+      expect(() => levelConfig({ ...l, twist: { fog } }, save, 1), String(fog)).toThrow(RangeError);
+    }
+    for (const fog of [1, 5, 7]) expect(() => levelConfig({ ...l, twist: { fog } }, save, 1), String(fog)).not.toThrow();
+    expect(() => levelConfig({ ...l, twist: { fog: true } }, save, 1)).not.toThrow();
+  });
+
   it('the Moon Howler walks the middle lane of p2-8', () => {
     const p8 = levels[7]!;
     expect(levelConfig(p8, standInSave('average', p8), 1).boss).toEqual({ key: 'moonHowler', faction: 'zombies', lane: 2 });

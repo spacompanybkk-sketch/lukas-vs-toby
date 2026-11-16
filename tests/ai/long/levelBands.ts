@@ -56,13 +56,13 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'plants average 3 stars: no level more than 15 points above the level two before it': `p1-7 v p1-5 about 94 v 73: ${IDLE_P15}`,
   // The Moonlit Meadow (step-2 plan Task 6, ruling 6; numbers: blocks 1 / 1001 / 2001; the beginner
   // plants forward in fog since the Task 6 follow-up, levelStandIns `fogShift`).
-  'p2-1 average win': `100 / 100 / 100 (band 80-96): ${BEGINNER_FLOOR} (beginner 85.5 / 82 / 80)`,
+  'p2-1 average win': `100 / 100 / 100 (band 80-96): ${BEGINNER_FLOOR} (beginner 82 / 75.5 / 76.5)`,
   'p2-2 average win': `100 / 99.5 / 100 (band 78.5-94.5): ${BEGINNER_FLOOR} (beginner 94.5 / 98 / 95; Easy ×0.9 gives average 97, beginner 59)`,
-  'p2-3 average win': `100 / 100 / 100 (band 76.9-92.9): ${BEGINNER_FLOOR} (beginner 81 / 82 / 81)`,
-  'p2-4 average win': `100 / 99.5 / 100 (band 75.4-91.4): ${BEGINNER_FLOOR} (beginner 74.5 / 75.5 / 84.5; Medium ×0.45 gives average 99.5, beginner 63-70.5)`,
-  'p2-5 average win': `100 / 100 / 100 (band 73.8-89.8): ${BEGINNER_FLOOR} (beginner 77 / 82.5 / 76)`,
-  'p2-6 average win': `100 / 100 / 99.5 (band 72.3-88.3): ${BEGINNER_FLOOR} (beginner 86 / 87 / 85.5; Medium ×0.4 gives average 98, beginner 59-67)`,
-  'p2-7 average win': `100 / 100 / 100 (band 70.7-86.7): ${BEGINNER_FLOOR} (beginner 86.5 / 87.5 / 84)`,
+  'p2-3 average win': `100 / 99.5 / 99.5 (band 76.9-92.9): ${BEGINNER_FLOOR} (beginner 77 / 77.5 / 74.5)`,
+  'p2-4 average win': `100 / 100 / 100 (band 75.4-91.4): ${BEGINNER_FLOOR} (beginner 83 / 83 / 86; with the clumps, Medium ×0.45 gives average 98.5-99.5, beginner 14-29)`,
+  'p2-5 average win': `100 / 100 / 100 (band 73.8-89.8): ${BEGINNER_FLOOR} (beginner 83.5 / 85 / 85)`,
+  'p2-6 average win': `100 / 100 / 100 (band 72.3-88.3): ${BEGINNER_FLOOR} (beginner 88 / 93 / 92; Medium ×0.45 gives average 85.5-88.5, beginner 13.5-31.5)`,
+  'p2-7 average win': `100 / 100 / 99.5 (band 70.7-86.7): ${BEGINNER_FLOOR} (beginner 78 / 83 / 75.5)`,
   'p2-8 average win': `100 / 100 / 100 (boss band 64.2-85.2): ${BEGINNER_FLOOR} (beginner 75 / 74 / 76.5; at Howler hp 6200 the average is 87.5-99.5 and the beginner 47-57.5)`,
   // Free Play: a graduate now holds the Meadow's two unlocks (7 plant cards; the waves and gardens
   // carry what he met). Re-measured and re-banded in step-2 Task 8 (seeds 1..200).
