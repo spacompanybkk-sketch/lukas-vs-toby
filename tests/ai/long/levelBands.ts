@@ -41,7 +41,6 @@ const NO_SKILL = 'since the Breakthrough stand-in stacks the lane that gives (Ta
 const IDLE_P15 = 'worlds plan Task 8c: p1-5 must not be won by an idle player; every setting that makes its waves break an idle base (base 4000-4500, or added waves) costs the average player 3 stars there (68-75%, was 84%), so p1-7 (94%) is more than 15 points above p1-5; only p1-5 may change in this plan';
 
 const BEGINNER_FLOOR = 'the beginner floor (70% on Easy) and the band top collide; ruling 6 keeps the floor. Every lever tried (bases, clocks, flag timing, Easy/Medium income, a bigger plant base) moves the beginner 3-6 points for every point of the average, who wins 97-100% wherever the beginner holds 70%';
-const FOG_BEGINNER = 'the beginner stand-in puts shooters only in columns 0-3 (levelStandIns sensibleCols, range(0, 3)); at fog reach 6 or 5 a column-3 shot ends at column 9, short of the zombie base, so he cannot win a fog battle at all (the same p2-2 battle: fog 7 94.5%, fog 6 0%, fog 5 0%). A stand-in limit on this twist, reported, not patched (Task 6 brief); head-start shooters fix him but let an idle player win';
 
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-3 median length, beginner': `about 1.02 min: ${SHORT_BREAKTHROUGH}`,
@@ -55,16 +54,16 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-5 median length, average': `about 1.25 min: ${SHORT_CONVEYOR}`,
   'z1-5 median length, expert': `about 1.12 min: ${SHORT_CONVEYOR}`,
   'plants average 3 stars: no level more than 15 points above the level two before it': `p1-7 v p1-5 about 94 v 73: ${IDLE_P15}`,
-  // The Moonlit Meadow (step-2 plan Task 6, ruling 6; numbers: blocks 1 / 1001 / 2001).
+  // The Moonlit Meadow (step-2 plan Task 6, ruling 6; numbers: blocks 1 / 1001 / 2001; the beginner
+  // plants forward in fog since the Task 6 follow-up, levelStandIns `fogShift`).
   'p2-1 average win': `100 / 100 / 100 (band 80-96): ${BEGINNER_FLOOR} (beginner 85.5 / 82 / 80)`,
   'p2-2 average win': `100 / 99.5 / 100 (band 78.5-94.5): ${BEGINNER_FLOOR} (beginner 94.5 / 98 / 95; Easy ×0.9 gives average 97, beginner 59)`,
-  'p2-3 average win': `100 / 100 / 100 (band 76.9-92.9): ${BEGINNER_FLOOR} (beginner 84 / 79.5 / 79)`,
-  'p2-5 average win': `100 / 100 / 100 (band 73.8-89.8): ${BEGINNER_FLOOR} (beginner 82.5 / 83 / 80)`,
-  'p2-7 average win': `100 / 100 / 100 (band 70.7-86.7): ${BEGINNER_FLOOR} (beginner 89 / 91.5 / 91.5)`,
-  'p2-8 average win': `97.5 / 98.5 / 96.5 (boss band 64.2-85.2): ${BEGINNER_FLOOR} (beginner 76 / 76.5 / 76.5; at Howler hp 6200 the average is 88.5-92.5 and the beginner 50-54.5)`,
-  'plants world 2: no level harder for the average player than the level two after it': `p2-6 v p2-8 about 76 v 97.5: p2-6 sits in its band (72.3-88.3) and p2-8 above its band for the beginner floor (p2-8 average win)`,
-  'p2-4 beginner win': `0 / 0 / 0: ${FOG_BEGINNER}`,
-  'p2-6 beginner win': `0 / 0 / 0: ${FOG_BEGINNER}`,
+  'p2-3 average win': `100 / 100 / 100 (band 76.9-92.9): ${BEGINNER_FLOOR} (beginner 81 / 82 / 81)`,
+  'p2-4 average win': `100 / 99.5 / 100 (band 75.4-91.4): ${BEGINNER_FLOOR} (beginner 74.5 / 75.5 / 84.5; Medium ×0.45 gives average 99.5, beginner 63-70.5)`,
+  'p2-5 average win': `100 / 100 / 100 (band 73.8-89.8): ${BEGINNER_FLOOR} (beginner 77 / 82.5 / 76)`,
+  'p2-6 average win': `100 / 100 / 99.5 (band 72.3-88.3): ${BEGINNER_FLOOR} (beginner 86 / 87 / 85.5; Medium ×0.4 gives average 98, beginner 59-67)`,
+  'p2-7 average win': `100 / 100 / 100 (band 70.7-86.7): ${BEGINNER_FLOOR} (beginner 86.5 / 87.5 / 84)`,
+  'p2-8 average win': `100 / 100 / 100 (boss band 64.2-85.2): ${BEGINNER_FLOOR} (beginner 75 / 74 / 76.5; at Howler hp 6200 the average is 87.5-99.5 and the beginner 47-57.5)`,
   // Free Play: a graduate now holds the Meadow's two unlocks (7 plant cards; the waves and gardens
   // carry what he met). Re-measured and re-banded in step-2 Task 8 (seeds 1..200).
   'free play survive: the average player rarely plays over 20 minutes': 'about 18% of runs over 20 min (median wave 11, p90 87) with the Mango-pult and the Avocado Bunker in his hand; step-2 Task 8 re-bands Free Play',
