@@ -65,9 +65,12 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'p2-7 average win': `100 / 100 / 99.5 (band 70.7-86.7): ${BEGINNER_FLOOR} (beginner 78 / 83 / 75.5)`,
   'p2-8 average win': `100 / 100 / 100 (boss band 64.2-85.2): ${BEGINNER_FLOOR} (beginner 75 / 74 / 76.5; at Howler hp 6200 the average is 87.5-99.5 and the beginner 47-57.5)`,
   // Free Play: a graduate now holds the Meadow's two unlocks (7 plant cards; the waves and gardens
-  // carry what he met). Re-measured and re-banded in step-2 Task 8 (seeds 1..200).
-  'free play survive: the average player rarely plays over 20 minutes': 'about 18% of runs over 20 min (median wave 11, p90 87) with the Mango-pult and the Avocado Bunker in his hand; step-2 Task 8 re-bands Free Play',
-  'free play breakthrough beginner': 'median 7 gardens (band 3-6), at least one on 98%; step-2 Task 8 re-bands Free Play',
+  // carry what he met). Re-measured in step-2 Task 9 on blocks 1 / 1001 / 2001 (200 seeds each).
+  // Survive is bimodal: the average player either falls near wave 10 or his Avocado Bunker line
+  // holds for good (p90 73-87 waves); the expert's median went from 27-33 waves to 72-74 (24-25 min).
+  // A flat `endless.budgetStep` does not mend it (90: average over 20 min 1% but median 8, under its
+  // band, expert median 11; 120: average median 7) - see the Task 9 report for the proposed fix.
+  'free play survive: the average player rarely plays over 20 minutes': '18 / 14 / 15.5% of runs over 20 min (band 0-5; median wave 11 / 10 / 10, p90 87 / 73 / 82) with the Mango-pult and the Avocado Bunker in his hand; a fix is proposed in the step-2 Task 9 report, not applied',
 };
 
 /** One test, or `it.fails` when the band is a known miss. */
@@ -293,10 +296,15 @@ function freePlayBlock(first: number): void {
     });
     // The coordinator's fair reading after the clock bonus went to 45 s: the beginner breaks 3-6
     // gardens (at least one on 70% of seeds); a ranking by skill is recorded, not tuned for.
+    // Re-banded in step-2 Task 9: since the gardens carry the Meadow's Mango-pult and Avocado Bunker
+    // (dearer plants, fewer of them a garden) the beginner breaks a median 7 / 7 / 8 (blocks 1 / 1001
+    // / 2001; at least one on 97.5-98.5%), the average 10 and the expert 17-18: the same width of
+    // band (4) round where he now is, 5-9. The zombie side is Toby's and meant to forgive; the
+    // ranking checks below are unchanged.
     band('free play breakthrough beginner', async () => {
       const s = await freeStats('zombies', 'beginner');
       within(s.atLeastOne, 70, 100, 'share with a garden');
-      within(s.medianScore, 3, 6, 'gardens', 0);
+      within(s.medianScore, 5, 9, 'gardens', 0);
     });
     band('free play breakthrough: the average player breaks more gardens than the beginner', async () => {
       expect((await freeStats('zombies', 'average')).medianScore).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);
