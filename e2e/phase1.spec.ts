@@ -3,7 +3,7 @@ import type { Page } from './fixtures';
 import { ZOMBIE_SPAWN_X } from '../src/sim/types';
 import {
   analyse, around, cardPrice, clickTile, deniedCount, forceResult, frames, glContexts, mergeMarkers, mergedEvents, openTitle, pickAndStart,
-  plantAt, recordMerges, shootCanvas, snapshot, startBattle, tilePoint, unitPoint, waitCardReady, waitLive,
+  plantAt, plantVia, recordMerges, shootCanvas, snapshot, startBattle, tilePoint, unitPoint, waitCardReady, waitLive,
 } from './helpers';
 
 // Phase 1 played the way a child plays it: real clicks on real screens, in a real browser, with
@@ -124,7 +124,7 @@ test('merges by clicking a tile that already holds the same plant, and pays the 
   expect(after.energy).toBeLessThanOrEqual(before.energy - price + Math.ceil(trickle * seconds) + 1);
 });
 
-test('merges as Lukas by clicking the top of the Peashooter itself; a level-up marker shows when a merge is possible', async ({ page }) => {
+test('merges as Lukas by clicking the Peashooter\'s tile (its feet); a level-up marker shows when a merge is possible', async ({ page }) => {
   await startBattle(page, 'plants');
   await recordMerges(page);
   await place(page, 'peashooter', 2, 3);
@@ -137,13 +137,29 @@ test('merges as Lukas by clicking the top of the Peashooter itself; a level-up m
   expect(await mergeMarkers(page)).toBe(0);
   await waitCardReady(page, 'peashooter');
   await expect.poll(() => mergeMarkers(page)).toBe(1);
-  // The upper part of the model stands over the grass of the lane behind: it still means this plant.
-  const top = await unitPoint(page, plant.id, 0.85);
-  await page.mouse.click(top.x, top.y);
+  // The ground tile decides (a plant's body never covers the tile behind it): its own tile merges.
+  await clickTile(page, 2, 3);
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 2 });
   const after = await snapshot(page);
   expect(plantAt(after, 2, 3)?.level).toBe(2);
   expect(after.units.filter((u) => u.key === 'peashooter'), 'no second Peashooter').toHaveLength(1);
+});
+
+test('merges as Lukas by clicking the top of the Peashooter itself when the grass behind it is taken', async ({ page }) => {
+  await startBattle(page, 'plants');
+  await recordMerges(page);
+  await plantVia(page, 'peashooter', 2, 3);
+  await plantVia(page, 'sunflower', 1, 3);
+  await plantVia(page, 'sunflower', 0, 3);
+  const plant = plantAt(await snapshot(page), 2, 3)!;
+  await waitCardReady(page, 'peashooter');
+  await selectCard(page, 'peashooter');
+  await expect.poll(() => mergeMarkers(page)).toBe(1);
+  // The upper part of the model stands over a Sunflower's tile, which cannot take it: it means this plant.
+  const top = await unitPoint(page, plant.id, 0.85);
+  await page.mouse.click(top.x, top.y);
+  await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 2 });
+  expect((await snapshot(page)).units.filter((u) => u.key === 'peashooter'), 'no second Peashooter').toHaveLength(1);
 });
 
 test('merges as Toby by clicking the grass by the walking zombie, and by clicking the zombie itself', async ({ page }) => {

@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures';
 import type { Page } from './fixtures';
 import {
-  frames, mergedEvents, plantAt, recordMerges, snapshot, startBattle, tilePoint, unitPoint, waitCardReady,
+  frames, mergedEvents, plantAt, plantVia, recordMerges, snapshot, startBattle, tilePoint, unitPoint, waitCardReady,
 } from './helpers';
 
 // The same game played with a finger (touch events, not a mouse). Only the ipad project runs this
@@ -74,7 +74,7 @@ async function cardMiddle(page: Page, key: string): Promise<{ x: number; y: numb
   return { x: card.x + card.width / 2, y: card.y + card.height / 2 };
 }
 
-test('Lukas merges by touch: a tap on the Peashooter, and a drag of its card onto it', async ({ page }) => {
+test('Lukas merges by touch: a tap on the Peashooter\'s tile, and a drag of its card onto that tile', async ({ page }) => {
   await startBattle(page, 'plants');
   await recordMerges(page);
   const card = page.locator('[data-card="peashooter"]');
@@ -85,6 +85,27 @@ test('Lukas merges by touch: a tap on the Peashooter, and a drag of its card ont
   await expect.poll(async () => plantAt(await snapshot(page), 2, 3)?.key ?? null).toBe('peashooter');
   const plant = plantAt(await snapshot(page), 2, 3)!;
   await waitCardReady(page, 'peashooter');
+  await page.touchscreen.tap(tile.x, tile.y); // its feet: the ground tile decides, not the body
+  await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 2 });
+  await waitCardReady(page, 'peashooter');
+  await card.tap(); // deselect: the drag starts from a card not yet selected
+  await expect(card).toHaveAttribute('aria-pressed', 'false');
+  await dragTouch(page, await cardMiddle(page, 'peashooter'), () => tilePoint(page, 2, 3));
+  await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 3 });
+  expect((await snapshot(page)).units.filter((u) => u.key === 'peashooter'), 'no second Peashooter').toHaveLength(1);
+});
+
+test('Lukas merges by touch with the tiles behind taken: a tap on the Peashooter\'s head, and a drag of its card onto its body', async ({ page }) => {
+  await startBattle(page, 'plants');
+  await recordMerges(page);
+  await plantVia(page, 'peashooter', 2, 3);
+  await plantVia(page, 'sunflower', 1, 3); // the grass its upper body stands over cannot take a Peashooter
+  await plantVia(page, 'sunflower', 0, 3);
+  const plant = plantAt(await snapshot(page), 2, 3)!;
+  const card = page.locator('[data-card="peashooter"]');
+  await waitCardReady(page, 'peashooter');
+  if ((await card.getAttribute('aria-pressed')) !== 'true') await card.tap();
+  await expect(card).toHaveAttribute('aria-pressed', 'true');
   const top = await unitPoint(page, plant.id, 0.85);
   await page.touchscreen.tap(top.x, top.y);
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 2 });
@@ -93,7 +114,9 @@ test('Lukas merges by touch: a tap on the Peashooter, and a drag of its card ont
   await expect(card).toHaveAttribute('aria-pressed', 'false');
   await dragTouch(page, await cardMiddle(page, 'peashooter'), () => unitPoint(page, plant.id, 0.6));
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: plant.id, level: 3 });
-  expect((await snapshot(page)).units.filter((u) => u.key === 'peashooter'), 'no second Peashooter').toHaveLength(1);
+  const after = await snapshot(page);
+  expect(after.units.filter((u) => u.key === 'peashooter'), 'no second Peashooter').toHaveLength(1);
+  expect([plantAt(after, 1, 3)?.key, plantAt(after, 0, 3)?.key]).toEqual(['sunflower', 'sunflower']);
 });
 
 test('Toby merges by touch: a tap on the walking zombie, and a drag of its card onto it', async ({ page }) => {

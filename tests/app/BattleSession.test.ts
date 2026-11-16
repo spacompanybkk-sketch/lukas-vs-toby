@@ -13,7 +13,7 @@ import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
 import { MARKS_LOUD, MARKS_QUIET } from '../../src/render/world/PlaceMarks';
 import { spawnUnit } from '../../src/sim/match';
-import type { Faction, LawnConfig } from '../../src/sim/types';
+import type { Faction, LawnConfig, UnitKey } from '../../src/sim/types';
 import { WORLDS, arenaOf, type WorldKey } from '../../src/data/worlds';
 import { levelById } from '../../src/adventure/levels';
 import { levelOptions, prepareLevel, type LevelPlay } from '../../src/app/levelSession';
@@ -196,7 +196,7 @@ describe('BattleSession', () => {
     expect(session.pick((at.x + right.x) / 2 + (right.x - at.x) / 2, at.y).tile).toEqual({ lane: 1, col: 9 });
   });
 
-  it('as plants: a tap on the top of the own Peashooter, with its card, merges into it (not a new plant on the lane behind)', () => {
+  it('as plants: with its card, a tap on the Peashooter\'s tile merges into it; a tap on the top of its model goes to the grass behind', () => {
     const stage = fakeStage();
     const { session } = make(stage);
     session.begin();
@@ -207,14 +207,20 @@ describe('BattleSession', () => {
     run(stage, 0.6);
     const plant = session.controller.match.state.units.find((u) => u.key === 'peashooter');
     if (plant === undefined) throw new Error('no peashooter');
-    // The top of the model lies over the grass of the lane behind.
-    const top = onModel(session, stage, plant.id, 0.85);
-    expect(session.pick(top.x, top.y).tile?.lane).toBe(2);
+    // The feet: its own tile, a merge.
     ready(session);
-    tap(stage, top.x, top.y);
+    tap(stage, at.x, at.y, 'touch');
     run(stage, 0.1);
     expect(plant.level).toBe(2);
-    expect(session.controller.match.state.units.filter((u) => u.key === 'peashooter')).toHaveLength(1);
+    // The top of the model lies over the grass of the lane behind: the ground decides, a new plant goes there.
+    const top = onModel(session, stage, plant.id, 0.85);
+    const ground = session.pick(top.x, top.y).tile;
+    expect(ground?.lane).toBeLessThan(2);
+    ready(session);
+    tap(stage, top.x, top.y, 'touch');
+    run(stage, 0.1);
+    expect(plant.level).toBe(2);
+    expect(session.controller.match.state.units.filter((u) => u.key === 'peashooter')).toHaveLength(2);
   });
 
   it('as zombies: a tap on the top of the own zombie, or on the grass under it, merges into it', () => {
@@ -237,7 +243,7 @@ describe('BattleSession', () => {
     expect(session.controller.match.state.units.filter((u) => u.faction === 'zombies' && u.key === 'brainEater')).toHaveLength(1);
   });
 
-  it('shows a level-up marker over each own unit a merge is possible into, and a tap on the marker merges', () => {
+  it('shows a level-up marker over each own unit a merge is possible into, and a tap on the unit\'s tile merges', () => {
     const stage = fakeStage();
     const { session } = make(stage);
     session.begin();
@@ -257,8 +263,8 @@ describe('BattleSession', () => {
     expect(session.view.mergeMarkers).toBe(0); // no Sunflower to merge into
     session.controller.select('peashooter');
     run(stage, 0.05);
-    const marker = onModel(session, stage, plant.id, 1, 0.45);
-    tap(stage, marker.x, marker.y);
+    expect(session.view.mergeMarkers).toBe(1);
+    tap(stage, at.x, at.y);
     run(stage, 0.1);
     expect(plant.level).toBe(2);
   });
@@ -598,5 +604,270 @@ describe('BattleSession hero powers and spells (wiring B)', () => {
     session.begin();
     session.view.onHero('zombies', 2);
     expect(session.heroBanner.value).toMatchObject({ side: 'zombies' });
+  });
+});
+
+// The iPad report: a level-3+ plant is so tall that, seen from the raised camera, its body covers
+// the tile behind it (a lane further back, higher on the screen), and a tap or a drop meant for
+// that tile was taken by the plant. Placing goes by the ground tile under the finger alone.
+describe('tall plants never cover the tiles behind them', () => {
+  const LANE = 3;
+  const COL = 3;
+
+  /** A plant of the player's at `level`, standing on (lane, col), drawn at that level's size. */
+  function tallPlant(session: BattleSession, stage: StageLike, key: UnitKey, lane: number, col: number, level: number) {
+    const { match } = session.controller;
+    const u = spawnUnit(match.state, match.balance, key, lane, col + 0.5);
+    u.level = level;
+    u.hp = u.maxHp = 1e6; // nothing knocks it down during the test
+    run(stage, 0.05); // the view joins it at its level's size
+    expect(session.view.unit(u.id)?.level).toBe(level);
+    return u;
+  }
+
+  /** The unit whose model the pointer at a client point hits (the canvas fills the window in jsdom). */
+  function bodyAt(session: BattleSession, at: { x: number; y: number }): number | null {
+    return session.view.unitHitByRay((at.x / window.innerWidth) * 2 - 1, 1 - (at.y / window.innerHeight) * 2);
+  }
+
+  function plantsAt(session: BattleSession, lane: number, col: number) {
+    return session.controller.match.state.units.filter((u) => u.faction === 'plants' && u.lane === lane && Math.floor(u.x) === col);
+  }
+
+  function battle(): { stage: ReturnType<typeof fakeStage>; session: BattleSession } {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    ready(session);
+    return { stage, session };
+  }
+
+  for (const level of [1, 2, 3, 4, 5]) {
+    for (const card of ['peashooter', 'sunflower'] as const) {
+      it(`a level-${level} Peashooter in front: a tap with the ${card} card on each tile behind it places there`, () => {
+        const { stage, session } = battle();
+        const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+        session.controller.select(card);
+        // The tile right behind is covered by the body from level 3 on (the report's case).
+        if (level >= 3) expect(bodyAt(session, session.tileToClient(LANE - 1, COL))).toBe(tall.id);
+        for (let lane = LANE - 1; lane >= 0; lane--) {
+          ready(session);
+          const at = session.tileToClient(lane, COL);
+          expect(session.pick(at.x, at.y).tile, `lane ${lane}`).toEqual({ lane, col: COL });
+          expect(session.hover(session.pick(at.x, at.y).tile, session.pick(at.x, at.y).unitId)).toMatchObject({ lane, col: COL, ok: true });
+          tap(stage, at.x, at.y, 'touch');
+          run(stage, 0.1);
+          expect(plantsAt(session, lane, COL).map((u) => u.key), `lane ${lane}`).toEqual([card]);
+        }
+        expect(tall.level).toBe(level); // never merged into by a tap meant for another tile
+        expect(session.controller.hud.denied.value).toBe(0);
+      });
+    }
+  }
+
+  /** One finger from a tray card (not picked before) to a client point, then up there. */
+  function dragCard(stage: StageLike, key: string, to: { x: number; y: number }): void {
+    const card = document.createElement('button');
+    card.dataset.card = key;
+    document.body.appendChild(card);
+    const init = { bubbles: true, pointerId: 4, pointerType: 'touch', button: 0, isPrimary: true };
+    card.dispatchEvent(new PointerEvent('pointerdown', { ...init, clientX: 10, clientY: 10 }));
+    card.dispatchEvent(new PointerEvent('pointermove', { ...init, clientX: to.x, clientY: to.y }));
+    card.dispatchEvent(new PointerEvent('pointerup', { ...init, clientX: to.x, clientY: to.y }));
+    card.remove();
+  }
+
+  function move(stage: StageLike, at: { x: number; y: number }): void {
+    stage.canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: at.x, clientY: at.y, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+  }
+
+  for (const level of [1, 2, 3, 4, 5]) {
+    it(`a level-${level} Peashooter in front: a drag of its card onto the tile behind places there; the ghost and the preview follow that tile`, () => {
+      const { stage, session } = battle();
+      const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+      session.controller.select('peashooter'); // the tray's own select, as the card's press does
+      const at = session.tileToClient(LANE - 1, COL);
+      const preview = vi.spyOn(session.view, 'setPreview');
+      move(stage, at);
+      expect(preview).toHaveBeenLastCalledWith(expect.objectContaining({ unit: 'peashooter', lane: LANE - 1, col: COL, ok: true, mergeTargetId: null }));
+      dragCard(stage, 'peashooter', at);
+      run(stage, 0.1);
+      expect(plantsAt(session, LANE - 1, COL).map((u) => u.key)).toEqual(['peashooter']);
+      expect(tall.level).toBe(level);
+    });
+
+    it(`a level-${level} plant in front: a belt card of its type tapped onto the tile behind places there`, () => {
+      const stage = fakeStage();
+      const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+      const def = levelById('p1-5')!;
+      const play = prepareLevel(def, newSave('p01', 'Kid', 'peashooter', 0), 3);
+      const session = new BattleSession(stage, audio, levelOptions(play), { introSeconds: 0, input: { isOverLawn: () => true } });
+      sessions.push(session);
+      session.begin();
+      run(stage, 0.1);
+      const belt = session.controller.match.state.belt;
+      if (belt.length === 0) throw new Error('no belt card');
+      belt[0] = 'peashooter'; // a tall one, whatever the level's belt brought first
+      const card = 'peashooter';
+      run(stage, 0.05);
+      const tall = tallPlant(session, stage, card, LANE, COL, level);
+      session.controller.selectBelt(0);
+      const at = session.tileToClient(LANE - 1, COL);
+      if (level >= 3) expect(bodyAt(session, at)).toBe(tall.id);
+      expect(session.pick(at.x, at.y).tile).toEqual({ lane: LANE - 1, col: COL });
+      tap(stage, at.x, at.y, 'touch');
+      run(stage, 0.1);
+      expect(plantsAt(session, LANE - 1, COL).map((u) => u.key)).toEqual([card]);
+      expect(tall.level).toBe(level);
+    });
+
+    it(`a level-${level} Peashooter: its card dropped on its own tile (its feet) still merges`, () => {
+      const { stage, session } = battle();
+      const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+      session.controller.select('peashooter');
+      const at = session.tileToClient(LANE, COL);
+      tap(stage, at.x, at.y, 'touch');
+      run(stage, 0.1);
+      expect(tall.level).toBe(Math.min(5, level + 1));
+      if (level === 5) expect(session.controller.hud.denied.value).toBe(1); // at the top already: refused, as before
+      expect(plantsAt(session, LANE, COL)).toHaveLength(1);
+    });
+
+    it(`the shovel: a tap on the body of a level-${level} plant over bare grass digs it; over another plant's tile digs that one`, () => {
+      const { stage, session } = battle();
+      const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+      session.controller.toggleShovel();
+      const top = onModel(session, stage, tall.id, 0.8);
+      const under = session.pick(top.x, top.y);
+      expect(under.tile).toEqual({ lane: LANE, col: COL }); // the body's own tile: nothing stands where the finger is
+      // A plant on the tile behind: a tap there digs it, not the tall one whose body covers it.
+      const back = tallPlant(session, stage, 'sunflower', LANE - 1, COL, 1);
+      const behind = session.tileToClient(LANE - 1, COL);
+      tap(stage, behind.x, behind.y, 'touch');
+      run(stage, 0.1);
+      expect(session.controller.match.state.units.some((u) => u.id === back.id)).toBe(false);
+      expect(session.controller.match.state.units.some((u) => u.id === tall.id)).toBe(true);
+      if (!session.controller.hud.shovel.value) session.controller.toggleShovel();
+      tap(stage, top.x, top.y, 'touch');
+      run(stage, 0.1);
+      expect(session.controller.match.state.units.some((u) => u.id === tall.id)).toBe(false);
+    });
+  }
+
+  for (const level of [1, 2, 3, 4, 5]) {
+    it(`a level-${level} Peashooter with Sunflowers on every tile behind it: a tap on its head or a drag onto its body merges (level 5: refused)`, () => {
+      const { stage, session } = battle();
+      const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+      for (let lane = 0; lane < LANE; lane++) tallPlant(session, stage, 'sunflower', lane, COL, 1);
+      session.controller.select('peashooter');
+      const head = onModel(session, stage, tall.id, 0.85);
+      expect(bodyAt(session, head)).toBe(tall.id);
+      const picked = session.pick(head.x, head.y);
+      const preview = vi.spyOn(session.view, 'setPreview');
+      const tile = vi.spyOn(stage.lawn, 'highlightTile');
+      move(stage, head);
+      if (level < 5) {
+        expect(picked.tile).toEqual({ lane: LANE, col: COL });
+        // The mark shows the tile really used: the plant's own, drawn on top.
+        expect(preview).toHaveBeenLastCalledWith(expect.objectContaining({ mergeTargetId: tall.id, ok: true }));
+        expect(tile).toHaveBeenLastCalledWith(LANE, COL, 'ok', 'plants', true);
+        tap(stage, head.x, head.y, 'touch');
+        run(stage, 0.1);
+        expect(tall.level).toBe(level + 1);
+        if (level + 1 < 5) {
+          ready(session);
+          dragCard(stage, 'peashooter', onModel(session, stage, tall.id, 0.6));
+          run(stage, 0.1);
+          expect(tall.level).toBe(level + 2);
+        }
+      } else {
+        expect(picked.tile?.lane).toBeLessThan(LANE); // nothing to merge into: the ground decides (and refuses)
+        tap(stage, head.x, head.y, 'touch');
+        run(stage, 0.1);
+        expect(tall.level).toBe(5);
+        expect(session.controller.hud.denied.value).toBe(1);
+      }
+      for (let lane = 0; lane < LANE; lane++) expect(plantsAt(session, lane, COL).map((u) => u.key)).toEqual(['sunflower']);
+    });
+
+    it(`a level-${level} belt-card plant with the tile behind taken: a tap on its head merges the belt card (level 5: refused)`, () => {
+      const stage = fakeStage();
+      const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+      const play = prepareLevel(levelById('p1-5')!, newSave('p01', 'Kid', 'peashooter', 0), 3);
+      const session = new BattleSession(stage, audio, levelOptions(play), { introSeconds: 0, input: { isOverLawn: () => true } });
+      sessions.push(session);
+      session.begin();
+      run(stage, 0.1);
+      session.controller.match.state.belt[0] = 'peashooter';
+      run(stage, 0.05);
+      const tall = tallPlant(session, stage, 'peashooter', LANE, COL, level);
+      for (let lane = 0; lane < LANE; lane++) tallPlant(session, stage, 'sunflower', lane, COL, 1);
+      session.controller.selectBelt(0);
+      const head = onModel(session, stage, tall.id, 0.85);
+      tap(stage, head.x, head.y, 'touch');
+      run(stage, 0.1);
+      expect(tall.level).toBe(Math.min(5, level + 1));
+    });
+  }
+
+  it('a tap on the level-up marker merges when the tile behind is taken, and places when it is free', () => {
+    const { stage, session } = battle();
+    const tall = tallPlant(session, stage, 'peashooter', LANE, COL, 2);
+    session.controller.select('peashooter');
+    run(stage, 0.05);
+    expect(session.view.mergeMarkers).toBe(1);
+    const marker = onModel(session, stage, tall.id, 1, 0.45);
+    const under = session.pick(marker.x, marker.y).tile;
+    if (under === null || under.lane >= LANE) throw new Error('the marker should stand over the grass behind');
+    tap(stage, marker.x, marker.y, 'touch'); // free: a new Peashooter there
+    run(stage, 0.1);
+    expect(plantsAt(session, under.lane, COL).map((u) => u.key)).toEqual(['peashooter']);
+    expect(tall.level).toBe(2);
+    // That tile taken by a Sunflower instead: the marker means the plant it hangs over.
+    session.controller.match.state.units.splice(session.controller.match.state.units.findIndex((u) => u.lane === under.lane && u.key === 'peashooter'), 1);
+    run(stage, 0.05);
+    tallPlant(session, stage, 'sunflower', under.lane, COL, 1);
+    ready(session);
+    session.controller.select('peashooter');
+    run(stage, 0.05);
+    tap(stage, marker.x, marker.y, 'touch');
+    run(stage, 0.1);
+    expect(tall.level).toBe(3);
+  });
+
+  it('the hero and an aimed spell aim at the ground behind a level-5 plant, not at the plant', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    const me = session.controller.match.state.players.plants;
+    me.heroTimer = 1;
+    me.spells = [{ key: 'thunderbolt', timer: 1 }, { key: 'sunShower', timer: 1 }];
+    session.begin();
+    session.fastForward(1);
+    const tall = tallPlant(session, stage, 'peashooter', LANE, COL, 5);
+    const at = session.tileToClient(LANE - 1, COL);
+    expect(bodyAt(session, at)).toBe(tall.id);
+    const lane = vi.spyOn(stage.lawn, 'highlightLane');
+    session.controller.toggleHero();
+    move(stage, at);
+    expect(lane).toHaveBeenLastCalledWith(LANE - 1, 'ok', 'plants');
+    session.controller.toggleHero();
+    const area = vi.spyOn(session.view.spells, 'showArea');
+    session.controller.selectSpell('thunderbolt');
+    move(stage, at);
+    expect(area).toHaveBeenLastCalledWith(expect.arrayContaining([{ lane: LANE - 1, col: COL }]), 'plants', 'ok');
+    expect(session.hover(session.pick(at.x, at.y).tile, null)).toMatchObject({ spell: 'thunderbolt', lane: LANE - 1, col: COL });
+  });
+
+  it('every tile of the lawn can be reached with level-5 plants on every other tile of the front lanes', () => {
+    const { stage, session } = battle();
+    for (let col = 0; col < 8; col++) tallPlant(session, stage, 'peashooter', 4, col, 5);
+    for (let col = 0; col < 8; col += 2) tallPlant(session, stage, 'peashooter', 3, col, 4);
+    session.controller.select('peashooter');
+    for (let lane = 0; lane < 5; lane++) {
+      for (let col = 0; col < 8; col++) {
+        const at = session.tileToClient(lane, col);
+        expect(session.pick(at.x, at.y).tile, `${lane},${col}`).toEqual({ lane, col });
+      }
+    }
   });
 });

@@ -293,13 +293,15 @@ export class BattleSession implements Director, InputTarget {
     const rect = this.canvasRect();
     const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ny = 1 - ((clientY - rect.top) / rect.height) * 2;
-    // A hit on the player's own unit's model, with its card or the shovel, means that unit, even
-    // where the model stands over the grass of the lane behind (the upper half of any model does).
+    // The ground tile under the pointer decides, never a body standing over it (a tall plant's
+    // covers the lanes behind it). `aimAt` says when a model hit counts: the shovel on a plant
+    // whose tile is not the one under the finger, and the player's own zombie (see there).
+    const tile = this.tileAt(nx, ny);
     const hit = this.view.unitHitByRay(nx, ny);
-    const aimed = hit === null ? null : this.controller.aimAt(hit);
+    const aimed = hit === null ? null : this.controller.aimAt(hit, tile);
     if (aimed !== null) return { tile: aimed, unitId: hit };
     const unitId = hit ?? this.view.unitNearRay(nx, ny, rect);
-    return { tile: this.tileAt(nx, ny), unitId };
+    return { tile, unitId };
   }
 
   hover(tile: Tile | null, unitId: number | null): AimPreview | null {

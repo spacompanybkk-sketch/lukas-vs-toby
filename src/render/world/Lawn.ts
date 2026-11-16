@@ -182,14 +182,15 @@ export class Lawn {
   /**
    * Marks one tile as a good (`ok`) or forbidden (`bad`) place; `null` clears it. `side`
    * picks the fill colour of a good tile and is the plants unless said otherwise, since
-   * tiles are where plants go.
+   * tiles are where plants go. `onTop`: the mark shows through anything standing in front of
+   * the tile (a tall plant a lane nearer the camera covers it on screen).
    */
-  highlightTile(lane: number, col: number, state: MarkState | null, side: Faction = 'plants'): void {
+  highlightTile(lane: number, col: number, state: MarkState | null, side: Faction = 'plants', onTop = false): void {
     if (state === null || !(lane >= 0 && lane < LAWN_LANES && col >= 0 && col < LAWN_COLS)) {
       this.tileMark.hide();
       return;
     }
-    this.tileMark.show(Math.floor(col) + 0.5, Math.floor(lane) + 0.5, state, side);
+    this.tileMark.show(Math.floor(col) + 0.5, Math.floor(lane) + 0.5, state, side, onTop);
   }
 
   /**

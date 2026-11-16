@@ -629,13 +629,14 @@ export class BattleView {
       if (target && !target.dying) {
         target.pulsing = true;
         this.pulseTarget = target;
-        if (target.faction === 'plants') this.lawn.highlightTile(target.lane, Math.floor(target.currX), state, 'plants');
+        if (target.faction === 'plants') this.lawn.highlightTile(target.lane, Math.floor(target.currX), state, 'plants', true);
         else this.lawn.highlightLane(target.lane, state, 'zombies');
         return;
       }
     }
     const isPlant = factionOf(p.unit) === 'plants';
-    if (isPlant) this.lawn.highlightTile(p.lane, p.col, state, 'plants');
+    // The tile a plant would go on is drawn on top: a tall plant a lane nearer the camera covers it.
+    if (isPlant) this.lawn.highlightTile(p.lane, p.col, state, 'plants', true);
     else this.lawn.highlightLane(p.lane, state, 'zombies');
 
     const ghost = this.ghostFor(p.unit);
