@@ -270,7 +270,7 @@ const GAME_SETUPS = {
       return { units: s.units.length, howler: s.units.some((u) => u.key === 'moonHowler'), zombies: s.units.filter((u) => u.faction === 'zombies').length, projectiles: s.projectiles.length, fog: s.config.lawn.fog };
     });
   },
-  /** p2-7 two and a half minutes in: a full garden, its trickles and both flags on the lawn, nobody dying. */
+  /** p2-7 at 150 s (its clock is 170): a full garden, its trickles and the flags arriving, nobody dying. */
   async meadowBusy(page) {
     await this.meadowLogin(page);
     await this.level(page, 'plants', 'p2-7');
@@ -278,7 +278,7 @@ const GAME_SETUPS = {
     await this.garden(page);
     await page.evaluate(() => {
       const lvt = window.__lvt;
-      for (let t = 0; t < 30 * 155; t += 5) { lvt.fastForward(5); lvt.keepAlive(); }
+      for (let t = 0; t < 30 * 150; t += 5) { lvt.fastForward(5); lvt.keepAlive(); }
     });
     return page.evaluate(() => {
       const s = window.__lvt.session.controller.match.state;
