@@ -83,3 +83,20 @@ test('a small window on a big screen still gets the game', async ({ page }) => {
   await openTitle(page);
   await expect(page.locator('[data-screen="phone"]')).toHaveCount(0);
 });
+
+test('the base stylesheet loads with the page, before the game chunk\'s, so the screens\' rules win ties', async ({ page }) => {
+  await openTitle(page);
+  const order = await page.evaluate(() => {
+    const sheets = [...document.styleSheets];
+    const has = (sheet: CSSStyleSheet, selector: string): boolean =>
+      [...sheet.cssRules].some((rule) => rule instanceof CSSStyleRule && rule.selectorText === selector);
+    return {
+      base: sheets.findIndex((s) => has(s, '.btn')),
+      screens: sheets.findIndex((s) => has(s, '.home__door')),
+      baseInHead: sheets.find((s) => has(s, '.btn'))?.ownerNode?.parentNode === document.head,
+    };
+  });
+  expect(order.base).toBeGreaterThanOrEqual(0);
+  expect(order.screens).toBeGreaterThan(order.base);
+  expect(order.baseInHead).toBe(true);
+});

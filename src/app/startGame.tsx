@@ -12,7 +12,6 @@ import * as lawn from '../scenes/lawn';
 import * as rosterDemo from '../scenes/rosterDemo';
 import * as stress from '../scenes/stress';
 import { App } from '../ui/App';
-import '../ui/theme.css';
 
 /** Undoes everything a scene set up: stops its loop, removes its listeners, frees its GPU resources. */
 type Teardown = () => void;

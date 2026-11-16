@@ -2,6 +2,12 @@ import { render } from 'preact';
 import { browserSessionStorage, loadChunk, showChunkFallback, type ChunkLoadDeps } from './app/chunkLoad';
 import { debugEnabled, installDebug } from './app/debug';
 import { isPhone, readDeviceFacts } from './app/phone';
+// The base stylesheet (tokens, fonts, .btn, .px, palettes) loads with the entry, as a <link> in the
+// page head, so it comes BEFORE the game chunk's own stylesheet, as it did when there was one
+// bundle. Imported only from the lazy chunks, it became a shared chunk that Vite inserted after the
+// game's sheet, so its base rules beat the screens' rules of equal specificity (Home's door and
+// Play tile, the Grown-ups lock over GUEST, the Marketplace grid).
+import './ui/theme.css';
 
 // The test hooks object exists at once (tests read `__lvt.ready` right after load); it is tiny.
 installDebug();
