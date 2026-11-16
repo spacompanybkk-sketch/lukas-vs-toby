@@ -18,6 +18,8 @@ import { GHOST_PUFF } from '../../src/render/world/TwistTiles';
 import { hashState } from '../../src/sim/hash';
 import type { LawnConfig } from '../../src/sim/types';
 import { W2, w2Save } from './world2Lessons';
+import { LEVELS } from '../../src/adventure/levels';
+import { TEACHES } from '../../src/adventure/levels/teaches';
 
 // Step 2, Task 3: the twist pan on the stage - ghosts in the scene and the camera panning while
 // the step holds; gone (freed) when it ends, the level is left or the stage shows another world.
@@ -130,6 +132,41 @@ describe('the twist pan on the stage', () => {
     for (const x of seven) expect(x).toBeCloseTo(8.5, 1);
     for (const x of fives) expect(x).toBeCloseTo(6.5, 1);
     expect(five.controller.match.state.config.lawn.fog).toBe(5);
+  });
+
+  it('the real Meadow, one stage, p2-1 to p2-8 in turn (reach 7,7,6,6,5,5,5,5): the lawn, the mist bank, the ghost puff and the stripe follow each level', () => {
+    const meadow = LEVELS.filter((d) => d.side === 'plants' && d.world === 2);
+    expect(meadow.map((d) => d.twist?.fog)).toEqual([7, 7, 6, 6, 5, 5, 5, 5]);
+    const stage = fakeStage();
+    const puff = vi.spyOn(stage.fx, 'puff');
+    for (const def of meadow) {
+      const reach = def.twist!.fog as number;
+      puff.mockClear();
+      // Every level carries the fog pan here, so each one shows its own reach.
+      const session = start(stage, { ...def, teaches: [...TEACHES['p2-1']!] });
+      expect(session.controller.match.state.config.lawn.fog).toBe(reach);
+      expect(stage.lawn.world).toBe('meadow');
+      expect(stage.lawn.lawnConfig.fog).toBe(reach);
+      session.begin();
+      run(stage, 3);
+      expect(session.twistShow?.kind).toBe('fog');
+      const fadeX = 1.5 + reach;
+      const ghostPuffs = puff.mock.calls.filter(([, c]) => c === GHOST_PUFF).map(([at]) => at.x);
+      expect(ghostPuffs.length, def.id).toBeGreaterThan(0);
+      for (const x of ghostPuffs) expect(x).toBeCloseTo(fadeX, 1);
+      const [bank] = inScene(stage, 'fog-bank') as Mesh[];
+      bank!.geometry.computeBoundingBox();
+      expect(bank!.geometry.boundingBox!.min.x, def.id).toBeGreaterThanOrEqual(fadeX - 0.6);
+      expect(bank!.geometry.boundingBox!.min.x, def.id).toBeLessThanOrEqual(fadeX + 0.6);
+      const [strip] = inScene(stage, 'fog-reach') as Mesh[];
+      strip!.geometry.computeBoundingBox();
+      expect(strip!.geometry.boundingBox!.max.x - strip!.geometry.boundingBox!.min.x).toBeCloseTo(reach, 3);
+      const [past] = inScene(stage, 'fog-past-reach') as Mesh[];
+      past!.geometry.computeBoundingBox();
+      expect(past!.position.x + past!.geometry.boundingBox!.min.x).toBeCloseTo(fadeX, 3);
+      session.dispose();
+      expect(inScene(stage, 'twist-show')).toHaveLength(0);
+    }
   });
 
   it('the camera is focused once when the pan starts, then eases on its own (no focus call per frame)', () => {
