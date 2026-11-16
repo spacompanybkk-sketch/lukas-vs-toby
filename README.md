@@ -39,7 +39,8 @@ there in the dev server, and in a production build only when the address has `?d
 as well. Among them: `__lvt.setWorld('desert')` dresses the stage as a world (with its sample
 twist, or the lawn config given) until the next screen change, and
 `__lvt.previewWorlds(true, [2, 3, 4, 5])` puts stand-in worlds on the Adventure map (copies of
-world 1 carrying each arena's twist) until the real level files exist; the twist e2e plays them.
+world 1 carrying each arena's twist) on every world that has no real levels yet; a world with
+real levels (the Moonlit Meadow) is never copied over. The twist and map e2e play the stand-ins.
 
 ### Checking speed on the iPad (`?fps`)
 
@@ -135,7 +136,8 @@ reload on the result screen.
 
 **Unlocks.** Each side starts Adventure with its first three cards; level 3 and level 6 of the
 Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: Desert Zombie,
-Skeleton Archer), shown turning on a turntable on the result screen. A level deals only the
+Skeleton Archer), and level 3 and level 6 of the Moonlit Meadow the next two plants (Mango-pult,
+Avocado Bunker), shown turning on a turntable on the result screen. A level deals only the
 cards it lists that the player has. Quick Battle always has all ten.
 
 **Difficulty.** One, two or three skulls on the level card (EASY, NORMAL, HARD; kept per player
@@ -168,8 +170,9 @@ bar (a tap skips it).
 
 The Adventure travels five worlds. Lukas's plants go **Backyard → Meadow → Desert → Tundra →
 Citadel**; Toby's zombies come the other way, so his world 1 is the Citadel (`arenaOf` in
-`src/data/worlds.ts`). Only world 1 of each side has levels so far; the level ids keep each side's
-own order (`p2-…` is the Meadow, `z2-…` the Tundra).
+`src/data/worlds.ts`). The plants have two worlds of levels so far, the Backyard and the Moonlit
+Meadow (below); the zombies have world 1 only, so Toby's world 2 (the Frozen Tundra) is a padlocked
+island. The level ids keep each side's own order (`p2-…` is the Meadow, `z2-…` the Tundra).
 
 | World | Look | Weather | Twist | Music |
 |--|--|--|--|--|
@@ -184,6 +187,45 @@ A world is data (`WORLDS`); the looks are `src/render/world/looks.ts` (art in
 Citadel look to the Citadel tune, with its lava off. Quick Battle, Versus and Free Play are always
 the Backyard with no twist. All the worlds share the page's one WebGL context; changing world
 frees what the old look built.
+
+### Moonlit Meadow (plants, world 2)
+
+Lukas's second world, `p2-1` … `p2-8` (`src/adventure/levels/p2.ts`), opens when he has won p1-8
+(the result's next-level button leads straight on to p2-1). It is night: night-blue grass, a moon,
+mushrooms, mist over the lawn, fireflies, and the Meadow's own soft minor tune.
+
+**Fog.** In the Meadow every shot reaches only so many tiles, and the mist closes in level by
+level: 7, 7, 6, 6, 5, 5, 5, 5 (`twist: { fog: 7 }` on each level; `fog: true` would use
+`Balance.twists.fog.reach`). A shot that gives out fades in a puff of mist, so shooters must stand
+further forward to reach the zombie base. The level card shows a small fog cloud.
+
+**The fog lesson.** p2-1 opens without a word: the match holds and the camera eases in on one
+lane, where a see-through Peashooter shoots a pea that flies into a bank of mist and vanishes in
+a white pixel puff at that level's reach; the lane past it is darker. Any tap ends it (it is
+remembered; the glove on the level card shows it again). If nobody taps, a glove taps the lawn
+after 3 seconds; Pause still works. p2-4 and p2-7 teach their new card as the Backyard does: the
+glove points at the card, then at a tile.
+
+| Level | Kind | Fog | What it is about |
+|--|--|--|--|
+| p2-1 | Survive | 7 | The fog lesson; Brain Eaters trickle in |
+| p2-2 | Battle | 7 | A shooter must stand at column 3 or further to hit the base |
+| p2-3 | Conveyor | 6 | Walls in front of forward shooters; **unlocks the Mango-pult** |
+| p2-4 | Battle | 6 | The Mango-pult's splash (card lesson) |
+| p2-5 | Survive | 5 | Shields stop peas, lob over them |
+| p2-6 | Battle | 5 | Guard forward shooters with a wall; **unlocks the Avocado Bunker** |
+| p2-7 | Survive | 5 | The Avocado Bunker holds the line (card lesson) |
+| p2-8 | Boss | 5 | The Moon Howler |
+
+**The Moon Howler** (p2-8) walks the middle lane, a wolf-eared Brain Eater with a moon pendant.
+In his first phase he slams the plants in front of him (red warning tiles first) and calls pups,
+Very Fast Walkers with little wolf ears. At half health a glowing **moon dome** goes up for a
+while: straight shots (peas) bounce off it, lobbed shots from the pults still hurt him. Then his
+second phase: a crescent glows over his head and his eyes light up, and he **howls**: one lane
+blinks with dark smoke for two seconds, then every plant in it is blinded for four (their shots
+miss). He keeps slamming and calls Brain Eaters too. His bar shows his face; a face card announces
+him. Numbers: `Balance.bosses.moonHowler`; looks: `src/render/models/bosses/moonHowler.ts` and
+`BOSS_LOOK.moonHowler`.
 
 **The four twists.** A level names its twist tiles (`LevelDef.twist`); how strong each one is
 lives in `Balance.twists`. Both sides are affected the same way.
@@ -201,7 +243,7 @@ plain tile is free.
 
 **Bosses** may change their attacks at each shield mark (phases) and can use a generic strike:
 it announces tiles or lanes with blinking warning tiles, then hits them (Titan and Oak fight as
-before; the phases are for the bosses still to come). A boss that falls mid wind-up takes its
+before; the Moon Howler uses both). A boss that falls mid wind-up takes its
 warning with it.
 
 **The map.** One island per world, in the side's own order, with wooden arrow pictures to step
@@ -240,7 +282,7 @@ With the dev server running (`npm run dev`, port 5273):
 | `/?scene=fx-gallery` | The effects, statuses and projectiles |
 | `/?scene=hud-gallery` | The HUD in every state |
 | `/?scene=stress&units=150` | The phase-1 crowd for the perf tool; `&mix` for the mixed roster |
-| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak) |
+| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow; `&table=shipped` plays the shipped numbers) |
 
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.
