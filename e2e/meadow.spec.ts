@@ -432,3 +432,134 @@ test('ten Meadow level ↔ map round trips: one WebGL context, the GPU\'s geomet
   // From the third look on (caches warm), the same number of geometries on the GPU every time.
   for (const n of counts.slice(2)) expect(n).toBe(counts[2]);
 });
+
+// Screenshots for review, only when asked (iPad project): LVT_MEADOW_SHOTS=<folder> npx playwright
+// test e2e/meadow.spec.ts --project ipad -g shots. Every Meadow level a little way in, the fog
+// lesson, the Howler's moments and the plant map with world 2 open, at the three iPad sizes.
+test('shots', async ({ page }) => {
+  const dir = process.env.LVT_MEADOW_SHOTS;
+  test.skip(dir === undefined || test.info().project.name !== 'ipad', 'screenshots only on request, on the iPad project');
+  test.setTimeout(600_000);
+  const sizes = [{ width: 1024, height: 650 }, { width: 1024, height: 704 }, { width: 1180, height: 746 }];
+  /** The stage held (no steps, no motion) while the three sizes are taken. */
+  const shoot = async (name: string): Promise<void> => {
+    await page.evaluate(() => { (window.__lvt as any).stage.paused = true; });
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      await frames(page, 6);
+      await page.screenshot({ path: `${dir}/${size.width}x${size.height}-${name}.png` });
+    }
+    await page.setViewportSize(sizes[0]!);
+    await page.evaluate(() => { (window.__lvt as any).stage.paused = false; });
+  };
+  await openTitle(page);
+  await logIn(page);
+  const setSave = (teachMeadow: boolean): Promise<void> => page.evaluate((fresh) => {
+    const lvt = window.__lvt as any;
+    const ids = (lvt.levels as { world: number; teaches: { id: string }[] | null }[])
+      .filter((d) => !fresh || d.world === 1).flatMap((d) => (d.teaches ?? []).map((t) => t.id));
+    const stars: Record<string, number> = {};
+    for (let n = 1; n <= 8; n++) stars[`p1-${n}`] = 3;
+    for (let n = 1; n <= 7; n++) stars[`p2-${n}`] = 2;
+    lvt.players.update((s: any) => ({
+      ...s, teached: ids,
+      plants: { ...s.plants, stars: fresh ? Object.fromEntries(Object.entries(stars).filter(([k]) => k.startsWith('p1'))) : stars, unlocked: ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] },
+    }));
+  }, teachMeadow);
+  const go = (screen: unknown): Promise<void> => page.evaluate((s) => (window.__lvt as any).go(s), screen);
+  const quit = async (): Promise<void> => {
+    await press(page.locator('[data-hud="pause"]'));
+    await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+    await press(page.locator('[data-screen="pause"] [data-action="quit"]'));
+    await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  };
+  // The plant map, world 2 open (p1 done, the Meadow fresh), and p2-1's card with the fog.
+  await setSave(true);
+  await go({ name: 'play' });
+  await go({ name: 'map', side: 'plants', world: 2 });
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).map?.isOpen)).toBe(true);
+  await frames(page, 20);
+  await shoot('map-plants-world2');
+  await go({ name: 'map', side: 'plants', world: 2, card: 'p2-1' });
+  await frames(page, 10);
+  await shoot('card-p2-1-fog');
+  // The fog lesson: mid-flight, then the tap glove.
+  await page.locator('[data-action="start-level"]').click();
+  await waitLive(page);
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).session?.twistShow?.kind ?? null)).toBe('fog');
+  await frames(page, 60);
+  await shoot('lesson-fog-pan');
+  await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
+  await shoot('lesson-fog-tap-hint');
+  await press(page.locator('[data-twist="fog"]'));
+  await quit();
+  // Every level a little way in, with a few plants down.
+  await setSave(false);
+  for (let n = 1; n <= 8; n++) {
+    const id = `p2-${n}`;
+    if (n === 8) await page.evaluate(() => { (window.__lvt as any).holdBossIntro = true; });
+    await go({ name: 'map', side: 'plants', world: 2, card: id });
+    await page.locator('[data-action="start-level"]').click();
+    await waitLive(page);
+    if (n === 8) {
+      const intro = page.locator('[data-hud="boss-intro"]');
+      await expect.poll(async () => {
+        await page.evaluate(() => (window.__lvt as any).fastForward(5));
+        return intro.count();
+      }, { timeout: 30_000 }).toBe(1);
+      await shoot('howler-entrance');
+      await press(intro);
+      await page.evaluate(() => { (window.__lvt as any).holdBossIntro = false; });
+    }
+    await page.evaluate((boss) => {
+      const lvt = window.__lvt as any;
+      const c = lvt.session.controller;
+      // The cards the level deals (a card it does not deal is refused by the match).
+      const spots: [number, number, string][] = boss
+        ? [0, 1, 2, 3, 4].flatMap((lane) => [[lane, 3, 'peashooter'], [lane, 4, 'peashooter'], [lane, 1, 'kernelPult'], [lane, 2, 'mangoPult'], [lane, 6, 'walnutBomb']] as [number, number, string][])
+        : [[0, 3, 'peashooter'], [1, 2, 'kernelPult'], [2, 4, 'peashooter'], [3, 1, 'sunflower'], [4, 5, 'walnutBomb']];
+      for (const [lane, col, unit] of spots) {
+        c.match.state.players.plants.energy = 5000;
+        c.match.state.players.plants.recharge = {};
+        c.match.step([{ type: 'place', faction: 'plants', unit, lane, col }]);
+      }
+      lvt.fastForward(boss ? 30 * 5 : 30 * 30);
+    }, n === 8);
+    await shoot(`level-${id}`);
+    if (n < 8) await quit();
+  }
+  // p2-8: the Howler's moments, as the e2e fight finds them.
+  const moment = async (name: string, test: string, ticks = 3, limit = 1500): Promise<void> => {
+    const ok = await page.evaluate(([cond, step, max]) => {
+      const lvt = window.__lvt as any;
+      const fx = lvt.session.view.bossFx;
+      const s = () => lvt.session.controller.match.state;
+      const check = new Function('fx', 's', `return (${cond});`) as (f: unknown, st: unknown) => boolean;
+      for (let i = 0; i < max; i++) {
+        if (check(fx, s())) return true;
+        lvt.fastForward(step);
+      }
+      return false;
+    }, [test, ticks, limit] as const);
+    expect(ok, name).toBe(true);
+    await shoot(`howler-${name}`);
+  };
+  await moment('slam-windup', 'fx.windingUp', 1);
+  await moment('pups', "fx.group && s().units.some((u) => u.key === 'veryFastWalker')", 3);
+  await page.evaluate(() => {
+    const boss = (window.__lvt as any).session.controller.match.state.units.find((u: any) => u.key === 'moonHowler');
+    boss.hp = Math.ceil(boss.maxHp * 0.505);
+  });
+  await moment('dome', 'fx.shielded', 3);
+  await moment('howl-windup', 'fx.striking', 1);
+  await moment('blind-lane', "s().units.some((u) => u.faction === 'plants' && u.blind > 0)", 1);
+  await moment('phase2', 's().units.some((u) => u.key === "moonHowler" && u.phase >= 1) && !fx.striking', 3);
+  await page.evaluate(() => {
+    const boss = (window.__lvt as any).session.controller.match.state.units.find((u: any) => u.key === 'moonHowler');
+    if (boss) boss.hp = 20;
+  });
+  await moment('defeat', "s().winner !== null || !s().units.some((u) => u.key === 'moonHowler')", 1);
+  await page.evaluate(() => (window.__lvt as any).fastForward(20));
+  await frames(page, 20);
+  await shoot('howler-defeat-after');
+});
