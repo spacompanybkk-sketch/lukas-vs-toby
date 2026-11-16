@@ -109,6 +109,13 @@ const GAME_SETUPS = {
     await page.click('[data-home="play"]');
     await page.click('[data-play="adventure"]');
     await page.click(`[data-side="${side}"]`);
+    await page.waitForSelector('[data-screen="map"]');
+    // The map opens on the next level's world (the Meadow once world 1 is done): on to the level's own.
+    for (let i = 0; i < 4; i++) {
+      const at = await page.getAttribute('[data-screen="map"]', 'data-world');
+      if (at === id[1]) break;
+      await page.click(Number(at) > Number(id[1]) ? '[data-action="world-prev"]' : '[data-action="world-next"]');
+    }
     await page.click(`[data-stone="${id}"]`);
     await page.click('[data-action="start-level"]');
     await page.waitForFunction(() => window.__lvt.session?.live === true, null, { timeout: 60_000 });

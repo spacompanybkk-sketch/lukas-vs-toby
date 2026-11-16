@@ -126,6 +126,9 @@ test('?fps: the corner readout shows in a level, in a boss level and in Free Pla
     await page.locator('[data-home="play"]').click();
     await page.locator('[data-play="adventure"]').click();
     await page.locator('[data-side="plants"]').click();
+    await expect(page.locator('[data-screen="map"]')).toBeVisible();
+    // The map opens on the next level's world (the Meadow once world 1 is done): back to the level's own.
+    for (let i = 0; i < 4 && await page.locator('[data-screen="map"]').getAttribute('data-world') !== id[1]; i++) await page.locator('[data-action="world-prev"]').click();
     await page.locator(`[data-stone="${id}"]`).click();
     await page.locator('[data-action="start-level"]').click();
     await waitLive(page);

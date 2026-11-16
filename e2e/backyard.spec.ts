@@ -308,6 +308,12 @@ test('both boss levels start from the map, show the boss bar, and end with the r
     expect((await progress(page)).coins).toBe(coins + 90);
     expect((await progress(page))[side].stars[id]).toBe(3);
     await press(page.locator('[data-screen="result"] [data-action="map"]'));
+    if (side === 'plants') {
+      // The Meadow has opened: the map shows it, p2-1 next; the arrow back shows p1-8's stars.
+      await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', 'meadow');
+      await expect(page.locator('[data-stone="p2-1"]')).toHaveAttribute('data-state', 'next');
+      await press(page.locator('[data-action="world-prev"]'));
+    }
     await expect(page.locator(`[data-stone="${id}"]`)).toHaveAttribute('data-stars', '3');
     await press(page.locator('[data-screen="map"] [data-action="back"]'));
     await press(page.locator('[data-screen="play"] [data-action="back"]'));

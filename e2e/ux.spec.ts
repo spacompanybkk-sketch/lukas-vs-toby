@@ -45,6 +45,8 @@ async function level(page: Page, id: string): Promise<void> {
   await press(page.locator('[data-play="adventure"]'));
   await press(page.locator(`[data-side="${side}"]`));
   await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  // The map opens on the next level's world (the Meadow once world 1 is done): back to the level's own.
+  for (let i = 0; i < 4 && await page.locator('[data-screen="map"]').getAttribute('data-world') !== id[1]; i++) await press(page.locator('[data-action="world-prev"]'));
   await press(page.locator(`[data-stone="${id}"]`));
   await press(page.locator('[data-action="start-level"]'));
   await waitLive(page);
