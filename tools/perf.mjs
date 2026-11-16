@@ -28,6 +28,9 @@
 //   --modes=novsync[,vsync,novsync-cpu4x]   only these modes (default: all three)
 //   --scenes=mix-150[,p1-60,p1-150,titan,oak-30,free-w20,map]   only these scenes (default: all)
 //   --scenes=howler                         the Moon Howler's boss demo in the Meadow (fog, fireflies), opt-in
+//   --scenes=howler-p2-8,meadow-p2-7        the real game: p2-8's Howler fight with a full garden, and
+//                                           p2-7 (a busy Meadow survive level: full garden, its waves
+//                                           and flags walking, nobody dying), opt-in
 //   --scenes=mix-150-meadow[,…]             a world's look (backyard, meadow, desert, tundra,
 //                                           citadel) with its weather and sample twist tiles; only
 //                                           when named
@@ -61,6 +64,9 @@ const SCENES = [
   { name: 'map-zombies', query: '', setup: 'mapZombies', optIn: true },
   // Step 2 (opt-in): the Moon Howler's fight (its boss demo) in the Meadow's fog with fireflies.
   { name: 'howler', query: 'scene=boss-demo&boss=moonHowler&seed=1', setup: 'howler', optIn: true },
+  // Step 2 Task 9 (opt-in): the real Meadow levels, the Howler's fight and a busy survive level.
+  { name: 'howler-p2-8', query: '', setup: 'howlerLevel', optIn: true },
+  { name: 'meadow-p2-7', query: '', setup: 'meadowBusy', optIn: true },
   // Worlds (opt-in, by name): mix-150 in each look with its weather and sample twist tiles.
   ...['backyard', 'meadow', 'desert', 'tundra', 'citadel'].map((world) => ({
     name: `mix-150-${world}`, query: `scene=stress&mix&units=150&world=${world}`, optIn: true,
@@ -234,6 +240,50 @@ const GAME_SETUPS = {
   },
   async mapZombies(page) {
     return this.map(page, 'zombies');
+  },
+  /** As `login`, with the Meadow's two cards unlocked too. */
+  async meadowLogin(page) {
+    await this.login(page);
+    await page.evaluate(() => window.__lvt.players.update((s) => ({
+      ...s, plants: { ...s.plants, unlocked: ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] },
+    })));
+  },
+  /** p2-8: a full garden, the Moon Howler on the lawn with his pups walking (kept at 60%: phase 1). */
+  async howlerLevel(page) {
+    await this.meadowLogin(page);
+    await this.level(page, 'plants', 'p2-8');
+    await this.hold(page);
+    await this.garden(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const s = lvt.session.controller.match.state;
+      for (let t = 0; t < 30 * 90; t += 5) {
+        lvt.fastForward(5);
+        lvt.keepAlive();
+        const howler = s.units.some((u) => u.key === 'moonHowler');
+        const walkers = s.units.filter((u) => u.faction === 'zombies' && u.key !== 'moonHowler').length;
+        if (howler && walkers >= 4) break;
+      }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { units: s.units.length, howler: s.units.some((u) => u.key === 'moonHowler'), zombies: s.units.filter((u) => u.faction === 'zombies').length, projectiles: s.projectiles.length, fog: s.config.lawn.fog };
+    });
+  },
+  /** p2-7 two and a half minutes in: a full garden, its trickles and both flags on the lawn, nobody dying. */
+  async meadowBusy(page) {
+    await this.meadowLogin(page);
+    await this.level(page, 'plants', 'p2-7');
+    await this.hold(page);
+    await this.garden(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      for (let t = 0; t < 30 * 155; t += 5) { lvt.fastForward(5); lvt.keepAlive(); }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { units: s.units.length, zombies: s.units.filter((u) => u.faction === 'zombies').length, projectiles: s.projectiles.length, fog: s.config.lawn.fog };
+    });
   },
   /** The Howler demo moved on to 20 s (its pups, Brain Eaters, the garden firing), then left to play live. */
   async howler(page) {
