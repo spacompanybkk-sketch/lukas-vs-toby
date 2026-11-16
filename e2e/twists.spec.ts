@@ -124,9 +124,10 @@ test('rocks: a rock tile is not lit for a picked card and refuses a plant tapped
   expect(await glContexts(page)).toBe(1);
 });
 
-test('fog (the real p2-1, reach 7): a Peashooter at the back fades its peas (a puff each) and leaves the base alone; one at the front hurts the base', async ({ page }) => {
+test('fog (the real p2-2, a battle, reach 7): a Peashooter at the back fades its peas (a puff each) and leaves the base alone; one at the front hurts the base', async ({ page }) => {
   test.setTimeout(120_000);
-  await playStandIn(page, 'plants', 2);
+  // p2-2, not p2-1: p2-1 is a survive level, whose zombie base cannot fall (or be hurt).
+  await playStandIn(page, 'plants', 2, false, 2);
   await expect.poll(() => lawnWorld(page)).toBe('meadow');
   expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.fog)).toBe(7);
   // Every faded shot (the sim's event) and every puff the battle view makes for one.
@@ -161,8 +162,11 @@ test('fog (the real p2-1, reach 7): a Peashooter at the back fades its peas (a p
   // A Peashooter on column 6 of lane 4: the base is inside its seven tiles.
   await place(page, 'peashooter', 4, 6);
   await expect.poll(async () => (await plantOn(page, 4, 6))?.key).toBe('peashooter');
-  await page.evaluate(() => (window.__lvt as any).fastForward(300));
-  expect((await read()).base).toBeLessThan(start.base);
+  // Its peas reach the base (the computer's zombies in lane 4 may take the first few).
+  await expect.poll(async () => {
+    await page.evaluate(() => (window.__lvt as any).fastForward(60));
+    return (await read()).base;
+  }, { timeout: 30_000 }).toBeLessThan(back.base);
   expect(await glContexts(page)).toBe(1);
 });
 
