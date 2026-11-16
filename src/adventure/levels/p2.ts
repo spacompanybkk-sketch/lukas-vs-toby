@@ -47,7 +47,7 @@ export const P2: LevelDef[] = [
     ...base('p2-3', 3), side: 'plants', kind: 'conveyor', cards: ['peashooter', 'walnutBomb', 'potatoMine', 'kernelPult'],
     belt: { everySeconds: 5, cards: ['peashooter', 'walnutBomb', 'potatoMine', 'kernelPult'] },
     // A 150 s belt (120 s: a 2-minute level, under the 2.5-minute target).
-    seconds: 150, baseHp: { plants: 4000 }, twist: { fog: 6 },
+    seconds: 150, baseHp: { plants: 4500 }, twist: { fog: 6 },
     waves: [
       ...trickle('brainEater', 15, 6, 19, [2, 0, 4, 1, 3]),
       ...trickle('desertZombie', 50, 15, 6, [1, 3, 0, 4]),
@@ -56,13 +56,13 @@ export const P2: LevelDef[] = [
     unlocks: 'mangoPult',
   },
   {
-    // The one idea: the Mango-pult's splash on clumps of zombies. The Medium computer on ×0.75 income,
-    // now with Skeleton Archers. Fog battles drag (content design §7.2), so: a tiny zombie base (400,
-    // a shooter forward enough to reach it ends the match) and 500 start energy (a quick first line;
+    // The one idea: the Mango-pult's splash on clumps of zombies. The Medium computer on ×0.35 income,
+    // now with Skeleton Archers. Fog battles drag (content design §7.2), so: a small zombie base (800,
+    // a shooter forward enough to reach it ends the match) and 400 start energy (a quick first line;
     // the default 190 left 11% of the average player's matches running into sudden death).
     ...base('p2-4', 4), side: 'plants', kind: 'battle', cards: SIX,
-    baseHp: { zombies: 400 }, twist: { fog: 6 }, startEnergy: 500,
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'], incomeScale: 0.75 },
+    baseHp: { zombies: 800 }, twist: { fog: 6 }, startEnergy: 400,
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'], incomeScale: 0.35 },
   },
   {
     // The one idea: shields stop peas, lob over them. Flags of Skeleton Warriors at 70 s and 130 s
@@ -77,11 +77,11 @@ export const P2: LevelDef[] = [
     ],
   },
   {
-    // The one idea: guard your forward shooters with a wall. The Medium computer on ×0.68, now with
-    // Hot Topics; a tiny zombie base and 500 start energy as p2-4. Unlocks the Avocado Bunker.
+    // The one idea: guard your forward shooters with a wall. The Medium computer on ×0.25, now with
+    // Hot Topics; a small zombie base and 400 start energy as p2-4. Unlocks the Avocado Bunker.
     ...base('p2-6', 6), side: 'plants', kind: 'battle', cards: SIX,
-    baseHp: { zombies: 400 }, twist: { fog: 5 }, startEnergy: 500,
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic'], incomeScale: 0.68 },
+    baseHp: { zombies: 800 }, twist: { fog: 5 }, startEnergy: 400,
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic'], incomeScale: 0.25 },
     unlocks: 'avocadoBunker',
   },
   {
@@ -98,10 +98,10 @@ export const P2: LevelDef[] = [
   {
     // Boss: the Moon Howler walks the middle lane - its moon dome bounces peas, pults still hurt it;
     // its howl blinds a lane. Very Fast Walker "pups" trickle down the other lanes. A 5300 base, so
-    // the base's own strikes do not fell the Howler before it falls (an idle player loses), and 400
+    // the base's own strikes do not fell the Howler before it falls (an idle player loses), and 600
     // start energy (what a player who plays gets and an idle one does not use).
     ...base('p2-8', 8), side: 'plants', kind: 'boss', cards: SEVEN,
-    boss: { key: 'moonHowler', lane: 2 }, baseHp: { plants: 5300 }, twist: { fog: 5 }, startEnergy: 400,
+    boss: { key: 'moonHowler', lane: 2 }, baseHp: { plants: 5300 }, twist: { fog: 5 }, startEnergy: 600,
     waves: trickle('veryFastWalker', 30, 20, 8, [0, 4, 1, 3]),
   },
 ];
