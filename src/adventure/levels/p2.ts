@@ -23,14 +23,14 @@ const SEVEN: CardKey[] = [...SIX, 'avocadoBunker'];
 export const P2: LevelDef[] = [
   {
     // The one idea: peas fly only 7 tiles in the mist, so shooters go further forward. Brain Eaters
-    // trickle down lanes 1-3 from 20 s; a flag of Brain Eaters and Desert Zombies near the end.
+    // trickle down lanes 1-3 from 20 s; a flag of Brain Eaters and Desert Zombies at 105 s, 45 s
+    // before the clock, so it reaches a thin defence (Brain Eaters cross the lawn in about 29 s).
+    // Clock 150 s (100 s gave a 1.67 min median, under the 2.5 min target).
     ...base('p2-1', 1), side: 'plants', kind: 'survive', cards: FIVE,
-    // Clock 150 s (100 s gave a 1.67 min median, under the
-    // 2.5 min target) and the flag at 130 s; an idle player loses, the beginner wins ~84%.
-    seconds: 150, baseHp: { plants: 3500 }, twist: { fog: 7 },
+    seconds: 150, baseHp: { plants: 4500 }, twist: { fog: 7 },
     waves: [
-      ...trickle('brainEater', 20, 7, 15, [2, 1, 3]),
-      ...flag('brainEater', 130, [1, 2, 3]), ...flag('desertZombie', 132, [2, 1, 3]),
+      ...trickle('brainEater', 20, 7, 12, [2, 1, 3]),
+      ...flag('brainEater', 105, [1, 2, 3]), ...flag('desertZombie', 107, [2, 1, 3]),
     ],
   },
   {
@@ -46,53 +46,59 @@ export const P2: LevelDef[] = [
     // lanes; the base falls to them unaided (an idle player loses, as p1-5). Unlocks the Mango-pult.
     ...base('p2-3', 3), side: 'plants', kind: 'conveyor', cards: ['peashooter', 'walnutBomb', 'potatoMine', 'kernelPult'],
     belt: { everySeconds: 5, cards: ['peashooter', 'walnutBomb', 'potatoMine', 'kernelPult'] },
-    // A 150 s belt (120 s: a 2-minute level, under the 2.5-minute target).
-    seconds: 150, baseHp: { plants: 4500 }, twist: { fog: 6 },
+    // A 150 s belt (120 s: a 2-minute level, under the 2.5-minute target); two Brain Eaters a lane
+    // flag in at 105 s, 45 s before the clock.
+    seconds: 150, baseHp: { plants: 5500 }, twist: { fog: 6 },
     waves: [
-      ...trickle('brainEater', 15, 6, 19, [2, 0, 4, 1, 3]),
-      ...trickle('desertZombie', 50, 15, 6, [1, 3, 0, 4]),
-      ...flag('brainEater', 120, [0, 1, 2, 3, 4]),
+      ...trickle('brainEater', 15, 6, 15, [2, 0, 4, 1, 3]),
+      ...trickle('desertZombie', 50, 15, 4, [1, 3, 0, 4]),
+      ...flag('brainEater', 105, [0, 1, 2, 3, 4]), ...flag('brainEater', 109, [0, 1, 2, 3, 4]),
     ],
     unlocks: 'mangoPult',
   },
   {
-    // The one idea: the Mango-pult's splash on clumps of zombies. The Medium computer on ×0.35 income,
-    // now with Skeleton Archers. Fog battles drag (content design §7.2), so: a small zombie base (800,
-    // a shooter forward enough to reach it ends the match) and 400 start energy (a quick first line;
-    // the default 190 left 11% of the average player's matches running into sudden death).
+    // The one idea: the Mango-pult's splash on clumps of zombies. Clumps of Brain Eaters walk one lane
+    // each at 50, 100 and 150 s, on top of the Medium computer (×0.15, now with Skeleton Archers). A
+    // 900 zombie base, a 10500 plant base (the clumps sink a beginner's 6000) and 400 start energy
+    // (at the default 190 the beginner won 10-19%).
     ...base('p2-4', 4), side: 'plants', kind: 'battle', cards: SIX,
-    baseHp: { zombies: 800 }, twist: { fog: 6 }, startEnergy: 400,
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'], incomeScale: 0.35 },
+    baseHp: { zombies: 900, plants: 10500 }, twist: { fog: 6 }, startEnergy: 400,
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher'], incomeScale: 0.15 },
+    waves: [...flag('brainEater', 50, [1, 1, 1]), ...flag('brainEater', 100, [3, 3, 3]), ...flag('brainEater', 150, [2, 2, 2, 2])],
   },
   {
-    // The one idea: shields stop peas, lob over them. Flags of Skeleton Warriors at 70 s and 130 s
-    // with Skeleton Archers mixed in (their range is capped at 5 by the fog too).
+    // The one idea: shields stop peas, lob over them. Flags of Skeleton Warriors at 70 s and 105 s
+    // (45 s before the clock) with Skeleton Archers mixed in (their range is capped at 5 by the fog too).
     ...base('p2-5', 5), side: 'plants', kind: 'survive', cards: SIX,
-    seconds: 150, baseHp: { plants: 4700 }, twist: { fog: 5 },
+    seconds: 150, baseHp: { plants: 6200 }, twist: { fog: 5 },
     waves: [
-      ...trickle('brainEater', 20, 11, 10, [2, 1, 3, 0, 4]),
+      ...trickle('brainEater', 20, 11, 8, [2, 1, 3, 0, 4]),
       ...trickle('skeletonArcher', 45, 20, 3, [1, 3, 2, 0, 4]),
       ...flag('skeletonWarrior', 70, [1, 2, 3]),
-      ...flag('skeletonWarrior', 130, [0, 1, 2, 3, 4]),
+      ...flag('skeletonWarrior', 105, [0, 1, 2, 3, 4]),
     ],
   },
   {
-    // The one idea: guard your forward shooters with a wall. The Medium computer on ×0.25, now with
-    // Hot Topics; a small zombie base and 400 start energy as p2-4. Unlocks the Avocado Bunker.
+    // The one idea: guard your forward shooters with a wall. Hot Topics (they grow by eating plants)
+    // and Skeleton Archers come every 30 s down lanes 1, 3 and 2, where the forward shooters stand,
+    // on top of the Medium computer (×0.12, now with Hot Topics; at ×0.15-0.18 the average player
+    // drops to 98-98.5% on some seed blocks, below p2-8's 100, and the trend check fails). A 700 zombie base, a 9000 plant
+    // base and 400 start energy, as p2-4. Unlocks the Avocado Bunker.
     ...base('p2-6', 6), side: 'plants', kind: 'battle', cards: SIX,
-    baseHp: { zombies: 800 }, twist: { fog: 5 }, startEnergy: 400,
-    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic'], incomeScale: 0.25 },
+    baseHp: { zombies: 700, plants: 9000 }, twist: { fog: 5 }, startEnergy: 400,
+    opponent: { skill: 'medium', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie', 'skeletonArcher', 'hotTopic'], incomeScale: 0.12 },
+    waves: [...trickle('hotTopic', 40, 30, 5, [1, 3, 2]), ...trickle('skeletonArcher', 45, 30, 5, [1, 3, 2])],
     unlocks: 'avocadoBunker',
   },
   {
     // The one idea: a bunker holds the line while the lassos fly. Desert Zombies and Cowboy Zombies
-    // trickle in; a flag at 150 s.
+    // trickle in; a flag at 125 s, 45 s before the clock.
     ...base('p2-7', 7), side: 'plants', kind: 'survive', cards: SEVEN,
-    seconds: 170, baseHp: { plants: 4000 }, twist: { fog: 5 },
+    seconds: 170, baseHp: { plants: 6000 }, twist: { fog: 5 },
     waves: [
-      ...trickle('desertZombie', 20, 10, 13, [2, 1, 3, 0, 4]),
-      ...trickle('cowboyZombie', 40, 20, 6, [1, 3, 2, 4, 0]),
-      ...flag('brainEater', 150, [0, 1, 2, 3, 4]), ...flag('cowboyZombie', 152, [1, 3]),
+      ...trickle('desertZombie', 20, 10, 11, [2, 1, 3, 0, 4]),
+      ...trickle('cowboyZombie', 40, 20, 5, [1, 3, 2, 4, 0]),
+      ...flag('brainEater', 125, [0, 1, 2, 3, 4]), ...flag('cowboyZombie', 127, [1, 3]),
     ],
   },
   {
