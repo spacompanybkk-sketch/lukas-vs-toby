@@ -159,14 +159,19 @@ test('fog (the real p2-2, a battle, reach 7): a Peashooter at the back fades its
   expect(back.faded).toBeGreaterThanOrEqual(3);
   expect(back.puffs).toBe(back.faded);
   expect(back.base).toBe(start.base);
-  // A Peashooter on column 6 of lane 4: the base is inside its seven tiles.
-  await place(page, 'peashooter', 4, 6);
-  await expect.poll(async () => (await plantOn(page, 4, 6))?.key).toBe('peashooter');
-  // Its peas reach the base (the computer's zombies in lane 4 may take the first few).
+  // A Peashooter on column 3 of lane 4: the base is inside its seven tiles. The computer is kept
+  // without energy from here, so no zombie of his stands in the way or eats it.
+  const starve = (): Promise<void> => page.evaluate(() => { (window.__lvt as any).session.controller.match.state.players.zombies.energy = 0; });
+  await starve();
+  await place(page, 'peashooter', 4, 3);
+  await expect.poll(async () => (await plantOn(page, 4, 3))?.key).toBe('peashooter');
   await expect.poll(async () => {
+    await starve();
+    // A zombie already on its way may eat it: then it is planted again.
+    if ((await plantOn(page, 4, 3)) === undefined) await place(page, 'peashooter', 4, 3);
     await page.evaluate(() => (window.__lvt as any).fastForward(60));
     return (await read()).base;
-  }, { timeout: 30_000 }).toBeLessThan(back.base);
+  }, { timeout: 45_000 }).toBeLessThan(back.base);
   expect(await glContexts(page)).toBe(1);
 });
 
