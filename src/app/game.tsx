@@ -128,9 +128,12 @@ export function mountGame(
   // of world 1 with their arena's twist; the twist e2e plays them. Only on the debug hooks.
   // With `lessons`, the stand-ins carry the world-2 lessons written ahead of their levels (`TEACHES`).
   // `fog` gives the foggy stand-ins that reach (tiles) instead of the balance's.
+  // A world with real levels (the Moonlit Meadow) is never copied over, and its levels keep their own fog.
   lvt.previewWorlds = (on = true, worlds?: (2 | 3 | 4 | 5)[], lessons = false, fog?: number): void => {
     const more = previewWorlds(LEVELS, worlds, lessons ? TEACHES : undefined);
-    mapLevels.value = !on ? LEVELS : fog === undefined ? more : more.map((d) => (d.twist?.fog !== undefined ? { ...d, twist: { ...d.twist, fog } } : d));
+    const real = new Set(LEVELS.map((d) => d.id));
+    mapLevels.value = !on ? LEVELS : fog === undefined ? more
+      : more.map((d) => (!real.has(d.id) && d.twist?.fog !== undefined ? { ...d, twist: { ...d.twist, fog } } : d));
   };
   if (stage) {
     const s = stage;

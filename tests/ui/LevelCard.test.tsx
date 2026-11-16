@@ -64,7 +64,7 @@ describe('Level card', () => {
   });
 
   it.each<[string, string, string]>([['p2-1', 'p1', 'fog'], ['z2-1', 'z1', 'ice'], ['p3-1', 'p2', 'rocks']])(
-    'a level with a twist (%s, stand-in levels) shows its picture beside the number: %s won before, %s', async (id, before, twist) => {
+    'a level with a twist (%s; the real Meadow or a stand-in) shows its picture beside the number: %s won before, %s', async (id, before, twist) => {
       mapLevels.value = previewWorlds(LEVELS);
       const stars = (p: string): Record<string, 1> => Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`${p}-${i + 1}`, 1]));
       const side = id.startsWith('p') ? 'plants' : 'zombies';
@@ -72,7 +72,7 @@ describe('Level card', () => {
       await openCard(id, { [side]: { stars: all8, unlocked: [] } });
       expect(need('[data-screen="level-card"]').dataset.level).toBe(id);
       expect(all('.lcard__head [data-twist]').map((t) => t.dataset.twist)).toEqual([twist]);
-      // The twist is a picture only: no word joins the small buttons' names (no tutorial on these copies).
+      // The twist is a picture only: no word joins the small buttons' names.
       expect(need('.lcard__twists').textContent?.trim()).toBe('');
     },
   );
