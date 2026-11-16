@@ -4,7 +4,8 @@
  * prepared garden, a boss).
  *
  * - **beginner** (Toby, almost 5, on Easy): taps every 4–6 s, a random pick among sensible options
- *   (a Sunflower at the back, a shooter in the back half, a wall in front of a shooter, a mine in
+ *   (a Sunflower at the back, a shooter in the back half - in fog moved forward just enough to
+ *   reach the zombie base, `fogShift` -, a wall in front of a shooter, a mine in
  *   front of a zombie; as zombies any card into any lane), never merges; presses every glowing
  *   button (hero, spells) about 1.5 s after it lights, aimed like a child (`childPower`). On a belt
  *   he takes a random card to a sensible tile.
@@ -99,13 +100,27 @@ function frontCol(view: LaneView, keys?: ReadonlySet<string>): number {
   return front;
 }
 
+/** The columns, 0-3, a child puts a shooter on: the back half of the lawn. */
+const SHOOTER_COLS = { lo: 0, hi: 3 } as const;
+
+/**
+ * How far the beginner moves his shooter columns forward in fog (step-2 Task 6 ruling: the p2-1 fog
+ * lesson shows a child that peas fly only so far, so he plants forward): just far enough that his
+ * front shooter column reaches the zombie base, i.e. at least one column ≥ `COLS − reach`. 0 with no
+ * fog, and 0 at reach 7 or more (column 3 already reaches column 10).
+ */
+export function fogShift(fog: number | null): number {
+  return fog === null ? 0 : Math.max(0, COLS - fog - SHOOTER_COLS.hi);
+}
+
 /**
  * The tiles of `lane` where a plant `card` would make sense to a child who knows the basics: a
  * Sunflower at the back, a shooter in the back half, a wall in front of a shooter (behind the
  * nearest zombie), a mine just in front of a zombie (or anywhere ahead with none in sight), any
- * other plant in the middle. Free tiles only; the match still has the last word.
+ * other plant in the middle. Free tiles only; the match still has the last word. `shift` moves the
+ * shooter columns forward (the beginner in fog: `fogShift`); every other card is unchanged.
  */
-function sensibleCols(view: LaneView, card: CardKey): number[] {
+function sensibleCols(view: LaneView, card: CardKey, shift = 0): number[] {
   const free = (col: number): boolean => col >= 0 && col < PLANT_COLS && freeTile(view, col);
   const zombie = nearestZombie(view);
   const zx = zombie === undefined ? COLS : zombie.x;
@@ -115,7 +130,7 @@ function sensibleCols(view: LaneView, card: CardKey): number[] {
     return out;
   };
   if (card === 'sunflower') return range(0, 1);
-  if (SHOOTERS.has(card)) return range(0, 3);
+  if (SHOOTERS.has(card)) return range(SHOOTER_COLS.lo + shift, SHOOTER_COLS.hi + shift);
   if (WALLS.has(card)) {
     const shooter = frontCol(view, SHOOTERS);
     if (shooter < 0) return [];
@@ -129,10 +144,16 @@ function sensibleCols(view: LaneView, card: CardKey): number[] {
   return range(1, 5);
 }
 
-/** Every sensible placement of a plant `card` (lanes with zombies first when asked). */
-function sensiblePlants(lawn: readonly LaneView[], card: CardKey): Command[] {
+/**
+ * Every sensible placement of a plant `card` (lanes with zombies first when asked). `fogAware`: the
+ * beginner's choice - his shooters move forward in fog just enough to reach the base (`fogShift`).
+ */
+function sensiblePlants(lawn: readonly LaneView[], card: CardKey, fogAware = false): Command[] {
   const out: Command[] = [];
-  for (const view of lawn) for (const col of sensibleCols(view, card)) out.push(placeCommand('plants', card, view.lane, col));
+  for (const view of lawn) {
+    const shift = fogAware ? fogShift(view.fog) : 0;
+    for (const col of sensibleCols(view, card, shift)) out.push(placeCommand('plants', card, view.lane, col));
+  }
   return out;
 }
 
@@ -242,7 +263,7 @@ function beginnerBelt(match: Match, side: Faction, rng: BotRng): Command | null 
     const cmd: Command = { type: 'belt', faction: 'zombies', slot, lane: randomInt(rng, LANES), col: COLS - 1 };
     return match.check(cmd) === null ? cmd : null;
   }
-  const options = sensiblePlants(readLawn(s), card)
+  const options = sensiblePlants(readLawn(s), card, true)
     .map((c) => (c.type === 'place' ? { type: 'belt', faction: 'plants', slot, lane: c.lane, col: c.col } as Command : c))
     .filter((c) => match.check(c) === null);
   if (options.length > 0) return options[randomInt(rng, options.length)] as Command;
@@ -262,7 +283,7 @@ function beginnerCard(match: Match, side: Faction, rng: BotRng): Command | null 
     }
   } else {
     const lawn = readLawn(s);
-    for (const card of s.config.cards.plants) for (const cmd of sensiblePlants(lawn, card)) if (match.check(cmd) === null) options.push(cmd);
+    for (const card of s.config.cards.plants) for (const cmd of sensiblePlants(lawn, card, true)) if (match.check(cmd) === null) options.push(cmd);
   }
   return options.length === 0 ? null : (options[randomInt(rng, options.length)] as Command);
 }

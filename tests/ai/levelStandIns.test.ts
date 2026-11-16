@@ -4,7 +4,7 @@ import { levelById } from '../../src/adventure/levels';
 import { SKILLS } from '../../src/ai/basicBot';
 import { playLevel, standInFor, standInSave } from '../../src/ai/levelChecks';
 import {
-  AVERAGE, BEGINNER_TAP, LEVEL_STAND_INS, STAND_IN_DIFFICULTY, createLevelStandIn, standInTable,
+  AVERAGE, BEGINNER_TAP, LEVEL_STAND_INS, STAND_IN_DIFFICULTY, createLevelStandIn, fogShift, standInTable,
 } from '../../src/ai/levelStandIns';
 import { Match } from '../../src/sim/match';
 import type { Command } from '../../src/sim/types';
@@ -120,4 +120,42 @@ describe('the level stand-ins', () => {
     expect(pults.length).toBeGreaterThanOrEqual(1);
     expect(playLevel(levelById('p1-8')!, 'expert', 1).end).toBe('boss');
   });
+});
+
+// Step-2 Task 6 ruling: the fog lesson (p2-1) shows a child that peas fly only so far, so the
+// beginner plants his shooters just far enough forward that the front one reaches the zombie base.
+describe('the beginner in fog', () => {
+  it('moves his shooter columns forward just enough: front column ≥ 10 − reach; none with no fog or reach 7', () => {
+    expect([null, 9, 7, 6, 5, 4].map(fogShift)).toEqual([0, 0, 0, 1, 2, 3]);
+    for (const reach of [7, 6, 5, 4]) expect(3 + fogShift(reach) + reach).toBe(10);
+  });
+
+  const SHOOTERS = new Set(['peashooter', 'kernelPult', 'mangoPult']);
+  /** The columns the beginner put shooters on over `secs` seconds of `id`, a few seeds. */
+  const shooterCols = (id: string, secs: number): Set<number> => {
+    const cols = new Set<number>();
+    for (const seed of [1, 2, 3, 4]) {
+      for (const { cmd, refused } of sent(id, 'beginner', secs, seed)) {
+        if (!refused && (cmd.type === 'place' || cmd.type === 'belt') && cmd.faction === 'plants') {
+          const unit = cmd.type === 'place' ? cmd.unit : null;
+          if (unit === null || SHOOTERS.has(unit)) cols.add(cmd.col);
+        }
+      }
+    }
+    return cols;
+  };
+
+  it.each([
+    ['p1-7', 0, 3], // no fog: the back half, as always
+    ['p2-2', 0, 3], // fog 7: column 3 already reaches the base
+    ['p2-4', 1, 4], // fog 6
+    ['p2-6', 2, 5], // fog 5
+  ] as const)('%s: his shooters stand on columns %i-%i and the front one is used', (id, lo, hi) => {
+    const cols = [...shooterCols(id, 120)];
+    expect(cols.length, id).toBeGreaterThan(0);
+    expect(Math.min(...cols), id).toBeGreaterThanOrEqual(lo);
+    expect(Math.max(...cols), id).toBeLessThanOrEqual(hi);
+    expect(cols.some((c) => c >= lo + 2), id).toBe(true);
+  });
+
 });
