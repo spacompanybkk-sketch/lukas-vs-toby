@@ -536,7 +536,7 @@ test('shots', async ({ page }) => {
       const s = () => lvt.session.controller.match.state;
       const check = new Function('fx', 's', `return (${cond});`) as (f: unknown, st: unknown) => boolean;
       for (let i = 0; i < max; i++) {
-        if (check(fx, s())) return true;
+        if (check(fx, s)) return true;
         lvt.fastForward(step);
       }
       return false;
