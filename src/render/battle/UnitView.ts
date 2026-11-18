@@ -135,8 +135,9 @@ export class UnitView {
   /** Its place in a stack (0: first), which lifts the model. */
   stackPlace = 0;
   /**
-   * The row its health bar is lifted to (0: lowest): the lowest no earlier zombie of its lane whose
-   * bar would overlap this one's holds, so no bar's dark track covers another's fill.
+   * A zombie's health-bar row over the bar floor (0: lowest), at least the first row clear of its
+   * head, and one no earlier zombie of its lane whose bar would overlap this one's holds, so no
+   * bar's dark track covers another's fill (see `BattleView`).
    */
   barRow = 0;
   /** Drawn this far back from where it stands: a biting zombie steps back off its plant. */

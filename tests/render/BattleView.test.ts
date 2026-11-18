@@ -10,6 +10,7 @@ import { Particles } from '../../src/render/fx/Particles';
 import { seededRandom } from '../../src/render/world/boxes';
 import { Lawn } from '../../src/render/world/Lawn';
 import { Match, defaultConfig, spawnUnit } from '../../src/sim/match';
+import { spawnAtLevel } from '../../src/sim/spawn';
 import type { Command, SimEvent } from '../../src/sim/types';
 
 const DT = 1 / 60;
@@ -367,42 +368,105 @@ describe('BattleView details', () => {
   // Owner's report: "after a hit the zombie's HP looks nearly zero (black)". Two zombies of one
   // lane closer than a bar is wide but farther apart than a stack had their bars in one row, and
   // the later-drawn bar's dark outline and track covered the other's green fill; the sixth and
-  // later of a stack shared the fifth's spot. No two zombie bars may cover more than an outline.
-  it.each([
-    ['one walking close behind another', [5.45, 5.0]],
-    ['three in a row, each half a tile apart', [5.0, 5.5, 6.0]],
-    ['a stack of seven at one spot', [6, 6, 6, 6, 6, 6, 6]],
-  ])('never lets a zombie health bar cover another one’s fill: %s', (_name, xs) => {
+  // later of a stack shared the fifth's spot. No two zombie bars may cover more than an outline
+  // (up to the row cap; a bigger clump shares the top row).
+  type Z = [Parameters<typeof spawnUnit>[2], number, number?, number?]; // key, x, level, Hot Topic stacks
+
+  /** Spawns the zombies in lane 3, each at 85% health, and returns them and their bars' rectangles. */
+  function hurtZombies(zs: readonly Z[], lane = 3) {
     const ctx = setUp();
-    const zs = spawn(ctx, ...xs.map((x) => ['brainEater', 3, x] as [Parameters<typeof spawnUnit>[2], number, number]));
-    for (const z of zs) z.hp = Math.round(z.maxHp * 0.85);
-    ctx.view.applyEvents([], ctx.match.state);
+    const events: SimEvent[] = [];
+    const made = zs.map(([key, x, level = 1, stacks = 0]) => {
+      const u = spawnAtLevel(ctx.match.state, BALANCE, key, lane, x, level, events);
+      u.stacks = stacks;
+      u.hp = Math.round(u.maxHp * 0.85);
+      return u;
+    });
+    ctx.view.applyEvents(events, ctx.match.state);
     ctx.run(1.5);
+    return { ctx, made, rects: barRects(ctx) };
+  }
+
+  /** Each bar's outline quad (its first: the whole bar), measured in the camera's plane, and its world height. */
+  function barRects(ctx: ReturnType<typeof setUp>) {
     const mesh = ctx.scene.getObjectByName('health-bars') as InstancedMesh;
-    expect(mesh.count).toBe(3 * zs.length);
-    // Each bar's first quad is its outline, the whole bar's extent; measured in the camera's plane.
     const m = new Matrix4();
     const p = new Vector3();
     const q = new Quaternion();
     const s = new Vector3();
-    const rects: { x: number; y: number; w: number; h: number }[] = [];
+    const rects: { x: number; y: number; w: number; h: number; worldY: number }[] = [];
     for (let i = 0; i < mesh.count; i += 3) {
       mesh.getMatrixAt(i, m);
       m.decompose(p, q, s);
+      const worldY = p.y;
       p.applyMatrix4(ctx.camera.matrixWorldInverse);
-      rects.push({ x: p.x, y: p.y, w: s.x, h: s.y });
+      rects.push({ x: p.x, y: p.y, w: s.x, h: s.y, worldY });
     }
-    const EDGE = 0.03;
+    return rects;
+  }
+
+  function expectApart(rects: ReturnType<typeof barRects>): void {
     for (let a = 0; a < rects.length; a++) {
       for (let b = a + 1; b < rects.length; b++) {
         const ra = rects[a] as (typeof rects)[number];
         const rb = rects[b] as (typeof rects)[number];
         const overlapX = (ra.w + rb.w) / 2 - Math.abs(ra.x - rb.x);
         const overlapY = (ra.h + rb.h) / 2 - Math.abs(ra.y - rb.y);
-        // Overlapping in both directions by more than an outline would hide a fill.
-        expect(Math.min(overlapX, overlapY), `bars ${a} and ${b}`).toBeLessThanOrEqual(EDGE);
+        // Overlapping in both directions by more than an outline (0.03) would hide a fill.
+        expect(Math.min(overlapX, overlapY), `bars ${a} and ${b}`).toBeLessThanOrEqual(0.03);
       }
     }
+  }
+
+  it.each<[string, Z[]]>([
+    ['one walking close behind another', [['brainEater', 5.45], ['brainEater', 5.0]]],
+    ['three in a row, each half a tile apart', [['brainEater', 5.0], ['brainEater', 5.5], ['brainEater', 6.0]]],
+    ['a stack of six at one spot (every row)', Array.from({ length: 6 }, (): Z => ['brainEater', 6])],
+    // Brain Rot is the tallest kind as built; a full-grown Hot Topic stands well over the bar floor.
+    ['zombies of different heights close together', [
+      ['brainRot', 5.0, 5], ['brainEater', 5.45], ['hotTopic', 5.9, 1, 5], ['veryFastWalker', 6.35], ['brainRot', 6.8],
+    ]],
+  ])('never lets a zombie health bar cover another one’s fill: %s', (_name, zs) => {
+    const { rects } = hurtZombies(zs);
+    expect(rects).toHaveLength(zs.length);
+    expectApart(rects);
+  });
+
+  // Brain Rot is the tallest kind as built (1.02, under the floor even at level 5); a Hot Topic
+  // grown five times is the tallest a non-boss zombie gets.
+  it('puts a tall zombie’s bar just above its head', () => {
+    const { ctx, made, rects } = hurtZombies([['hotTopic', 5.0, 1, 5]]);
+    const height = (ctx.view.unit(made[0]?.id as number) as { height: number }).height;
+    expect(height).toBeGreaterThan(1.1); // over the bar floor: the case that matters
+    const bottom = (rects[0]?.worldY as number) - (rects[0]?.h as number) / 2;
+    expect(bottom).toBeGreaterThan(height);
+    expect(bottom - height).toBeLessThan(0.14 + 0.19);
+  });
+
+  it('keeps a big clump’s bars at most six rows over the floor', () => {
+    const { rects } = hurtZombies(Array.from({ length: 12 }, (): Z => ['brainEater', 6]));
+    const top = Math.max(...rects.map((r) => r.worldY));
+    expect(top).toBeCloseTo(1.1 + 0.14 + 5 * 0.19, 5);
+  });
+
+  it('does not flicker a bar between rows when two zombies hover at the overlap distance', () => {
+    const ctx = setUp();
+    const [front, back] = spawn(ctx, ['brainEater', 3, 5.0], ['brainEater', 3, 5.7]);
+    const rows: number[] = [];
+    for (let step = 0; step < 20; step++) {
+      (back as { x: number }).x = 5.0 + 0.7 + (step % 2 === 0 ? -0.03 : 0.03);
+      ctx.view.applyEvents([], ctx.match.state);
+      ctx.run(1 / 30);
+      rows.push((ctx.view.unit(back?.id as number) as { barRow: number }).barRow);
+    }
+    expect(front).toBeDefined();
+    let changes = 0;
+    for (let i = 1; i < rows.length; i++) if (rows[i] !== rows[i - 1]) changes++;
+    expect(changes).toBeLessThanOrEqual(1);
+    // Once apart for good, it comes back down.
+    (back as { x: number }).x = 7;
+    ctx.view.applyEvents([], ctx.match.state);
+    expect((ctx.view.unit(back?.id as number) as { barRow: number }).barRow).toBe(0);
   });
 
   it('lets the Brain Eater’s brain go 0.12 s into the throw and gives it a new one 0.4 s later', () => {

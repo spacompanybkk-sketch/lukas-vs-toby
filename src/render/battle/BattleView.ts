@@ -85,10 +85,25 @@ const BAR_SHIFT = 0.11;
 const BAR_LIFT = 0.19;
 /** Bars of one lane closer than a bar's width plus this (the models glide to their spots) take different rows. */
 const BAR_ROOM = 0.04;
-/** The most rows of bars one lane's zombies can stand in (a bit mask holds which are taken). */
-const BAR_ROWS = 30;
 /** The lowest a zombie's bar sits (tiles above its feet, before the 0.14 gap). */
 const ZOMBIE_BAR_FLOOR = 1.1;
+/**
+ * Rows of zombie bars over the floor; a clump bigger than this shares the top row. Six keep the
+ * top bar of a clump at the zombie spawn in the back lane clear of Toby's HUD bar at 1024x650
+ * (eight touched it).
+ */
+const BAR_ROWS = 6;
+/** A zombie keeps a raised bar row while a neighbour stays this much nearer than the overlap distance, so a pair at it does not flicker. */
+const BAR_HOLD = 0.1;
+
+/**
+ * The lowest row a zombie's bar may take: rows of `BAR_LIFT` over `ZOMBIE_BAR_FLOOR`, the first
+ * that clears its head. Bars of zombies of different heights so stay whole rows apart.
+ */
+function baseRow(height: number): number {
+  return Math.max(0, Math.ceil((height - ZOMBIE_BAR_FLOOR) / BAR_LIFT - 1e-6));
+}
+
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
 const PROJECTILE_SCALE: Record<ProjectileKind, number> = {
   pea: 1.2, brain: 1.1,
@@ -444,19 +459,28 @@ export class BattleView {
       // Behind the first, the rest of a stack queue back a little along the lane as well, so
       // five at one spot read as five.
       view.targetX = (u.blocked && u.x > BASE_STOP_X + 0.01 ? BITE_STEP_BACK : 0) + STACK_X * Math.min(place, 4);
-      // Its bar's row: the lowest one held by no earlier zombie of the lane whose bar would overlap
-      // it where they are drawn. Two zombies closer than a bar is wide, though farther apart than a
-      // stack, would otherwise share a row and one bar's dark track would cover the other's fill.
+      // Its bar's row: the lowest from its own height up held by no earlier zombie of the lane whose
+      // bar would overlap it where they are drawn. Two zombies closer than a bar is wide, though
+      // farther apart than a stack, would otherwise share a row and one bar's dark track would
+      // cover the other's fill. A raised row is kept while it is free and the neighbour still near.
+      const base = baseRow(view.height);
+      const here = u.x + view.targetX;
       let taken = 0;
+      let near = false;
       for (let j = 0; j < i; j++) {
         const o = units[j];
         if (!o || o.faction !== 'zombies' || o.lane !== u.lane) continue;
         const other = this.views.get(o.id);
-        if (!other || other.boss) continue;
-        if (Math.abs(o.x + other.targetX - (u.x + view.targetX)) < BAR_SPAN + BAR_ROOM) taken |= 1 << other.barRow;
+        if (!other || other.boss || other.dying || other.leaping) continue; // no bar drawn
+        const apart = Math.abs(o.x + other.targetX - here);
+        if (apart < BAR_SPAN + BAR_ROOM) taken |= 1 << other.barRow;
+        if (apart < BAR_SPAN + BAR_ROOM + BAR_HOLD) near = true;
       }
-      let row = 0;
-      while (row < BAR_ROWS && (taken & (1 << row)) !== 0) row++;
+      const top = BAR_ROWS - 1;
+      let row = Math.min(base, top);
+      while (row < top && (taken & (1 << row)) !== 0) row++;
+      const last = view.barRow;
+      if (near && last > row && last <= top && (taken & (1 << last)) === 0) row = last;
       view.barRow = row;
     }
     const stamp = ++this.stamp;
@@ -561,9 +585,7 @@ export class BattleView {
         // A lane's bars stand over its centre line, in rows one bar height apart (see `barRow`), so
         // the depth nudge of the zombies under them cannot jumble them.
         v1.z = view.lane + 0.5;
-        // Zombies' bars share one floor whatever their height, so a column of them is even.
-        const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
-        v1.y = top + 0.14 + BAR_LIFT * view.barRow;
+        v1.y = this.barHeight(view);
         this.bars.add(v1, view.hp / view.maxHp, view.level);
         this.barCount++;
       }
@@ -746,6 +768,15 @@ export class BattleView {
   }
 
   /**
+   * Where a unit's health bar is centred, tiles above the ground: 0.14 over a plant's head; a
+   * zombie's on its bar row (see `barRow`), rows counted from one floor whatever its height.
+   */
+  private barHeight(view: UnitView): number {
+    if (view.faction === 'plants') return view.height + 0.14;
+    return ZOMBIE_BAR_FLOOR + 0.14 + BAR_LIFT * view.barRow;
+  }
+
+  /**
    * Puts a level-up marker over each unit a merge is possible into (see `setMergeCue`) and hides
    * the rest. It sits over where the unit's health bar goes, so it never covers the bar, and
    * pulses in hard steps.
@@ -764,11 +795,10 @@ export class BattleView {
           this.markers.push(marker);
         }
         if (marker.parent !== view.wrapper) view.wrapper.add(marker);
-        const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
         // Over the bar's spot (see the bars in `frame`), in the wrapper's own frame.
         marker.position.set(
           0,
-          top + 0.14 + BAR_LIFT * view.barRow + MARKER_GAP + (up ? MARKER_STEP_UP : 0),
+          this.barHeight(view) + MARKER_GAP + (up ? MARKER_STEP_UP : 0),
           0.5 + view.lane - view.wrapper.position.z,
         );
         marker.scale.setScalar(up ? MARKER_STEP_SCALE : 1);
