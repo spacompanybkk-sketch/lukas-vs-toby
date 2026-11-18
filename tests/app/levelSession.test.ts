@@ -280,6 +280,16 @@ describe('a result travels: start → end → pending on the device → applied 
   });
 });
 
+describe('from world 1 to world 2', () => {
+  it.each([['plants', 'p'], ['zombies', 'z']] as const)('%s: level 8\'s result leads to world 2\'s first level', (side, l) => {
+    const w1 = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`${l}1-${i + 1}`, 1]));
+    host.update((s) => ({ ...s, [side]: { stars: w1, unlocked: [] } }));
+    const won = settleLevel(host, { battleId: `w2-${l}`, levelId: `${l}1-8`, side, stars: 2, won: true }, me().slot)!;
+    expect(won.next?.id).toBe(`${l}2-1`);
+    expect(me()[side].stars[`${l}1-8`]).toBe(2);
+  });
+});
+
 describe('bigWaves: the wave bar\'s flags', () => {
   const at = (...s: number[]) => s.map((t) => ({ tick: seconds(t) }));
   it('a flag where 4 or more arrive within 3 s; one flag per such crowd', () => {
