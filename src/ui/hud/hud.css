@@ -170,9 +170,14 @@
  * (Pause's size on a short screen) without moving or covering anything drawn. */
 .hud-speed {
   --hud-btn: max(var(--tap-min), var(--hud-h));
-  --ico-size: calc(var(--hud-btn) * 0.42);
   flex-direction: column;
   gap: 0;
+}
+/* The double arrow is wider than tall (16 x 12 pixels): drawn at its own shape, not in a square. */
+.hud-speed .ico--fast {
+  width: calc(var(--hud-btn) * 0.64);
+  height: calc(var(--hud-btn) * 0.48);
+  aspect-ratio: auto;
 }
 .hud-speed::after {
   content: '';
@@ -180,7 +185,7 @@
   inset: min(0px, calc((var(--hud-btn) - 64px) / 2));
 }
 .hud-speed__word {
-  font-size: calc(var(--hud-btn) * 0.3);
+  font-size: calc(var(--hud-btn) * 0.28);
   line-height: 1;
   color: var(--white);
   white-space: nowrap;
