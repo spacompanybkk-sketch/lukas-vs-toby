@@ -324,8 +324,8 @@ for (const [width, height] of [[1280, 720], [1024, 768], [2560, 1080]] as const)
       const within = el.parentElement?.closest('[data-hud]')?.getAttribute('data-hud') ?? null;
       return { name: el.getAttribute('data-hud') as string, within, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
     }));
-    // Phase 2: the hero and spell buttons (the powers) sit beside the tray in every battle.
-    expect(boxes.map((b) => b.name).sort()).toEqual(['base-plants', 'base-zombies', 'energy', 'pause', 'powers', 'spells', 'topbar', 'tray']);
+    // Phase 2: the hero and spell buttons (the powers) sit beside the tray in every battle; the 2X button beside Pause.
+    expect(boxes.map((b) => b.name).sort()).toEqual(['base-plants', 'base-zombies', 'energy', 'pause', 'powers', 'speed', 'spells', 'topbar', 'tray']);
     for (const b of boxes) {
       expect(b.left, `${b.name} left`).toBeGreaterThanOrEqual(-0.5);
       expect(b.top, `${b.name} top`).toBeGreaterThanOrEqual(-0.5);
