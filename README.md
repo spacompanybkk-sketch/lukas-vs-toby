@@ -40,7 +40,8 @@ as well. Among them: `__lvt.setWorld('desert')` dresses the stage as a world (wi
 twist, or the lawn config given) until the next screen change, and
 `__lvt.previewWorlds(true, [2, 3, 4, 5])` puts stand-in worlds on the Adventure map (copies of
 world 1 carrying each arena's twist) on every world that has no real levels yet; a world with
-real levels (the Moonlit Meadow) is never copied over. The twist and map e2e play the stand-ins.
+real levels (the Moonlit Meadow, the Frozen Tundra) is never copied over. The twist and map e2e
+play the stand-ins.
 
 ### Checking speed on the iPad (`?fps`)
 
@@ -136,8 +137,9 @@ reload on the result screen.
 
 **Unlocks.** Each side starts Adventure with its first three cards; level 3 and level 6 of the
 Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: Desert Zombie,
-Skeleton Archer), and level 3 and level 6 of the Moonlit Meadow the next two plants (Mango-pult,
-Avocado Bunker), shown turning on a turntable on the result screen. A level deals only the
+Skeleton Archer), level 3 and level 6 of the Moonlit Meadow the next two plants (Mango-pult,
+Avocado Bunker), and level 3 and level 6 of the Frozen Tundra the next two zombies (Hot Topic,
+Cowboy Zombie), shown turning on a turntable on the result screen. A level deals only the
 cards it lists that the player has. Quick Battle always has all ten.
 
 **Difficulty.** One, two or three skulls on the level card (EASY, NORMAL, HARD; kept per player
@@ -170,9 +172,10 @@ bar (a tap skips it).
 
 The Adventure travels five worlds. Lukas's plants go **Backyard → Meadow → Desert → Tundra →
 Citadel**; Toby's zombies come the other way, so his world 1 is the Citadel (`arenaOf` in
-`src/data/worlds.ts`). The plants have two worlds of levels so far, the Backyard and the Moonlit
-Meadow (below); the zombies have world 1 only, so Toby's world 2 (the Frozen Tundra) is a padlocked
-island. The level ids keep each side's own order (`p2-…` is the Meadow, `z2-…` the Tundra).
+`src/data/worlds.ts`). Each side has two worlds of levels so far: the plants the Backyard and the
+Moonlit Meadow, the zombies the Citadel and the Frozen Tundra (both below); world 3 on is a
+padlocked island. The level ids keep each side's own order (`p2-…` is the Meadow, `z2-…` the
+Tundra).
 
 | World | Look | Weather | Twist | Music |
 |--|--|--|--|--|
@@ -227,6 +230,51 @@ miss). He keeps slamming and calls Brain Eaters too. His bar shows his face; a f
 him. Numbers: `Balance.bosses.moonHowler`; looks: `src/render/models/bosses/moonHowler.ts` and
 `BOSS_LOOK.moonHowler`.
 
+### Frozen Tundra (zombies, world 2)
+
+Toby's second world, `z2-1` … `z2-8` (`src/adventure/levels/z2.ts`), opens when he has won z1-8
+(the result's next-level button leads straight on to z2-1). It is white and blue: snow on the
+ground and in the air, ice crystals, and the Tundra's bright bells. Short and forgiving: these are
+the younger player's levels.
+
+**Ice.** Some lanes of each level are sheets of ice (`twist: { iceLanes: [...] }`): everything
+that walks moves ×1.6 as fast there (`Balance.twists.ice.speed`), so a zombie sent down a shiny
+lane arrives first and is shot at for less time. The level card shows a small ice crystal.
+
+**The ice lesson.** z2-1 opens without a word: the match holds and the camera eases in on two
+lanes, where a see-through Brain Eater slides down the pulsing icy lane with its arms up and
+skids to a stop in a puff of snow while another is still walking the plain lane beside it. Any
+tap ends it (it is remembered; the glove on the level card shows it again). If nobody taps, a
+glove taps the lawn after 3 seconds; Pause still works. z2-4 and z2-7 teach their new card as the
+Citadel does: the glove points at the card, then at a lane.
+
+| Level | Kind | Icy lanes | What it is about |
+|--|--|--|--|
+| z2-1 | Battle | 2 | The ice lesson; no computer, three Peashooters and two more every 40 s |
+| z2-2 | Battle | 1, 3 | Pick the icy lanes (Easy computer) |
+| z2-3 | Breakthrough 240 s | 2 | The iced middle lane gets there before the peas do their work; **unlocks Hot Topic** |
+| z2-4 | Battle | 1, 3 | Hot Topic grows by eating plants (card lesson) |
+| z2-5 | Conveyor 270 s | 0, 2, 4 | The belt, and a garden that grows a Peashooter every 12 s |
+| z2-6 | Breakthrough 240 s | 0, 2, 4 | Mines under the ice; the lane with the fewest plants is a trap; **unlocks the Cowboy Zombie** |
+| z2-7 | Battle | 0, 1, 3, 4 | The Cowboy lassos the big plant (card lesson; Medium computer on low income) |
+| z2-8 | Boss | 0, 1, 3, 4 | The Frost Melon |
+
+MELON_PARAGRAPH
+
+**Where the levels depart from the content design's starting numbers** (all measured with
+`tools/levels.ts --world 2`; the reasons are in the step-2 Task 7 and Task 9b reports):
+
+- Clocks: the breakthroughs 240 s (design 120 / 150), the conveyor 270 s (design 150). The short
+  clocks made levels of under a minute.
+- z2-5's garden grows instead of regrowing; z2-6's trap is one level-3 Walnut Bomb in each plain lane.
+- Base health (plants / zombies; the design's in brackets): z2-1 5500 / 7000 (3500 / 12000),
+  z2-2 5000 / 3800 (3500 / default), z2-3 5000 / 14000 (1200 / default), z2-4 5500 / 4000
+  (4000 / default), z2-5 7000 / 9300 (4500 / 10000), z2-6 3800 / 14000 (900 / default), z2-7
+  3000 / 4000 (3000 / default), z2-8 default / 11000 (default / default); the default is 6000. The zombie base is what
+  the stars count on a zombie level, so it is set level by level.
+- The Frost Melon: 10500 health (design 5000–7500) and its phase-2 Walnut Bombs every 12 s
+  (design 6 s), so walls do not stall a beginner's fight.
+
 **The four twists.** A level names its twist tiles (`LevelDef.twist`); how strong each one is
 lives in `Balance.twists`. Both sides are affected the same way.
 
@@ -243,7 +291,7 @@ plain tile is free.
 
 **Bosses** may change their attacks at each shield mark (phases) and can use a generic strike:
 it announces tiles or lanes with blinking warning tiles, then hits them (Titan and Oak fight as
-before; the Moon Howler uses both). A boss that falls mid wind-up takes its
+before; the Moon Howler and the Frost Melon use both). A boss that falls mid wind-up takes its
 warning with it.
 
 **The map.** One island per world, in the side's own order, with wooden arrow pictures to step
@@ -282,7 +330,7 @@ With the dev server running (`npm run dev`, port 5273):
 | `/?scene=fx-gallery` | The effects, statuses and projectiles |
 | `/?scene=hud-gallery` | The HUD in every state |
 | `/?scene=stress&units=150` | The phase-1 crowd for the perf tool; `&mix` for the mixed roster |
-| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow; `&table=shipped` plays the shipped numbers) |
+| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow, `frostMelon` for the Melon on the Tundra's ice; `&table=shipped` plays the shipped numbers) |
 
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.

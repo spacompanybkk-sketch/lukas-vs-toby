@@ -27,7 +27,9 @@ const ICY_THREE = [0, 2, 4];
 
 /**
  * z2-5's garden grows: a Peashooter every 12 s from 20 s, lanes 1, 3, 0, 4, 2 in turn, each round of
- * five on the next column of 1, 0, 4, 5, 2 (21 in all, the last at 260 s).
+ * five on the next column of 1, 0, 4, 5 (20 new tiles, the last at 248 s). A 21st comes at 260 s on
+ * lane 1, column 2, a tile the starting garden holds: it grows only where that first Peashooter has
+ * been eaten (the sim skips a scripted plant whose tile is taken).
  */
 const GROWING: Spawn[] = regrow('peashooter', Array.from({ length: 21 }, (_, i): [number, number, number] =>
   [20 + i * 12, [1, 3, 0, 4, 2][i % 5]!, [1, 0, 4, 5, 2][Math.floor(i / 5)]!]));

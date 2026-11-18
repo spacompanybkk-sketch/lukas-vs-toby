@@ -32,6 +32,10 @@
 //   --scenes=howler-p2-8,meadow-p2-7        the real game: p2-8's Howler fight with a full garden, and
 //                                           p2-7 (a busy Meadow survive level: full garden, its waves
 //                                           and flags walking, nobody dying), opt-in
+//   --scenes=melon-z2-8,tundra-z2-5         the real game: z2-8's Melon fight with thirty zombies on
+//                                           the ice mid-barrage, and z2-5 (the busy Tundra belt level
+//                                           at 150 s: its grown garden firing, a belt's worth of
+//                                           zombies walking, nobody dying), opt-in
 //   --scenes=mix-150-meadow[,…]             a world's look (backyard, meadow, desert, tundra,
 //                                           citadel) with its weather and sample twist tiles; only
 //                                           when named
@@ -70,6 +74,9 @@ const SCENES = [
   // Step 2 Task 9 (opt-in): the real Meadow levels, the Howler's fight and a busy survive level.
   { name: 'howler-p2-8', query: '', setup: 'howlerLevel', optIn: true },
   { name: 'meadow-p2-7', query: '', setup: 'meadowBusy', optIn: true },
+  // Step 2 Task 9, Tundra (opt-in): the real Tundra levels, the Melon's fight and the busy belt level.
+  { name: 'melon-z2-8', query: '', setup: 'melonLevel', optIn: true },
+  { name: 'tundra-z2-5', query: '', setup: 'tundraBusy', optIn: true },
   // Worlds (opt-in, by name): mix-150 in each look with its weather and sample twist tiles.
   ...['backyard', 'meadow', 'desert', 'tundra', 'citadel'].map((world) => ({
     name: `mix-150-${world}`, query: `scene=stress&mix&units=150&world=${world}`, optIn: true,
@@ -293,6 +300,69 @@ const GAME_SETUPS = {
     return page.evaluate(() => {
       const s = window.__lvt.session.controller.match.state;
       return { units: s.units.length, zombies: s.units.filter((u) => u.faction === 'zombies').length, projectiles: s.projectiles.length, fog: s.config.lawn.fog };
+    });
+  },
+  /** As `login`, with the Tundra's two cards unlocked too. */
+  async tundraLogin(page) {
+    await this.login(page);
+    await page.evaluate(() => window.__lvt.players.update((s) => ({
+      ...s, zombies: { ...s.zombies, unlocked: ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'] },
+    })));
+  },
+  /** z2-8: thirty zombies of all seven cards on the ice, the Frost Melon (kept at 60%: phase 1) mid-barrage, its garden and its summons firing. */
+  async melonLevel(page) {
+    await this.tundraLogin(page);
+    await this.level(page, 'zombies', 'z2-8');
+    await this.hold(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const c = lvt.session.controller;
+      const s = c.match.state;
+      const cards = s.config.cards.zombies;
+      for (let i = 0; s.units.filter((u) => u.faction === 'zombies').length < 30 && i < 400; i++) {
+        s.players.zombies.energy = 1000;
+        const card = cards[i % cards.length];
+        for (let t = 0; t < 400 && (s.players.zombies.recharge[card] ?? 0) > 0; t++) { lvt.fastForward(1); lvt.keepAlive(); }
+        c.select(card);
+        c.click({ lane: i % 5, col: 9 }, null);
+        lvt.fastForward(2);
+        lvt.keepAlive();
+      }
+      c.select(null);
+      // On to the Melon's barrage: frozen melons (the sim's acorns) in the air.
+      for (let t = 0; t < 30 * 40; t++) {
+        lvt.fastForward(1);
+        lvt.keepAlive();
+        if (s.projectiles.some((p) => p.kind === 'acorn')) break;
+      }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { units: s.units.length, melon: s.units.some((u) => u.key === 'frostMelon'), zombies: s.units.filter((u) => u.faction === 'zombies').length, plants: s.units.filter((u) => u.faction === 'plants').length, melons: s.projectiles.filter((p) => p.kind === 'acorn').length, projectiles: s.projectiles.length, ice: s.config.lawn.ice?.lanes ?? null };
+    });
+  },
+  /** z2-5 at 150 s (its clock is 270): every belt card sent as it comes, the garden grown to fourteen Peashooters, nobody dying. */
+  async tundraBusy(page) {
+    await this.tundraLogin(page);
+    await this.level(page, 'zombies', 'z2-5');
+    await this.hold(page);
+    await page.evaluate(() => {
+      const lvt = window.__lvt;
+      const c = lvt.session.controller;
+      const s = c.match.state;
+      let sent = 0;
+      for (let t = 0; t < 30 * 150; t += 5) {
+        lvt.fastForward(5);
+        lvt.keepAlive();
+        if (s.belt.length > 0) {
+          c.match.step([{ type: 'belt', faction: 'zombies', slot: 0, lane: sent % 5, col: 9 }]);
+          sent += 1;
+        }
+      }
+    });
+    return page.evaluate(() => {
+      const s = window.__lvt.session.controller.match.state;
+      return { units: s.units.length, zombies: s.units.filter((u) => u.faction === 'zombies').length, plants: s.units.filter((u) => u.faction === 'plants').length, projectiles: s.projectiles.length, ice: s.config.lawn.ice?.lanes ?? null };
     });
   },
   /** The Howler demo moved on to 20 s (its pups, Brain Eaters, the garden firing), then left to play live. */

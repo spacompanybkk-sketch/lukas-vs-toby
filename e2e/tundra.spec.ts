@@ -490,7 +490,11 @@ test('ten Tundra level ↔ map round trips: one WebGL context, the GPU\'s geomet
     await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('tundra');
     await frames(page, 3);
     counts.push(await geometries());
-    const id = round % 2 === 0 ? 'z2-5' : 'z2-2';
+    // Two levels with a scripted garden and no computer: what stands on the lawn after two seconds is
+    // the same every visit. (A computer's first Sunflower comes on a seed's own tick, and a model's
+    // shared geometry reaches the GPU the first time it is drawn: with z2-2 the count stepped up by
+    // one on whichever visit that was, then stayed; 14 visits measured.)
+    const id = round % 2 === 0 ? 'z2-5' : 'z2-3';
     await startFromMap(page, id);
     expect(await page.evaluate(() => [...(window.__lvt as any).session.controller.match.state.config.lawn.ice.lanes].sort())).toEqual(await iceOf(page, id));
     await page.evaluate(() => (window.__lvt as any).fastForward(60));
@@ -501,7 +505,7 @@ test('ten Tundra level ↔ map round trips: one WebGL context, the GPU\'s geomet
     expect(await glContexts(page), `round ${round + 1}`).toBe(1);
   }
   // From the third look on (caches warm), the same number of geometries on the GPU every time.
-  for (const n of counts.slice(2)) expect(n).toBe(counts[2]);
+  for (const n of counts.slice(2)) expect(n, `geometries on the map: ${counts.join(', ')}`).toBe(counts[2]);
 });
 
 // Screenshots for review, only when asked (iPad project): LVT_TUNDRA_SHOTS=<folder> npx playwright

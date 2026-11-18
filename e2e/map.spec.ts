@@ -144,8 +144,8 @@ test('the level card\'s difficulty is the Adventure\'s own: changing it leaves Q
   expect((await save()).adventureDifficulty.plants).toBe('hard');
 });
 
-test('the Moonlit Meadow: shut while p1-8 is unwon; won, the map opens on it in its colours with its eight levels, p2-1 next and its card shows the fog picture; the zombies\' world 2 stays padlocked', async ({ page }) => {
-  test.setTimeout(120_000);
+test('the Moonlit Meadow and the Frozen Tundra: each shut while level 8 is unwon; won, the map opens on it in its colours with its eight levels, the first next and its card shows the twist picture', async ({ page }) => {
+  test.setTimeout(180_000);
   await openTitle(page);
   await logIn(page);
   const won = (n: number): Promise<void> => page.evaluate((upTo) => (window.__lvt as any).players.update((s: any) => ({
@@ -190,17 +190,46 @@ test('the Moonlit Meadow: shut while p1-8 is unwon; won, the map opens on it in 
   await press(page.locator('[data-action="world-prev"]'));
   await expect(map).toHaveAttribute('data-arena', 'backyard');
   await expect(page.locator('[data-stone="p1-8"]')).toHaveAttribute('data-state', 'done');
-  // Toby's side: world 1 all won too, but the Frozen Tundra has no levels: a padlocked island.
-  await page.evaluate(() => (window.__lvt as any).players.update((s: any) => ({
-    ...s, zombies: { ...s.zombies, stars: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`z1-${i + 1}`, 3])) },
-  })));
+  // Toby's side, seven of eight won: his map stays on the Citadel, the Frozen Tundra padlocked.
+  const zWon = (n: number): Promise<void> => page.evaluate((upTo) => (window.__lvt as any).players.update((s: any) => ({
+    ...s, zombies: { ...s.zombies, stars: Object.fromEntries(Array.from({ length: upTo }, (_, i) => [`z1-${i + 1}`, 3])) },
+  })), n);
+  await zWon(7);
   await press(page.locator('[data-tab="zombies"]'));
   await expect(map).toHaveAttribute('data-arena', 'citadel');
+  await expect(page.locator('[data-stone="z1-8"]')).toHaveAttribute('data-state', 'next');
+  await expect(page.locator('[data-action="world-next"]')).toHaveAttribute('data-locked', '');
   await press(page.locator('[data-action="world-next"]'));
   await expect(map).toHaveAttribute('data-arena', 'tundra');
   await expect(map).toHaveAttribute('data-locked', '');
   await expect(page.locator('[data-stone]')).toHaveCount(0);
   await expect(page.locator('[data-action="island-locked"]')).toBeVisible();
+  await press(page.locator('[data-screen="map"] [data-action="back"]'));
+  await expect(page.locator('[data-screen="play"]')).toBeVisible();
+  // z1-8 won: the map opens on the Tundra, its eight levels, z2-1 next, the ice picture on its card.
+  await zWon(8);
+  await press(page.locator('[data-play="adventure"]'));
+  await press(page.locator('[data-side="zombies"]'));
+  await expect(map).toBeVisible();
+  await expect(map).toHaveAttribute('data-world', '2');
+  await expect(map).toHaveAttribute('data-arena', 'tundra');
+  await expect(map).not.toHaveAttribute('data-locked', '');
+  await stonesOnScreen(page, 8);
+  expect(await page.locator('[data-stone]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.stone)))
+    .toEqual(Array.from({ length: 8 }, (_, i) => `z2-${i + 1}`));
+  await expect(page.locator('[data-stone="z2-1"]')).toHaveAttribute('data-state', 'next');
+  await expect(page.locator('[data-stone="z2-2"]')).not.toHaveAttribute('data-state', 'next');
+  await expect(page.locator('[data-stone="z2-8"]')).toHaveAttribute('data-kind', 'boss');
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('tundra');
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).audio.musicTheme)).toBe('tundra');
+  await press(page.locator('[data-stone="z2-1"]'));
+  const zCard = page.locator('[data-screen="level-card"][data-level="z2-1"]');
+  await expect(zCard).toBeVisible();
+  await expect(zCard.locator('[data-twist="ice"]')).toBeVisible();
+  await press(page.locator('[data-action="close-card"]'));
+  await press(page.locator('[data-action="world-prev"]'));
+  await expect(map).toHaveAttribute('data-arena', 'citadel');
+  await expect(page.locator('[data-stone="z1-8"]')).toHaveAttribute('data-state', 'done');
   expect(await glContexts(page)).toBe(1);
 });
 
