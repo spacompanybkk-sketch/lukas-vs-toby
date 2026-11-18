@@ -19,8 +19,8 @@ const MAX_GAP_MS = 250;
 /** The most steps one frame may run; whatever game time is still owed after that is dropped. */
 const MAX_STEPS_PER_FRAME = 5;
 /**
- * Sped up (`timeScale` above 1: the 2X button), the steps of one frame stop once they have taken
- * this long and the game time still owed is dropped: a device that cannot run double speed plays
+ * Sped up (`timeScale` above 1: the 2X button), the steps of one frame beyond what 1x would run
+ * stop once they have taken this long and the game time still owed is dropped: a device that cannot run double speed plays
  * as fast as it can rather than falling behind and stalling. Normal speed is never cut by it.
  */
 export const FAST_STEP_BUDGET_MS = 20;
@@ -89,8 +89,11 @@ export class GameLoop {
     let steps = 0;
     const budgeted = scale > 1;
     const startMs = budgeted ? this.now() : 0;
+    // The budget only cuts the steps beyond what normal speed would run this frame: sped up is never
+    // slower than 1x. Rounded up, since 1x may run one more than the frame's own time when it carries some over.
+    const base = Math.ceil((gapMs * STEPS_PER_SECOND) / 1000);
     while (this.owed >= 1 && steps < MAX_STEPS_PER_FRAME) {
-      if (budgeted && steps > 0 && this.now() - startMs >= FAST_STEP_BUDGET_MS) break;
+      if (budgeted && steps > 0 && steps >= base && this.now() - startMs >= FAST_STEP_BUDGET_MS) break;
       this.host.step();
       this.owed -= 1;
       steps++;
