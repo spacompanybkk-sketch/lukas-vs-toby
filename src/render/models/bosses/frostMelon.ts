@@ -135,8 +135,13 @@ const crown: Box[] = [
   ...CROWN.slice(3).map(([x, z, h]) => span(x - 0.5, x + 0.5, 6.5, 6.5 + h, z - 0.5, z + 0.5, ICE)),
 ];
 
-/** The crown lit (its strike's tell): the three front icicles fatter and taller, glowing. */
-const crownGlow: Box[] = CROWN.slice(0, 3).map(([x, z, h]) => span(x - 0.75, x + 0.75, 7, 7 + h, z - 0.75, z + 0.75, GLOW, { emissive: 2.2 }));
+/**
+ * The crown lit (its strike's tell): the three front icicles a little fatter and taller, glowing.
+ * Each stays its own spike with a gap to the next and glows gently: fatter and brighter (±0.75 at
+ * 2.2) they ran together under the bloom into one white block that hid the crown.
+ */
+const CROWN_GLOW = '#5FE2FF';
+const crownGlow: Box[] = CROWN.slice(0, 3).map(([x, z, h]) => span(x - 0.625, x + 0.625, 7, 7 + h, z - 0.625, z + 0.625, CROWN_GLOW, { emissive: 1.1 }));
 
 /** Phase 2: glowing cracks across its face, round its near end and along its near shoulder. */
 const frostCracks: Box[] = [

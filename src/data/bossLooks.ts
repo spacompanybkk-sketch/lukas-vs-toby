@@ -197,9 +197,11 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       // Phase 2: glowing cracks in its rind, big icicles out of its top and its near end, its eyes alight.
       phaseParts: ['frostCracks', 'frostSpikes', 'glowEyes'],
       shards: ['#3FA34D', '#27733A', '#B8ECFF', '#7FD3F5', '#F4FBFF'],
-      // The freeze's lanes: a strong blue inside a deep blue outline (the shared pale icy blue would
-      // be lost on the Tundra's snow and its icy lanes); the blow lands in bright ice.
-      strikeWarnings: { stun: { fill: '#1F8BFF', frame: '#0B5BD0', opacity: 0.62, blow: '#39C6FF' } },
+      // The freeze's lanes: deep-water navy blinking inside a frost-white outline. Seen on the real
+      // Tundra, any icy blue (the shared pale one, or a strong one) is lost on the icy lanes and makes
+      // a plain lane look like one more sheet of ice; the navy is dark on ice and on snow alike, the
+      // white outline stands on the ice. The blow lands in bright ice.
+      strikeWarnings: { stun: { fill: '#0A2A70', frame: '#F4FBFF', opacity: 0.85, blow: '#39C6FF' } },
       barrage: 'frozenMelon',
     },
   },

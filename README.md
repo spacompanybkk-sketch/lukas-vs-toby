@@ -259,7 +259,16 @@ Citadel does: the glove points at the card, then at a lane.
 | z2-7 | Battle | 0, 1, 3, 4 | The Cowboy lassos the big plant (card lesson; Medium computer on low income) |
 | z2-8 | Boss | 0, 1, 3, 4 | The Frost Melon |
 
-MELON_PARAGRAPH
+**The Frost Melon** (z2-8) is a great green watermelon lying across lanes 1 to 3 in front of the
+plant base, on the plain middle lane, under a cap of snow and a crown of icicles, a catapult on
+its back. In its first phase the catapult lobs **frozen melons** (blue, striped; each has a red
+landing mark first) and it grows Peashooters. At half health two **ice plates** clap shut over
+it for a while and every hit counts half. Then its second phase: glowing cracks, icicles and
+eyes alight, and it **freezes**: its crown lights up and two whole lanes blink deep navy inside
+white frames for 2.5 seconds, then every zombie in them is hurt a little and stands frozen for
+two. It keeps lobbing and grows Walnut Bombs. Its bar is ice blue with its face; a face card
+announces it. Numbers: `Balance.bosses.frostMelon`; looks:
+`src/render/models/bosses/frostMelon.ts` and `BOSS_LOOK.frostMelon`.
 
 **Where the levels depart from the content design's starting numbers** (all measured with
 `tools/levels.ts --world 2`; the reasons are in the step-2 Task 7 and Task 9b reports):

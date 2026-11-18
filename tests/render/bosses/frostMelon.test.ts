@@ -230,7 +230,7 @@ describe('the Frost Melon on the lawn', () => {
     expect(s.match.state.units.some((u) => u.faction === 'zombies' && u.stun > 0)).toBe(true);
   });
 
-  it('the freeze\'s lanes are warned of in a strong blue inside a deep blue outline (its own colours, for the snow), the blow in bright ice', () => {
+  it('the freeze\'s lanes are warned of in deep navy inside a frost-white outline (its own colours, for the ice and the snow), the blow in bright ice', () => {
     const s = bossStage('frostMelon');
     s.until((e) => e.type === 'bossStrike' && e.windup);
     s.play(0.1);
@@ -240,9 +240,9 @@ describe('the Frost Melon on the lawn', () => {
       if (o.name === 'boss-strike-tile') frame = (o as unknown as { material: MeshBasicMaterial }).material;
       if (o.name === 'boss-strike-fill') fill = (o as unknown as { material: MeshBasicMaterial }).material;
     });
-    expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#0B5BD0');
-    expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#1F8BFF');
-    expect(fill!.opacity).toBeCloseTo(0.62);
+    expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#F4FBFF');
+    expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#0A2A70');
+    expect(fill!.opacity).toBeCloseTo(0.85);
     const ring = vi.spyOn(s.fx, 'ring');
     s.until((e) => e.type === 'bossStrike' && !e.windup);
     expect(ring.mock.calls.filter((c) => c[1] === 0x39c6ff)).toHaveLength(20);
