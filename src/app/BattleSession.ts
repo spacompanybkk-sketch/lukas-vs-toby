@@ -16,6 +16,7 @@ import { BattleController } from './BattleController';
 import type { BattleOptions } from './BattleController';
 import { BattleInput } from './input';
 import { modelsFor } from './prewarm';
+import { BattleSpeed, lessonShowing } from './speed';
 import type { InputTarget, Picked, Tile } from './input';
 import { FeelClock } from './Stage';
 import type { Director, StageLike } from './Stage';
@@ -84,6 +85,8 @@ export class BattleSession implements Director, InputTarget {
   readonly heroBanner = signal<HeroBanner | null>(null);
   /** The world this battle is played in. */
   readonly world: WorldKey;
+  /** The 2X button: the player's choice and when it applies (offered in every battle but Versus). */
+  readonly speed: BattleSpeed;
   /** The music this battle plays to: its arena's theme in the Adventure, else the Backyard's. */
   private readonly theme: Theme;
 
@@ -127,6 +130,8 @@ export class BattleSession implements Director, InputTarget {
     this.onToken = options.onToken;
     this.resultReady = this.ready;
     this.controller = new BattleController(opts);
+    // Speed belongs to this driver, never to the match: a two-player Versus simply does not offer it.
+    this.speed = new BattleSpeed({ offered: opts.versus !== true, lesson: lessonShowing(this.controller.tutorial) });
     stage.show(this);
     const { world, lawn, theme } = battleWorld(opts);
     this.world = world;
@@ -188,6 +193,17 @@ export class BattleSession implements Director, InputTarget {
     this.audio.startMusic(this.theme);
   }
 
+  /**
+   * Game time per real time the 2X button asks of the loop now: its own factor (2 when lit, 1
+   * during a lesson that waits for the player or in Versus) while the battle runs, but 1 before it
+   * begins, during the boss's entrance and once the match is decided, so those play as they always
+   * have. The choice itself is kept through all of them.
+   */
+  speedFactor(): number {
+    if (!this.live || this.view.bossFx.entering) return 1;
+    return this.speed.factor();
+  }
+
   // ---- Director ------------------------------------------------------------------------------
 
   step(): void {
@@ -199,7 +215,7 @@ export class BattleSession implements Director, InputTarget {
     if (this.detached) return;
     const state = this.controller.match.state;
     this.stage.paused = this.controller.hud.paused.peek();
-    this.stage.timeScale = this.clock.tick(realDt);
+    this.stage.timeScale = this.clock.tick(realDt) * this.speedFactor();
     this.time += gameDt;
     this.view.setMergeCue(this.live ? this.controller.mergeCue() : null);
     // Where the picked card may go: redrawn only when the tiles change (`placeTiles` keeps a version).

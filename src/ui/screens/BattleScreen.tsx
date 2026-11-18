@@ -29,6 +29,7 @@ import { ALERT } from '../hud/levelPictures';
 import { PixelIcon } from '../hud/PixelIcon';
 import { TopBar } from '../hud/TopBar';
 import { PointingHand } from '../hud/PointingHand';
+import { SpeedButton } from '../hud/SpeedButton';
 import type { GloveHost } from '../hud/PointingHand';
 import type { GloveVM, TwistVM } from '../../app/tutorial';
 import type { EndlessSignals } from '../../app/BattleController';
@@ -85,6 +86,17 @@ export interface BattleSessionLike {
   heroBanner?: ReadonlySignal<{ side: Faction; n: number } | null>;
   /** A tap on the boss's entrance card: the lawn ends its entrance show too. */
   skipBossEntrance?(): void;
+  /** The 2X button (none: not offered, as in a two-player Versus). */
+  speed?: SpeedLike;
+}
+
+/** What the 2X button reads and calls (the real session's `BattleSpeed`). */
+export interface SpeedLike {
+  /** Lit: the player chose double speed. */
+  fast: ReadonlySignal<boolean>;
+  /** The button is there (false in Versus and while a lesson waits for the player). */
+  shown: ReadonlySignal<boolean>;
+  toggle(): void;
 }
 
 /** Builds a session for a battle; throws Error('webgl2-unavailable') when the device cannot draw it. */
@@ -195,6 +207,7 @@ export function BattleScreen(props: BattleScreenProps) {
           ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} />
           : countsUp(ctl.level ?? null) && <LiveClock hud={hud} />}
         <div class="battle__right">
+          {session.speed !== undefined && <LiveSpeed hud={hud} speed={session.speed} />}
           <LivePause ctl={ctl} />
         </div>
       </div>
@@ -360,6 +373,12 @@ function LiveBoss({ hud, onSkip }: { hud: HudSignals; onSkip: () => void }) {
 
 function LiveBase({ hud, faction, playerFaction, portrait }: { hud: HudSignals; faction: Faction; playerFaction: Faction; portrait: string | undefined }) {
   return <BaseBar faction={faction} vm={hud.base.value[faction]} you={playerFaction === faction} portrait={portrait} />;
+}
+
+/** The 2X button; gone while a lesson waits for the player and once the match is decided. */
+function LiveSpeed({ hud, speed }: { hud: HudSignals; speed: SpeedLike }) {
+  if (hud.result.value !== null || !speed.shown.value) return null;
+  return <SpeedButton fast={speed.fast.value} onToggle={() => speed.toggle()} />;
 }
 
 /** The pause button; gone once the match is decided. */

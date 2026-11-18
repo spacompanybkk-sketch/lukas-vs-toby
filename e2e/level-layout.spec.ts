@@ -53,7 +53,7 @@ async function freePlay(page: Page, side: 'plants' | 'zombies'): Promise<void> {
 /** The visible boxes of the top bar's parts and the level's bars. */
 function hudBoxes(page: Page): Promise<Named[]> {
   return page.evaluate(() => {
-    const sel = '[data-hud="energy"], [data-hud="topbar"], [data-hud="free-top"], [data-hud="pause"], [data-hud^="base-"], '
+    const sel = '[data-hud="energy"], [data-hud="topbar"], [data-hud="free-top"], [data-hud="pause"], [data-hud="speed"], [data-hud^="base-"], '
       + '[data-hud="clock-goal"], [data-hud="wave-bar"], [data-hud="boss"]';
     return [...document.querySelectorAll<HTMLElement>(sel)]
       .map((el) => ({ el, r: el.getBoundingClientRect() }))

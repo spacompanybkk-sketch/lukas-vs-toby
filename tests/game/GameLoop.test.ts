@@ -189,4 +189,73 @@ describe('GameLoop', () => {
     loop.advance(1000);
     expect(log.steps).toBe(3);
   });
+
+  describe('sped up (the 2X button: timeScale 2)', () => {
+    it('runs two steps per 1/30 s of real time, at any frame rate', () => {
+      for (const frameMs of [1000 / 60, 1000 / 30, 1000 / 20]) {
+        const { log, loop } = recorder();
+        loop.timeScale = 2;
+        let t = 0;
+        loop.advance(t);
+        while (t < 3000 - 1e-6) loop.advance((t += frameMs));
+        expect(log.steps, `${frameMs} ms frames`).toBeGreaterThanOrEqual(179);
+        expect(log.steps, `${frameMs} ms frames`).toBeLessThanOrEqual(180);
+      }
+    });
+
+    it('a slow frame runs what it can and drops the rest: no backlog, so no spiral', () => {
+      const { log, loop } = recorder();
+      loop.timeScale = 2;
+      loop.advance(0);
+      loop.advance(250); // 15 steps owed at 2x
+      expect(log.steps).toBe(5);
+      loop.advance(250 + 1000 / 60); // the next frame owes only its own time: 1 step
+      expect(log.steps).toBe(6);
+    });
+
+    it('stops stepping once the steps of one frame have taken the frame budget, and drops the rest', () => {
+      let now = 0;
+      const steps: number[] = [];
+      // A slow device: every step takes 12 ms of real time.
+      const loop = new GameLoop({ step: () => { steps.push(now); now += 12; }, frame: () => {} }, { now: () => now });
+      loop.timeScale = 2;
+      loop.advance(0);
+      loop.advance(100); // 6 steps owed; 1x would run 3
+      expect(steps.length).toBe(3); // the 1x share always runs; the budget cuts the extra 3
+      steps.length = 0;
+      loop.advance(150); // nothing carried over: this frame's own 3 owed; the 1x share (1.5, so 2) runs, then the budget cuts
+      expect(steps.length).toBe(2);
+    });
+
+    it('with a step dearer than the whole budget (25 ms), 2x never runs fewer steps a frame than 1x', () => {
+      const perFrame = (scale: number): number[] => {
+        let now = 0;
+        let n = 0;
+        const loop = new GameLoop({ step: () => { n++; now += 25; }, frame: () => {} }, { now: () => now });
+        loop.timeScale = scale;
+        const counts: number[] = [];
+        let t = 0;
+        loop.advance(t);
+        for (const gap of [16.7, 33.4, 50, 100, 70, 16.7, 16.7, 250, 40]) {
+          const before = n;
+          loop.advance((t += gap));
+          counts.push(n - before);
+        }
+        return counts;
+      };
+      const slow = perFrame(1);
+      const fast = perFrame(2);
+      for (let i = 0; i < slow.length; i++) expect(fast[i], `frame ${i}`).toBeGreaterThanOrEqual(slow[i]!);
+      expect(fast.reduce((a, b) => a + b, 0)).toBeGreaterThan(slow.reduce((a, b) => a + b, 0));
+    });
+
+    it('at normal speed the budget never cuts (1x plays exactly as before)', () => {
+      let now = 0;
+      let n = 0;
+      const loop = new GameLoop({ step: () => { n++; now += 12; }, frame: () => {} }, { now: () => now });
+      loop.advance(0);
+      loop.advance(100);
+      expect(n).toBe(3);
+    });
+  });
 });
