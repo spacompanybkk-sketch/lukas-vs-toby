@@ -1,10 +1,6 @@
-import { it } from 'vitest';
 import { worldBandTests } from './levelBands';
 
 // World 2's bands, both sides, on one seed block (LVT_BLOCKS=3: three; see levelBands.ts): the
 // step-2 plan's gate (rulings 5-6, `worldTwoGate`), the idle-player check, and a printed record of
-// every level. A todo until p2.ts / z2.ts hold levels.
+// every level: the Moonlit Meadow (p2.ts) and the Frozen Tundra (z2.ts).
 worldBandTests(2);
-
-// The Tundra (z2.ts) is parked (owner, 2026-11-14): its bands join when it holds levels.
-it.todo('world 2 as the zombies: parked until z2.ts holds levels (step-2 Task 7)');

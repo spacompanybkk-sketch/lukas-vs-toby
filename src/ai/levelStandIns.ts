@@ -16,6 +16,7 @@
  *   (`BOSS_ANSWER`): lobbing pults in the Brain Titan's and the Moon Howler's lane, where the average
  *   player puts Peashooters (he shoots at the giant); as the zombies he never sends into a lane
  *   whose strike is winding up (`strikeLanes`). The average player and the beginner are unaware.
+ *   On a zombie belt with ice (z2-5) he reads which lane gives; the others push as without ice.
  *
  * In a Breakthrough (a garden to break: z1-3, z1-6, Free Play's gardens) the average player and the
  * expert push one lane with every zombie (`breakthroughLane`): the expert reads which lane gives as
@@ -212,8 +213,13 @@ function plantBeltCommand(match: Match, card: CardKey, slot: number, lawn: reado
   return null;
 }
 
-/** The sensible player's belt move: the first belt card with a good use (a full belt plays any). */
-function sensibleBelt(match: Match, side: Faction, rng: BotRng, lane: { current: number; sent: number }): Command | null {
+/**
+ * The sensible player's belt move: the first belt card with a good use (a full belt plays any). As
+ * the zombies he pushes one lane with three cards, then looks again: the lane whose plants shoot
+ * and hold least - or, the expert on a lawn with ice, the lane that gives (`breakthroughLane`: he
+ * knows the icy lanes are fast; the average player does not look at the ice). No ice: both as before.
+ */
+function sensibleBelt(match: Match, side: Faction, rng: BotRng, lane: { current: number; sent: number }, kind: 'average' | 'expert' = 'average'): Command | null {
   const s = match.state;
   const lawn = readLawn(s);
   if (side === 'plants') {
@@ -227,7 +233,13 @@ function sensibleBelt(match: Match, side: Faction, rng: BotRng, lane: { current:
   }
   // Zombies: push one lane with three, then look again for the weakest.
   if (s.belt.length === 0) return null;
-  if (lane.current < 0 || lane.sent >= 3) { lane.current = weakestLane(match.balance, lawn, rng); lane.sent = 0; }
+  if (lane.current < 0 || lane.sent >= 3) {
+    // On ice the expert reads which lane gives, as in a Breakthrough (the walk is shorter on the
+    // icy lanes, so more of a zombie arrives): the Tundra's belt level is about choosing a fast lane.
+    const reads = kind === 'expert' && match.state.config.lawn.ice !== null;
+    lane.current = reads ? breakthroughLane(match, 'expert', rng).lane : weakestLane(match.balance, lawn, rng);
+    lane.sent = 0;
+  }
   // Tanks first, so the others walk behind them.
   let slot = s.belt.findIndex((c) => c === 'skeletonWarrior');
   if (slot < 0) slot = 0;
@@ -445,7 +457,7 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
       if (s.tick % beltEvery === 0) {
         // The average player's mistakes: now and then a random belt card to a random sensible tile.
         const careless = kind === 'average' && randomInt(rng, 100) < AVERAGE.randomShare * 100;
-        const cmd = careless ? beginnerBelt(match, side, rng) : sensibleBelt(match, side, rng, lane);
+        const cmd = careless ? beginnerBelt(match, side, rng) : sensibleBelt(match, side, rng, lane, kind);
         if (cmd !== null) out.push(cmd);
       }
       return out;

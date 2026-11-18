@@ -48,7 +48,9 @@ describe('openingWorld: the map opens on the world of the next level', () => {
   it('world 1 won: world 2 when it has levels, else world 1 stays', () => {
     const s: Save = { ...fresh, zombies: { stars: won('z1'), unlocked: [] } };
     expect(openingWorld(s, 'zombies', MORE)).toBe(2);
-    expect(openingWorld(s, 'zombies')).toBe(1);
+    // The shipped levels: the Frozen Tundra is there, so a Backyard graduate opens on it.
+    expect(openingWorld(s, 'zombies')).toBe(2);
+    expect(openingWorld(s, 'zombies', LEVELS.filter((l) => l.world === 1))).toBe(1);
   });
   it('everything won: the last world with levels', () => {
     const s: Save = { ...fresh, plants: { stars: { ...won('p1'), ...won('p2'), ...won('p3') }, unlocked: [] } };
