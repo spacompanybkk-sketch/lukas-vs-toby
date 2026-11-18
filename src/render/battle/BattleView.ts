@@ -12,7 +12,7 @@ import { InstanceBatch } from '../fx/InstanceBatch';
 import { MATTE_PLASTIC } from '../look';
 import { BaseView } from '../models/bases';
 import {
-  BURNING_TRAIL, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeGravestone, makeMergeMarker, makeProjectile, makeRock, makeToken, spinToken,
+  BURNING_TRAIL, FROZEN_MELON_TRAIL, FROZEN_MELON_TUMBLE, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeFrozenMelon, makeGravestone, makeMergeMarker, makeProjectile, makeRock, makeToken, spinToken,
   type TokenKind,
 } from '../models/props';
 import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
@@ -22,7 +22,7 @@ import { ModelInstance } from '../voxel/rig';
 import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
 import { BoxBatch } from '../world/boxes';
 import type { Lawn } from '../world/Lawn';
-import { BossFx, isBossKey } from './BossFx';
+import { BossFx, isBossKey, throwsFrozenMelons } from './BossFx';
 import { Hazards } from './Hazards';
 import { HeroFx } from './HeroFx';
 import { SpellFx } from './SpellFx';
@@ -154,6 +154,8 @@ interface ProjectileView {
   flight: Flight;
   /** Set alight by a Torchwood: drawn as a fireball with a fire trail. */
   burning: boolean;
+  /** A boss's barrage drawn as a frozen melon (its look's `fx.barrage`), not the acorn of its kind. */
+  frozen: boolean;
   /** A lobbed shot's landing x, which follows its target (from the state each step). */
   targetX: number | null;
   /** The step the state last listed it in: one missing from the state has gone. */
@@ -260,6 +262,8 @@ export class BattleView {
   };
   /** Burning peas waiting to be used again. */
   private readonly spareBurning: Object3D[] = [];
+  /** Frozen melons (the Frost Melon's barrage) waiting to be used again. */
+  private readonly spareFrozen: Object3D[] = [];
   private stamp = 0;
   /** What the units' statuses look like (stars, sand, rope, bubbles, flames), and Brain Rot's puddles. */
   readonly marks = new StatusMarks();
@@ -1401,14 +1405,16 @@ export class BattleView {
     id: number, kind: ProjectileKind, faction: Faction, flight: Flight, targetX: number | null, lane: number, x: number, ownerId: number,
     late = false,
   ): ProjectileView {
-    const object = this.spare[kind].pop() ?? makeProjectile(kind);
+    const owner = this.views.get(ownerId);
+    // A barrage flies as its boss's look says: the Oak's acorns, the Frost Melon's frozen melons.
+    const frozen = kind === 'acorn' && owner !== undefined && throwsFrozenMelons(owner.key);
+    const object = frozen ? this.spareFrozen.pop() ?? makeFrozenMelon() : this.spare[kind].pop() ?? makeProjectile(kind);
     object.visible = false;
     object.scale.setScalar(PROJECTILE_SCALE[kind]);
     object.rotation.set(0, 0, 0);
     this.scene.add(object);
-    const owner = this.views.get(ownerId);
     const view: ProjectileView = {
-      id, kind, faction, flight, burning: false, targetX, stamp: this.stamp,
+      id, kind, faction, flight, burning: false, frozen, targetX, stamp: this.stamp,
       lane, object, prevX: x, currX: x, age: 0,
       // Leaves at the snap of the shot, if the shooter has one to show.
       revealAt: !late && owner && owner.has('shoot') ? RELEASE_SECONDS : 0,
@@ -1430,6 +1436,7 @@ export class BattleView {
     }
     view.object.removeFromParent();
     if (view.burning) this.spareBurning.push(view.object);
+    else if (view.frozen) this.spareFrozen.push(view.object);
     else this.spare[view.kind].push(view.object);
   }
 
@@ -1563,11 +1570,11 @@ export class BattleView {
       } else {
         y = p.flightY + (p.fromY - p.flightY) * settle;
       }
-      const tumble = PROJECTILE_TUMBLE[p.kind];
+      const tumble = p.frozen ? FROZEN_MELON_TUMBLE : PROJECTILE_TUMBLE[p.kind];
       if (tumble > 0) p.object.rotation.set(this.time * tumble * TURN, this.time * tumble * TURN * 0.6, 0);
       p.object.position.set(drawnX, y, p.lane + 0.5 + p.fromZ * settle);
       p.object.updateMatrixWorld();
-      this.fx.trail(p.object, p.burning ? BURNING_TRAIL : PROJECTILE_TRAIL[p.kind]);
+      this.fx.trail(p.object, p.burning ? BURNING_TRAIL : p.frozen ? FROZEN_MELON_TRAIL : PROJECTILE_TRAIL[p.kind]);
     }
   }
 
