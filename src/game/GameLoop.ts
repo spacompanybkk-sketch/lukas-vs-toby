@@ -18,6 +18,17 @@ export const STEPS_PER_SECOND = 30;
 const MAX_GAP_MS = 250;
 /** The most steps one frame may run; whatever game time is still owed after that is dropped. */
 const MAX_STEPS_PER_FRAME = 5;
+/**
+ * Sped up (`timeScale` above 1: the 2X button), the steps of one frame stop once they have taken
+ * this long and the game time still owed is dropped: a device that cannot run double speed plays
+ * as fast as it can rather than falling behind and stalling. Normal speed is never cut by it.
+ */
+export const FAST_STEP_BUDGET_MS = 20;
+
+export interface GameLoopOptions {
+  /** The real-time clock the step budget is measured with (default `performance.now`). */
+  now?: () => number;
+}
 
 /** Fixed-step loop with interpolation: 30 simulation steps per second at any frame rate. */
 export class GameLoop {
@@ -31,9 +42,11 @@ export class GameLoop {
   private owed = 0;
   private lastMs: number | null = null;
   private rafId: number | null = null;
+  private readonly now: () => number;
 
-  constructor(host: LoopHost) {
+  constructor(host: LoopHost, opts: GameLoopOptions = {}) {
     this.host = host;
+    this.now = opts.now ?? (() => performance.now());
   }
 
   /** Starts calling `advance` on every animation frame. */
@@ -74,7 +87,10 @@ export class GameLoop {
     this.owed += (gapMs * scale * STEPS_PER_SECOND) / 1000;
 
     let steps = 0;
+    const budgeted = scale > 1;
+    const startMs = budgeted ? this.now() : 0;
     while (this.owed >= 1 && steps < MAX_STEPS_PER_FRAME) {
+      if (budgeted && steps > 0 && this.now() - startMs >= FAST_STEP_BUDGET_MS) break;
       this.host.step();
       this.owed -= 1;
       steps++;

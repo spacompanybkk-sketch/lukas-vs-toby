@@ -8,6 +8,7 @@
 }
 .battle .hud-tray,
 .battle .hud-pause,
+.battle .hud-speed,
 .battle .power,
 .battle .layer { pointer-events: auto; }
 
@@ -22,7 +23,7 @@
   gap: 12px;
 }
 .battle__left { justify-self: start; }
-.battle__right { justify-self: end; grid-column: 3; } /* stays right when there is no clock */
+.battle__right { justify-self: end; grid-column: 3; display: flex; align-items: flex-start; gap: 12px; } /* stays right when there is no clock */
 .battle__bases {
   position: absolute;
   top: calc(var(--gutter-top) + var(--hud-h) + var(--px-lip) + clamp(10px, 1.8vh, 20px));
@@ -163,6 +164,29 @@
 
 /* ---- Pause button ---- */
 .hud-pause { --ico-size: calc(max(var(--tap-min), var(--hud-h)) * 0.52); }
+
+/* ---- 2X button (beside Pause, its size and stone): the double arrow over the word 2X ----
+ * Its taps reach at least 64 px square: the hit area grows past a smaller drawn button
+ * (Pause's size on a short screen) without moving or covering anything drawn. */
+.hud-speed {
+  --hud-btn: max(var(--tap-min), var(--hud-h));
+  --ico-size: calc(var(--hud-btn) * 0.42);
+  flex-direction: column;
+  gap: 0;
+}
+.hud-speed::after {
+  content: '';
+  position: absolute;
+  inset: min(0px, calc((var(--hud-btn) - 64px) / 2));
+}
+.hud-speed__word {
+  font-size: calc(var(--hud-btn) * 0.3);
+  line-height: 1;
+  color: var(--white);
+  white-space: nowrap;
+  position: relative;
+  top: 0.04em;
+}
 
 /* ---- Card tray ----
  * No panning or zooming may start on the tray or a card: the browser would claim the touch and
