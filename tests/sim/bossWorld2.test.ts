@@ -46,7 +46,7 @@ describe('the rows (content design §2)', () => {
   });
 
   it('the Frost Melon: two phases, 8 s ice plates (×0.5) at half health, on column 0 guarding the base', () => {
-    expect([melon.hp, melon.speed, melon.col, melon.guardFactor]).toEqual([6000, 0, 0, 0.5]);
+    expect([melon.hp, melon.speed, melon.col, melon.guardFactor]).toEqual([10500, 0, 0, 0.5]);
     expect(melon.phases).toHaveLength(2);
     expect(melon.patterns.filter((p) => p.kind === 'shield')).toEqual([
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
@@ -58,15 +58,17 @@ describe('the rows (content design §2)', () => {
     expect(melon.phases![1]).toEqual([
       { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } },
       { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
-      { kind: 'summon', everySeconds: 6, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+      { kind: 'summon', everySeconds: 12, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
     ]);
   });
 
-  it.each([['moonHowler', howler], ['frostMelon', melon]] as const)('%s: one attack every 8-12 s in phase 1, more often in phase 2', (_key, stats: BossStats) => {
+  // The Melon's phase-2 Walnut Bombs come every 12 s since z2-8 was tuned (step-2 Task 7: at 6-8 s
+  // the walls stall 7-12% of a beginner's fights past six minutes), so its mean gap is 8.3 s.
+  it.each([['moonHowler', howler, 7], ['frostMelon', melon, 8.5]] as const)('%s: one attack every 8-12 s in phase 1, more often in phase 2', (_key, stats: BossStats, gap: number) => {
     const [p1, p2] = [patternsOf(stats, 0), patternsOf(stats, 1)];
     for (const p of p1) expect(p.everySeconds).toBeGreaterThanOrEqual(8);
     for (const p of p1) expect(p.everySeconds).toBeLessThanOrEqual(12);
-    expect(cycle(p2) / timed(p2)).toBeLessThanOrEqual(7);
+    expect(cycle(p2) / timed(p2)).toBeLessThanOrEqual(gap);
     expect(cycle(p2) / timed(p2)).toBeLessThan(cycle(p1) / timed(p1));
   });
 });

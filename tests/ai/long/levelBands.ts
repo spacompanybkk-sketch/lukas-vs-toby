@@ -42,6 +42,9 @@ const IDLE_P15 = 'worlds plan Task 8c: p1-5 must not be won by an idle player; e
 
 const BEGINNER_FLOOR = 'the beginner floor (70% on Easy) and the band top collide; ruling 6 keeps the floor. Every lever tried (bases, clocks, flag timing, Easy/Medium income, a bigger plant base) moves the beginner 3-6 points for every point of the average, who wins 97-100% wherever the beginner holds 70%';
 
+const TOBY_FLOOR = 'the zombie levels are the younger player\'s: the beginner floor (70% on Easy) is kept. Wherever the average player drops into his band the beginner wins 28-50%';
+const TUNDRA_BELT = 'the sensible players break the 7000 base before the growing garden bites; a 9000 base holds the average player 1.52-1.58 min (on the line) and takes the beginner to 3.4 min and 87.5-89%';
+
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-3 median length, beginner': `about 1.02 min: ${SHORT_BREAKTHROUGH}`,
   'z1-3 median length, average': `about 0.69 min: ${SHORT_BREAKTHROUGH}`,
@@ -64,6 +67,16 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'p2-6 average win': `100 / 100 / 100 (band 72.3-88.3): ${BEGINNER_FLOOR} (beginner 88 / 93 / 92; Medium ×0.45 gives average 85.5-88.5, beginner 13.5-31.5)`,
   'p2-7 average win': `100 / 100 / 99.5 (band 70.7-86.7): ${BEGINNER_FLOOR} (beginner 78 / 83 / 75.5)`,
   'p2-8 average win': `100 / 100 / 100 (boss band 64.2-85.2): ${BEGINNER_FLOOR} (beginner 75 / 74 / 76.5; at Howler hp 6200 the average is 87.5-99.5 and the beginner 47-57.5)`,
+  // The Frozen Tundra (step-2 plan Task 7, ruling 5; numbers: blocks 1 / 1001 / 2001). The average
+  // player wins 100% of z2-1..4, above his win band: the beginner (no stand-in knows a lane is icy
+  // but the expert on the belt) falls under his 70% floor long before the average player loses.
+  'z2-1 average win': `100 / 100 / 100 (band 80-96): ${TOBY_FLOOR} (no computer: a garden growing every 15 s on a 3000 zombie base gives average 94 with 1% three stars, beginner 34.5)`,
+  'z2-2 average win': `100 / 100 / 100 (band 78.5-94.5): ${TOBY_FLOOR} (Medium ×1.6 gives average 94.5, beginner 50.5; ×2.2 average 93, beginner 28)`,
+  'z2-3 average win': `100 / 100 / 100 (band 76.9-92.9): ${TOBY_FLOOR} (a 150 s clock with a Peashooter behind every wall gives average 90 with 5% three stars, beginner 40)`,
+  'z2-4 average win': `100 / 100 / 100 (band 75.4-91.4): ${TOBY_FLOOR} (Medium ×1.8 gives average 92, beginner 31; Hard ×0.8 average 84, beginner 45)`,
+  'z2-3 median length, expert': 'about 1.11 min on every block (average 1.7, beginner 2.15): he stacks the iced lane at once; a base big enough to hold him 1.5 min (9000: 1.42) takes the average player to 2.8 min with 4% three stars',
+  'z2-5 median length, average': `about 1.36 / 1.32 / 1.35 min: ${TUNDRA_BELT}`,
+  'z2-5 median length, expert': `about 1.12 min on every block: ${TUNDRA_BELT}`,
   // Free Play: a graduate now holds the Meadow's two unlocks (7 plant cards; the waves and gardens
   // carry what he met). Re-measured in step-2 Task 9 on blocks 1 / 1001 / 2001 (200 seeds each).
   // Survive is bimodal: the average player either falls near wave 10 or his Avocado Bunker line

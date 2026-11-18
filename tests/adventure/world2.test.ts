@@ -166,7 +166,7 @@ describe('the world-2 bosses (rows: Task 4, tests/sim/bossWorld2.test.ts; looks:
 
   it('the Frost Melon: phase 1 barrages and grows Peashooters, ice plates at half', () => {
     const b = BALANCE.bosses.frostMelon;
-    expect(b.hp).toBe(6000);
+    expect(b.hp).toBe(10500); // tuned with z2-8 (step-2 Task 7)
     expect(b.speed).toBe(0);
     expect(b.col).toBe(0);
     expect(b.guardFactor).toBe(0.5);
