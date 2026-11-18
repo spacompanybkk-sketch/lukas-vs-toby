@@ -3,6 +3,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LEVELS } from '../../src/adventure/levels';
+import { TEACHES } from '../../src/adventure/levels/teaches';
 import { BattleController } from '../../src/app/BattleController';
 import { session } from '../../src/app/session';
 import { go, startLevel } from '../../src/app/store';
@@ -19,6 +20,8 @@ import { W2 } from '../app/world2Lessons';
 
 // Step 2, Task 3: the twist pan through the app - the screen-wide catcher, the dimmed cards, Pause
 // above it, the "tap" glove after 3 s, remembered once, and HELP on the level card plays it again.
+// The Tundra's ice pan (z2-1) goes through the same steps, and the two zombie card lessons (z2-4 the
+// Hot Topic, z2-7 the Cowboy Zombie) point at the card, then at its lane.
 
 const NOW = 1_762_900_000_000;
 let root: HTMLElement;
@@ -72,6 +75,11 @@ const steps = (c: BattleController, n: number): void => { act(() => { for (let i
 
 function startP21(): BattleController {
   act(() => { expect(startLevel(W2['p2-1']!, me(), 5, LEVELS_W2)).toBe(true); });
+  return made[made.length - 1]!.c;
+}
+
+function startZ21(): BattleController {
+  act(() => { expect(startLevel(W2['z2-1']!, me(), 5, LEVELS_W2)).toBe(true); });
   return made[made.length - 1]!.c;
 }
 
@@ -130,6 +138,114 @@ describe('the twist pan through the app', () => {
     tap('[data-twist="ice"]');
     expect(me().teached).toEqual(['z2-1.ice']);
   });
+
+  it('the ice pan through the app, step for step as the fog: nothing before the hold; the catcher and is-twist; the tap glove after 3 s; Pause above it; a tap ends it, remembered once', () => {
+    const c = startZ21();
+    const battle = (): HTMLElement => need('[data-screen="battle"]');
+    expect(q('[data-twist]')).toBeNull();
+    expect(battle().classList.contains('is-twist')).toBe(false);
+    steps(c, 3);
+    const catcher = need('[data-twist="ice"]');
+    expect(catcher.dataset.twistStep).toBe('z2-1.ice');
+    expect(battle().classList.contains('is-twist')).toBe(true);
+    expect(battle().classList.contains('side-zombies')).toBe(true);
+    // No picture to read, no glove yet: the pan itself is the lesson.
+    expect(q('[data-glove]')).toBeNull();
+    steps(c, seconds(TWIST_HINT_SECONDS));
+    expect(need('[data-tutorial] [data-glove]').dataset.glove).toBe('tap');
+    expect(need('[data-glove]').dataset.gloveStep).toBe('z2-1.ice');
+    expect(c.match.state.tick).toBe(1); // held all the while
+    // Pause still pauses (it is above the catcher); the pan waits under the menu.
+    tap('[data-hud="pause"]');
+    expect(q('[data-screen="pause"]')).not.toBeNull();
+    expect(q('[data-twist]')).toBeNull();
+    expect(c.tutorial!.current?.id).toBe('z2-1.ice');
+    expect(battle().classList.contains('is-twist')).toBe(true);
+    tap('[data-screen="pause"] [data-action="resume"]');
+    // A tap anywhere ends it: nothing is sent, nothing is picked.
+    const selected = c.hud.selected.peek();
+    tap('[data-twist="ice"]');
+    expect(me().teached).toEqual(['z2-1.ice']);
+    expect(q('[data-twist]')).toBeNull();
+    expect(q('[data-tutorial]')).toBeNull();
+    expect(battle().classList.contains('is-twist')).toBe(false);
+    expect(c.hud.selected.peek()).toBe(selected);
+    expect(c.match.state.units.filter((u) => u.faction === 'zombies')).toHaveLength(0);
+    steps(c, 10);
+    expect(c.match.state.tick).toBe(11);
+    // Started again: shown once only.
+    expect(startZ21().tutorial).toBeNull();
+  });
+
+  it('HELP on z2-1\'s card plays the ice pan again for a player who has seen it', () => {
+    session.update((s) => ({ ...s, teached: ['z2-1.ice'] }));
+    act(() => go({ name: 'map', side: 'zombies', card: 'z2-1' }));
+    tap('[data-action="start-level"]');
+    expect(made[made.length - 1]!.c.tutorial).toBeNull();
+    act(() => go({ name: 'map', side: 'zombies', card: 'z2-1' }));
+    tap('[data-action="replay-tutorial"]');
+    const c = made[made.length - 1]!.c;
+    expect(c.tutorial?.current?.id).toBe('z2-1.ice');
+    steps(c, 3);
+    expect(q('[data-twist="ice"]')).not.toBeNull();
+    // Seen again, it is not written twice.
+    tap('[data-twist="ice"]');
+    expect(me().teached).toEqual(['z2-1.ice']);
+  });
+
+  it('a pointer dragged across the ice catcher does nothing; the next plain tap ends the pan', () => {
+    const c = startZ21();
+    steps(c, 3);
+    const catcher = need('[data-twist="ice"]');
+    act(() => {
+      catcher.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 500, clientY: 700, pointerId: 1, isPrimary: true }));
+      catcher.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 520, clientY: 500, pointerId: 1, isPrimary: true }));
+      catcher.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 540, clientY: 300, pointerId: 1, isPrimary: true }));
+      catcher.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 540, clientY: 300 }));
+    });
+    expect(c.tutorial!.current?.id).toBe('z2-1.ice');
+    steps(c, 10);
+    expect(c.match.state.tick).toBe(1);
+    expect(c.match.state.units.filter((u) => u.faction === 'zombies')).toHaveLength(0);
+    act(() => {
+      catcher.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 400, clientY: 400, pointerId: 2, isPrimary: true }));
+      catcher.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 404, clientY: 402, pointerId: 2, isPrimary: true }));
+      catcher.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 404, clientY: 402 }));
+    });
+    expect(c.tutorial!.current).toBeNull();
+    expect(q('[data-twist]')).toBeNull();
+  });
+
+  for (const [id, card, lane] of [['z2-4', 'hotTopic', 0], ['z2-7', 'cowboyZombie', 2]] as const) {
+    it(`${id}: the glove points at the ${card} card, then at its lane; two taps send it down there; remembered; no pan on this level`, () => {
+      // A player who has won the Tundra's levels before this one (and so holds its new card).
+      const won = Object.fromEntries(Array.from({ length: Number(id.split('-')[1]) - 1 }, (_, i) => [`z2-${i + 1}`, 2 as const]));
+      session.update((s) => ({
+        ...s, teached: ['z2-1.ice'],
+        zombies: { stars: { ...s.zombies.stars, ...won }, unlocked: ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'] },
+      }));
+      act(() => { expect(startLevel(W2[id]!, me(), 5, LEVELS_W2)).toBe(true); });
+      const c = made[made.length - 1]!.c;
+      // Once the card can be paid for the match holds on it, the glove on the card.
+      act(() => {
+        c.match.state.players.zombies.energy = 500;
+        for (let i = 0; i < seconds(10) && !c.tutorial!.holding; i++) c.step();
+      });
+      expect(q('[data-twist]')).toBeNull();
+      expect(need('[data-screen="battle"]').classList.contains('is-twist')).toBe(false);
+      const glove = (): HTMLElement => need('[data-tutorial] [data-glove]');
+      expect(glove().dataset.glove).toBe('card');
+      expect(glove().dataset.gloveStep).toBe(`${id}.${TEACHES[id]![0]!.id.split('.')[1]}`);
+      expect(glove().dataset.holding).toBe('true');
+      tap(`[data-hud="tray"] [data-card="${card}"]`);
+      expect(glove().dataset.glove).toBe('tile');
+      expect(glove().dataset.gloveStep).toBe(TEACHES[id]![1]!.id);
+      act(() => { c.click({ lane, col: 9 }, null); c.step(); });
+      expect(c.match.state.units.some((u) => u.key === card && u.lane === lane)).toBe(true);
+      expect(q('[data-tutorial]')).toBeNull();
+      expect(me().teached).toEqual(['z2-1.ice', ...TEACHES[id]!.map((t) => t.id)]);
+    });
+  }
 
   it('is-twist on the battle screen (raises Pause over the catcher, dims the cards) comes from the screen\'s render: kept through a re-render, gone when the pan ends', async () => {
     const c = startP21();

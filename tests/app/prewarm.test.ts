@@ -21,10 +21,13 @@ describe('modelsFor', () => {
     expect(modelsFor(match.state)).toContain('boneMinion');
   });
 
-  it("builds the level's own boss and no other (a parked boss's model is never built)", () => {
+  it("builds the level's own boss and no other (another world's boss is never built)", () => {
     const howler = modelsFor(bossDemoMatch('moonHowler', 1).state);
     expect(howler).toContain('moonHowler');
     for (const other of ['brainTitan', 'elderOak', 'frostMelon']) expect(howler).not.toContain(other);
+    const melon = modelsFor(bossDemoMatch('frostMelon', 1).state);
+    expect(melon).toContain('frostMelon');
+    for (const other of ['brainTitan', 'elderOak', 'moonHowler']) expect(melon).not.toContain(other);
     expect(modelsFor(new Match(defaultConfig(3)).state).some((k) => ['brainTitan', 'elderOak', 'moonHowler', 'frostMelon'].includes(k))).toBe(false);
   });
 });

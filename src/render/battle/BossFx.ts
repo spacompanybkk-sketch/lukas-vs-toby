@@ -28,6 +28,11 @@ export const BOSS_SCALE: Readonly<Record<BossKey, number>> = Object.fromEntries(
 /** A boss's look and shows. */
 const lookOf = (key: UnitKey): BossLook => BOSS_LOOK[key as BossKey];
 
+/** Whether the barrage of the boss `key` flies as frozen melons (`fx.barrage`), not acorns. */
+export function throwsFrozenMelons(key: UnitKey): boolean {
+  return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'frozenMelon';
+}
+
 /** Whether a unit key is a boss's. */
 export function isBossKey(key: UnitKey): key is BossKey {
   return Object.hasOwn(BOSS_HALF_WIDTH, key);
@@ -334,7 +339,8 @@ export class BossFx {
     }
     // The blow: the tint it was announced in (or, for a view that missed the wind-up, its list's).
     if (this.strikeLeft <= 0 && u !== undefined && Object.hasOwn(BOSS_HALF_WIDTH, u.key)) {
-      this.strikeTint = hex(warningOf(u.key as BossKey, firstStrikeStatus(patternsOf(this.balance.bosses[u.key as BossKey], u.phase))).frame);
+      const warning = warningOf(u.key as BossKey, firstStrikeStatus(patternsOf(this.balance.bosses[u.key as BossKey], u.phase)));
+      this.strikeTint = hex(warning.blow ?? warning.frame);
     }
     this.hideStrike();
     const tint = this.strikeTint;
@@ -910,7 +916,7 @@ export class BossFx {
       this.group.add(frame, fill);
       this.strikeTiles.push({ frame, fill });
     }
-    this.strikeTint = hex(warning.frame);
+    this.strikeTint = hex(warning.blow ?? warning.frame);
     this.strikeFrameMaterial.color.set(warning.frame);
     this.strikeFillMaterial.color.set(warning.fill);
     this.strikeFillMaterial.opacity = warning.opacity;

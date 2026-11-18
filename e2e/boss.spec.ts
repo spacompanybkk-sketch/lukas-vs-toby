@@ -6,7 +6,7 @@ import { frames } from './helpers';
 // clock, so only the test's `advance` moves the match (no race past the boss's fall on a slow machine);
 // `&table=shipped`: every boss with the shipped numbers (the Howler's demo row is the scene's own).
 
-for (const boss of ['brainTitan', 'elderOak', 'moonHowler'] as const) {
+for (const boss of ['brainTitan', 'elderOak', 'moonHowler', 'frostMelon'] as const) {
   test(`the ${boss} demo plays 30 s with its boss bar showing and no error`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto(`/?scene=boss-demo&boss=${boss}&seed=1&t=0&table=shipped&debug&cloud=fake`);
