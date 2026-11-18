@@ -8,7 +8,7 @@ import { BOSS_BAR_STEPS, BOSS_INTRO_MS, BossBar, bossStep } from '../../src/ui/h
 import { BALANCE } from '../../src/data/balance';
 import type { Balance } from '../../src/data/balance';
 import { cloneBalance } from '../../src/data/balance';
-import { bossDemoMatch } from '../../src/scenes/bossScript';
+import { bossDemoMatch, demoBalance } from '../../src/scenes/bossScript';
 import { Match, defaultConfig } from '../../src/sim/match';
 
 let root: HTMLElement;
@@ -84,6 +84,46 @@ describe('BossBar', () => {
     expect(q('[data-hud="boss-intro"]')).toBeNull();
     act(() => render(<BossBar boss={titan({ hp: 10 })} />, root));
     expect(q('[data-hud="boss-intro"]')).toBeNull();
+  });
+});
+
+describe('the Frost Melon\'s bar and entrance card', () => {
+  const melon = (over: Partial<BossVM> = {}): BossVM => ({ key: 'frostMelon', hp: 6000, max: 6000, shield: false, notches: [0.5], ...over });
+
+  it('wears its own face (a green melon under snow and an icicle crown), in its own ice-blue bar, with one notch at half', () => {
+    act(() => render(<BossBar boss={melon()} intro={false} />, root));
+    const bar = q('[data-hud="boss"]')!;
+    expect(bar.classList.contains('hud-boss--frostMelon')).toBe(true);
+    expect(bar.style.getPropertyValue('--boss-fill')).toBe('var(--c-sky)');
+    expect(bar.style.getPropertyValue('--boss-fill-hi')).toBe('var(--c-sky-hi)');
+    const fills = [...bar.querySelectorAll('.hud-boss__face-art rect')].map((r) => r.getAttribute('fill'));
+    expect(fills).toEqual(expect.arrayContaining(['#3FA34D', '#F4FBFF', '#7FD3F5']));
+    // Nothing of the Oak it stood in for: no bark, no leaves.
+    for (const oak of ['#A8703A', '#C98F55', '#58C13B']) expect(fills).not.toContain(oak);
+    expect([...root.querySelectorAll<HTMLElement>('.hud-boss__notch')].map((n) => n.style.left)).toEqual(['50%']);
+  });
+
+  it('its entrance card carries the same face; its shield shows over the bar; beaten, its eyes are knocked out', () => {
+    act(() => render(<BossBar boss={melon()} />, root));
+    const card = q('.hud-boss > [data-hud="boss-intro"]')!;
+    expect(card.classList.contains('hud-boss-intro--frostMelon')).toBe(true);
+    expect([...card.querySelectorAll('rect')].map((r) => r.getAttribute('fill'))).toEqual(expect.arrayContaining(['#3FA34D', '#F4FBFF']));
+    act(() => render(<BossBar boss={melon({ shield: true, hp: 3000 })} />, root));
+    expect(q('.hud-boss')!.classList.contains('is-shielded')).toBe(true);
+    const open = q('.hud-boss__face')!.innerHTML;
+    act(() => render(<BossBar boss={melon({ hp: 0 })} />, root));
+    expect(q('.hud-boss')!.classList.contains('is-down')).toBe(true);
+    expect(q('.hud-boss__face')!.innerHTML).not.toBe(open);
+  });
+
+  it('the controller reads it from the match: the demo\'s Melon, its shield mark from its own table', () => {
+    const balance = demoBalance('frostMelon');
+    const m = bossDemoMatch('frostMelon', 1, balance);
+    m.step();
+    const vm = bossOf(m.state, balance)!;
+    expect(vm.key).toBe('frostMelon');
+    expect(vm.notches).toEqual([0.7]);
+    expect(vm.shield).toBe(false);
   });
 });
 
