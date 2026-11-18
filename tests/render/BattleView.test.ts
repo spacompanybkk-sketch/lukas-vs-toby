@@ -1,4 +1,4 @@
-import { Object3D, PerspectiveCamera, Scene, Vector3 } from 'three';
+import { InstancedMesh, Matrix4, Object3D, PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { createBasicBot } from '../../src/ai/basicBot';
 import { BALANCE } from '../../src/data/balance';
@@ -362,6 +362,47 @@ describe('BattleView details', () => {
     expect(at[1]?.y).toBeGreaterThan(0.03);
     expect(at[2]?.y).toBeGreaterThan(at[1]?.y as number);
     expect(at[1]?.x).toBeGreaterThan(at[0]?.x as number);
+  });
+
+  // Owner's report: "after a hit the zombie's HP looks nearly zero (black)". Two zombies of one
+  // lane closer than a bar is wide but farther apart than a stack had their bars in one row, and
+  // the later-drawn bar's dark outline and track covered the other's green fill; the sixth and
+  // later of a stack shared the fifth's spot. No two zombie bars may cover more than an outline.
+  it.each([
+    ['one walking close behind another', [5.45, 5.0]],
+    ['three in a row, each half a tile apart', [5.0, 5.5, 6.0]],
+    ['a stack of seven at one spot', [6, 6, 6, 6, 6, 6, 6]],
+  ])('never lets a zombie health bar cover another one’s fill: %s', (_name, xs) => {
+    const ctx = setUp();
+    const zs = spawn(ctx, ...xs.map((x) => ['brainEater', 3, x] as [Parameters<typeof spawnUnit>[2], number, number]));
+    for (const z of zs) z.hp = Math.round(z.maxHp * 0.85);
+    ctx.view.applyEvents([], ctx.match.state);
+    ctx.run(1.5);
+    const mesh = ctx.scene.getObjectByName('health-bars') as InstancedMesh;
+    expect(mesh.count).toBe(3 * zs.length);
+    // Each bar's first quad is its outline, the whole bar's extent; measured in the camera's plane.
+    const m = new Matrix4();
+    const p = new Vector3();
+    const q = new Quaternion();
+    const s = new Vector3();
+    const rects: { x: number; y: number; w: number; h: number }[] = [];
+    for (let i = 0; i < mesh.count; i += 3) {
+      mesh.getMatrixAt(i, m);
+      m.decompose(p, q, s);
+      p.applyMatrix4(ctx.camera.matrixWorldInverse);
+      rects.push({ x: p.x, y: p.y, w: s.x, h: s.y });
+    }
+    const EDGE = 0.03;
+    for (let a = 0; a < rects.length; a++) {
+      for (let b = a + 1; b < rects.length; b++) {
+        const ra = rects[a] as (typeof rects)[number];
+        const rb = rects[b] as (typeof rects)[number];
+        const overlapX = (ra.w + rb.w) / 2 - Math.abs(ra.x - rb.x);
+        const overlapY = (ra.h + rb.h) / 2 - Math.abs(ra.y - rb.y);
+        // Overlapping in both directions by more than an outline would hide a fill.
+        expect(Math.min(overlapX, overlapY), `bars ${a} and ${b}`).toBeLessThanOrEqual(EDGE);
+      }
+    }
   });
 
   it('lets the Brain Eater’s brain go 0.12 s into the throw and gives it a new one 0.4 s later', () => {

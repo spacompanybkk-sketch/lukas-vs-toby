@@ -26,7 +26,7 @@ import { BossFx, isBossKey } from './BossFx';
 import { Hazards } from './Hazards';
 import { HeroFx } from './HeroFx';
 import { SpellFx } from './SpellFx';
-import { HealthBars } from './HealthBars';
+import { BAR_SPAN, HealthBars } from './HealthBars';
 import { StatusMarks } from './StatusMarks';
 import type { AimPreview, Feel } from './types';
 import { MARKS_QUIET } from '../world/PlaceMarks';
@@ -81,8 +81,12 @@ const BITE_STEP_BACK = 0.2;
 const BASE_HIT_GAP = 0.45;
 /** Bars of a zombie and the plant it bites stand apart: each is moved this far towards its own side. */
 const BAR_SHIFT = 0.11;
-/** Lift of each further bar in a stack: a bar and its outline, plus a gap. */
+/** Lift of each further row of bars: a bar and its outline, plus a gap. */
 const BAR_LIFT = 0.19;
+/** Bars of one lane closer than a bar's width plus this (the models glide to their spots) take different rows. */
+const BAR_ROOM = 0.04;
+/** The most rows of bars one lane's zombies can stand in (a bit mask holds which are taken). */
+const BAR_ROWS = 30;
 /** The lowest a zombie's bar sits (tiles above its feet, before the 0.14 gap). */
 const ZOMBIE_BAR_FLOOR = 1.1;
 /** Projectiles are drawn this much larger than built, so a pea reads against the grass. */
@@ -440,6 +444,20 @@ export class BattleView {
       // Behind the first, the rest of a stack queue back a little along the lane as well, so
       // five at one spot read as five.
       view.targetX = (u.blocked && u.x > BASE_STOP_X + 0.01 ? BITE_STEP_BACK : 0) + STACK_X * Math.min(place, 4);
+      // Its bar's row: the lowest one held by no earlier zombie of the lane whose bar would overlap
+      // it where they are drawn. Two zombies closer than a bar is wide, though farther apart than a
+      // stack, would otherwise share a row and one bar's dark track would cover the other's fill.
+      let taken = 0;
+      for (let j = 0; j < i; j++) {
+        const o = units[j];
+        if (!o || o.faction !== 'zombies' || o.lane !== u.lane) continue;
+        const other = this.views.get(o.id);
+        if (!other || other.boss) continue;
+        if (Math.abs(o.x + other.targetX - (u.x + view.targetX)) < BAR_SPAN + BAR_ROOM) taken |= 1 << other.barRow;
+      }
+      let row = 0;
+      while (row < BAR_ROWS && (taken & (1 << row)) !== 0) row++;
+      view.barRow = row;
     }
     const stamp = ++this.stamp;
     for (let i = 0; i < state.projectiles.length; i++) {
@@ -540,12 +558,12 @@ export class BattleView {
         if (view.lane !== lane || view.dying || view.leaping || view.boss || !(view.hp < view.maxHp)) continue;
         v1.copy(view.wrapper.position);
         v1.x += view.faction === 'plants' ? -BAR_SHIFT : BAR_SHIFT;
-        // A stack's bars stand in a column over the lane's centre line, one bar height apart, so
+        // A lane's bars stand over its centre line, in rows one bar height apart (see `barRow`), so
         // the depth nudge of the zombies under them cannot jumble them.
         v1.z = view.lane + 0.5;
         // Zombies' bars share one floor whatever their height, so a column of them is even.
         const top = view.faction === 'zombies' ? Math.max(view.height, ZOMBIE_BAR_FLOOR) : view.height;
-        v1.y = top + 0.14 + BAR_LIFT * Math.min(view.stackPlace, 4);
+        v1.y = top + 0.14 + BAR_LIFT * view.barRow;
         this.bars.add(v1, view.hp / view.maxHp, view.level);
         this.barCount++;
       }
@@ -750,7 +768,7 @@ export class BattleView {
         // Over the bar's spot (see the bars in `frame`), in the wrapper's own frame.
         marker.position.set(
           0,
-          top + 0.14 + BAR_LIFT * Math.min(view.stackPlace, 4) + MARKER_GAP + (up ? MARKER_STEP_UP : 0),
+          top + 0.14 + BAR_LIFT * view.barRow + MARKER_GAP + (up ? MARKER_STEP_UP : 0),
           0.5 + view.lane - view.wrapper.position.z,
         );
         marker.scale.setScalar(up ? MARKER_STEP_SCALE : 1);

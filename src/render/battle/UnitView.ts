@@ -132,8 +132,13 @@ export class UnitView {
   /** Sideways and upward nudge for a zombie in a stack: where it is and where it is going. */
   offsetZ = 0;
   targetZ = 0;
-  /** Its place in a stack (0: first), which also lifts its health bar clear of the others'. */
+  /** Its place in a stack (0: first), which lifts the model. */
   stackPlace = 0;
+  /**
+   * The row its health bar is lifted to (0: lowest): the lowest no earlier zombie of its lane whose
+   * bar would overlap this one's holds, so no bar's dark track covers another's fill.
+   */
+  barRow = 0;
   /** Drawn this far back from where it stands: a biting zombie steps back off its plant. */
   offsetX = 0;
   targetX = 0;

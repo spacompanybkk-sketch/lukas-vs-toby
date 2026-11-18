@@ -13,6 +13,8 @@ const BAR_W = 0.6;
 const BAR_H = 0.085;
 /** The dark outline round the bar and the pips. */
 const EDGE = 0.03;
+/** A bar's whole width, outline included: bars closer than this side by side would overlap. */
+export const BAR_SPAN = BAR_W + 2 * EDGE;
 const PIP = 0.085;
 const PIP_GAP = 0.012;
 /** Quads per unit at most: outline, track, fill, and an outline and a fill per pip (4 at level 5). */
