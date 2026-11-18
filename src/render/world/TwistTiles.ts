@@ -361,11 +361,14 @@ export class TwistTiles {
 // While a level's `twist` step holds the match, the camera eases in on the twist and ghosts act it
 // out: in fog a see-through Peashooter (the real model) shoots a pea that flies into a bank of mist
 // and vanishes in a white pixel puff at the level's reach, the lane past it drawn darker; on ice the
-// icy lanes pulse and a see-through Brain Eater slides down one, past one walking a plain lane. The
-// ghosts are pictures only: they are no units, the simulation never hears of them.
+// icy lanes pulse and a see-through Brain Eater slides down one with its arms up, past one walking a
+// plain lane, and skids to a stop at the far end in a puff of snow while the walker is still on its
+// way. The ghosts are pictures only: they are no units, the simulation never hears of them.
 
 /** The ghost pea's puff: the pale mist blue of a real shot fading in the fog (BattleView's fade puff). */
 export const GHOST_PUFF = 0xdde6ff;
+/** The sliding ghost's skid at the end of its icy lane: a puff of icy snow. */
+export const GHOST_SKID = 0x8fdcff;
 
 /** What the show needs from the effects: a puff of mist. */
 export interface PuffHost { puff(at: Vector3, color: number): void }
@@ -473,7 +476,8 @@ export class TwistShow {
       this.lane = sliderLane;
       this.slideSpeed = GHOST_WALK * (lawn.ice?.speed ?? 1.6);
       this.buildIce(icy);
-      this.slider = { lane: sliderLane, object: this.model('brainEater', GHOST_FROM_X, sliderLane) };
+      // Arms up all the way down (its `cheer`): it slides, it does not walk.
+      this.slider = { lane: sliderLane, object: this.model('brainEater', GHOST_FROM_X, sliderLane, 'cheer') };
       this.walker = walkerLane === null ? null : { lane: walkerLane, object: this.model('brainEater', GHOST_FROM_X, walkerLane, 'walk') };
       this.view = { pitchDeg: 46 };
       const raced = walkerLane === null ? [sliderLane] : [sliderLane, walkerLane];
@@ -487,7 +491,7 @@ export class TwistShow {
     if (this.disposed) return;
     const step = dt > 0 ? Math.min(dt, 0.25) : 0;
     this.clock += step;
-    for (const m of this.models) m.update(step);
+    for (let i = 0; i < this.models.length; i++) (this.models[i] as ModelInstance).update(step);
     if (this.kind === 'fog') this.updateFog(step);
     else this.updateIce();
   }
@@ -542,6 +546,9 @@ export class TwistShow {
       this.slider.object.position.x = GHOST_FROM_X - this.slideSpeed * t;
       if (this.walker !== null) this.walker.object.position.x = Math.max(GHOST_TO_X, GHOST_FROM_X - GHOST_WALK * t);
       if (this.clock >= run) {
+        // There first: it skids to a stop in a puff of snow, the walker still on its way.
+        this.puffAt.set(GHOST_TO_X, 0.25, this.lane + 0.5);
+        this.fx.puff(this.puffAt, GHOST_SKID);
         this.flying = false;
         this.clock = 0;
       }
@@ -551,7 +558,7 @@ export class TwistShow {
       this.loops += 1;
     }
     const level = PULSE_STEPS[Math.floor((this.clock + (this.flying ? 0 : 0.5)) * 6) % PULSE_STEPS.length] as number;
-    for (const m of this.pulses) m.opacity = level;
+    for (let i = 0; i < this.pulses.length; i++) (this.pulses[i] as MeshBasicMaterial).opacity = level;
   }
 
   /** A see-through copy of unit `key`'s real model standing at (x, lane), playing `clip` if it has it. */
