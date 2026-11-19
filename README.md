@@ -279,8 +279,13 @@ announces it. Numbers: `Balance.bosses.frostMelon`; looks:
 - Base health (plants / zombies; the design's in brackets): z2-1 5500 / 7000 (3500 / 12000),
   z2-2 5000 / 3800 (3500 / default), z2-3 5000 / 14000 (1200 / default), z2-4 5500 / 4000
   (4000 / default), z2-5 7000 / 9300 (4500 / 10000), z2-6 3800 / 14000 (900 / default), z2-7
-  3000 / 4000 (3000 / default), z2-8 default / 11000 (default / default); the default is 6000. The zombie base is what
-  the stars count on a zombie level, so it is set level by level.
+  3000 / 4000 (3000 / default), z2-8 default / 11000 (default / default); the default is 6000. Why:
+  the zombie base is what the stars count on a zombie level, and the plant base is how long the
+  level lasts. With the design's bases on the shipped gardens and clocks (seeds 1-60) the average
+  player takes three stars on 98-100% of seeds on z2-1 to z2-6 (shipped: 68-95%) and z2-3 lasts
+  him under a minute (0.97 min; shipped 1.76); z2-7's default zombie base gives the expert three
+  stars on 98% (shipped 92%); and on z2-8 the default zombie base, shot at by the garden all
+  through a long fight, leaves the average player three stars on 3% (shipped 50%).
 - The Frost Melon: 10500 health (design 5000–7500) and its phase-2 Walnut Bombs every 12 s
   (design 6 s), so walls do not stall a beginner's fight.
 
