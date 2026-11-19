@@ -69,6 +69,19 @@ describe('the Frozen Tundra (z2-1 … z2-8)', () => {
     }
   });
 
+  it('a growing garden (z2-1, z2-5) asks for every tile once: no later plant is scripted onto a tile the garden already holds', () => {
+    // The sim skips a scripted plant whose tile is taken, so a second plant on a tile would be one
+    // that mostly never grows (Task 7 review: z2-5's 21st Peashooter was scripted onto [1, 2]).
+    for (const l of levels) {
+      const tiles = [...l.prepared, ...l.waves].map((s) => `${s.lane},${String(s.col)}`);
+      expect(tiles.filter((t, i) => tiles.indexOf(t) !== i), l.id).toEqual([]);
+    }
+    const z25 = levels[4]!;
+    expect(z25.waves).toHaveLength(20);
+    expect(z25.waves.map((s) => s.at)).toEqual(Array.from({ length: 20 }, (_, i) => 20 + i * 12));
+    expect(z25.waves.at(-1)!.at).toBeLessThan(z25.seconds!);
+  });
+
   it('unlocks Hot Topic after z2-3 and the Cowboy Zombie after z2-6, each dealt from the next level on', () => {
     expect(levels.filter((l) => l.unlocks !== null).map((l) => [l.n, l.unlocks])).toEqual([[3, 'hotTopic'], [6, 'cowboyZombie']]);
     for (const l of levels) {

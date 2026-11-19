@@ -10,6 +10,11 @@ import type { Spawn } from '../types';
  * against the level stand-ins (step-2 plan Task 7 report). Short and forgiving: these are the
  * younger player's levels. Heroes on and spells on everywhere. Unlocks: Hot Topic after z2-3, the
  * Cowboy Zombie after z2-6.
+ *
+ * Every `baseHp` below but z2-7's plant base departs from the design's table, as do the clocks: the
+ * zombie base is what the stars count on a zombie level and the plant base is how long it lasts,
+ * and at the design's numbers the average player three-starred nearly every seed in about a minute.
+ * The README's Frozen Tundra section lists each one beside the design's with what was measured.
  */
 
 /** A level with nothing scripted; each entry below says only what differs. */
@@ -27,12 +32,11 @@ const ICY_THREE = [0, 2, 4];
 
 /**
  * z2-5's garden grows: a Peashooter every 12 s from 20 s, lanes 1, 3, 0, 4, 2 in turn, each round of
- * five on the next column of 1, 0, 4, 5 (20 new tiles, the last at 248 s). A 21st comes at 260 s on
- * lane 1, column 2, a tile the starting garden holds: it grows only where that first Peashooter has
- * been eaten (the sim skips a scripted plant whose tile is taken).
+ * five on the next column of 1, 0, 4, 5: 20 new tiles, none of them the starting garden's, the last
+ * at 248 s (the clock is 270 s).
  */
-const GROWING: Spawn[] = regrow('peashooter', Array.from({ length: 21 }, (_, i): [number, number, number] =>
-  [20 + i * 12, [1, 3, 0, 4, 2][i % 5]!, [1, 0, 4, 5, 2][Math.floor(i / 5)]!]));
+const GROWING: Spawn[] = regrow('peashooter', Array.from({ length: 20 }, (_, i): [number, number, number] =>
+  [20 + i * 12, [1, 3, 0, 4, 2][i % 5]!, [1, 0, 4, 5][Math.floor(i / 5)]!]));
 
 export const Z2: LevelDef[] = [
   {
