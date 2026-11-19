@@ -476,6 +476,27 @@ test('z2-8: the Frost Melon - entrance card, boss bar with its face, a barrage o
   await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
   await expect(page.locator('[data-stone="z2-8"]')).toHaveAttribute('data-stars', String(stars));
+  // No dead end for the Tundra's graduate: the map stays on the Tundra, every stone won and none
+  // waiting; the island after it (the zombies' world 3) is there behind its padlock, grey, with no
+  // stones, and refuses a tap; the way back leads to the Tundra, where a won level opens again.
+  const map = page.locator('[data-screen="map"]');
+  await expect(map).toHaveAttribute('data-world', '2');
+  await expect(page.locator('[data-stone][data-state="done"]')).toHaveCount(8);
+  await expect(page.locator('[data-action="world-next"]')).toHaveAttribute('data-locked', '');
+  await press(page.locator('[data-action="world-next"]'));
+  await expect(map).toHaveAttribute('data-world', '3');
+  await expect(map).toHaveAttribute('data-locked', '');
+  await expect(page.locator('[data-stone]')).toHaveCount(0);
+  await press(page.locator('[data-action="island-locked"]'));
+  await expect(page.locator('[data-action="island-locked"]')).toHaveClass(/is-deny-a/);
+  await expect(page.locator('[data-screen="level-card"]')).toHaveCount(0);
+  await press(page.locator('[data-action="world-prev"]'));
+  await expect(map).toHaveAttribute('data-arena', 'tundra');
+  await expect(map).not.toHaveAttribute('data-locked', '');
+  await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
+  await press(page.locator('[data-stone="z2-8"]'));
+  await expect(page.locator('[data-screen="level-card"][data-level="z2-8"] [data-action="start-level"]')).toBeVisible();
+  await press(page.locator('[data-action="close-card"]'));
   expect(await glContexts(page)).toBe(1);
   await keep(page);
 });
@@ -510,7 +531,8 @@ test('ten Tundra level ↔ map round trips: one WebGL context, the GPU\'s geomet
 
 // Screenshots for review, only when asked (iPad project): LVT_TUNDRA_SHOTS=<folder> npx playwright
 // test e2e/tundra.spec.ts --project ipad -g shots. Every Tundra level a little way in, the ice
-// lesson, the Melon's moments and the zombie map with world 2 open, at the three iPad sizes.
+// lesson, the Melon's moments (its freeze warning on ice and on snow), the results won and lost, and
+// the zombie map with world 2 open and world 3 shut, at the three iPad sizes.
 test('shots', async ({ page }) => {
   const dir = process.env.LVT_TUNDRA_SHOTS;
   test.skip(dir === undefined || test.info().project.name !== 'ipad', 'screenshots only on request, on the iPad project');
@@ -606,14 +628,20 @@ test('shots', async ({ page }) => {
     if (n < 8) await quit();
   }
   // z2-8: the Melon's moments, as the e2e fight finds them.
-  const moment = async (name: string, cond: string, ticks = 3, limit = 1500): Promise<void> => {
-    const ok = await page.evaluate(([test, step, max]) => {
+  // `hold`: the fight is kept going while it waits (the Melon above 40%, the zombie base whole).
+  const moment = async (name: string, cond: string, ticks = 3, limit = 1500, hold = false): Promise<void> => {
+    const ok = await page.evaluate(([test, step, max, keepUp]) => {
       const lvt = window.__lvt as any;
       const fx = lvt.session.view.bossFx;
       const s = () => lvt.session.controller.match.state;
       const scene = (n: string): boolean => { let on = false; lvt.stage.scene.traverse((o: any) => { if (o.name === n && o.parent && o.visible) on = true; }); return on; };
       const check = new Function('fx', 's', 'scene', `return (${test});`) as (f: unknown, st: unknown, sc: unknown) => boolean;
       for (let i = 0; i < max; i++) {
+        if (keepUp) {
+          const boss = s().units.find((u: any) => u.key === 'frostMelon');
+          if (boss) boss.hp = Math.max(boss.hp, Math.ceil(boss.maxHp * 0.4));
+          s().baseHp.zombies = s().baseMaxHp.zombies;
+        }
         if (check(fx, s, scene)) return true;
         if (i % 30 === 0 && s().winner === null) {
           const c = lvt.session.controller;
@@ -626,7 +654,7 @@ test('shots', async ({ page }) => {
         lvt.fastForward(step);
       }
       return false;
-    }, [cond, ticks, limit] as const);
+    }, [cond, ticks, limit, hold] as const);
     expect(ok, name).toBe(true);
     await shoot(`melon-${name}`);
   };
@@ -638,6 +666,16 @@ test('shots', async ({ page }) => {
   });
   await moment('plates', 'fx.barkShut', 3);
   await moment('freeze-windup', 'fx.striking && scene("boss-strike-fill")', 1);
+  // The warning on both grounds: a freeze of two icy lanes, and one that takes the plain (snow) lane
+  // the Melon stands on. The lanes are the seed's, so the fight is held until each has come.
+  const struck = (snow: boolean): string => `fx.striking && scene("boss-strike-fill") && (() => {
+    const b = s().units.find((u) => u.key === "frostMelon");
+    const lanes = [...new Set((b ? b.strikeTiles : []).map((t) => Math.floor(t / 10)))];
+    const ice = s().config.lawn.ice.lanes;
+    return lanes.length === 2 && lanes.some((l) => !ice.includes(l)) === ${String(snow)};
+  })()`;
+  await moment('freeze-windup-on-ice', struck(false), 1, 9000, true);
+  await moment('freeze-windup-on-snow', struck(true), 1, 9000, true);
   await moment('frozen-lanes', "s().units.some((u) => u.faction === 'zombies' && u.stun > 0)", 1);
   await moment('phase2', 's().units.some((u) => u.key === "frostMelon" && u.phase >= 1 && u.shieldLeft <= 0) && !fx.striking', 3);
   await page.evaluate(() => {
@@ -648,4 +686,29 @@ test('shots', async ({ page }) => {
   await page.evaluate(() => (window.__lvt as any).fastForward(20));
   await frames(page, 20);
   await shoot('melon-defeat-after');
+  // z2-8's result (won), the map it leads back to, and the island after the Tundra, still shut.
+  await expect(page.locator('[data-level-result="z2-8"]')).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(3000);
+  await shoot('result-z2-8-won');
+  await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
+  await frames(page, 20);
+  await shoot('map-tundra-all-won');
+  await press(page.locator('[data-action="world-next"]'));
+  await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-locked', '');
+  await frames(page, 20);
+  await shoot('map-zombies-world3-locked');
+  // A plain level won and lost (z2-2), and the Melon's level lost.
+  for (const [id, loser] of [['z2-2', 'plants'], ['z2-2', 'zombies'], ['z2-8', 'zombies']] as const) {
+    await go({ name: 'map', side: 'zombies', world: 2, card: id });
+    await page.locator('[data-action="start-level"]').click();
+    await waitLive(page);
+    await page.evaluate(() => (window.__lvt as any).fastForward(90));
+    await forceResult(page, loser);
+    await expect(page.locator(`[data-level-result="${id}"]`)).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(3000);
+    await shoot(`result-${id}-${loser === 'plants' ? 'won' : 'lost'}`);
+    await press(page.locator('[data-screen="result"] [data-action="map"]'));
+    await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  }
 });
