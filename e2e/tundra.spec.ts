@@ -330,10 +330,16 @@ interface Fight {
   stunned: number; defeated: boolean;
 }
 
-/** Zombies down every lane (energy topped up, straight into the match as the screenshot tools do), so the Melon always has someone to throw at, freeze and be bitten by. */
+/**
+ * Zombies down every lane (energy topped up, straight into the match as the screenshot tools do), so
+ * the Melon always has someone to throw at, freeze and be bitten by. Never more than a child's crowd
+ * at once: sent without a limit, two hundred of them bite the Melon down in seconds, before it has
+ * shown its second phase.
+ */
 const sendWave = (page: Page): Promise<void> => page.evaluate(() => {
   const c = (window.__lvt as any).session.controller;
   if (c.match.state.winner !== null) return;
+  if (c.match.state.units.filter((u: any) => u.faction === 'zombies').length >= 30) return;
   for (const lane of [0, 1, 2, 3, 4]) {
     for (const unit of ['skeletonWarrior', 'brainEater']) {
       c.match.state.players.zombies.energy = 5000;
@@ -381,9 +387,11 @@ test('z2-8: the Frost Melon - entrance card, boss bar with its face, a barrage o
     };
     lvt.__fight = f;
     const drawn = (o: any): boolean => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
-    const step = c.step.bind(c);
-    c.step = () => {
-      const events = step();
+    // Watched at the match itself, not at the controller: `sendWave` steps the match directly, and
+    // the Melon may pass its half-health mark (the shield's event) in one of those steps.
+    const step = c.match.step.bind(c.match);
+    c.match.step = (commands: unknown) => {
+      const events = step(commands);
       const s = c.match.state;
       const boss = s.units.find((u: any) => u.key === 'frostMelon');
       const fx = lvt.session.view.bossFx;
@@ -446,7 +454,13 @@ test('z2-8: the Frost Melon - entrance card, boss bar with its face, a barrage o
   // Phase 2: frosted over, it freezes two lanes (they blink blue, its crown lit), and the zombies there stand frozen.
   await expect.poll(async () => {
     await sendWave(page);
-    await page.evaluate(() => (window.__lvt as any).fastForward(10));
+    // The Melon is kept standing (above a third) until its freeze has been seen.
+    await page.evaluate(() => {
+      const lvt = window.__lvt as any;
+      const boss = lvt.session.controller.match.state.units.find((u: any) => u.key === 'frostMelon');
+      if (boss) boss.hp = Math.max(boss.hp, Math.ceil(boss.maxHp / 3));
+      lvt.fastForward(10);
+    });
     await frames(page, 1);
     const f = await fight();
     return f.phase2 && f.frost && f.freeze && f.freezeShown && f.crown && f.stunned > 0;
