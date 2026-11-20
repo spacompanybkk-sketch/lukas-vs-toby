@@ -642,22 +642,24 @@ test('shots', async ({ page }) => {
     if (n < 8) await quit();
   }
   // z2-8: the Melon's moments, as the e2e fight finds them.
-  // `hold`: the fight is kept going while it waits (the Melon above 40%, the zombie base whole).
-  const moment = async (name: string, cond: string, ticks = 3, limit = 1500, hold = false): Promise<void> => {
-    const ok = await page.evaluate(([test, step, max, keepUp]) => {
+  // `hold`: the fight is kept going while it waits (the Melon above that share of its health, the
+  // zombie base whole). The zombies sent are a child's crowd, never more than thirty at once: two
+  // hundred bite the Melon down before it has thrown anything.
+  const moment = async (name: string, cond: string, ticks = 3, limit = 1500, hold = 0): Promise<void> => {
+    const ok = await page.evaluate(([test, step, max, floor]) => {
       const lvt = window.__lvt as any;
       const fx = lvt.session.view.bossFx;
       const s = () => lvt.session.controller.match.state;
       const scene = (n: string): boolean => { let on = false; lvt.stage.scene.traverse((o: any) => { if (o.name === n && o.parent && o.visible) on = true; }); return on; };
       const check = new Function('fx', 's', 'scene', `return (${test});`) as (f: unknown, st: unknown, sc: unknown) => boolean;
       for (let i = 0; i < max; i++) {
-        if (keepUp) {
+        if (floor > 0) {
           const boss = s().units.find((u: any) => u.key === 'frostMelon');
-          if (boss) boss.hp = Math.max(boss.hp, Math.ceil(boss.maxHp * 0.4));
+          if (boss) boss.hp = Math.max(boss.hp, Math.ceil(boss.maxHp * floor));
           s().baseHp.zombies = s().baseMaxHp.zombies;
         }
         if (check(fx, s, scene)) return true;
-        if (i % 30 === 0 && s().winner === null) {
+        if (i % 30 === 0 && s().winner === null && s().units.filter((u: any) => u.faction === 'zombies').length < 30) {
           const c = lvt.session.controller;
           for (const lane of [0, 1, 2, 3, 4]) {
             c.match.state.players.zombies.energy = 5000;
@@ -672,26 +674,33 @@ test('shots', async ({ page }) => {
     expect(ok, name).toBe(true);
     await shoot(`melon-${name}`);
   };
-  await moment('barrage', "scene('projectile-frozen-melon') && scene('boss-acorn-mark')", 1);
-  await moment('summon', "s().units.some((u) => u.faction === 'plants' && u.key === 'peashooter' && u.x >= 1.5)", 3);
+  // Conditions read the match and the boss's show, not the scene: the scene is only brought up to date on a drawn frame.
+  await moment('barrage', "s().projectiles.some((p) => p.kind === 'acorn' && s().tick - p.spawnTick > 8)", 1, 1500, 0.6);
+  await moment('summon', "s().units.some((u) => u.faction === 'plants' && u.key === 'peashooter' && u.x >= 1.5)", 3, 1500, 0.6);
   await page.evaluate(() => {
     const boss = (window.__lvt as any).session.controller.match.state.units.find((u: any) => u.key === 'frostMelon');
     boss.hp = Math.ceil(boss.maxHp * 0.505);
   });
-  await moment('plates', 'fx.barkShut', 3);
-  await moment('freeze-windup', 'fx.striking && scene("boss-strike-fill")', 1);
+  await moment('plates', 'fx.barkShut', 3, 1500, 0.4);
+  await moment('freeze-windup', 'fx.striking', 1, 1500, 0.4);
   // The warning on both grounds: a freeze of two icy lanes, and one that takes the plain (snow) lane
   // the Melon stands on. The lanes are the seed's, so the fight is held until each has come.
-  const struck = (snow: boolean): string => `fx.striking && scene("boss-strike-fill") && (() => {
+  const struck = (snow: boolean): string => `fx.striking && (() => {
     const b = s().units.find((u) => u.key === "frostMelon");
     const lanes = [...new Set((b ? b.strikeTiles : []).map((t) => Math.floor(t / 10)))];
     const ice = s().config.lawn.ice.lanes;
     return lanes.length === 2 && lanes.some((l) => !ice.includes(l)) === ${String(snow)};
   })()`;
-  await moment('freeze-windup-on-ice', struck(false), 1, 9000, true);
-  await moment('freeze-windup-on-snow', struck(true), 1, 9000, true);
-  await moment('frozen-lanes', "s().units.some((u) => u.faction === 'zombies' && u.stun > 0)", 1);
-  await moment('phase2', 's().units.some((u) => u.key === "frostMelon" && u.phase >= 1 && u.shieldLeft <= 0) && !fx.striking', 3);
+  // The warning blinks: two more pictures of each, a fifth of a second apart.
+  for (const [name, snow] of [['on-ice', false], ['on-snow', true]] as const) {
+    await moment(`freeze-windup-${name}`, struck(snow), 1, 9000, 0.4);
+    for (const again of ['b', 'c']) {
+      await page.evaluate(() => (window.__lvt as any).fastForward(6));
+      await shoot(`melon-freeze-windup-${name}-${again}`);
+    }
+  }
+  await moment('frozen-lanes', "s().units.some((u) => u.faction === 'zombies' && u.stun > 0)", 1, 1500, 0.4);
+  await moment('phase2', 's().units.some((u) => u.key === "frostMelon" && u.phase >= 1 && u.shieldLeft <= 0) && !fx.striking', 3, 1500, 0.4);
   await page.evaluate(() => {
     const boss = (window.__lvt as any).session.controller.match.state.units.find((u: any) => u.key === 'frostMelon');
     if (boss) { boss.hp = 20; boss.shieldLeft = 0; }
