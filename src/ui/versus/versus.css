@@ -102,6 +102,10 @@
 .vs-ticks__box:disabled { filter: grayscale(0.4); cursor: default; }
 .vs-ticks__offline { display: block; width: 72px; height: 72px; padding: 8px; align-self: center; }
 
+/* Rules below that override a theme.css / hud.css rule on the same element carry that rule's class
+ * too (.btn., .panel., .inked, .result__panel.), so they win whatever order the bundler loads the
+ * sheets in (tests/ui/versus/versusCss.test.ts). */
+
 /* ---- Getting ready: both faces, swords, three blocks filling ---- */
 .vs-ready { place-items: center; align-content: center; gap: clamp(24px, 5vh, 48px); }
 .vs-ready__faces { display: flex; align-items: center; gap: clamp(24px, 5vw, 64px); animation: px-pop var(--t-pop) steps(4, end) both; }
@@ -128,19 +132,19 @@
 .vs-stall__glass { display: block; width: 56px; height: 56px; }
 .vs-stall__glass[data-anim='slow'] { animation: vs-turn 3000ms steps(4, end) infinite; }
 @keyframes vs-turn { 0%, 40% { rotate: 0deg; } 50%, 90% { rotate: 180deg; } 100% { rotate: 360deg; } }
-.vs-stall__line { font-family: var(--font-body); font-size: var(--fs-body); color: var(--white); }
-.vs-stall__flag, .vs-stall__play { padding: 10px; }
-.vs-stall__play { min-width: 160px; --ico-size: 56px; }
+.vs-stall__line.inked { font-family: var(--font-body); font-size: var(--fs-body); color: var(--white); }
+.btn.vs-stall__flag, .btn.vs-stall__play { padding: 10px; }
+.btn.vs-stall__play { min-width: 160px; --ico-size: 56px; }
 
 /* ---- Notices: one picture, one home button ---- */
 .vs-notice { place-items: center; }
-.vs-notice__card { display: flex; flex-direction: column; align-items: center; gap: clamp(16px, 3vh, 28px); padding: clamp(18px, 3vh, 32px) clamp(28px, 5vw, 56px); animation: px-pop var(--t-pop) steps(4, end) both; }
+.panel.vs-notice__card { display: flex; flex-direction: column; align-items: center; gap: clamp(16px, 3vh, 28px); padding: clamp(18px, 3vh, 32px) clamp(28px, 5vw, 56px); animation: px-pop var(--t-pop) steps(4, end) both; }
 .vs-notice__pic { display: block; width: clamp(160px, 28vh, 240px); height: clamp(160px, 28vh, 240px); }
 .vs-notice[data-notice='broken'] .vs-notice__card, .vs-notice[data-notice='shrug'] .vs-notice__card { animation: vs-shake 480ms steps(6, end) 1 both; }
-.vs-notice__home { min-width: 160px; --ico-size: 56px; }
+.btn.vs-notice__home { min-width: 160px; --ico-size: 56px; }
 
 /* ---- The Versus result ---- */
-.result__panel--versus { grid-template-columns: auto; grid-template-areas: 'word' 'versus'; }
+.result__panel.result__panel--versus { grid-template-columns: auto; grid-template-areas: 'word' 'versus'; }
 .vs-result { grid-area: versus; display: flex; flex-direction: column; align-items: center; gap: clamp(8px, 1.6vh, 16px); }
 .vs-result__faces { display: flex; align-items: flex-end; gap: clamp(20px, 4vw, 48px); }
 .vs-result__winner { position: relative; display: flex; flex-direction: column; align-items: center; }
@@ -154,9 +158,9 @@
 .vs-score__wins { display: flex; height: 40px; }
 .vs-score__wins svg.pixel-icon { width: 32px; height: 40px; }
 .vs-score__vs { display: block; width: 44px; height: 44px; }
-.vs-result__rematch { position: relative; min-width: 160px; }
-.vs-result__rematch.is-off { filter: grayscale(1) brightness(0.8); }
-.vs-result__rematch.is-off:active { transform: none; }
+.btn.vs-result__rematch { position: relative; min-width: 160px; }
+.btn.vs-result__rematch.is-off { filter: grayscale(1) brightness(0.8); }
+.btn.vs-result__rematch.is-off:active { transform: none; }
 .vs-rematch { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .vs-rematch__arrows { --ico-size: 48px; }
 .vs-rematch__swap { display: flex; gap: 4px; --ico-size: 22px; }

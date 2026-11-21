@@ -61,6 +61,17 @@ describe('waiting for the other device', () => {
   it('the small hourglass sits on the given side\'s base bar', () => {
     act(() => render(<Waiting who={LUKAS} stage="hourglass" side="plants" portraits={{}} onFlag={() => {}} />, root));
     expect(need('[data-stall="hourglass"]').dataset['side']).toBe('plants');
+    act(() => render(<Waiting who={LUKAS} stage="hourglass" side="zombies" portraits={{}} onFlag={() => {}} />, root));
+    const glass = need('[data-stall="hourglass"]');
+    expect(glass.dataset['side']).toBe('zombies');
+    expect(glass.classList.contains('vs-stall-glass--zombies')).toBe(true);
+  });
+
+  it('no side given: the attribute and the class agree on the plants\' bar', () => {
+    mount('hourglass');
+    const glass = need('[data-stall="hourglass"]');
+    expect(glass.dataset['side']).toBe('plants');
+    expect(glass.classList.contains('vs-stall-glass--plants')).toBe(true);
   });
 
   it('face: the lawn dims, his face big and asleep (Zzz), a slow hourglass, no flag yet', () => {

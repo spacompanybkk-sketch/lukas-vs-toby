@@ -26,8 +26,9 @@ export function Waiting({ who, stage, portraits, onFlag, line, side }: {
 }) {
   if (stage === 'none' || stage === 'unfinished') return null;
   if (stage === 'hourglass') {
+    const bar = side ?? 'plants';
     return (
-      <span class={`vs-stall-glass vs-stall-glass--${side ?? 'plants'}`} data-stall="hourglass" data-side={side} aria-label="Waiting">
+      <span class={`vs-stall-glass vs-stall-glass--${bar}`} data-stall="hourglass" data-side={bar} aria-label="Waiting">
         <PixelIcon art={HOURGLASS} />
       </span>
     );
