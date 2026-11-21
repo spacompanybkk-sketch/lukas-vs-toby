@@ -26,9 +26,5 @@ export const HEAD_MAX = 5;
 
 export const otherSide = (side: Faction): Faction => (side === 'plants' ? 'zombies' : 'plants');
 
-/**
- * How long the other device has been silent, as the battle shows it. Structurally Task 3's
- * `StallStage` (src/net/timeouts.ts, lane S, not on this branch yet): the integration may import
- * either; they are the same union.
- */
-export type StallStage = 'none' | 'hourglass' | 'face' | 'flag' | 'unfinished';
+/** How long the other device has been silent, as the battle shows it (the net layer's table). */
+export type { StallStage } from '../../net/timeouts';
