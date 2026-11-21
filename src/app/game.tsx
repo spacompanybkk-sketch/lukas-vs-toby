@@ -12,7 +12,8 @@ import { flyToken } from '../ui/hud/tokenFlight';
 import type { BattleSessionLike } from '../ui/screens/BattleScreen';
 import type { BattleOptions } from './BattleController';
 import { BattleSession } from './BattleSession';
-import { installDebug, markReady } from './debug';
+import { installDebug, installVersusDebug, markReady } from './debug';
+import { pageVersusFlow } from './pageVersus';
 import { loadSettings } from './settings';
 import type { Settings } from './settings';
 import { board } from './board';
@@ -92,6 +93,9 @@ export function mountGame(
   lvt.board = board;
   lvt.skipClock = (ms: number) => { skew += ms; };
   lvt.players = session;
+  // Two-device Versus: one flow for the page; it follows the player's log-ins and log-outs itself.
+  const versus = pageVersusFlow();
+  const stopVersusDebug = installVersusDebug(versus, () => session.deviceStorage());
   // A level result still on the device (the page went away before it reached the save) goes in
   // first, at start and at every log-in.
   const stopPending = watchPending(session);
@@ -240,7 +244,7 @@ export function mountGame(
     <App
       createSession={createSession} portraits={portraits.value} boys={boys}
       onSettingsChange={onSettingsChange} onGesture={onGesture} energyRef={energyRef} fpsSource={fpsSource}
-      onSound={playUi} onMusic={playMusic} almanac={almanac ?? undefined} map={map ?? undefined}
+      onSound={playUi} onMusic={playMusic} almanac={almanac ?? undefined} map={map ?? undefined} versus={versus}
     />
   );
   render(<Root />, ui);
@@ -249,6 +253,8 @@ export function mountGame(
     stopScreens();
     stopPending();
     render(null, ui);
+    stopVersusDebug();
+    versus.dispose();
     session.dispose();
     current?.dispose();
     stage?.dispose();

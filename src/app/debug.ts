@@ -1,7 +1,23 @@
 import type { WorldKey } from '../data/worlds';
 import type { Renderer } from '../render/Renderer';
 import type { Lawn } from '../render/world/Lawn';
-import type { LawnConfig } from '../sim/types';
+import type { Faction, LawnConfig } from '../sim/types';
+import type { LockstepMatch } from '../net/lockstepMatch';
+import type { VersusFlow } from './versus';
+
+/**
+ * `window.__lvt.versus` (only with the gate open): the two-device match as the browser tests see it.
+ * `hash()` and `tick()` are the sim's, for comparing the two devices (-1 before any match);
+ * `seat()` and `matchId()` are the match's (null before any). They keep answering for the match
+ * just played while its result is up.
+ */
+export interface VersusDebug {
+  hash(): number;
+  tick(): number;
+  seat(): Faction | null;
+  matchId(): string | null;
+  flow: VersusFlow;
+}
 
 /** Test hooks exposed on `window.__lvt`; later tasks add fields to it. */
 export interface LvtDebug {
@@ -18,6 +34,8 @@ export interface LvtDebug {
   setWorld?: (world: WorldKey, lawn?: Partial<LawnConfig>) => void;
   /** True: a boss's entrance card stays up until it is tapped (its 1.5 s timer does nothing). */
   holdBossIntro?: boolean;
+  /** Two-device Versus: see `VersusDebug`. */
+  versus?: VersusDebug;
   [key: string]: unknown;
 }
 
@@ -63,4 +81,45 @@ export function installDebug(enabled = debugEnabled(import.meta.env.DEV, locatio
 /** Call after the scene's first frame has been drawn. */
 export function markReady(): void {
   resolveReady();
+}
+
+/** The id the flow kept on the device for the match in play (`lvt2_vmatch`), or null. */
+function keptMatchId(storage: Storage | undefined): string | null {
+  try {
+    const raw = storage?.getItem('lvt2_vmatch');
+    const id = raw === null || raw === undefined ? null : (JSON.parse(raw) as { id?: unknown }).id;
+    return typeof id === 'string' ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Puts `versus` on the test hooks when the gate is open (`?debug` or a dev build); shut, it does
+ * nothing, so `window.__lvt.versus` does not exist in a player's browser. Returns what stops it.
+ * `storage` is the device storage the flow keeps its match key in.
+ */
+export function installVersusDebug(
+  flow: VersusFlow, storage: () => Storage | undefined, enabled = debugEnabled(import.meta.env.DEV, location.search),
+): () => void {
+  if (!enabled) return () => {};
+  const lvt = installDebug(true);
+  let last: { link: LockstepMatch; id: string | null } | null = null;
+  const stop = flow.phase.subscribe((phase) => {
+    if (phase.name === 'battle' && phase.options.online !== undefined) {
+      const link = phase.options.online.link;
+      if (last?.link !== link) last = { link, id: keptMatchId(storage()) };
+    }
+  });
+  lvt.versus = {
+    hash: () => last?.link.match.hash() ?? -1,
+    tick: () => last?.link.match.state.tick ?? -1,
+    seat: () => last?.link.seat ?? null,
+    matchId: () => last?.id ?? null,
+    flow,
+  };
+  return () => {
+    stop();
+    if (lvt.versus?.flow === flow) delete lvt.versus;
+  };
 }

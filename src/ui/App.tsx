@@ -9,6 +9,7 @@ import type { Settings } from '../app/settings';
 import { session as players } from '../app/session';
 import { go, screen, startFreePlay, startLevel } from '../app/store';
 import { settleFreePlay, settleLevel } from '../app/levelSession';
+import type { VersusFlow } from '../app/versus';
 import { rememberTaught } from '../app/tutorial';
 import type { Tutorial } from '../app/tutorial';
 import type { FreePlayOutcome, LevelOutcome, LevelRecord } from '../app/levelSession';
@@ -41,6 +42,12 @@ import { PlayMenu, PlaySide } from './screens/PlayMenu';
 import { MapScreen } from './screens/Map';
 import type { MapHost } from './screens/Map';
 import { Title } from './screens/Title';
+import type { VersusTicksProps } from './screens/GrownUp';
+import { GettingReady } from './versus/GettingReady';
+import { InviteCard } from './versus/InviteCard';
+import { InvitePanel } from './versus/InvitePanel';
+import { VersusNotice } from './versus/VersusNotice';
+import { WhoIsHere } from './versus/WhoIsHere';
 import { setUiSound } from './uiSound';
 import type { UiSoundOptions } from './uiSound';
 import './screens/screens.css';
@@ -75,7 +82,17 @@ export interface AppProps {
   almanac?: AlmanacHost;
   /** The Adventure map's 3D board on the shared stage (none: the stones are laid out flat). */
   map?: MapHost;
+  /**
+   * Two-device Versus: the page's flow (`pageVersusFlow`), one for the life of the page; it follows
+   * log-ins and log-outs itself. None: no Versus (the tile stays locked, no panel, no way back).
+   */
+  versus?: VersusFlow;
 }
+
+const NO_PORTRAITS: Record<string, string> = Object.freeze({});
+
+/** The screens a player waits on, where an invite may arrive (spec 4.2); the lobby counts the device "here" on them. */
+const MENU_SCREENS: ReadonlySet<string> = new Set(['home', 'play', 'map', 'marketplace', 'almanac', 'leaderboard']);
 
 /** Production fallback: there is no stand-in, so a missing factory is a loud error. */
 const missingSession: SessionFactory = () => {
@@ -166,13 +183,21 @@ function useTouchHousekeeping(onGesture: (() => boolean | Promise<boolean>) | un
   }, []);
 }
 
-export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, onMusic, almanac, map }: AppProps) {
+export function App({ createSession: given, portraits, boys, onSettingsChange, onGesture, energyRef, fpsSource, onSound, onMusic, almanac, map, versus: givenFlow }: AppProps) {
+  const versus = givenFlow ?? null;
   const createSession = given ?? (import.meta.env.DEV ? hudOnlySession : missingSession);
   const s = screen.value;
   const portrait = usePortrait();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
   useTouchHousekeeping(onGesture);
+  const phase = versus?.phase.value ?? null;
+  const incoming = versus?.incoming.value ?? null;
+  useVersusRouting(versus, phase);
+  const ticks = useVersusTicks(versus, s.name === 'grownup');
+  // The who-is-here list and its card are menus too: an invite may arrive there, and the device is "here".
+  const onMenu = MENU_SCREENS.has(s.name) || (s.name === 'versus' && (phase?.name === 'here' || phase?.name === 'card'));
+  useEffect(() => { versus?.onMenu(onMenu); }, [versus, onMenu]);
 
   useEffect(() => {
     onSettingsChange?.(settings);
@@ -193,7 +218,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
   let body;
   switch (s.name) {
     case 'title':
-      body = <Title onSettings={() => setSettingsOpen(true)} />;
+      body = <Title onSettings={() => setSettingsOpen(true)} canRejoin={versus?.canRejoin} onRejoin={() => versus?.rejoin()} />;
       break;
     case 'players':
       body = <Players portraits={portraits} login={s.login} />;
@@ -214,13 +239,13 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       body = <Marketplace portraits={portraits} />;
       break;
     case 'grownup':
-      body = <GrownUp portraits={portraits} />;
+      body = <GrownUp portraits={portraits} versus={ticks} />;
       break;
     case 'sidepick':
       body = <PlayerSidePick boys={boys} />;
       break;
     case 'play':
-      body = <PlayMenu />;
+      body = <PlayMenu versus={versus === null ? undefined : { allowed: versus.allowed.value, onOpen: () => versus.open() }} />;
       break;
     case 'side':
       body = <PlaySide key={s.mode} mode={s.mode} boys={boys} portraits={portraits} />;
@@ -233,9 +258,12 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
         <BattleHost
           options={s.options} createSession={createSession} portraits={portraits} boys={boys}
           portrait={portrait} settings={settings} onSettingsChange={changeSettings} energyRef={energyRef}
-          turntable={almanac}
+          turntable={almanac} versus={versus}
         />
       );
+      break;
+    case 'versus':
+      body = versus === null || phase === null ? null : <VersusScreen flow={versus} phase={phase} portraits={portraits ?? NO_PORTRAITS} />;
       break;
     case 'unsupported':
       body = <Unsupported reason={s.reason} />;
@@ -246,6 +274,13 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
     <>
       <div data-app class="app" aria-hidden={portrait ? 'true' : undefined} inert={portrait || undefined}>
         {body}
+        {versus !== null && onMenu && incoming !== null && (phase === null || phase.name === 'closed' || phase.name === 'here' || phase.name === 'card') && (
+          <InvitePanel
+            invite={incoming} portraits={portraits ?? NO_PORTRAITS}
+            onAccept={() => versus.accept()} onDecline={() => versus.decline()}
+          />
+        )}
+        {versus !== null && phase?.name === 'notice' && <VersusNotice kind={phase.kind} onHome={() => versus.home()} />}
         {settingsOpen && s.name === 'title' && (
           <SettingsPanel settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />
         )}
@@ -267,12 +302,14 @@ interface BattleHostProps {
   energyRef: Ref<HTMLDivElement> | undefined;
   /** The Almanac's turntable, where a level's unlocked unit is shown. */
   turntable: Turntable | undefined;
+  /** The page's Versus flow: a battle with `options.online` is its battle (its link, credit, result and rematch). */
+  versus: VersusFlow | null;
 }
 
 let sessionCount = 0;
 
 /** Owns one session per `options` object: a new object (restart) disposes the old and builds anew. */
-function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
+function BattleHost({ options, createSession, versus, ...rest }: BattleHostProps) {
   const [live, setLive] = useState<{ id: number; session: BattleSessionLike } | null>(null);
 
   useLayoutEffect(() => {
@@ -297,6 +334,7 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   const { coins, rankUp } = useBattleCoins(live, options);
   const { outcome, rankUp: levelRankUp } = useLevelResult(live, options);
   useTeached(live, options);
+  useVersusLink(live, options, versus);
   const { outcome: freeOutcome, rankUp: freeRankUp } = useFreePlayResult(live, options);
 
   if (live === null) return null;
@@ -312,6 +350,20 @@ function BattleHost({ options, createSession, ...rest }: BattleHostProps) {
   };
   // A logged-in player goes back to their Home, a battle opened without one, to the title.
   const quit = (): void => go({ name: players.player.peek() !== null ? 'home' : 'title' });
+  const seat = options.online;
+  if (seat !== undefined && versus !== null) {
+    // Two-device Versus: the flow owns the end (credit, result, rematch, home); the screen never leaves by itself.
+    const ph = versus.phase.value;
+    return (
+      <BattleScreen
+        key={live.id} session={live.session} {...rest} onRestart={quit} onQuit={quit}
+        versus={{
+          me: seat.me, other: seat.other, face: (slot) => versus.face(slot), result: ph.name === 'result' ? ph.vm : null,
+          onRematch: () => versus.rematch(), onHome: () => versus.home(),
+        }}
+      />
+    );
+  }
   const free = options.free;
   if (free !== undefined) {
     // Free Play: again is a fresh run on the same side; the way out is Home.
@@ -473,8 +525,8 @@ function useBattleCoins(
     let alive = true;
     const stop = ctl.hud.result.subscribe((result) => {
       const before = players.player.peek();
-      // An Adventure level pays only through `applyLevelResult` (useLevelResult), never here.
-      if (result === null || done || before === null || options.level !== undefined || options.play !== undefined || options.free !== undefined) return;
+      // An Adventure level pays only through `applyLevelResult` (useLevelResult), never here; a two-device Versus match only through the flow.
+      if (result === null || done || before === null || options.level !== undefined || options.play !== undefined || options.free !== undefined || options.online !== undefined) return;
       done = true;
       const base = ctl.hud.base.peek()[ctl.playerFaction];
       const r = { won: result.playerWon, skill: options.skill, baseHpShare: base.max > 0 ? base.hp / base.max : 0 };
@@ -494,6 +546,74 @@ function useBattleCoins(
     };
   }, [live, options]);
   return { coins, rankUp };
+}
+
+/**
+ * A two-device Versus battle's link to the flow: the battle screen is up, so the link starts; and
+ * when the controller's outcome comes, the flow credits it once and shows the result or a notice.
+ */
+function useVersusLink(live: { id: number; session: BattleSessionLike } | null, options: BattleOptions, flow: VersusFlow | null): void {
+  useEffect(() => {
+    const online = live?.session.controller.online;
+    if (flow === null || live === null || options.online === undefined || online == null) return undefined;
+    flow.battleBegan();
+    return online.outcome.subscribe((o) => { if (o !== null) flow.battleOutcome(o); });
+  }, [live, options, flow]);
+}
+
+/**
+ * Keeps the screen where the flow's phase says: the list, the card and getting ready are the
+ * `versus` screen; a battle is the battle screen; and when the flow closes the screen it opened
+ * (or the battle it ended) goes Home (the list's back goes to the Play menu it came from). The
+ * result and the notices show over the screen they came on.
+ */
+function useVersusRouting(flow: VersusFlow | null, phase: VersusFlow['phase']['value'] | null): void {
+  const before = useRef<string>('closed');
+  const battle = phase?.name === 'battle' ? phase.options : null;
+  useEffect(() => {
+    if (flow === null || phase === null) return;
+    const came = before.current;
+    before.current = phase.name;
+    const here = screen.peek();
+    if (phase.name === 'battle') {
+      if (!(here.name === 'battle' && here.options === phase.options)) go({ name: 'battle', options: phase.options });
+    } else if (phase.name === 'here' || phase.name === 'card' || phase.name === 'ready') {
+      if (here.name !== 'versus') go({ name: 'versus' });
+    } else if (phase.name === 'closed' && (here.name === 'versus' || (here.name === 'battle' && here.options.online !== undefined))) {
+      go({ name: came === 'here' || came === 'card' ? 'play' : players.player.peek() !== null ? 'home' : 'title' });
+    }
+  }, [flow, phase?.name, battle]);
+}
+
+/** The grown-up screen's Versus list, fetched when that screen opens (none until it arrives, or without a connection). */
+function useVersusTicks(flow: VersusFlow | null, wanted: boolean): VersusTicksProps | undefined {
+  const [ticks, setTicks] = useState<VersusTicksProps | undefined>(undefined);
+  useEffect(() => {
+    if (flow === null || !wanted) return undefined;
+    let alive = true;
+    void flow.ticks().then((t) => { if (alive && t !== null) setTicks(t); }, () => undefined);
+    return () => { alive = false; };
+  }, [flow, wanted]);
+  return ticks;
+}
+
+/** The `versus` screen: "who is here", with the invite card over it, or getting ready. */
+function VersusScreen({ flow, phase, portraits }: { flow: VersusFlow; phase: VersusFlow['phase']['value']; portraits: Record<string, string> }) {
+  if (phase.name === 'ready') {
+    return <GettingReady me={phase.me} them={phase.them} mySide={phase.mySide} blocks={phase.blocks} portraits={portraits} />;
+  }
+  if (phase.name !== 'here' && phase.name !== 'card') return null;
+  return (
+    <>
+      <WhoIsHere faces={flow.here.value} portraits={portraits} onPick={(slot) => flow.pick(slot)} onBack={() => flow.home()} />
+      {phase.name === 'card' && (
+        <InviteCard
+          draft={phase.draft} state={phase.state} portraits={portraits}
+          onSwap={() => flow.swap()} onHead={(step) => flow.head(step)} onSend={() => flow.send()} onClose={() => flow.closeCard()}
+        />
+      )}
+    </>
+  );
 }
 
 /**

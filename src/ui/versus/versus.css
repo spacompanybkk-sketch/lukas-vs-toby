@@ -3,7 +3,7 @@
 
 .vs-here svg.pixel-icon, .vs-veil svg.pixel-icon, .vs-panel svg.pixel-icon, .vs-ticks svg.pixel-icon,
 .vs-ready svg.pixel-icon, .vs-stall svg.pixel-icon, .vs-stall-glass svg.pixel-icon, .vs-notice svg.pixel-icon,
-.vs-result svg.pixel-icon {
+.vs-result svg.pixel-icon, .title__rejoin svg.pixel-icon {
   display: block; width: 100%; height: 100%;
 }
 
@@ -166,3 +166,6 @@
 .vs-rematch__swap { display: flex; gap: 4px; --ico-size: 22px; }
 .vs-rematch__tick { position: absolute; right: -14px; top: -14px; width: 48px; height: 48px; }
 .vs-result__buttons .btn .ico--home { --ico-size: 48px; }
+
+/* ---- The title's way back into a Versus battle left by a reload ---- */
+.btn.title__rejoin { position: absolute; top: var(--gutter-top); left: var(--gutter-x); padding: 12px; animation: px-pop var(--t-pop) steps(4, end) both; }

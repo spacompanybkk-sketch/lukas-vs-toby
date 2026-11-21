@@ -4,7 +4,7 @@ import type { ComponentChildren, Ref } from 'preact';
 import { batch, useComputed, useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import type { ReadonlySignal } from '@preact/signals';
-import type { BattleOptions, HudSignals, IncomingVM, LevelHudInfo, LevelSignals } from '../../app/BattleController';
+import type { BattleOptions, HudSignals, IncomingVM, LevelHudInfo, LevelSignals, OnlineSignals } from '../../app/BattleController';
 import type { LevelOutcome } from '../../app/levelSession';
 import { ADVENTURE } from '../../adventure/rewards';
 import type { Settings } from '../../app/settings';
@@ -19,6 +19,11 @@ import { HERO_NAMES, HeroButton } from '../hud/HeroButton';
 import { SpellButtons } from '../hud/SpellButtons';
 import type { SpellButtonVM } from '../hud/SpellButtons';
 import { EnergyCounter } from '../hud/EnergyCounter';
+import type { Slot } from '../../progress/save';
+import { RemotePause } from '../versus/RemotePause';
+import type { FaceVM } from '../versus/types';
+import type { VersusResultVM } from '../versus/VersusResult';
+import { Waiting } from '../versus/Waiting';
 import { PauseMenu } from '../hud/PauseMenu';
 import { ResultOverlay } from '../hud/ResultOverlay';
 import type { Turntable } from '../hud/ResultOverlay';
@@ -66,6 +71,12 @@ export interface BattleSessionLike {
     tutorial?: { glove: ReadonlySignal<GloveVM | null>; sunPulse?: ReadonlySignal<number>; twist?: ReadonlySignal<TwistVM | null> } | null;
     /** A tap anywhere during a twist pan: it ends. */
     tapTwist?(): void;
+    /** Two-device Versus: the other device's stall, pause and outcome (null or absent: not a Versus match). */
+    online?: OnlineSignals | null;
+    /** Versus: the white flag of the pause menu (the other seat wins). */
+    forfeit?(): void;
+    /** Versus: the white flag of a silent seat (nobody wins). */
+    giveUp?(): void;
   };
   /** Client pixels of a tile's middle (the big-wave cue stands at a lane's end); none: no cue. */
   tileToClient?(lane: number, col: number): { x: number; y: number } | null;
@@ -73,6 +84,8 @@ export interface BattleSessionLike {
   unitToClient?(id: number): { x: number; y: number } | null;
   begin(): void;
   dispose(): void;
+  /** The page hides or shows again (two-device Versus writes the shared pause; see `BattleSession.visibility`). */
+  visibility?(hidden: boolean): void;
   /**
    * When given, the result panel waits until this turns true (the end of the match plays out on
    * the lawn first). Without it the panel shows as soon as `hud.result` is set.
@@ -139,6 +152,20 @@ export interface BattleScreenProps {
   freePlay?: FreePlayOutcome | null;
   /** Free Play: the result's Home (the pause menu's Quit, `onQuit`, ends the run instead). */
   onHome?(): void;
+  /** Two-device Versus (with `controller.online`): who is who, and the flow's result with its rematch and home. */
+  versus?: VersusBattleProps;
+}
+
+/** What a Versus battle needs besides the controller: this device's player, the faces, and the flow's end. */
+export interface VersusBattleProps {
+  me: Slot;
+  /** The other boy. */
+  other: Slot;
+  face(slot: Slot): FaceVM;
+  /** The flow's result (null until the match has ended and been credited). */
+  result: VersusResultVM | null;
+  onRematch(): void;
+  onHome(): void;
 }
 
 /**
@@ -170,7 +197,7 @@ const SHAKE_MS = 300;
  */
 export function BattleScreen(props: BattleScreenProps) {
   const { session, portraits = {}, boys = {}, portrait = false, settings, onSettingsChange, onRestart, onQuit, energyRef, powers, coins = null, rankUp = null } = props;
-  const { level = null, onNextLevel, onMap, turntable, bossBar, freePlay = null, onHome } = props;
+  const { level = null, onNextLevel, onMap, turntable, bossBar, freePlay = null, onHome, versus } = props;
   const ctl = session.controller;
   const hud = ctl.hud;
   const side = ctl.playerFaction;
@@ -182,14 +209,17 @@ export function BattleScreen(props: BattleScreenProps) {
     return vm !== null && vm.holding && hud.result.value === null;
   }).value;
 
-  // A hidden tab always pauses; coming back never resumes by itself.
+  // A hidden tab always pauses; coming back never resumes by itself. Two-device Versus hands the
+  // page's visibility to the session (the pause is written so it can leave as the page goes).
+  const online = ctl.online != null;
   useEffect(() => {
     const onVisibility = (): void => {
-      if (document.hidden && hud.result.peek() === null) ctl.setPaused(true);
+      if (online) session.visibility?.(document.hidden);
+      else if (document.hidden && hud.result.peek() === null) ctl.setPaused(true);
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [ctl, hud]);
+  }, [ctl, hud, session, online]);
 
   // Turning the device upright pauses too (the rotate picture covers the game).
   useEffect(() => {
@@ -207,7 +237,7 @@ export function BattleScreen(props: BattleScreenProps) {
           ? <FreePlayTop endless={ctl.endless} bonusSeconds={FREE_BONUS_SECONDS} />
           : countsUp(ctl.level ?? null) && <LiveClock hud={hud} />}
         <div class="battle__right">
-          {session.speed !== undefined && <LiveSpeed hud={hud} speed={session.speed} />}
+          {session.speed !== undefined && !online && <LiveSpeed hud={hud} speed={session.speed} />}
           <LivePause ctl={ctl} />
         </div>
       </div>
@@ -243,6 +273,7 @@ export function BattleScreen(props: BattleScreenProps) {
         ctl={ctl} resultReady={session.resultReady} boys={boys} settings={settings} onSettingsChange={onSettingsChange}
         onRestart={onRestart} onQuit={onQuit} coins={coins} rankUp={rankUp}
         level={level} onNextLevel={onNextLevel} onMap={onMap} turntable={turntable} cards={portraits} freePlay={freePlay} onHome={onHome}
+        versus={versus}
       />
     </div>
   );
@@ -603,16 +634,26 @@ interface OverlaysProps {
   cards: Record<string, string>;
   freePlay: FreePlayOutcome | null;
   onHome: (() => void) | undefined;
+  versus: VersusBattleProps | undefined;
 }
 
 /** Pause menu (or settings in its place) while paused; the result panel once the match is decided. */
-function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp, level, onNextLevel, onMap, turntable, cards, freePlay, onHome }: OverlaysProps) {
+function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestart, onQuit, coins, rankUp, level, onNextLevel, onMap, turntable, cards, freePlay, onHome, versus }: OverlaysProps) {
   const hud = ctl.hud;
   const paused = hud.paused.value;
   const result = hud.result.value;
   const ready = resultReady === undefined ? true : resultReady.value;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const online = ctl.online ?? null;
 
+  if (online !== null && versus !== undefined) {
+    return (
+      <OnlineOverlays
+        ctl={ctl} online={online} versus={versus} ready={ready} boys={boys} cards={cards}
+        settings={settings} onSettingsChange={onSettingsChange} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen}
+      />
+    );
+  }
   if (result !== null) {
     if (!ready) return null; // the base is still falling
     if (ctl.endless != null) {
@@ -638,6 +679,56 @@ function Overlays({ ctl, resultReady, boys, settings, onSettingsChange, onRestar
       bank={ctl.endless != null ? <LiveBank endless={ctl.endless} /> : undefined}
       // In a level Quit goes back to the map: its picture says so (elsewhere it is the house).
       quitTo={ctl.level != null ? 'map' : 'home'}
+    />
+  );
+}
+
+/** "Lukas is asleep": the one short line under a sleeping face, for the boy who reads. */
+const asleep = (face: FaceVM): string => `${face.name} is asleep`;
+
+/**
+ * The overlays of a two-device Versus battle, in the order they cover each other: the result (the
+ * flow's, with rematch and home; an unfinished match has none here, the flow's notice takes the
+ * screen); the other boy's pause (his face and a Play button for either of us); the pause menu
+ * with a white flag where Quit's door is (a forfeit, the other seat wins); and, when the other
+ * device has gone quiet, the waiting faces with a white flag of their own at last (nobody wins).
+ * Nothing here navigates: the outcome comes back about one round trip after a flag.
+ */
+function OnlineOverlays({ ctl, online, versus, ready, boys, cards, settings, onSettingsChange, settingsOpen, setSettingsOpen }: {
+  ctl: Controller; online: OnlineSignals; versus: VersusBattleProps; ready: boolean; boys: BoyPortraits; cards: Record<string, string>;
+  settings: Settings; onSettingsChange(s: Settings): void; settingsOpen: boolean; setSettingsOpen(on: boolean): void;
+}) {
+  const hud = ctl.hud;
+  const result = hud.result.value;
+  const stall = online.stall.value;
+  const pausedBy = online.pausedBy.value;
+  const them = versus.face(versus.other);
+
+  if (result !== null) {
+    if (!ready || versus.result === null) return null;
+    return (
+      <ResultOverlay
+        result={result} playerFaction={ctl.playerFaction} seconds={hud.seconds.value} portraits={boys} cards={cards}
+        onPlayAgain={versus.onRematch} onMenu={versus.onHome} versus={{ vm: versus.result, onRematch: versus.onRematch }}
+      />
+    );
+  }
+  if (!hud.paused.value) {
+    return (
+      <Waiting
+        who={them} stage={stall} portraits={cards} line={stall === 'face' || stall === 'flag' ? asleep(them) : undefined}
+        side={ctl.playerFaction === 'plants' ? 'zombies' : 'plants'} onFlag={() => ctl.giveUp?.()}
+      />
+    );
+  }
+  if (pausedBy !== null && pausedBy !== versus.me) {
+    return <RemotePause who={versus.face(pausedBy)} portraits={cards} onResume={() => ctl.setPaused(false)} />;
+  }
+  if (settingsOpen) return <SettingsPanel settings={settings} onChange={onSettingsChange} onClose={() => setSettingsOpen(false)} />;
+  return (
+    <PauseMenu
+      onResume={() => { setSettingsOpen(false); ctl.setPaused(false); }}
+      onSettings={() => setSettingsOpen(true)} onQuit={() => ctl.forfeit?.()} quitKind="flag"
     />
   );
 }

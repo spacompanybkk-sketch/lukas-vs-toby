@@ -34,6 +34,8 @@ export type Screen =
    */
   | { name: 'map'; side: Faction; card?: string; world?: LevelDef['world'] }
   | { name: 'battle'; options: BattleOptions }
+  /** Two-device Versus before and between battles: who is here, the invite card, getting ready (the flow's phase picks which). */
+  | { name: 'versus' }
   | { name: 'unsupported'; reason: 'webgl2' | 'context-lost' };
 
 /** Which screen the app shows. `App` switches on it; screens change it through `go`. */
