@@ -3,7 +3,6 @@ import type { Save, Slot } from '../progress/save';
 // Types only: the fake (which evaluates rule strings with `new Function`) is loaded with a
 // dynamic import, and only when the cloud mode is `fake`.
 import type { FakeDatabase, FakeDatabaseOptions } from './fakeCloud';
-import { fakeDbUrl } from './connection';
 import type { BoardRow, Cloud, CloudError, PublicPlayer, SaveRecord } from './types';
 
 /** The old game's database (tag `old-game-final`, src/firebase/config.ts). */
@@ -290,6 +289,28 @@ export function cloudMode(search: string, flag: string | undefined): CloudMode {
   if (!params.has('debug')) return 'live';
   const asked = params.get('cloud');
   return asked === 'fake' ? 'fake' : asked === 'test' ? 'test' : 'live';
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+/**
+ * The stand-in database server a page was pointed at with `?fakedb=http://localhost:<port>`
+ * (two-page browser tests, spec 10). Only in fake mode, and only plain http to localhost or
+ * 127.0.0.1 with a port and nothing after it; anything else is null.
+ */
+export function fakeDbUrl(search: string, mode: CloudMode): string | null {
+  if (mode !== 'fake') return null;
+  const asked = new URLSearchParams(search).get('fakedb');
+  if (!asked) return null;
+  let u: URL;
+  try {
+    u = new URL(asked);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'http:' || !LOCAL_HOSTS.has(u.hostname) || u.port === '') return null;
+  if (u.username !== '' || u.password !== '' || u.pathname !== '/' || u.search !== '' || u.hash !== '') return null;
+  return u.origin;
 }
 
 /** The cloud mode of this page. */

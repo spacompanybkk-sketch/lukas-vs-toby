@@ -55,9 +55,11 @@ class ScriptedSource implements EventSourceLike {
   fail(): void { this.onerror?.(new Error('network')); }
 }
 
-function rig(opts: { base?: string; root?: CloudRoot; query?: () => Record<string, string> } = {}) {
+function rig(opts: { base?: string; root?: CloudRoot; query?: () => Record<string, string>; refuse?: () => boolean } = {}) {
   const sources: ScriptedSource[] = [];
   const conn = connectionTo(opts.base ?? FAKE_DATABASE_URL, opts.root ?? 'v2', globalThis.fetch, (url) => {
+    // As `new EventSource(badUrl)` does.
+    if (opts.refuse?.()) throw new SyntaxError('bad url');
     const s = new ScriptedSource(url);
     sources.push(s);
     return s;
@@ -119,20 +121,70 @@ describe('RtdbStream', () => {
     expect(r.events[0]).toEqual({ kind: 'down', why: 'error' });
   });
 
-  it('the backoff starts again after the next open', () => {
+  /** The gaps between the opens of the next `n` sources, each made to do `act` as soon as it opens. */
+  function gaps(r: ReturnType<typeof rig>, n: number, act: (s: ScriptedSource) => void): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const before = r.last();
+      act(before);
+      const t0 = r.clock.t;
+      while (r.last() === before) r.clock.advance(100);
+      out.push(r.clock.t - t0);
+    }
+    return out;
+  }
+
+  it('an open that is only followed by a cancel (a refused path) does not reset the backoff', () => {
     const r = rig();
     r.make();
-    r.last().fail();
-    r.clock.advance(500);
-    r.last().fail();
-    r.clock.advance(1000);
-    expect(r.sources).toHaveLength(3);
+    expect(gaps(r, 6, (s) => { s.open(); s.say('cancel', 'Permission denied'); })).toEqual([500, 1000, 2000, 4000, 8000, 8000]);
+  });
+
+  it('the backoff starts again once a source has delivered data', () => {
+    const r = rig();
+    r.make();
+    expect(gaps(r, 3, (s) => s.fail())).toEqual([500, 1000, 2000]);
     r.last().open();
-    r.last().fail();
-    r.clock.advance(499);
-    expect(r.sources).toHaveLength(3);
-    r.clock.advance(1);
-    expect(r.sources).toHaveLength(4);
+    r.last().say('put', { path: '/', data: null });
+    expect(gaps(r, 2, (s) => s.fail())).toEqual([500, 1000]);
+    r.last().open();
+    r.last().say('patch', { path: '/a', data: { b: 1 } });
+    expect(gaps(r, 1, (s) => s.fail())).toEqual([500]);
+  });
+
+  it('auth_revoked counts as a cancel', () => {
+    const r = rig();
+    r.make();
+    const first = r.last();
+    first.open();
+    first.say('auth_revoked', 'credential is no longer valid');
+    expect(first.closed).toBe(true);
+    expect(r.events).toEqual([{ kind: 'open' }, { kind: 'down', why: 'cancel' }]);
+    r.clock.advance(500);
+    expect(r.sources).toHaveLength(2);
+  });
+
+  it('an EventSource that throws on creation is a failure, retried with backoff', () => {
+    let refuse = true;
+    const r = rig({ refuse: () => refuse });
+    const s = r.make();
+    expect(r.events).toEqual([{ kind: 'down', why: 'error' }]);
+    expect(s.opens).toBe(0);
+    r.clock.advance(500);
+    expect(r.events).toHaveLength(2);
+    refuse = false;
+    r.clock.advance(1000);
+    expect(r.sources).toHaveLength(1);
+    expect(s.opens).toBe(1);
+    s.close();
+    expect(r.doc.fns.size).toBe(0);
+  });
+
+  it('a query() that throws in the constructor leaves no listener on the page', () => {
+    const r = rig({ query: () => { throw new Error('no state yet'); } });
+    expect(() => r.make()).toThrow('no state yet');
+    expect(r.doc.fns.size).toBe(0);
+    expect(r.clock.pending()).toBe(0);
   });
 
   it('a cancel closes and reopens the same way', () => {
@@ -187,6 +239,22 @@ describe('RtdbStream', () => {
     expect(r.sources).toHaveLength(3);
   });
 
+  it('a visibilitychange to visible reopens a healthy stream too, with a fresh query', () => {
+    let from = 't000000';
+    const r = rig({ query: () => ({ orderBy: '$key', startAt: from }) });
+    r.make();
+    r.last().open();
+    r.last().say('put', { path: '/', data: { t000000: '{}' } });
+    from = 't000001';
+    r.doc.show();
+    expect(r.sources).toHaveLength(2);
+    expect(r.sources[0]!.closed).toBe(true);
+    expect(r.sources[1]!.closed).toBe(false);
+    expect(new URL(r.sources[1]!.url).searchParams.get('startAt')).toBe('"t000001"');
+    expect(r.events.filter((e) => e.kind === 'down')).toEqual([]);
+    expect(r.clock.pending()).toBe(0);
+  });
+
   it('close() stops everything: the source, the timer, the page listener', () => {
     const r = rig();
     const s = r.make();
@@ -217,9 +285,14 @@ describe('RtdbStream', () => {
     const s = live.make();
     expect(live.sources).toHaveLength(0);
     expect(s.opens).toBe(0);
+    // The caller hears it once, so it does not wait forever; nothing is retried.
+    expect(live.events).toEqual([{ kind: 'down', why: 'error' }]);
     s.reopen();
+    live.clock.advance(60_000);
     expect(live.sources).toHaveLength(0);
-    expect(warn).toHaveBeenCalled();
+    expect(live.events).toHaveLength(1);
+    expect(live.clock.pending()).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
     const test = rig({ base: DATABASE_URL, root: 'v2test' });
     test.make();
     expect(test.sources).toHaveLength(1);
@@ -266,5 +339,29 @@ describe('RtdbStream', () => {
     expect([...seen]).toEqual([['t000000', 'a'], ['t000001', 'b'], ['t000002', 'c']]);
     s.close();
     expect(db.openStreams()).toBe(0);
+  });
+
+  it('over the fake database: a refused path backs off instead of reopening every 0.5 s', async () => {
+    const db = new FakeDatabase({ now: () => 1 });
+    const clock = new VirtualClock();
+    const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+    const events: string[] = [];
+    const s = new RtdbStream({
+      conn: fakeConnection(db), path: 'secrets', timers: clock,
+      doc: { addEventListener: () => undefined, removeEventListener: () => undefined },
+      on: (e) => events.push(e.kind),
+    });
+    await settle();
+    for (const ms of [500, 1000, 2000, 4000, 8000]) {
+      clock.advance(ms - 1);
+      await settle();
+      const before = s.opens;
+      clock.advance(1);
+      await settle();
+      expect(s.opens, `after ${ms} ms`).toBe(before + 1);
+    }
+    expect(db.requests.filter((r) => r.method === 'STREAM')).toHaveLength(6);
+    expect(events.slice(0, 4)).toEqual(['open', 'down', 'open', 'down']);
+    s.close();
   });
 });

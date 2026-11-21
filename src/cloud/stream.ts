@@ -4,8 +4,9 @@ import { FAKE_DATABASE_URL, isAutomated } from './restClient';
 /**
  * A stream of one database path over the REST API's `EventSource` streaming (spec 6.1). The
  * browser's own reconnect is never used: on an `error` or a `cancel` the source is closed and
- * our code opens a new one after a backoff (0.5 s doubling to 8 s, back to 0.5 s after the next
- * `open`), reading `query()` again so a reconnect asks only for what it lacks. When the page
+ * our code opens a new one after a backoff (0.5 s doubling to 8 s, back to 0.5 s once a source
+ * has delivered data — an `open` alone does not count, since a refused path opens and then
+ * cancels), reading `query()` again so a reconnect asks only for what it lacks. When the page
  * becomes visible again it reopens at once.
  */
 
@@ -28,7 +29,11 @@ interface PageDoc {
 export interface StreamOptions {
   conn: Connection;
   path: string;
-  /** Read at every open (e.g. `{ orderBy: '$key', startAt: 't000042' }`). */
+  /**
+   * Read at every open (e.g. `{ orderBy: '$key', startAt: 't000042' }`). After a ranged reopen
+   * the `put '/'` carries only the children in the range: the consumer merges it into what it
+   * holds, never replaces what it holds with it.
+   */
   query?: () => Record<string, string>;
   on(e: StreamEvent): void;
   timers?: Timers;
@@ -62,8 +67,9 @@ export class RtdbStream {
     this.timers = o.timers ?? realTimers;
     this.backoff = o.backoff ?? { firstMs: 500, maxMs: 8000 };
     this.doc = o.doc ?? (typeof document === 'undefined' ? undefined : document);
-    this.doc?.addEventListener('visibilitychange', this.onVisible);
+    // Opened first: if `query()` throws, nothing is left listening on the page.
     this.open();
+    this.doc?.addEventListener('visibilitychange', this.onVisible);
   }
 
   /** How many sources this stream has opened. */
@@ -94,18 +100,26 @@ export class RtdbStream {
     const url = this.o.conn.url(this.o.path, this.o.query?.());
     // As RestCloud: a page under automation never reaches the children's live data.
     if (!url.startsWith(`${FAKE_DATABASE_URL}/`) && this.o.conn.root !== 'v2test' && isAutomated()) {
-      if (!this.warned) console.warn('RtdbStream: automation may not use the live database; nothing is opened.');
+      // Said once, so the caller is not left waiting; never retried.
+      if (this.warned) return;
       this.warned = true;
+      console.warn('RtdbStream: automation may not use the live database; nothing is opened.');
+      this.o.on({ kind: 'down', why: 'error' });
       return;
     }
-    const es = this.o.conn.eventSource(url);
+    let es: EventSourceLike;
+    try {
+      es = this.o.conn.eventSource(url);
+    } catch {
+      // `new EventSource(badUrl)` throws: a failure like any other, retried with backoff.
+      this.down('error');
+      return;
+    }
     this.source = es;
     this.count += 1;
     const mine = (): boolean => this.source === es;
     es.addEventListener('open', () => {
-      if (!mine()) return;
-      this.failures = 0;
-      this.o.on({ kind: 'open' });
+      if (mine()) this.o.on({ kind: 'open' });
     });
     for (const kind of ['put', 'patch'] as const) {
       es.addEventListener(kind, (e) => {
@@ -120,6 +134,8 @@ export class RtdbStream {
           this.down('error');
           return;
         }
+        // Data arrived: this source works, so the next failure starts the backoff again.
+        this.failures = 0;
         this.o.on({ kind, path: msg.path, data: msg.data as Json });
       });
     }

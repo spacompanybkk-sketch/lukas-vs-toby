@@ -1,7 +1,10 @@
 // Types only: the fake is loaded with a dynamic import, and only in fake mode.
 import type { FakeDatabase } from './fakeCloud';
-import { DATABASE_URL, FAKE_DATABASE_URL, pageCloudMode, pageFakeDatabase } from './restClient';
-import type { CloudMode, CloudRoot } from './restClient';
+import { DATABASE_URL, FAKE_DATABASE_URL, fakeDbUrl, pageCloudMode, pageFakeDatabase } from './restClient';
+import type { CloudRoot } from './restClient';
+
+// Defined in restClient.ts (which `defaultCloud` needs it in), so the two modules do not import each other.
+export { fakeDbUrl };
 
 /** What the streaming client needs of the browser's `EventSource`. */
 export interface EventSourceLike {
@@ -37,28 +40,6 @@ export function connectionTo(base: string, root: CloudRoot, fetchFn: typeof fetc
 /** A connection to an in-memory fake database (tests, and fake mode in the page). */
 export function fakeConnection(db: FakeDatabase, root: CloudRoot = 'v2'): Connection {
   return connectionTo(FAKE_DATABASE_URL, root, db.fetch, db.eventSource);
-}
-
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
-
-/**
- * The stand-in database server a page was pointed at with `?fakedb=http://localhost:<port>`
- * (two-page browser tests, spec 10). Only in fake mode, and only plain http to localhost or
- * 127.0.0.1 with a port and nothing after it; anything else is null.
- */
-export function fakeDbUrl(search: string, mode: CloudMode): string | null {
-  if (mode !== 'fake') return null;
-  const asked = new URLSearchParams(search).get('fakedb');
-  if (!asked) return null;
-  let u: URL;
-  try {
-    u = new URL(asked);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== 'http:' || !LOCAL_HOSTS.has(u.hostname) || u.port === '') return null;
-  if (u.username !== '' || u.password !== '' || u.pathname !== '/' || u.search !== '' || u.hash !== '') return null;
-  return u.origin;
 }
 
 const pageSearch = (): string => (typeof location === 'undefined' ? '' : location.search);

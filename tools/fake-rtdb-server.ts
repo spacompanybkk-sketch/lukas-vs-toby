@@ -9,9 +9,11 @@
  * Pages open `?debug&cloud=fake&fakedb=http://localhost:5316` and use the `v2test` root.
  *
  * - GET/PUT/PATCH/DELETE on `/<path>.json` as the REST API; GET with `Accept: text/event-stream`
- *   streams `put`/`cancel` events (and `keep-alive` every 30 s);
+ *   streams `put`/`cancel` events (and `keep-alive` every 30 s); a refused read is a 401, a
+ *   query the fake does not model a 400, before any event;
  * - `GET /__peek?path=…` the stored value, rules aside; `POST /__reset` empties the database;
- * - CORS for any `http://localhost:<port>` or `http://127.0.0.1:<port>` page;
+ * - CORS for any `http://localhost:<port>`, `http://127.0.0.1:<port>` or `http://[::1]:<port>` page;
+ *   a request from any other origin is refused (403);
  * - listens on the loopback addresses only.
  */
 import { createServer } from 'node:http';
@@ -23,7 +25,7 @@ export const DEFAULT_PORT = 5316;
 const KEEP_ALIVE_MS = 30_000;
 /** Requests kept in `db.requests`, so a long browser run does not grow without end. */
 const KEEP_REQUESTS = 500;
-const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:[0-9]{1,5})?$/;
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]{1,5})?$/;
 
 export interface FakeServer { url: string; db: FakeDatabase; close(): Promise<void> }
 
@@ -79,35 +81,67 @@ export async function startFakeServer(opts: { port: number; now?: () => number }
     res.end(JSON.stringify(body));
   };
 
-  const stream = (req: IncomingMessage, res: ServerResponse, target: string, cors: Record<string, string>): void => {
-    res.writeHead(200, { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    res.flushHeaders();
+  const trim = (): void => {
+    if (db.requests.length > KEEP_REQUESTS) db.requests.splice(0, db.requests.length - KEEP_REQUESTS);
+  };
+
+  /**
+   * An SSE stream. The answer waits for the fake's first word, so a refused read is a 401 and a
+   * query the fake does not model a 400 (as the REST API answers them): the browser's
+   * `EventSource` then fires `error` and never `open`. After that: `put`/`patch` events, a
+   * `cancel` that ends the stream, or a failure that ends it with no event.
+   */
+  const stream = (res: ServerResponse, target: string, cors: Record<string, string>): void => {
     const es = db.eventSource(target);
-    const send = (event: string, data: string): void => { res.write(`event: ${event}\ndata: ${data}\n\n`); };
+    trim();
+    let started = false;
     let ended = false;
-    const keepAlive = setInterval(() => send('keep-alive', 'null'), KEEP_ALIVE_MS);
-    keepAlive.unref();
-    const end = (): void => {
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
+    const send = (event: string, data: string): void => { res.write(`event: ${event}\ndata: ${data}\n\n`); };
+    const begin = (): void => {
+      if (started) return;
+      started = true;
+      res.writeHead(200, { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+      keepAlive = setInterval(() => send('keep-alive', 'null'), KEEP_ALIVE_MS);
+      keepAlive.unref();
+    };
+    /** Ends the stream; before it began, with `status` as a plain JSON answer. */
+    const end = (status = 200, error = ''): void => {
       if (ended) return;
       ended = true;
-      clearInterval(keepAlive);
-      streams.delete(end);
+      if (keepAlive !== null) clearInterval(keepAlive);
+      streams.delete(endNow);
       es.close();
-      res.end();
+      if (started || res.headersSent) res.end();
+      else json(res, status, { error }, cors);
     };
-    streams.add(end);
-    for (const type of ['put', 'patch']) es.addEventListener(type, (e) => send(type, e.data));
-    // The REST API closes the connection after a cancel; a failure ends it with no event.
+    const endNow = (): void => end(503, 'The server is closing');
+    streams.add(endNow);
+    for (const type of ['put', 'patch']) {
+      es.addEventListener(type, (e) => {
+        begin();
+        send(type, e.data);
+      });
+    }
     es.addEventListener('cancel', (e) => {
+      if (!started) {
+        end(401, 'Permission denied');
+        return;
+      }
+      // The REST API closes the connection after a cancel.
       send('cancel', e.data);
       end();
     });
-    es.onerror = end;
-    req.on('close', end);
+    es.onerror = () => (db.offline ? end(503, 'Service unavailable') : end(400, 'Bad request'));
+    // The page went away (or the answer is done): stop the fake stream.
+    res.on('close', () => end());
   };
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    const cors = corsHeaders(req.headers.origin);
+    const origin = req.headers.origin;
+    // Any other website open in the same browser could read or wipe it: only localhost pages.
+    if (origin !== undefined && !LOCAL_ORIGIN.test(origin)) return json(res, 403, { error: 'Origin not allowed' }, {});
+    const cors = corsHeaders(origin);
     const method = (req.method ?? 'GET').toUpperCase();
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (method === 'OPTIONS') {
@@ -123,7 +157,7 @@ export async function startFakeServer(opts: { port: number; now?: () => number }
     }
     if (!url.pathname.endsWith('.json')) return json(res, 404, { error: 'Not found' }, cors);
     const target = `${FAKE_DATABASE_URL}${url.pathname}${url.search}`;
-    if (method === 'GET' && (req.headers.accept ?? '').includes('text/event-stream')) return stream(req, res, target, cors);
+    if (method === 'GET' && (req.headers.accept ?? '').includes('text/event-stream')) return stream(res, target, cors);
     const body = await readBody(req);
     if (body !== '') {
       try {
@@ -134,7 +168,7 @@ export async function startFakeServer(opts: { port: number; now?: () => number }
     }
     // Each request is applied whole by the fake (a multi-path PATCH is atomic there), in arrival order.
     const answer = await db.fetch(target, { method, ...(body === '' ? {} : { body }) });
-    if (db.requests.length > KEEP_REQUESTS) db.requests.splice(0, db.requests.length - KEEP_REQUESTS);
+    trim();
     res.writeHead(answer.status, { ...cors, 'Content-Type': 'application/json' });
     res.end(await answer.text());
   };
