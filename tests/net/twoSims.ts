@@ -48,6 +48,8 @@ export interface SoakPeer {
   /** Own turns the channel answered `ok`; the other seat's turns the stream delivered. */
   ownAcked: Set<number>;
   otherHeard: Set<number>;
+  /** Control writes answered `offline` (sent again by the device), by kind. */
+  offline: Record<string, number>;
   /** The other seat's hashes as they arrived: `[tick, hash, virtual ms]`. */
   heardHashes: [number, number, number][];
   /** Called before each `tryStep` (nudges). */
@@ -96,7 +98,10 @@ export function soakPair(seed: number, opts: { blackout?: Faction | null; link?:
         if (answer === 'ok') for (const t of turns) peer.ownAcked.add(t.k);
         return answer;
       }),
-      write: (rec, o) => raw.write(rec, o),
+      write: (rec, o) => raw.write(rec, o).then((answer) => {
+        if (answer === 'offline') peer.offline[rec.kind] = (peer.offline[rec.kind] ?? 0) + 1;
+        return answer;
+      }),
       remove: () => raw.remove(),
       listen: (from, on) => raw.listen(from, (e) => {
         if (e.kind === 'turn' && e.seat !== seat && !peer.otherHeard.has(e.k)) {
@@ -111,7 +116,7 @@ export function soakPair(seed: number, opts: { blackout?: Faction | null; link?:
       : seat === 'plants' ? createFortressPlants(seed) : createSteadyZombies(seed);
     Object.assign(peer, {
       seat, bot, hashes: new Map(), computed: [], runs: 0, gateWaits: 0, ranWithout: [], ownAcked: new Set(), otherHeard: new Set(),
-      heardHashes: [], repairedAt: [], last: null, thoughtAt: -1,
+      heardHashes: [], offline: {}, repairedAt: [], last: null, thoughtAt: -1,
       lm: new LockstepMatch({
         match: new Match(versusConfig(setup)), seat, delay: SOAK_DELAY, host: seat === host,
         me: seats[seat], other: seats[other(seat)], channel: watched, now: () => clock.now(), timers: clock,

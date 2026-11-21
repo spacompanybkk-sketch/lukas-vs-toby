@@ -39,14 +39,22 @@ const isWinner = (v: unknown): v is Winner => v === 'plants' || v === 'zombies' 
 export const BROKEN_END = 'broken';
 /** The `w` of an end record from a device whose player gave up waiting (the white flag): no winner. */
 export const GONE_END = 'gone';
+/**
+ * The `w` of an end record from a device whose player forfeited (the white flag in the pause
+ * menu): `{"w":"quit","by":<slot>,"t":…,"h":…}`, the other seat wins (spec 6.7). The forfeiting
+ * device writes it into both empty slots; it decides only once both slots are known.
+ */
+export const FORFEIT_END = 'quit';
 
-interface EndRecord { w: Winner | typeof BROKEN_END | typeof GONE_END; t: unknown; h: unknown }
+interface EndRecord { w: Winner | typeof BROKEN_END | typeof GONE_END | typeof FORFEIT_END; t: unknown; h: unknown; by?: unknown }
 
 /** An end record (`{"w":…,"t":…,"h":…}`), or null when it is not one (read as broken: nobody wins). */
 function parseEnd(raw: string): EndRecord | null {
   try {
     const o = JSON.parse(raw) as Partial<EndRecord> | null;
-    return o && (isWinner(o.w) || o.w === BROKEN_END || o.w === GONE_END) ? { w: o.w, t: o.t, h: o.h } : null;
+    if (!o) return null;
+    if (o.w === FORFEIT_END) return { w: o.w, t: o.t, h: o.h, by: o.by };
+    return isWinner(o.w) || o.w === BROKEN_END || o.w === GONE_END ? { w: o.w, t: o.t, h: o.h } : null;
   } catch {
     return null;
   }
@@ -55,8 +63,7 @@ function parseEnd(raw: string): EndRecord | null {
 /** A seat's `end` slot as the database holds it (write-once): the stored string and what it says. */
 interface EndSlot { raw: string; rec: EndRecord | null }
 
-/** A slot that ends the match with no winner, whatever the other slot holds. */
-const noWinner = (s: EndSlot | null): boolean => s !== null && (s.rec === null || !isWinner(s.rec.w));
+const isForfeit = (s: EndSlot | null): boolean => s?.rec?.w === FORFEIT_END;
 
 /**
  * Pause numbers say who wrote them and whether they are a heartbeat: `n = 4·seq + 2·(zombies) + beat`.
@@ -113,6 +120,11 @@ export class LockstepMatch {
   private _pausedBy: Slot | null = null;
   private pauseSeq = 0; // the highest pause sequence seen or written
   private pausedSince: number | null = null;
+  /** Pause numbers heard on the stream; at a resume they become stale (see `onEvent`). */
+  private readonly heardPauses = new Set<number>();
+  private stalePauses = new Set<number>();
+  /** Bumped by `resume`: a pause write still being retried from before it stops. */
+  private pauseWrites = 0;
   private otherLifeAt = -Infinity; // when the other device last showed it is there
   private isHidden = false;
   private heartbeat: unknown = null;
@@ -192,6 +204,12 @@ export class LockstepMatch {
     if (this.result) return { kind: 'over' };
     if (this.pendingSync) this.applySync();
     if (this.ending()) return this.waitForEnd();
+    const theirs = this.slots[this.otherSeat];
+    if (theirs && isForfeit(theirs)) {
+      // the other player forfeited: this screen's slot takes the same record (it may already hold it)
+      this.claimOwn(theirs.raw);
+      return this.waitForEnd();
+    }
     const { winner, tick: now } = this.match.state;
     const hostEnd = this.hostEnd();
     if (hostEnd && this.takesHostEnd(hostEnd, winner, now)) {
@@ -297,18 +315,24 @@ export class LockstepMatch {
 
   resume(): void {
     if (this.result) return;
+    this.pauseWrites++; // a pause whose answer was lost is not sent again after this
     this.setPaused(null);
     this.writeRetrying({ kind: 'resume' });
   }
 
   /**
-   * The white flag in the pause menu: a forfeit, the other seat wins (spec 6.7). Not once an end
-   * record is known: then the slots decide the outcome, and a forfeit could contradict them.
+   * The white flag in the pause menu: a forfeit, the other seat wins (spec 6.7). Like every end, it
+   * is decided by the two write-once slots: the forfeit record goes into the own slot and into the
+   * other's, and the outcome comes once both are known. If the other device filled either slot
+   * first (the host's end after `endWaitMs`), that stored value decides, on both screens alike.
+   * Not once an end record is known: then the slots already decide.
    */
   forfeit(): void {
     if (this.result || this.ending() || this.slots[this.otherSeat] !== null) return;
-    this.writeRetrying({ kind: 'quit', by: this.me });
-    this.finish({ kind: 'forfeit', winner: this.otherSeat, by: this.me });
+    const { tick } = this.match.state;
+    const raw = JSON.stringify({ w: FORFEIT_END, by: this.me, t: tick, h: this.match.hash() });
+    this.claimOwn(raw);
+    this.fill(raw);
   }
 
   /**
@@ -381,23 +405,27 @@ export class LockstepMatch {
         return;
       case 'pause':
         if (!this.seated(e.by) || !Number.isSafeInteger(e.n) || e.n < 0) return;
+        // a record heard before the last resume, stored again (a retried write landing after the
+        // resume, or a replay): it pauses nobody. Both devices hear the same records in the same
+        // order, so both drop the same ones.
+        if (this.stalePauses.has(e.n)) return;
+        this.heardPauses.add(e.n);
         this.pauseSeq = Math.max(this.pauseSeq, Math.floor(e.n / 4));
         if (pauseWriter(e.n) === this.otherSeat) this.otherLifeAt = this.now();
         if (!isBeat(e.n)) this.setPaused(e.by);
         return;
       case 'resume':
+        this.stalePauses = new Set(this.heardPauses);
         this.setPaused(null);
         return;
       case 'end':
         // either seat's slot, the own one too: the other device may have filled it (see concede)
         this.know(e.seat, e.raw);
         return;
-      case 'quit': {
-        if (!this.seated(e.by)) return;
-        const winner = e.by === this.me ? this.otherSeat : this.seat;
-        this.finish({ kind: 'forfeit', winner, by: e.by });
+      case 'quit':
+        // a forfeit is an end record now (FORFEIT_END); a quit record settles nothing, since an
+        // outcome from it could contradict the end slots
         return;
-      }
       case 'sync':
         if (!this.host && e.n > this.repairCount) this.pendingSync = e;
         return;
@@ -438,18 +466,21 @@ export class LockstepMatch {
     });
   }
 
-  private writeRetrying(rec: ControlRecord, keepalive = false, done?: (answer: WriteAnswer) => void): void {
-    this.retrying(() => this.channel.write(rec, keepalive ? { keepalive } : undefined), (answer) => done?.(answer));
+  private writeRetrying(rec: ControlRecord, keepalive = false, done?: (answer: WriteAnswer) => void, alive?: () => boolean): void {
+    this.retrying(() => this.channel.write(rec, keepalive ? { keepalive } : undefined), (answer) => done?.(answer), alive);
   }
 
   private removeRetrying(): void {
     this.retrying(() => this.channel.remove(), () => {});
   }
 
-  /** Sends until the answer is `ok` or `refused`; `offline` (or a failed call) is sent again, 250 ms doubling to 2 s. */
-  private retrying(send: () => Promise<WriteAnswer>, done: (answer: 'ok' | 'refused') => void): void {
+  /**
+   * Sends until the answer is `ok` or `refused`; `offline` (or a failed call) is sent again, 250 ms
+   * doubling to 2 s, while `alive` says so.
+   */
+  private retrying(send: () => Promise<WriteAnswer>, done: (answer: 'ok' | 'refused') => void, alive: () => boolean = () => true): void {
     const attempt = (waitMs: number) => {
-      if (this.disposed) return;
+      if (this.disposed || !alive()) return;
       send().catch((): WriteAnswer => 'offline').then((answer) => {
         if (this.disposed) return;
         if (answer === 'offline') this.later(() => attempt(Math.min(waitMs * 2, this.t.retry.maxMs)), waitMs);
@@ -474,7 +505,9 @@ export class LockstepMatch {
 
   private writePause(keepalive: boolean): void {
     this.setPaused(this.me);
-    this.writeRetrying({ kind: 'pause', by: this.me, n: pauseNumber(++this.pauseSeq, this.seat, false) }, keepalive);
+    const writes = this.pauseWrites;
+    this.writeRetrying({ kind: 'pause', by: this.me, n: pauseNumber(++this.pauseSeq, this.seat, false) }, keepalive,
+      undefined, () => writes === this.pauseWrites);
   }
 
   /** Enters, changes or leaves the paused state; heartbeats run while paused and not hidden. */
@@ -694,6 +727,16 @@ export class LockstepMatch {
   }
 
   /**
+   * A slot that ends the match with no winner, whatever the other slot holds: `broken`, `gone`, an
+   * unreadable record, or a forfeit by someone not seated.
+   */
+  private noWinner(s: EndSlot | null): boolean {
+    if (s === null) return false;
+    if (isForfeit(s)) return typeof s.rec!.by !== 'string' || !this.seated(s.rec!.by as Slot);
+    return s.rec === null || !isWinner(s.rec.w);
+  }
+
+  /**
    * The outcome from the two slots (spec 9), the same on both devices since both read the same
    * write-once values: a slot with no winner ends the match unfinished whatever the other holds;
    * two winners give `won` when they agree, else `disagree` with the host's shown.
@@ -702,13 +745,22 @@ export class LockstepMatch {
     if (this.result) return;
     const mine = this.slots[this.seat];
     const theirs = this.slots[this.otherSeat];
-    if (noWinner(mine) || noWinner(theirs)) {
+    if (this.noWinner(mine) || this.noWinner(theirs)) {
       const gone = [mine, theirs].some((s) => s?.rec?.w === GONE_END);
       this.finish({ kind: 'unfinished', why: this.conceding ?? (gone ? 'gone' : 'broken') });
       if (this.conceding === 'flag') this.removeRetrying(); // the white flag deletes the match (spec 6.7)
       return;
     }
     if (mine === null || theirs === null) return;
+    // a forfeit decides once both slots are known (a slot with no winner, above, comes first); if
+    // both hold one, the plants slot's: the same on both screens
+    const quit = [this.slots.plants!, this.slots.zombies!].find(isForfeit);
+    if (quit) {
+      const by = quit.rec!.by as Slot;
+      const loser = by === this.me ? this.seat : this.otherSeat;
+      this.finish({ kind: 'forfeit', winner: loser === 'plants' ? 'zombies' : 'plants', by });
+      return;
+    }
     const own = mine.rec!;
     const other = theirs.rec!;
     const ownW = own.w as Winner;
@@ -766,8 +818,10 @@ export class LockstepMatch {
    * states differ there.
    */
   private guestEndPassed(tick: number): boolean {
-    const t = this.slots[this.otherSeat]?.rec?.t;
-    return this.slots[this.otherSeat] !== null && (typeof t !== 'number' || tick >= t);
+    const s = this.slots[this.otherSeat];
+    if (s === null || isForfeit(s)) return false; // a forfeit names no tick to reach
+    const t = s.rec?.t;
+    return typeof t !== 'number' || tick >= t;
   }
 
   /**

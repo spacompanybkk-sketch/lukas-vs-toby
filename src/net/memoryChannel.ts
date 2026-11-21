@@ -8,13 +8,15 @@ import type { VirtualClock } from './virtualClock';
  * (request → store, store → answer, store → stream) takes one latency of the seat whose device
  * is on the other end:
  * - `latencyMs` alone: that latency on every hop, nothing random, everything in order.
- * - `minLatencyMs`..`maxLatencyMs`: each seat's link latency, drawn once from `seed`.
+ * - `minLatencyMs`..`maxLatencyMs`: each seat's link latency, drawn once per match from `seed`
+ *   (a per-link range, not a per-message one: the per-message spread is `jitterMs`).
  * - `jitterMs`: each hop is its link latency ± up to this much (never below 0).
  * - `loseAnswers`: the share of writes whose change is applied but whose answer is lost: the
  *   device hears `offline` and retries the same value.
  * - `reorder`: turns reach a stream each on its own delay, so they may arrive out of order;
  *   control records still arrive in the order they were stored. Without it a stream is in order.
- *   A device's requests always reach the store in the order it sent them (one connection).
+ *   A device's requests always reach the store in the order it sent them (one connection). This
+ *   is a modelling assumption: separate REST requests can overtake each other on a real network.
  * Random draws come from a mulberry32 seeded with `seed`, never `Math.random`, so a run on the
  * virtual clock is repeatable.
  */
@@ -33,6 +35,9 @@ export interface MemoryPair {
    * `seat`'s device is cut off from virtual `fromMs` to `toMs`: its requests sent meanwhile never
    * arrive (answered `offline`), answers due meanwhile are lost (`offline`, the change stands),
    * and its stream is held, then delivered one hop after `toMs` in the order it was held.
+   * Gentler than a real outage: a real stream is dropped and reopened from the device's own
+   * `from` (a snapshot, already heard turns again, no `resume` event for a pause gone meanwhile),
+   * and a request on a dead network can take up to the client's timeout, not one hop, to fail.
    */
   blackout(seat: Faction, fromMs: number, toMs: number): void;
 }

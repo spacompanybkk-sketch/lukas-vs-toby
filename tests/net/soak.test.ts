@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { versusConfig, type VersusSetup } from '../../src/ai/versus';
+import type { MatchChannel } from '../../src/net/channel';
 import { LockstepMatch } from '../../src/net/lockstepMatch';
 import { memoryPair } from '../../src/net/memoryChannel';
 import { VirtualClock } from '../../src/net/virtualClock';
@@ -88,6 +89,7 @@ describe('two-sim soak over a faulty channel', () => {
     // the first differing hash (tick 630) exists once both screens have run to it
     const seen = Math.max(...[host, guest].map((p) => p.computed.find(([t]) => t === 630)![2]));
     console.log(`[soak] nudge: nudged at ${Math.round(nudgedAt)} ms (tick 600); both at 630 by ${Math.round(seen)} ms; host repaired at ${Math.round(found.ms)} ms (tick ${found.tick}); guest restored at ${Math.round(restored.ms)} ms (tick ${restored.tick})`);
+    expect(restored.ms - nudgedAt).toBeLessThanOrEqual(2000);
     expect(restored.ms - found.ms).toBeLessThanOrEqual(2000);
     expect(restored.ms - seen).toBeLessThanOrEqual(2000);
     expect(restored.tick).toBe(found.tick);
@@ -174,14 +176,158 @@ describe('the faulty in-memory channel', () => {
   });
 });
 
+describe('pause and resume under lost answers', () => {
+  /** p01 hosts on plants, p02 on zombies, over a 100 ms link; `plants` may wrap the host's channel. */
+  function duo(wrap: (c: MatchChannel) => MatchChannel = (c) => c) {
+    const clock = new VirtualClock();
+    const link = memoryPair({ clock, latencyMs: 100 });
+    const setup: VersusSetup = { seed: 3, seats: { plants: 'p01', zombies: 'p02' }, head: null };
+    const make = (seat: Faction) => new LockstepMatch({
+      match: new Match(versusConfig(setup)), seat, delay: 12, host: seat === 'plants',
+      me: setup.seats[seat], other: setup.seats[seat === 'plants' ? 'zombies' : 'plants'],
+      channel: seat === 'plants' ? wrap(link.plants) : link.zombies, now: () => clock.now(), timers: clock,
+    });
+    const host = make('plants');
+    const guest = make('zombies');
+    host.start();
+    guest.start();
+    const frames = async (n: number) => {
+      for (let i = 0; i < n; i++) {
+        clock.advance(FRAME);
+        await flush();
+        host.tryStep();
+        guest.tryStep();
+        await flush();
+      }
+    };
+    return { clock, link, host, guest, frames };
+  }
+
+  it('a pause whose answer is lost is not sent again after a resume: both play on', async () => {
+    let lose = true;
+    const { link, host, guest, frames } = duo((c) => ({
+      ...c,
+      write: (rec, o) => c.write(rec, o).then((answer) => {
+        if (rec.kind !== 'pause' || !lose) return answer;
+        lose = false;
+        return 'offline'; // applied, the answer lost: the device would send it again after 250 ms
+      }),
+    }));
+    await frames(60);
+    host.pause();
+    await frames(7); // the pause is stored and both are paused; its answer came back offline at 200 ms
+    expect(link.store.has('pause')).toBe(true);
+    expect(guest.pausedBy).toBe('p01');
+    host.resume(); // before the 250 ms retry
+    const ticks = [host.match.state.tick, guest.match.state.tick];
+    await frames(90);
+    expect(host.pausedBy).toBeNull();
+    expect(guest.pausedBy).toBeNull();
+    expect(link.store.has('pause')).toBe(false);
+    expect(host.match.state.tick).toBeGreaterThan(ticks[0]! + 60);
+    expect(guest.match.state.tick).toBeGreaterThan(ticks[1]! + 60);
+  });
+
+  it('a pause record stored again after the resume (a stale retry) is dropped on both', async () => {
+    const { link, host, guest, frames } = duo();
+    await frames(60);
+    host.pause(); // pause number 4: sequence 1, plants, not a heartbeat
+    await frames(10);
+    host.resume();
+    await frames(10);
+    void link.plants.write({ kind: 'pause', by: 'p01', n: 4 }); // the same record again, after the resume
+    await frames(30);
+    expect(link.store.has('pause')).toBe(true);
+    expect(host.pausedBy).toBeNull();
+    expect(guest.pausedBy).toBeNull();
+    host.pause(); // a new pause still pauses both
+    await frames(10);
+    expect(host.pausedBy).toBe('p01');
+    expect(guest.pausedBy).toBe('p01');
+  });
+
+  it.each([1, 2, 3])('soak seed %i: Toby pauses every 5 s and plays on 300 ms later over the faulty link', async (seed) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const s = soakPair(seed, { blackout: null });
+    const toby = s.peers[s.toby];
+    let nextPause = 5000;
+    let resumeAt = -1;
+    const checks: number[] = [];
+    const stuck: string[] = [];
+    let cycles = 0;
+    toby.before = (p) => {
+      const now = s.clock.now();
+      if (resumeAt < 0 && now >= nextPause && p.lm.pausedBy === null) {
+        p.lm.pause();
+        resumeAt = now + 300;
+      } else if (resumeAt >= 0 && now >= resumeAt) {
+        p.lm.resume();
+        cycles++;
+        checks.push(now + 2500);
+        resumeAt = -1;
+        nextPause = now + 5000;
+      }
+    };
+    start(s);
+    while (!settled(s) && s.clock.now() < MAX_MATCH_MS) {
+      await s.frame();
+      while (checks.length > 0 && s.clock.now() >= checks[0]!) {
+        const at = checks.shift()!;
+        for (const f of ['plants', 'zombies'] as const) {
+          if (s.peers[f].lm.pausedBy !== null) stuck.push(`${f} paused at ${Math.round(at)} ms`);
+        }
+      }
+    }
+    const lost = s.peers[s.toby].offline;
+    console.log(`[soak] pause seed ${seed}: ${cycles} pause/resume cycles, lost answers ${JSON.stringify(lost)}, ${JSON.stringify(s.peers.plants.lm.outcome())}`);
+    expect(settled(s)).toBe(true);
+    expect(cycles).toBeGreaterThan(10);
+    expect(stuck).toEqual([]); // 2.5 s after each resume, nobody is paused
+    expect(s.peers.zombies.lm.outcome()).toEqual(s.peers.plants.lm.outcome());
+    expect(differing(s)).toEqual([]);
+  }, 120_000);
+
+  it('the pause soak met lost pause and resume answers', async () => {
+    let pauses = 0;
+    let resumes = 0;
+    for (const seed of [1, 2, 3]) {
+      const s = soakPair(seed, { blackout: null });
+      const toby = s.peers[s.toby];
+      let nextPause = 5000;
+      let resumeAt = -1;
+      toby.before = (p) => {
+        const now = s.clock.now();
+        if (resumeAt < 0 && now >= nextPause && p.lm.pausedBy === null) {
+          p.lm.pause();
+          resumeAt = now + 300;
+        } else if (resumeAt >= 0 && now >= resumeAt) {
+          p.lm.resume();
+          resumeAt = -1;
+          nextPause = now + 5000;
+        }
+      };
+      start(s);
+      await run(s, () => settled(s), MAX_MATCH_MS);
+      pauses += toby.offline.pause ?? 0;
+      resumes += toby.offline.resume ?? 0;
+    }
+    expect(pauses).toBeGreaterThan(0);
+    expect(resumes).toBeGreaterThan(0);
+  }, 120_000);
+});
+
 /**
  * Reviewer minor M2 of task 3: a white flag in the pause menu (`forfeit`) on a guest that has not
- * heard the host's end record races the host's fill of the guest's slot after `endWaitMs`.
+ * heard the host's end record raced the host's fill of the guest's slot after `endWaitMs`, and the
+ * two screens named opposite winners. A forfeit is now a write into the end slots, so whichever
+ * value the database keeps decides both screens.
  */
-describe('open race M2: forfeit against the host\'s 10 s fill', () => {
+describe('race M2: forfeit against the host\'s 10 s fill', () => {
   /**
    * The host's state ends at tick 96 with the guest's side winning, and the guest's link goes dark
    * for `darkMs` right then; the guest's player presses the forfeit `flagAtMs` after the host's end.
+   * Poking only the host's base stands in for a guest stalled short of the end tick: naturally the
+   * guest would go dark before the host's last turns reach it.
    */
   async function race(darkMs: number, flagAtMs: number) {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -212,30 +358,43 @@ describe('open race M2: forfeit against the host\'s 10 s fill', () => {
     };
     while (endedAt < 0) await frame();
     while (clock.now() < endedAt + flagAtMs) await frame();
-    expect(guest.outcome()).toBeNull();
+    const unheard = guest.outcome() === null;
     guest.pause();
-    guest.forfeit(); // the white flag in the pause menu, the host's end still unheard
+    guest.forfeit(); // the white flag in the pause menu
     while (clock.now() < Math.max(endedAt + darkMs, endedAt + 10_000) + 3000) await frame();
-    return { host: host.outcome(), guest: guest.outcome(), store: link.store };
+    return { unheard, host: host.outcome(), guest: guest.outcome(), store: link.store };
   }
 
-  it('reproduces: the guest dark for 12 s and flagging at 9.5 s; the host shows a win, the guest a forfeit for the other side', async () => {
-    const r = await race(12_000, 9500);
-    expect(r.host).toEqual({ kind: 'won', winner: 'zombies' }); // the host filled the guest's slot at 10 s
-    expect(r.guest).toEqual({ kind: 'forfeit', winner: 'plants', by: 'p02' });
-    expect(r.store.get('quit')).toBe(JSON.stringify({ by: 'p02' })); // the quit landed after the host had settled
-  });
+  const ZOMBIES_WON = { kind: 'won', winner: 'zombies' };
+  const P02_FORFEIT = { kind: 'forfeit', winner: 'plants', by: 'p02' };
 
-  // Known open race (M2), reproduced above. The end protocol is not redesigned in this task; the
-  // controller rules on it. This is the property that should hold, and it fails today.
-  it.fails('both devices show the same outcome when a forfeit races the host\'s fill', async () => {
+  it('the guest dark for 12 s and flagging at 9.5 s: the fill came first, both show the host\'s win', async () => {
     const r = await race(12_000, 9500);
+    expect(r.unheard).toBe(true);
+    expect(r.host).toEqual(ZOMBIES_WON);
     expect(r.guest).toEqual(r.host);
+    expect(r.store.get('end/zombies')).toBe(r.store.get('end/plants')); // the host's record in both slots
+    expect(r.store.has('quit')).toBe(false);
   });
 
-  it('no race when the quit lands before the fill (dark 8 s, flag at 7 s): both show the forfeit', async () => {
+  it('the forfeit stored before the fill (dark 8 s, flag at 7 s): both show the forfeit', async () => {
     const r = await race(8000, 7000);
-    expect(r.host).toEqual({ kind: 'forfeit', winner: 'plants', by: 'p02' });
+    expect(r.unheard).toBe(true);
+    expect(r.host).toEqual(P02_FORFEIT);
     expect(r.guest).toEqual(r.host);
+  });
+
+  it('whenever the flag is pressed and however long the guest is dark, both show the same outcome', async () => {
+    const seen = new Set<string>();
+    for (const darkMs of [3000, 9000, 10_100, 12_000, 20_000]) {
+      for (const flagAtMs of [500, 5000, 9500, 9950, 10_050, 11_000]) {
+        const r = await race(darkMs, flagAtMs);
+        expect(r.host, `dark ${darkMs}, flag at ${flagAtMs}`).not.toBeNull();
+        expect(r.guest, `dark ${darkMs}, flag at ${flagAtMs}`).toEqual(r.host);
+        expect([ZOMBIES_WON, P02_FORFEIT]).toContainEqual(r.host);
+        seen.add(JSON.stringify(r.host));
+      }
+    }
+    expect(seen.size).toBe(2); // both sides of the race were hit
   });
 });
