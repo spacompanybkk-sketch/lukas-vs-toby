@@ -41,7 +41,7 @@ function fakeSession(): BattleSessionLike & { begin: Mock<() => void>; dispose: 
   const hud: HudSignals = {
     energy: signal(50),
     cards: signal([card('peashooter'), card('sunflower', 0.5)]),
-    base: signal({ plants: { hp: 1000, max: 1000 }, zombies: { hp: 1000, max: 1000 } }),
+    base: signal({ plants: { hp: 1000, max: 1000, safe: false }, zombies: { hp: 1000, max: 1000, safe: false } }),
     seconds: signal(0), suddenDeath: signal(false), paused: signal(false),
     selected: signal<UnitKey | null>(null), shovel: signal(false),
     result: signal<null | { winner: Faction | 'draw'; playerWon: boolean }>(null), denied: signal(0),
@@ -100,7 +100,7 @@ describe('BattleScreen', () => {
     act(() => {
       hud.energy.value = 175;
       hud.seconds.value = 61;
-      hud.base.value = { plants: { hp: 400, max: 1000 }, zombies: { hp: 1000, max: 1000 } };
+      hud.base.value = { plants: { hp: 400, max: 1000, safe: false }, zombies: { hp: 1000, max: 1000, safe: false } };
       hud.suddenDeath.value = true;
     });
     expect(need('[data-hud="energy"]').textContent).toContain('175');

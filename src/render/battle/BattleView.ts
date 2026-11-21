@@ -24,6 +24,8 @@ import { BoxBatch } from '../world/boxes';
 import type { Lawn } from '../world/Lawn';
 import { BossFx, isBossKey, throwsFrozenMelons } from './BossFx';
 import { Hazards } from './Hazards';
+import { PendingMarks } from './PendingMarks';
+import type { PendingMark } from '../../app/BattleController';
 import { HeroFx } from './HeroFx';
 import { SpellFx } from './SpellFx';
 import { BAR_SPAN, HealthBars } from './HealthBars';
@@ -60,6 +62,8 @@ const FADE_PUFF = 0xdde6ff;
 /** The placement ghost draws after the lawn's highlight marks. */
 export const GHOST_RENDER_ORDER = 10;
 const GHOST_OPACITY = 0.85;
+/** A pending tap's ghost (two-device Versus) is fainter: it is not there yet. */
+const PENDING_GHOST_OPACITY = 0.45;
 const GHOST_OUTLINE_SCALE = 1.09;
 const GHOST_OUTLINE_OK = 0xffffff;
 const GHOST_OUTLINE_BAD = 0xff3b3b;
@@ -318,6 +322,9 @@ export class BattleView {
   private readonly outlineMaterial = new MeshBasicMaterial({ color: GHOST_OUTLINE_OK, side: BackSide, transparent: true, opacity: 0.95, depthWrite: false });
   private outline: ModelInstance | null = null;
   private ghostClock = 0;
+  /** Two-device Versus: the own taps waiting to run, with their ghosts in their own see-through material. */
+  private readonly pending: PendingMarks;
+  private readonly pendingGhostMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: PENDING_GHOST_OPACITY, depthWrite: false });
   private pulseTarget: UnitView | null = null;
   private readonly raycaster = new Raycaster();
   private readonly pickables: Object3D[] = [];
@@ -354,6 +361,7 @@ export class BattleView {
       this.tokens.push({ object: makeToken(kind), kind, age: 0, at: new Vector3(), active: false });
     }
     for (let i = 0; i < 6; i++) this.blasts.push({ at: new Vector3(), radius: 1, delay: 0, active: false, feel: BLAST_DEFAULT });
+    this.pending = new PendingMarks(scene, (unit) => this.pendingGhost(unit));
   }
 
   /** Units on the lawn, those still falling apart included. */
@@ -404,6 +412,19 @@ export class BattleView {
   /** How strongly the place marks show (see `PlaceMarks`); cheap, but call it when it changes. */
   setPlaceStrength(strength: number): void {
     this.lawn.setPlaceStrength(strength);
+  }
+
+  /**
+   * Two-device Versus: the own taps waiting to run (the controller's `online.pending`), each a puff
+   * of leaves or a crack of earth with its card's ghost on its tile; a refused one collapses.
+   */
+  setPending(marks: readonly PendingMark[]): void {
+    this.pending.set(marks);
+  }
+
+  /** Pending taps drawn on the lawn now, for tests. */
+  get pendingShown(): number {
+    return this.pending.shown;
   }
 
   /** The view of a unit, for tools and tests. */
@@ -537,11 +558,15 @@ export class BattleView {
     view.poisoned = (bits & POISON_BIT) !== 0;
   }
 
-  /** Call once per animation frame. `dtSeconds` is game time (0 while paused). */
-  frame(_state: SimState, alpha: number, dtSeconds: number, timeSeconds: number): void {
+  /**
+   * Call once per animation frame. `dtSeconds` is game time (0 while paused); `realSeconds` real
+   * time (default the game time), for what runs on through a pause or a hit-stop: the pending taps.
+   */
+  frame(_state: SimState, alpha: number, dtSeconds: number, timeSeconds: number, realSeconds = dtSeconds): void {
     const dt = dtSeconds > 0 ? dtSeconds : 0;
     const a = Math.min(1, Math.max(0, alpha));
     this.time = timeSeconds;
+    this.pending.frame(realSeconds);
 
     // Units: move, animate, and take away the ones that have finished dying.
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -895,6 +920,8 @@ export class BattleView {
     this.outlineMaterial.dispose();
     this.pulseTarget = null;
     this.ghostMaterial.dispose();
+    this.pending.dispose();
+    this.pendingGhostMaterial.dispose();
     for (const side of ['plants', 'zombies'] as const) {
       this.scene.remove(this.bases[side].group);
       this.bases[side].dispose();
@@ -909,21 +936,36 @@ export class BattleView {
     this.resolveCelebrate = null;
   }
 
+  /** A ghost model of a unit type in `material`: no shadows, drawn after the lawn's marks. */
+  private ghostModel(key: UnitKey, material: MeshStandardMaterial): ModelInstance {
+    const ghost = new ModelInstance(getModelDef(key), 1);
+    ghost.root.name = `ghost-${key}`;
+    ghost.root.traverse((o) => {
+      if (o instanceof Mesh) {
+        o.material = material;
+        o.castShadow = false;
+        o.receiveShadow = false;
+        // After the see-through tile and lane marks, which would otherwise wash out its lower half.
+        o.renderOrder = GHOST_RENDER_ORDER;
+      }
+    });
+    return ghost;
+  }
+
+  /**
+   * A pending tap's ghost: the placement ghost's model in a fainter material of its own (the
+   * placement ghost's turns red on a bad spot). Its geometry is the model cache's, so taking it
+   * out of the scene frees nothing.
+   */
+  private pendingGhost(key: UnitKey): Object3D {
+    return this.ghostModel(key, this.pendingGhostMaterial).root;
+  }
+
   /** The ghost of a unit type, made once with the see-through material and kept. */
   private ghostFor(key: UnitKey): ModelInstance {
     let ghost = this.ghosts.get(key);
     if (!ghost) {
-      ghost = new ModelInstance(getModelDef(key), 1);
-      ghost.root.name = `ghost-${key}`;
-      ghost.root.traverse((o) => {
-        if (o instanceof Mesh) {
-          o.material = this.ghostMaterial;
-          o.castShadow = false;
-          o.receiveShadow = false;
-          // After the see-through tile and lane marks, which would otherwise wash out its lower half.
-          o.renderOrder = GHOST_RENDER_ORDER;
-        }
-      });
+      ghost = this.ghostModel(key, this.ghostMaterial);
       ghost.root.visible = false;
       this.ghosts.set(key, ghost);
       this.scene.add(ghost.root);
