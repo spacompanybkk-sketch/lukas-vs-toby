@@ -619,3 +619,197 @@ describe('the rematch', () => {
     expect(db.peek(`${root}/vs/matches/${id}`)).toBeNull();
   });
 });
+
+/** The page of `d` reloads: its flow and session are gone, its storage stays, it logs in again. */
+async function reborn(d: Dev): Promise<Dev> {
+  d.flow.dispose();
+  d.session.dispose();
+  devices = devices.filter((x) => x !== d);
+  return device(d.slot, { storage: d.storage });
+}
+
+/** One frame of play for the devices in the battle, recording each device's hash every 30 ticks. */
+function player(...devs: Dev[]): { frames: (n: number) => Promise<void>; hashes: Map<Dev, Map<number, number>> } {
+  const hashes = new Map<Dev, Map<number, number>>(devs.map((d) => [d, new Map()]));
+  const frames = async (n: number): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      clock.advance(FRAME);
+      await settle();
+      for (const d of devs) {
+        if (d.flow.phase.value.name !== 'battle') continue;
+        const link = linkOf(d);
+        if (link.tryStep().kind === 'ran' && link.match.state.tick % 30 === 0) hashes.get(d)!.set(link.match.state.tick, link.match.hash());
+      }
+    }
+  };
+  return { frames, hashes };
+}
+
+const tickOf = (d: Dev): number => linkOf(d).match.state.tick;
+
+describe('rejoin after a reload (spec 6.7)', () => {
+  it('Toby\'s page reloads mid-match: "back to the battle" after log-in, a headless replay in 600-tick slices, the same state as the other device, and play goes on; the result offers no rematch', async () => {
+    const { lukas, toby, id } = await battle();
+    const p = player(lukas, toby);
+    await p.frames(1250);
+    expect(Math.min(tickOf(lukas), tickOf(toby))).toBeGreaterThan(1200);
+    const stood = tickOf(toby);
+    expect(toby.session.deviceStorage()?.getItem(VMATCH_KEY)).toContain(id);
+
+    const toby2 = await reborn(toby);
+    expect(toby2.w.open).toBe(0);
+    await until(() => toby2.flow.canRejoin.value);
+    toby2.flow.rejoin();
+    expect(toby2.flow.canRejoin.value).toBe(false);
+    let slices = 0;
+    while (name(toby2) !== 'battle' && slices < 40) {
+      await settle();
+      clock.advance(16);
+      slices++;
+    }
+    expect(name(toby2)).toBe('battle');
+    // 1,250-odd ticks at 600 a slice: more than one slice, not one tick a frame
+    expect(slices).toBeGreaterThanOrEqual(2);
+    expect(slices).toBeLessThan(15);
+    const link = linkOf(toby2);
+    expect(link.match.state.tick).toBeGreaterThan(1200);
+    expect(link.match.state.tick).toBeLessThanOrEqual(stood + 60); // as far as both logs reach
+    toby2.flow.battleBegan();
+
+    const q = player(lukas, toby2);
+    await q.frames(400);
+    expect(tickOf(toby2)).toBeGreaterThan(stood);
+    expect(link.repairs()).toBe(0);
+    expect(linkOf(lukas).repairs()).toBe(0);
+    // the same match on both screens at every tick both checked since the rejoin
+    let compared = 0;
+    for (const [tick, h] of q.hashes.get(toby2)!) {
+      const theirs = q.hashes.get(lukas)!.get(tick) ?? p.hashes.get(lukas)!.get(tick);
+      if (theirs === undefined) continue;
+      expect(theirs, `hash at tick ${tick}`).toBe(h);
+      compared++;
+    }
+    expect(compared).toBeGreaterThanOrEqual(5);
+    expect(link.outcome()).toBeNull();
+    expect(toby2.w.open).toBe(2);
+
+    toby2.flow.battleOutcome(won('plants'));
+    expect(phaseOf(toby2, 'result').vm.rematch).toBe('none');
+    expect(toby2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+  }, 120_000);
+
+  it('Review Focus 4: the stored match deleted, ended (both end records) or older than 10 minutes: no way back, and the key is removed', async () => {
+    for (const how of ['deleted', 'ended', 'old'] as const) {
+      const { lukas, toby, id } = await battle();
+      const p = player(lukas, toby);
+      await p.frames(60);
+      const key = toby.session.deviceStorage()?.getItem(VMATCH_KEY);
+      expect(key).toContain(id);
+      lukas.flow.dispose();
+      toby.flow.dispose();
+      const conn = fakeConnection(db, root);
+      if (how === 'deleted') {
+        const ch = new (await import('../../src/cloud/versusMatch')).CloudMatchChannel({ conn, id, seat: 'plants', me: 'p01', timers: clock });
+        expect(await ch.remove()).toBe('ok');
+      } else if (how === 'ended') {
+        const mod = await import('../../src/cloud/versusMatch');
+        for (const [seat, me] of [['plants', 'p01'], ['zombies', 'p02']] as const) {
+          const ch = new mod.CloudMatchChannel({ conn, id, seat, me, timers: clock });
+          const w = ch.write({ kind: 'end', seat, raw: '{"w":"plants","t":90,"h":1}' });
+          for (let i = 0; i < 50; i++) { await settle(); clock.advance(10); }
+          expect(await w).toBe('ok');
+        }
+      } else {
+        clock.advance(10 * 60_000 + 5_000);
+      }
+      const t2 = await reborn(toby);
+      await until(() => t2.flow.allowed.value);
+      await pass(500);
+      expect(t2.flow.canRejoin.value, how).toBe(false);
+      expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY), how).toBeNull();
+      t2.flow.dispose();
+      devices = [];
+      // a fresh world for the next case
+      db = new FakeDatabase({ now: () => T0 + clock.now() });
+      for (const r of ['v2', 'v2test'] as const) {
+        const cloud = createFakeCloud(db, r);
+        for (const slot of ['p01', 'p02'] as const) {
+          const person = PEOPLE[slot]!;
+          expect(await cloud.createPlayer(newSave(slot, person.name, person.picture, T0), await pinHash(slot, PINS[slot]!))).toBe('ok');
+        }
+      }
+      clock.advance(1000);
+    }
+  }, 120_000);
+
+  it('a match whose answer never came (offline at log-in) keeps its key for the next log-in', async () => {
+    const { toby, lukas } = await battle();
+    await player(lukas, toby).frames(60);
+    lukas.flow.dispose();
+    toby.flow.dispose();
+    devices = [];
+    db.offline = true;
+    const t2 = await device('p02', { storage: toby.storage });
+    await pass(8000);
+    expect(t2.flow.canRejoin.value).toBe(false);
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).not.toBeNull();
+  });
+
+  it('a pause of this device left in the store is ended on rejoin, so it holds nobody', async () => {
+    const { lukas, toby, id } = await battle();
+    const p = player(lukas, toby);
+    await p.frames(200);
+    linkOf(toby).pause();
+    await p.frames(30);
+    expect(linkOf(lukas).pausedBy).toBe('p02');
+    expect(db.peek(`${root}/vs/matches/${id}/pause`)).not.toBeNull();
+    const toby2 = await reborn(toby);
+    await until(() => toby2.flow.canRejoin.value);
+    toby2.flow.rejoin();
+    await until(() => name(toby2) === 'battle');
+    expect(linkOf(toby2).pausedBy).toBeNull(); // the stored pause does not pause the reloaded device alone
+    toby2.flow.battleBegan();
+    const q = player(lukas, toby2);
+    await q.frames(60);
+    await until(() => db.peek(`${root}/vs/matches/${id}/pause`) === null);
+    expect(linkOf(lukas).pausedBy).toBeNull();
+    const at = tickOf(toby2);
+    await q.frames(90);
+    expect(tickOf(toby2)).toBeGreaterThan(at);
+    expect(tickOf(lukas)).toBeGreaterThan(at - 10);
+  }, 60_000);
+
+  it('a credit already applied is not applied again on rejoin (lastBattle equal, or the match remembered after Adventure took lastBattle)', async () => {
+    for (const how of ['same tag', 'tag replaced'] as const) {
+      const { lukas, toby, id } = await battle();
+      await player(lukas, toby).frames(60);
+      const key = lukas.session.deviceStorage()!.getItem(VMATCH_KEY)!;
+      lukas.flow.battleOutcome(won('plants'));
+      expect(wins(lukas)).toBe(1);
+      if (how === 'tag replaced') lukas.session.update((s) => ({ ...s, lastBattle: 'adventure-3' }));
+      lukas.session.deviceStorage()!.setItem(VMATCH_KEY, key); // the reload came before the key was cleaned up
+      const l2 = await reborn(lukas);
+      expect(wins(l2), how).toBe(1);
+      await until(() => l2.flow.canRejoin.value);
+      l2.flow.rejoin();
+      await until(() => name(l2) === 'battle');
+      l2.flow.battleBegan();
+      l2.flow.battleOutcome(won('plants')); // the same end delivered again
+      expect(wins(l2), how).toBe(1);
+      expect(phaseOf(l2, 'result').vm.rematch).toBe('none');
+      expect(id).toBeTruthy();
+      l2.flow.dispose();
+      toby.flow.dispose();
+      devices = [];
+      db = new FakeDatabase({ now: () => T0 + clock.now() });
+      for (const r of ['v2', 'v2test'] as const) {
+        const cloud = createFakeCloud(db, r);
+        for (const slot of ['p01', 'p02'] as const) {
+          const person = PEOPLE[slot]!;
+          expect(await cloud.createPlayer(newSave(slot, person.name, person.picture, T0), await pinHash(slot, PINS[slot]!))).toBe('ok');
+        }
+      }
+      clock.advance(1000);
+    }
+  }, 120_000);
+});
