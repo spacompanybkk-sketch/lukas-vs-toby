@@ -318,6 +318,30 @@ export class VersusLobby {
     });
   }
 
+  /**
+   * Writes a match's `meta` at `id` with this player's proof in the same update, for a match that
+   * needs no invite (a rematch). `taken` when a different `meta` already sits there; a refusal is
+   * read back (a retry of a lost answer reads as `ok`) and tried once more a beat later.
+   */
+  createMatch(meta: MatchMeta, id: string): Promise<WriteAnswer | 'taken'> {
+    if (!/^[0-9a-f]{32}$/.test(id)) return Promise.resolve('refused');
+    const metaPath = `vs/matches/${id}/meta`;
+    return this.enqueue(async () => {
+      for (let attempt = 0; ; attempt++) {
+        const a = await this.sendOnce({ [metaPath]: metaToWire(meta) });
+        if (a !== 'refused') return a;
+        const back = await this.request('GET', metaPath);
+        if (back.kind !== 'ok') return back.kind;
+        if (back.data !== null) {
+          const held = readMeta(back.data);
+          return held !== null && sameMeta(held, meta) ? 'ok' : 'taken';
+        }
+        if (attempt === 2) return 'refused';
+        await this.pause(RETRY_GAP_MS);
+      }
+    });
+  }
+
   /** Removes the reply `from` left in my lobby. */
   clearReply(from: Slot): Promise<WriteAnswer> {
     if (!isSlot(from) || from === this.me) return Promise.resolve('refused');

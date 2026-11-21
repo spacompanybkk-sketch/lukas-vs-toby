@@ -4,11 +4,10 @@ import { defaultHeadStart, rematchSetup, versusConfig } from '../ai/versus';
 import type { VersusSetup } from '../ai/versus';
 import { factionOf } from '../data/units';
 import type { Connection } from '../cloud/connection';
-import { FAKE_DATABASE_URL, TIMEOUT_MS, isAutomated } from '../cloud/restClient';
 import type { BoardRow } from '../cloud/types';
 import { matchId, newKeyPair, sharedSecret } from '../cloud/versusKeys';
 import type { KeyPair } from '../cloud/versusKeys';
-import { VersusLobby, readMeta } from '../cloud/versusLobby';
+import { VersusLobby } from '../cloud/versusLobby';
 import type { HereEntry, Invite, MatchMeta, Reply } from '../cloud/versusLobby';
 import { CloudMatchChannel, readMatch } from '../cloud/versusMatch';
 import type { StoredMatch } from '../cloud/versusMatch';
@@ -54,13 +53,11 @@ export const VMATCH_KEY = 'lvt2_vmatch';
 /** The device key of the matches already credited on this device (a short list of match ids). */
 export const VCREDITED_KEY = 'lvt2_vcredited';
 
-/** A match older than this is not rejoined (it would long be over). */
-export const REJOIN_MAX_AGE_MS = 10 * 60 * 1000;
+/** A rejoin replay that has not finished by now gives up: the device goes home. */
+export const REJOIN_REPLAY_MAX_MS = 60_000;
 /** How long a refusing cross, and the shaking expired card, stay on screen. */
 export const REFUSED_SHOWN_MS = 2000;
 export const EXPIRED_SHOWN_MS = 1000;
-/** A gap before a refused proof-carrying write is tried again (a new server millisecond). */
-const RETRY_GAP_MS = 60;
 /** The seats' turns the result's rematch watch must never ask for (the very last turn index: none is ever held there). */
 const NO_TURNS = MAX_TURN;
 const KEPT_CREDITS = 8;
@@ -119,6 +116,8 @@ interface Ctx {
   link: LockstepMatch | null;
   linkStarted: boolean;
   resumeOnStart: boolean;
+  /** Rejoined a match that had ended: the link only listens for the outcome. */
+  endedRejoin: boolean;
   timer: unknown;
   readySeen: { plants: boolean; zombies: boolean };
   connected: boolean;
@@ -138,7 +137,6 @@ const realTimers: Timers = {
 };
 
 const other = otherSide;
-const SV = Object.freeze({ '.sv': 'timestamp' });
 const ID_RE = /^[0-9a-f]{32}$/;
 const replyKey = (r: Reply): string => `${r.from}|${r.at}|${String(r.ok)}|${r.pub ?? ''}|${r.build}`;
 const inviteKey = (i: Invite): string => `${i.from}|${i.at}|${i.pub}`;
@@ -158,19 +156,6 @@ const setupOf = (m: MatchMeta): VersusSetup => ({
   seed: m.seed, seats: { ...m.seats }, head: m.head === null ? null : { ...m.head },
   ...(m.test !== null ? { testBaseHp: m.test } : {}),
 });
-
-/** `meta` as it is written (the lobby's own wire shape: no nulls, `created` the server's clock). */
-function metaWire(m: MatchMeta): Record<string, unknown> {
-  return {
-    v: 1, build: m.build, seed: m.seed, seats: { plants: m.seats.plants, zombies: m.seats.zombies }, host: m.host,
-    ...(m.head ? { head: { slot: m.head.slot, step: m.head.step } } : {}),
-    turn: 6, delay: m.delay,
-    ...(m.test !== null ? { test: m.test } : {}),
-    created: SV,
-  };
-}
-
-const sameMeta = (a: MatchMeta, b: MatchMeta): boolean => JSON.stringify(metaWire(a)) === JSON.stringify(metaWire(b));
 
 /** Who wrote a pause record (`n = 4·seq + 2·(zombies) + beat`, see LockstepMatch). */
 const pauseWriter = (n: number): Faction => (Math.floor(n / 2) % 2 === 1 ? 'zombies' : 'plants');
@@ -452,13 +437,15 @@ export class VersusFlow {
   /** The controller's `online.outcome`: credit once, then the result (or a notice for an unfinished match). */
   battleOutcome(o: VersusOutcome): void {
     const ctx = this.ctx;
-    if (ctx === null || ctx.outcome !== null || this._phase.peek().name !== 'battle') return;
+    if (ctx === null || ctx.outcome !== null || (this._phase.peek().name !== 'battle' && !ctx.endedRejoin)) return;
     ctx.outcome = o;
     ctx.resultAt = this.now();
     ctx.link?.dispose();
     this.clear(this.heartbeat);
     this.heartbeat = null;
     this.forgetKey();
+    // A rejoined match has no rematch to wait for: it goes once the other device has surely settled.
+    if (ctx.rejoined) this.scheduleRemoval(ctx.channel, ctx.resultAt + this.t.endWaitMs);
     const before = this.session.player.peek();
     this.credit(ctx, o);
     if (o.kind === 'unfinished') {
@@ -502,6 +489,12 @@ export class VersusFlow {
         void this.retry(ctx, () => ctx.channel.write({ kind: 'again', seat: ctx.seat, value: 0 }), true);
       }
       this.checkRemoval(ctx);
+      this.leaveMatch();
+      this._phase.value = { name: 'closed' };
+    } else if (ph.name === 'ready' && ctx !== null) {
+      // The way out of getting ready, and of a rejoin replay that hangs.
+      if (ctx.rejoined) this.forgetKey();
+      else void ctx.channel.remove();
       this.leaveMatch();
       this._phase.value = { name: 'closed' };
     } else if (ph.name === 'notice') {
@@ -703,7 +696,11 @@ export class VersusFlow {
   private async answered(out: Out, r: Reply): Promise<void> {
     const ep = this.epoch;
     const me = this.meSlot.peek();
-    if (me === null || out.keys === null || r.pub === null || this.conn === null) return;
+    if (me === null || out.keys === null || r.pub === null || this.conn === null) {
+      this.outSig.value = null;
+      this.notice('shrug', 'here');
+      return;
+    }
     const secret = await sharedSecret(out.keys, r.pub);
     const id = await matchId(secret, 0);
     const meta = await this.waitForMeta(id, () => ep === this.epoch && this.outSig.peek() === out);
@@ -731,7 +728,7 @@ export class VersusFlow {
       id: p.id, n: p.n, seat, me, other: them, host: p.meta.host === me, meta: p.meta, secret: p.secret, writer: p.writer,
       rejoined: p.rejoined,
       channel: new CloudMatchChannel({ conn: this.conn, id: p.id, seat, me, timers: this.timers }),
-      alive: true, unlisten: null, link: null, linkStarted: false, resumeOnStart: false, timer: null,
+      alive: true, unlisten: null, link: null, linkStarted: false, resumeOnStart: false, endedRejoin: false, timer: null,
       readySeen: { plants: false, zombies: false }, connected: false, outcome: null, resultAt: null,
       again: {}, rematchState: 'offer', rematchTimer: null, rematching: false, rows: [], rankUp: null,
     };
@@ -937,7 +934,7 @@ export class VersusFlow {
         v: 1, build: this.build, seed: next.seed, seats: next.seats, host: old.meta.host, head: next.head,
         turn: 6, delay: inputDelay(p90(this.lobby?.roundTrips() ?? [])), test: old.meta.test, created: 0,
       };
-      meta = await this.writeMeta(id, mine, alive) === 'ok' ? mine : null;
+      meta = (await this.lobby?.createMatch(mine, id)) === 'ok' ? mine : null;
     } else {
       meta = await this.waitForMeta(id, alive);
     }
@@ -975,8 +972,8 @@ export class VersusFlow {
     if (key === null || key.me !== me) return; // another player's match stays for him
     const stored = await readMatch(conn, key.id, this.timers);
     if (ep !== this.epoch || stored === 'offline') return; // no answer: the key stays for the next log-in
-    const now = this.lobby?.serverNow() ?? this.now();
-    if (stored === null || bothEnded(stored) || now - stored.meta.created > REJOIN_MAX_AGE_MS) {
+    // Any stored match that still exists: one that ended while this device was away is credited on rejoin.
+    if (stored === null) {
       this.forgetKey();
       return;
     }
@@ -993,7 +990,7 @@ export class VersusFlow {
       this.rejoinable.value = true;
       return;
     }
-    if (stored === null || bothEnded(stored)) {
+    if (stored === null) {
       this.forgetKey();
       this.notice('gone', 'closed');
       return;
@@ -1011,6 +1008,28 @@ export class VersusFlow {
       them: this.face(ctx.other), mySide: ctx.seat, blocks: { connected: true, bothReady: true, sameBuild: true },
     };
 
+    // A replay that fails or never finishes must not strand the device: it gives up and goes home.
+    const giveUp = (why: string): void => {
+      if (this.ctx !== ctx || !ctx.alive) return;
+      console.warn(`[versus] the rejoin gave up: ${why}`);
+      this.forgetKey();
+      this.notice('gone', 'closed');
+    };
+    ctx.timer = this.after(REJOIN_REPLAY_MAX_MS, () => giveUp('the replay did not finish in time'));
+    try {
+      this.replay(ctx, stored, ep, giveUp);
+    } catch (e) {
+      giveUp(String(e));
+    }
+  }
+
+  private replay(ctx: Ctx, stored: StoredMatch, ep: number, giveUp: (why: string) => void): void {
+    if (bothEnded(stored)) {
+      // Over while this device was away: no replay, the stored ends give the outcome (and the credit).
+      ctx.endedRejoin = true;
+      this.finishRejoin(ctx, stored, new Match(versusConfig(setupOf(stored.meta))));
+      return;
+    }
     // Every stored turn goes into a lockstep: the own ones adopted, the other's received.
     const lockstep = new Lockstep({ seat: ctx.seat, delay: stored.meta.delay });
     const theirSeat = other(ctx.seat);
@@ -1022,6 +1041,13 @@ export class VersusFlow {
     let mismatched = 0;
     const slice = (): void => {
       if (ep !== this.epoch || this.ctx !== ctx || !ctx.alive) return;
+      try {
+        sliceOnce();
+      } catch (e) {
+        giveUp(String(e));
+      }
+    };
+    const sliceOnce = (): void => {
       // 30 ticks at a time (a hash is taken every 30), 600 a slice: one slice a frame.
       for (let done = 0; done < REPLAY_SLICE_TICKS && match.state.tick < toTick && match.state.winner === null; done += 30) {
         replaySlice(match, { lockstep, toTick }, 30);
@@ -1066,6 +1092,19 @@ export class VersusFlow {
       },
     };
     ctx.link = this.makeLink(ctx, match, channel);
+    this.clear(ctx.timer);
+    ctx.timer = null;
+    if (ctx.endedRejoin) {
+      // No battle to show: the link only listens until the two end records give the outcome.
+      const link = ctx.link;
+      ctx.linkStarted = true;
+      link.onChange(() => {
+        const o = link.outcome();
+        if (o !== null) this.battleOutcome(o);
+      });
+      link.start();
+      return;
+    }
     this.beginBattle(ctx);
   }
 
@@ -1158,46 +1197,4 @@ export class VersusFlow {
     }
     return null;
   }
-
-  /** Writes the rematch's `meta` with this player's proof in the same update (the rules want both); reads back a refusal. */
-  private async writeMeta(id: string, meta: MatchMeta, alive: () => boolean): Promise<'ok' | 'taken' | 'refused'> {
-    const conn = this.conn;
-    const me = this.meSlot.peek();
-    if (conn === null || me === null) return 'refused';
-    const path = `vs/matches/${id}/meta`;
-    for (let attempt = 0; attempt < 6 && alive(); attempt++) {
-      const hash = this.session.proofHash();
-      if (hash === null) return 'refused';
-      const sent = await this.rest(conn, 'PATCH', '', { [path]: metaWire(meta), [`proof/${me}/${hash}`]: { touch: SV } });
-      if (sent.kind === 'ok') return 'ok';
-      const back = await this.rest(conn, 'GET', path);
-      if (back.kind === 'ok' && back.data !== null) {
-        const held = readMeta(back.data);
-        return held !== null && sameMeta(held, meta) ? 'ok' : 'taken';
-      }
-      await new Promise<void>((resolve) => { this.after(sent.kind === 'offline' ? this.t.retry.firstMs : RETRY_GAP_MS, resolve); });
-    }
-    return 'refused';
-  }
-
-  private async rest(conn: Connection, method: 'GET' | 'PATCH', path: string, body?: unknown): Promise<{ kind: 'ok'; data: unknown } | { kind: 'offline' } | { kind: 'refused' }> {
-    const url = conn.url(path);
-    if (!url.startsWith(`${FAKE_DATABASE_URL}/`) && conn.root !== 'v2test' && isAutomated()) return { kind: 'refused' };
-    const controller = new AbortController();
-    const timer = this.timers.set(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const res = await conn.fetch(url, {
-        method, signal: controller.signal,
-        ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
-      });
-      if (res.status >= 500 || res.status === 429 || res.status === 408) return { kind: 'offline' };
-      if (!res.ok) return { kind: 'refused' };
-      return { kind: 'ok', data: await res.json() };
-    } catch {
-      return { kind: 'offline' };
-    } finally {
-      this.timers.clear(timer);
-    }
-  }
 }
-

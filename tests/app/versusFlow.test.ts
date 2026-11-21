@@ -10,10 +10,11 @@ import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { pinHash } from '../../src/cloud/hash';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import type { CloudRoot } from '../../src/cloud/restClient';
-import { readMatch } from '../../src/cloud/versusMatch';
+import { CloudMatchChannel, readMatch } from '../../src/cloud/versusMatch';
 import type { LockstepMatch, VersusOutcome } from '../../src/net/lockstepMatch';
 import { VS_TIMEOUTS } from '../../src/net/timeouts';
 import { VirtualClock } from '../../src/net/virtualClock';
+import { Match } from '../../src/sim/match';
 import { newSave } from '../../src/progress/save';
 import type { Slot } from '../../src/progress/save';
 import type { CardKey, Faction } from '../../src/sim/types';
@@ -698,8 +699,8 @@ describe('rejoin after a reload (spec 6.7)', () => {
     expect(toby2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
   }, 120_000);
 
-  it('Review Focus 4: the stored match deleted, ended (both end records) or older than 10 minutes: no way back, and the key is removed', async () => {
-    for (const how of ['deleted', 'ended', 'old'] as const) {
+  it('Review Focus 4: the stored match deleted: no way back, and the key is removed', async () => {
+    for (const how of ['deleted'] as const) {
       const { lukas, toby, id } = await battle();
       const p = player(lukas, toby);
       await p.frames(60);
@@ -708,20 +709,8 @@ describe('rejoin after a reload (spec 6.7)', () => {
       lukas.flow.dispose();
       toby.flow.dispose();
       const conn = fakeConnection(db, root);
-      if (how === 'deleted') {
-        const ch = new (await import('../../src/cloud/versusMatch')).CloudMatchChannel({ conn, id, seat: 'plants', me: 'p01', timers: clock });
-        expect(await ch.remove()).toBe('ok');
-      } else if (how === 'ended') {
-        const mod = await import('../../src/cloud/versusMatch');
-        for (const [seat, me] of [['plants', 'p01'], ['zombies', 'p02']] as const) {
-          const ch = new mod.CloudMatchChannel({ conn, id, seat, me, timers: clock });
-          const w = ch.write({ kind: 'end', seat, raw: '{"w":"plants","t":90,"h":1}' });
-          for (let i = 0; i < 50; i++) { await settle(); clock.advance(10); }
-          expect(await w).toBe('ok');
-        }
-      } else {
-        clock.advance(10 * 60_000 + 5_000);
-      }
+      const ch = new CloudMatchChannel({ conn, id, seat: 'plants', me: 'p01', timers: clock });
+      expect(await ch.remove()).toBe('ok');
       const t2 = await reborn(toby);
       await until(() => t2.flow.allowed.value);
       await pass(500);
@@ -741,6 +730,105 @@ describe('rejoin after a reload (spec 6.7)', () => {
       clock.advance(1000);
     }
   }, 120_000);
+
+  it('a match older than 10 minutes that still exists is rejoined (no age cut-off, the device clock is not the server\'s)', async () => {
+    const { lukas, toby } = await battle();
+    await player(lukas, toby).frames(60);
+    lukas.flow.dispose();
+    toby.flow.dispose();
+    devices = [];
+    clock.advance(25 * 60_000);
+    const t2 = await device('p02', { storage: toby.storage });
+    await until(() => t2.flow.canRejoin.value);
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).not.toBeNull();
+  });
+
+  it('a match that ended while this device was away (a forfeit): the reload shows the result, credits the winner exactly once, offers no rematch', async () => {
+    const { lukas, toby, id } = await battle();
+    await player(lukas, toby).frames(60);
+    toby.flow.dispose(); // Toby's tab is gone
+    toby.session.dispose();
+    devices = devices.filter((d) => d !== toby);
+    linkOf(lukas).forfeit(); // Lukas hits the white flag: both end slots are written
+    await until(() => linkOf(lukas).outcome() !== null);
+    lukas.flow.battleOutcome(linkOf(lukas).outcome()!);
+    expect(wins(lukas)).toBe(0);
+    expect(db.peek(`${root}/vs/matches/${id}/end`)).toEqual({ plants: expect.any(String), zombies: expect.any(String) });
+    const t2 = await device('p02', { storage: toby.storage });
+    await until(() => t2.flow.canRejoin.value);
+    t2.flow.rejoin();
+    await until(() => name(t2) === 'result');
+    const vm = phaseOf(t2, 'result').vm;
+    expect(vm.winner?.slot).toBe('p02');
+    expect(vm.rematch).toBe('none');
+    expect(wins(t2)).toBe(1);
+    expect(lastBattle(t2)).toBe(`vs-${id}`);
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    expect(t2.w.open).toBe(0);
+    // reloading again changes nothing: the key is gone, nothing is credited twice
+    t2.session.deviceStorage()?.setItem(VMATCH_KEY, JSON.stringify({ id, n: 0, seat: 'zombies', me: 'p02', other: 'p01', host: false }));
+    const t3 = await reborn(t2);
+    await until(() => t3.flow.canRejoin.value);
+    t3.flow.rejoin();
+    await until(() => name(t3) === 'result');
+    expect(wins(t3)).toBe(1);
+  }, 60_000);
+
+  it('a replay that throws (a stored match the sim cannot replay) does not strand the device: the door notice, the key gone, home works', async () => {
+    const { lukas, toby, id } = await battle();
+    await player(lukas, toby).frames(60);
+    lukas.flow.dispose();
+    toby.flow.dispose();
+    devices = [];
+    void id;
+    const t2 = await device('p02', { storage: toby.storage });
+    await until(() => t2.flow.canRejoin.value);
+    const boom = vi.spyOn(Match.prototype, 'step').mockImplementation(() => { throw new Error('corrupt'); });
+    try {
+      t2.flow.rejoin();
+      await until(() => name(t2) === 'notice');
+    } finally {
+      boom.mockRestore();
+    }
+    expect(phaseOf(t2, 'notice').kind).toBe('gone');
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    t2.flow.home();
+    expect(name(t2)).toBe('closed');
+    expect(t2.w.open).toBeLessThanOrEqual(2); // only the lobby's streams are back
+  }, 60_000);
+
+  it('a replay that never finishes gives up after 60 s, and home works from the replay screen', async () => {
+    const { lukas, toby } = await battle();
+    await player(lukas, toby).frames(60);
+    lukas.flow.dispose();
+    toby.flow.dispose();
+    devices = [];
+    const t2 = await device('p02', { storage: toby.storage });
+    await until(() => t2.flow.canRejoin.value);
+    // the first try: home from the replay screen
+    t2.flow.rejoin();
+    for (let i = 0; i < 20 && name(t2) === 'closed'; i++) await settle();
+    expect(name(t2)).toBe('ready');
+    t2.flow.home();
+    expect(name(t2)).toBe('closed');
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    // the second: a sim that never advances
+    const t3 = await reborn(t2);
+    t3.session.deviceStorage()?.setItem(VMATCH_KEY, JSON.stringify({ id: matchIds()[0], n: 0, seat: 'zombies', me: 'p02', other: 'p01', host: false }));
+    const t4 = await reborn(t3);
+    await until(() => t4.flow.canRejoin.value);
+    const stuck = vi.spyOn(Match.prototype, 'step').mockImplementation(() => []);
+    try {
+      t4.flow.rejoin();
+      await pass(30_000);
+      expect(name(t4)).toBe('ready');
+      await pass(31_000);
+      expect(phaseOf(t4, 'notice').kind).toBe('gone');
+      expect(t4.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    } finally {
+      stuck.mockRestore();
+    }
+  }, 60_000);
 
   it('a match whose answer never came (offline at log-in) keeps its key for the next log-in', async () => {
     const { toby, lukas } = await battle();
