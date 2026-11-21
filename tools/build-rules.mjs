@@ -99,6 +99,13 @@ export function block(R) {
   /** The same update writes `admin/proof/<stored grown-up hash>/touch = now`. */
   const adminProof = (depth) =>
     `(${adminSecret}.isString() && ${top(depth)}.child('admin/proof/' + ${adminSecret}.val() + '/touch').val() === now)`;
+  /**
+   * As adminProof, and the stored touch was not already `now`: a proof written by another update
+   * in the same server millisecond cannot be borrowed. Used by every Versus grant; the older
+   * paths above keep adminProof as shipped.
+   */
+  const adminProofFresh = (depth) =>
+    `(${adminSecret}.isString() && ${top(depth)}.child('admin/proof/' + ${adminSecret}.val() + '/touch').val() === now && root.child('${R}/admin/proof/' + ${adminSecret}.val() + '/touch').val() !== now)`;
 
   return {
     players: {
@@ -180,6 +187,8 @@ export function block(R) {
     },
     proof: {
       $slot: {
+        // The grown-up clears a slot's proofs, including those under an old pin hash (delete only).
+        '.write': `${slotOk} && !newData.exists() && ${adminProofFresh(2)}`,
         $hash: {
           // Only someone who knows the slot's pin hash can name this path; nobody can read it.
           '.write': `${slotOk} && root.child('${R}/secrets/' + $slot).val() === $hash`,
@@ -189,7 +198,7 @@ export function block(R) {
         },
       },
     },
-    vs: versus(R, { top, adminProof }),
+    vs: versus(R, { top, adminProof: adminProofFresh }),
     $other: NOTHING_ELSE,
   };
 }
@@ -202,7 +211,7 @@ function versus(R, { top, adminProof }) {
   const secretOf = (S) => `root.child('${R}/secrets/' + ${S})`;
   /** The same update writes `proof/<S>/<S's stored pin hash>/touch = now`, from `depth` below the root. */
   const proven = (S, depth) =>
-    `(${secretOf(S)}.isString() && ${top(depth)}.child('proof/' + ${S} + '/' + ${secretOf(S)}.val() + '/touch').val() === now)`;
+    `(${secretOf(S)}.isString() && ${top(depth)}.child('proof/' + ${S} + '/' + ${secretOf(S)}.val() + '/touch').val() === now && root.child('${R}/proof/' + ${S} + '/' + ${secretOf(S)}.val() + '/touch').val() !== now)`;
   /** On the Versus list: the two brothers always, anyone else once the grown-up ticks him in. */
   const allowed = (S) => `(${S} === 'p01' || ${S} === 'p02' || root.child('${R}/vs/allowed/' + ${S}).val() === true)`;
   const isSlot = (v) => `${v}.matches(${SLOT_RE})`;
@@ -226,7 +235,8 @@ function versus(R, { top, adminProof }) {
   });
   const lobbyEntry = (write, children) => ({
     $from: {
-      '.write': `${isSlot('$owner')} && ${isSlot('$from')} && ((newData.exists() && ${write}) || (!newData.exists() && (${proven('$from', 5)} || ${proven('$owner', 5)})))`,
+      // Deleted by either party, or by the grown-up (a player taken off the list or removed).
+      '.write': `${isSlot('$owner')} && ${isSlot('$from')} && ((newData.exists() && ${write}) || (!newData.exists() && (${proven('$from', 5)} || ${proven('$owner', 5)} || ${adminProof(5)})))`,
       ...children,
     },
   });
@@ -245,7 +255,8 @@ function versus(R, { top, adminProof }) {
     here: {
       '.read': true,
       $slot: {
-        '.write': `$slot.matches(${SLOT_RE}) && ${proven('$slot', 3)} && ${allowed('$slot')}`,
+        // The player with his proof; the grown-up may only delete it.
+        '.write': `$slot.matches(${SLOT_RE}) && ((${proven('$slot', 3)} && ${allowed('$slot')}) || (!newData.exists() && ${adminProof(3)}))`,
         '.validate': "newData.hasChildren(['at', 'busy'])",
         at: { '.validate': NOW },
         busy: { '.validate': 'newData.isBoolean()' },
@@ -256,6 +267,8 @@ function versus(R, { top, adminProof }) {
       $owner: {
         // Nothing in a lobby is secret: slots, times, public keys.
         '.read': isSlot('$owner'),
+        // The grown-up clears a whole lobby (delete only; entries are granted below).
+        '.write': `${isSlot('$owner')} && !newData.exists() && ${adminProof(3)}`,
         // An invite from $from to $owner.
         in: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')} && ${allowed('$owner')} && $from !== $owner`, {
           '.validate': "newData.hasChildren(['pub', 'side', 'build', 'at'])",

@@ -93,9 +93,11 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
   });
 
   it('a player the grown-up ticked in may be here, invite and play', async () => {
-    const { send, proof, m } = await world(R);
+    const { send, proof, m, clock } = await world(R);
     expect((await send({ ...proof('p06'), 'vs/here/p06': here() })).status).toBe(200);
+    clock.t += 1;
     expect((await send({ ...proof('p06'), 'vs/lobby/p01/in/p06': invite({ head: { slot: 'p06', step: 0 } }) })).status).toBe(200);
+    clock.t += 1;
     expect((await send({
       ...proof('p06'), [m('meta')]: meta({ seats: { plants: 'p06', zombies: 'p01' }, host: 'p06', head: null }),
     })).status).toBe(200);
@@ -141,6 +143,20 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
     expect((await p({ quit: { by: 'p01' } })).status).toBe(200);
     expect((await p({ quit: { by: 'p01' } })).status).toBe(200);
     expect(db.peek(`${R}/${m('turns/zombies/t000002')}`)).toBe('{"c":[[2,"place","sunflower",1,0]]}');
+  });
+
+  it('the grown-up clears a player\'s here, lobby and proofs (an un-ticked or removed player)', async () => {
+    const { send, proof, db, clock } = await matchWorld(R);
+    expect((await send({ ...proof('p01'), 'vs/here/p01': here() })).status).toBe(200);
+    db.poke(`${R}/proof/p01/${hex('0')}`, { touch: T0 }); // left behind under an old pin
+    clock.t += 1;
+    const gu = { [`admin/proof/${G}`]: { touch: SV } };
+    expect((await send({ ...gu, 'vs/lobby/p02/back/p01': null })).status).toBe(200);
+    clock.t += 1;
+    expect((await send({ ...gu, 'vs/here/p01': null, 'vs/lobby/p01': null, 'proof/p01': null })).status).toBe(200);
+    expect(db.peek(`${R}/vs/here`)).toBeNull();
+    expect(db.peek(`${R}/vs/lobby`)).toBeNull();
+    expect(db.peek(`${R}/proof/p01`)).toBeNull();
   });
 
   it('either device deletes the whole match', async () => {
@@ -192,6 +208,47 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: forged requests ar
     expect((await send({ 'vs/here/p01': here() })).status).toBe(401);
     expect((await r.get(`${R}/proof/p01`)).status).toBe(401);
     expect((await r.get(`${R}/proof`)).status).toBe(401);
+  });
+
+  it('a proof stored by another update in the same millisecond cannot be borrowed', async () => {
+    const { send, proof, r, m } = await matchWorld(R);
+    // p01's honest heartbeat; in the same server millisecond, requests that carry no proof.
+    expect((await send({ ...proof('p01'), 'vs/here/p01': here() })).status).toBe(200);
+    expect((await send({ 'vs/here/p01': here(true) })).status).toBe(401);
+    expect((await r.del(`${R}/vs/lobby/p01/in/p02`)).status).toBe(401);
+    expect((await send({ 'vs/lobby/p02/in/p01': invite({ head: null }) })).status).toBe(401);
+    expect((await send({ [`vs/matches/${'0'.repeat(32)}/meta`]: meta() })).status).toBe(401);
+    expect((await send({ [m('meta')]: null, 'vs/lobby/p02/back/p01': null })).status).toBe(401);
+    // The grown-up's proof, likewise.
+    expect((await send({ 'vs/allowed/p05': null, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(200);
+    expect((await send({ 'vs/allowed/p05': true })).status).toBe(401);
+    expect((await send({ 'vs/here/p01': null })).status).toBe(401);
+  });
+
+  it('the grown-up may only delete here, lobby and proofs, never write them; nobody else may', async () => {
+    const { send, proof, r, db } = await matchWorld(R);
+    const gu = { [`admin/proof/${G}`]: { touch: SV } };
+    expect((await send({ ...gu, 'vs/here/p05': { at: SV, busy: false } })).status).toBe(401);
+    expect((await send({ ...gu, 'vs/lobby/p05/in/p01': invite({ head: null }) })).status).toBe(401);
+    expect((await send({ ...gu, 'vs/lobby/p01': { in: { p06: invite({ head: null }) } } })).status).toBe(401);
+    expect((await send({ ...gu, [`proof/p05/${hex('0')}`]: { touch: SV } })).status).toBe(401);
+    expect((await send({ ...gu, 'proof/p05': { [hex('0')]: { touch: SV } } })).status).toBe(401);
+    expect((await r.del(`${R}/vs/lobby/p01`)).status).toBe(401);
+    expect((await r.del(`${R}/proof/p01`)).status).toBe(401);
+    expect((await send({ ...proof('p01'), 'vs/lobby/p01': null })).status).toBe(401);
+    expect((await send({ [`admin/proof/${hex('0')}`]: { touch: SV }, 'vs/lobby/p01': null })).status).toBe(401);
+    expect(db.peek(`${R}/vs/lobby/p01/in/p02`)).not.toBeNull();
+  });
+
+  it('deleting someone else\'s "here" entry without his proof', async () => {
+    const { send, proof, r, db, clock } = await world(R);
+    expect((await send({ ...proof('p01'), 'vs/here/p01': here() })).status).toBe(200);
+    clock.t += 1;
+    expect((await r.del(`${R}/vs/here/p01`)).status).toBe(401);
+    expect((await send({ ...proof('p02'), 'vs/here/p01': null })).status).toBe(401);
+    expect((await send({ ...proof('p01', hex('0')), 'vs/here/p01': null })).status).toBe(401);
+    expect(db.peek(`${R}/vs/here/p01`)).not.toBeNull();
+    expect((await send({ ...proof('p01'), 'vs/here/p01': null })).status).toBe(200);
   });
 
   it('a heartbeat for an absurd value', async () => {

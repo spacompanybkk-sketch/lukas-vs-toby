@@ -105,6 +105,7 @@
       },
       "proof": {
         "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && !newData.exists() && (root.child('v2/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now)",
           "$hash": {
             ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2/secrets/' + $slot).val() === $hash",
             ".validate": "newData.hasChildren(['touch'])",
@@ -121,14 +122,14 @@
         "allowed": {
           ".read": true,
           "$slot": {
-            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now)",
+            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now)",
             ".validate": "newData.val() === true"
           }
         },
         "here": {
           ".read": true,
           "$slot": {
-            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2/secrets/' + $slot).isString() && newData.parent().parent().parent().child('proof/' + $slot + '/' + root.child('v2/secrets/' + $slot).val() + '/touch').val() === now) && ($slot === 'p01' || $slot === 'p02' || root.child('v2/vs/allowed/' + $slot).val() === true)",
+            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (((root.child('v2/secrets/' + $slot).isString() && newData.parent().parent().parent().child('proof/' + $slot + '/' + root.child('v2/secrets/' + $slot).val() + '/touch').val() === now && root.child('v2/proof/' + $slot + '/' + root.child('v2/secrets/' + $slot).val() + '/touch').val() !== now) && ($slot === 'p01' || $slot === 'p02' || root.child('v2/vs/allowed/' + $slot).val() === true)) || (!newData.exists() && (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now)))",
             ".validate": "newData.hasChildren(['at', 'busy'])",
             "at": {
               ".validate": "newData.val() === now"
@@ -144,9 +145,10 @@
         "lobby": {
           "$owner": {
             ".read": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/)",
+            ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && !newData.exists() && (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now)",
             "in": {
               "$from": {
-                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now) && ($from === 'p01' || $from === 'p02' || root.child('v2/vs/allowed/' + $from).val() === true) && ($owner === 'p01' || $owner === 'p02' || root.child('v2/vs/allowed/' + $owner).val() === true) && $from !== $owner) || (!newData.exists() && ((root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now) || (root.child('v2/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() === now))))",
+                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) && ($from === 'p01' || $from === 'p02' || root.child('v2/vs/allowed/' + $from).val() === true) && ($owner === 'p01' || $owner === 'p02' || root.child('v2/vs/allowed/' + $owner).val() === true) && $from !== $owner) || (!newData.exists() && ((root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2/proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now))))",
                 ".validate": "newData.hasChildren(['pub', 'side', 'build', 'at'])",
                 "pub": {
                   ".validate": "newData.isString() && newData.val().length === 87 && newData.val().matches(/^[A-Za-z0-9_-]+$/)"
@@ -179,7 +181,7 @@
             },
             "back": {
               "$from": {
-                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now) && ($from === 'p01' || $from === 'p02' || root.child('v2/vs/allowed/' + $from).val() === true)) || (!newData.exists() && ((root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now) || (root.child('v2/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() === now))))",
+                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) && ($from === 'p01' || $from === 'p02' || root.child('v2/vs/allowed/' + $from).val() === true)) || (!newData.exists() && ((root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2/proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now))))",
                 ".validate": "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
                 "ok": {
                   ".validate": "newData.isBoolean()"
@@ -208,7 +210,7 @@
             ".read": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/)",
             ".write": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && !newData.exists()",
             "meta": {
-              ".write": "!data.exists() && newData.exists() && ((root.child('v2/secrets/' + newData.child('seats/plants').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/plants').val() + '/' + root.child('v2/secrets/' + newData.child('seats/plants').val()).val() + '/touch').val() === now) || (root.child('v2/secrets/' + newData.child('seats/zombies').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/zombies').val() + '/' + root.child('v2/secrets/' + newData.child('seats/zombies').val()).val() + '/touch').val() === now))",
+              ".write": "!data.exists() && newData.exists() && ((root.child('v2/secrets/' + newData.child('seats/plants').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/plants').val() + '/' + root.child('v2/secrets/' + newData.child('seats/plants').val()).val() + '/touch').val() === now && root.child('v2/proof/' + newData.child('seats/plants').val() + '/' + root.child('v2/secrets/' + newData.child('seats/plants').val()).val() + '/touch').val() !== now) || (root.child('v2/secrets/' + newData.child('seats/zombies').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/zombies').val() + '/' + root.child('v2/secrets/' + newData.child('seats/zombies').val()).val() + '/touch').val() === now && root.child('v2/proof/' + newData.child('seats/zombies').val() + '/' + root.child('v2/secrets/' + newData.child('seats/zombies').val()).val() + '/touch').val() !== now))",
               ".validate": "newData.hasChildren(['v', 'build', 'seed', 'seats', 'host', 'turn', 'delay', 'created'])",
               "v": {
                 ".validate": "newData.val() === 1"
@@ -444,6 +446,7 @@
       },
       "proof": {
         "$slot": {
+          ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && !newData.exists() && (root.child('v2test/admin/secret').isString() && newData.parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now)",
           "$hash": {
             ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && root.child('v2test/secrets/' + $slot).val() === $hash",
             ".validate": "newData.hasChildren(['touch'])",
@@ -460,14 +463,14 @@
         "allowed": {
           ".read": true,
           "$slot": {
-            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now)",
+            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now)",
             ".validate": "newData.val() === true"
           }
         },
         "here": {
           ".read": true,
           "$slot": {
-            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2test/secrets/' + $slot).isString() && newData.parent().parent().parent().child('proof/' + $slot + '/' + root.child('v2test/secrets/' + $slot).val() + '/touch').val() === now) && ($slot === 'p01' || $slot === 'p02' || root.child('v2test/vs/allowed/' + $slot).val() === true)",
+            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (((root.child('v2test/secrets/' + $slot).isString() && newData.parent().parent().parent().child('proof/' + $slot + '/' + root.child('v2test/secrets/' + $slot).val() + '/touch').val() === now && root.child('v2test/proof/' + $slot + '/' + root.child('v2test/secrets/' + $slot).val() + '/touch').val() !== now) && ($slot === 'p01' || $slot === 'p02' || root.child('v2test/vs/allowed/' + $slot).val() === true)) || (!newData.exists() && (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now)))",
             ".validate": "newData.hasChildren(['at', 'busy'])",
             "at": {
               ".validate": "newData.val() === now"
@@ -483,9 +486,10 @@
         "lobby": {
           "$owner": {
             ".read": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/)",
+            ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && !newData.exists() && (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now)",
             "in": {
               "$from": {
-                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now) && ($from === 'p01' || $from === 'p02' || root.child('v2test/vs/allowed/' + $from).val() === true) && ($owner === 'p01' || $owner === 'p02' || root.child('v2test/vs/allowed/' + $owner).val() === true) && $from !== $owner) || (!newData.exists() && ((root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now) || (root.child('v2test/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() === now))))",
+                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) && ($from === 'p01' || $from === 'p02' || root.child('v2test/vs/allowed/' + $from).val() === true) && ($owner === 'p01' || $owner === 'p02' || root.child('v2test/vs/allowed/' + $owner).val() === true) && $from !== $owner) || (!newData.exists() && ((root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2test/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2test/proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now))))",
                 ".validate": "newData.hasChildren(['pub', 'side', 'build', 'at'])",
                 "pub": {
                   ".validate": "newData.isString() && newData.val().length === 87 && newData.val().matches(/^[A-Za-z0-9_-]+$/)"
@@ -518,7 +522,7 @@
             },
             "back": {
               "$from": {
-                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now) && ($from === 'p01' || $from === 'p02' || root.child('v2test/vs/allowed/' + $from).val() === true)) || (!newData.exists() && ((root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now) || (root.child('v2test/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() === now))))",
+                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) && ($from === 'p01' || $from === 'p02' || root.child('v2test/vs/allowed/' + $from).val() === true)) || (!newData.exists() && ((root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2test/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2test/proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now))))",
                 ".validate": "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
                 "ok": {
                   ".validate": "newData.isBoolean()"
@@ -547,7 +551,7 @@
             ".read": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/)",
             ".write": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && !newData.exists()",
             "meta": {
-              ".write": "!data.exists() && newData.exists() && ((root.child('v2test/secrets/' + newData.child('seats/plants').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/plants').val() + '/' + root.child('v2test/secrets/' + newData.child('seats/plants').val()).val() + '/touch').val() === now) || (root.child('v2test/secrets/' + newData.child('seats/zombies').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/zombies').val() + '/' + root.child('v2test/secrets/' + newData.child('seats/zombies').val()).val() + '/touch').val() === now))",
+              ".write": "!data.exists() && newData.exists() && ((root.child('v2test/secrets/' + newData.child('seats/plants').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/plants').val() + '/' + root.child('v2test/secrets/' + newData.child('seats/plants').val()).val() + '/touch').val() === now && root.child('v2test/proof/' + newData.child('seats/plants').val() + '/' + root.child('v2test/secrets/' + newData.child('seats/plants').val()).val() + '/touch').val() !== now) || (root.child('v2test/secrets/' + newData.child('seats/zombies').val()).isString() && newData.parent().parent().parent().parent().child('proof/' + newData.child('seats/zombies').val() + '/' + root.child('v2test/secrets/' + newData.child('seats/zombies').val()).val() + '/touch').val() === now && root.child('v2test/proof/' + newData.child('seats/zombies').val() + '/' + root.child('v2test/secrets/' + newData.child('seats/zombies').val()).val() + '/touch').val() !== now))",
               ".validate": "newData.hasChildren(['v', 'build', 'seed', 'seats', 'host', 'turn', 'delay', 'created'])",
               "v": {
                 ".validate": "newData.val() === 1"

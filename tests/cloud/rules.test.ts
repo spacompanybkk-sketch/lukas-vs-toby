@@ -52,7 +52,7 @@ describe('database.rules.json', () => {
     expect(reads).toEqual(['players', 'saves/$slot/$hash', 'board', 'vs/allowed', 'vs/here', 'vs/lobby/$owner', 'vs/matches/$id']);
     expect(writes).toEqual([
       'players/$slot', 'secrets/$slot', 'saves/$slot', 'saves/$slot/$hash', 'board/$slot', 'admin/secret', 'admin/proof/$hash',
-      'proof/$slot/$hash', 'vs/allowed/$slot', 'vs/here/$slot', 'vs/lobby/$owner/in/$from', 'vs/lobby/$owner/back/$from',
+      'proof/$slot', 'proof/$slot/$hash', 'vs/allowed/$slot', 'vs/here/$slot', 'vs/lobby/$owner', 'vs/lobby/$owner/in/$from', 'vs/lobby/$owner/back/$from',
       'vs/matches/$id', 'vs/matches/$id/meta', 'vs/matches/$id/ready/$seat', 'vs/matches/$id/end/$seat',
       'vs/matches/$id/again/$seat', 'vs/matches/$id/turns/$seat/$k', 'vs/matches/$id/pause', 'vs/matches/$id/quit',
       'vs/matches/$id/sync/$n',
@@ -80,6 +80,25 @@ describe('database.rules.json', () => {
     expect(JSON.stringify(v2.secrets)).not.toContain('.read');
     expect(JSON.stringify(v2.admin)).not.toContain('.read');
     expect(JSON.stringify(v2.proof)).not.toContain('.read');
+  });
+
+  it.each(['v2', 'v2test'])('%s lets the grown-up only delete, never write, here, lobbies and proofs', (R) => {
+    const v = rules[R] as Rule;
+    const write = (path: string) => String(path.split('/').reduce<Rule>((n, k) => n[k] as Rule, v)['.write']);
+    const byGrownUp = `!newData.exists() && (root.child('${R}/admin/secret')`;
+    for (const p of ['proof/$slot', 'vs/lobby/$owner', 'vs/here/$slot']) expect(write(p), p).toContain(byGrownUp);
+  });
+
+  it.each(['v2', 'v2test'])('%s Versus grants refuse a proof stored earlier in the same millisecond (the stored touch must not already be now)', (R) => {
+    const v = rules[R] as Rule;
+    const all = JSON.stringify({ proof: v.proof, vs: v.vs });
+    const count = (needle: string) => all.split(needle).length - 1;
+    // Every proof read in this update's data has its twin in the stored data, compared with `!== now`.
+    const after = count(".child('proof/' + ") + count(".child('admin/proof/' + ");
+    const before = count(`root.child('${R}/proof/' + `) + count(`root.child('${R}/admin/proof/' + `);
+    expect(after).toBeGreaterThan(0);
+    expect(before).toBe(after);
+    expect(count("+ '/touch').val() !== now")).toBe(after);
   });
 
   it.each(['v2', 'v2test'])('%s checks the slot pattern on every lobby read and write', (R) => {
