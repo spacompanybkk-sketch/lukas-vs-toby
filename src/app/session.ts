@@ -348,6 +348,11 @@ export class PlayerSession {
     this.d.sync.logout();
   }
 
+  /** The logged-in player's pin hash, never the pin: the Versus lobby's proof. Null when nobody is logged in. */
+  proofHash(): string | null {
+    return this.d.sync.proofHash();
+  }
+
   /** How long logging out waits for an unsent save to reach the cloud. */
   static readonly LOGOUT_WAIT_MS = 2000;
 
@@ -448,10 +453,11 @@ export class PlayerSession {
 
   async deletePlayer(slot: Slot, code: string): Promise<'ok' | 'wrong' | 'offline' | 'failed'> {
     const { cloud, storage, sync } = this.d;
-    const gate = await this.checkGrownUp(code);
-    if (gate !== 'ok') return gate === 'other' ? 'failed' : gate;
+    // One request, which proves the code itself: a separate check first would store the same
+    // grown-up proof, and the Versus deletes refuse a proof stored in the same server millisecond.
     const r = await cloud.deletePlayer(slot, await grownUpHash(code));
-    if (r !== 'ok') return r === 'offline' ? 'offline' : 'failed';
+    if (r !== 'ok') return r === 'offline' ? 'offline' : r === 'wrong-pin' ? 'wrong' : 'failed';
+    writeKey(storage, GROWN_UP_KNOWN, '1');
     if (sync.save.peek()?.slot === slot) sync.logout();
     this.forgetOnDevice(slot);
     if (lastSlot(storage) === slot) setLastSlot(null, storage);

@@ -256,6 +256,13 @@ export class RestCloud implements Cloud {
       [`saves/${slot}`]: null,
       [`players/${slot}`]: null,
       [`board/${slot}`]: null,
+      // His Versus traces too, in the same update: otherwise the next player in this slot would
+      // start out ticked in. (The Versus grants refuse a grown-up proof already stored in the
+      // same server millisecond, so this is the grown-up's only proven write of the moment.)
+      [`vs/allowed/${slot}`]: null,
+      [`vs/here/${slot}`]: null,
+      [`vs/lobby/${slot}`]: null,
+      [`proof/${slot}`]: null,
       [`admin/proof/${grownUpHash}`]: { touch: SERVER_NOW },
     });
     return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';

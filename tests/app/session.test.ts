@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GATE_LOCK_MS, LOCK_MS, PlayerSession, lockKey, wrongKey } from '../../src/app/session';
 import { FakeDatabase } from '../../src/cloud/fakeCloud';
+import { pinHash } from '../../src/cloud/hash';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import { loadLocal, saveLocal } from '../../src/progress/localStore';
 import { OLD_SAVE_KEYS } from '../../src/progress/migrate';
@@ -178,6 +179,21 @@ describe('login and the lock-out', () => {
     const save = asSave(await s.login('p03', '123'));
     expect(save.name).toBe('Mia');
     expect(s.player.value?.slot).toBe('p03');
+  });
+
+  it('proofHash: the logged-in player\'s pin hash (never the pin), null after logout; the pin is stored nowhere', async () => {
+    expect(s.proofHash()).toBeNull();
+    asSave(await s.login('p03', '123'));
+    expect(s.proofHash()).toBe(await pinHash('p03', '123'));
+    s.logout();
+    expect(s.proofHash()).toBeNull();
+    // Nothing on the device holds the pin: no key, no value with it as a token of its own.
+    const token = /(^|[^0-9A-Za-z])123([^0-9A-Za-z]|$)/;
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i)!;
+      expect(key).not.toMatch(token);
+      expect(storage.getItem(key)).not.toMatch(token);
+    }
   });
 
   it('three wrong numbers in a row lock that player for 30 s; the lock survives a reload', async () => {
