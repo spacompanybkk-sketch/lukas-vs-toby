@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
@@ -44,7 +45,20 @@ function cloudModeStamp(): Plugin {
   };
 }
 
+/**
+ * The short commit this build is made from, as `__LVT_BUILD__` in the bundle: two devices in a
+ * Versus match refuse to start on different builds (spec 8.1). `0000000` where git cannot say.
+ */
+function shortCommit(): string {
+  try {
+    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || '0000000';
+  } catch {
+    return '0000000';
+  }
+}
+
 export default defineConfig({
+  define: { __LVT_BUILD__: JSON.stringify(shortCommit()) },
   plugins: [preact(), projectRoot(), cloudModeStamp()],
   test: {
     // The browser tests in e2e/ belong to Playwright, which Vitest would otherwise try to run too.

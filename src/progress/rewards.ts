@@ -22,10 +22,22 @@ export function rewardFor(result: BattleResult): number {
   return Math.round((base * REWARDS.bonusFactor) / REWARDS.roundTo) * REWARDS.roundTo;
 }
 
-/** Versus: no coins, a win counts in `versusWins`. Otherwise: coins, and a win counts in `computerWins`. */
-export function applyBattleResult(s: Save, r: BattleResult & { versus: boolean }, now: number): Save {
+/** The battle tag of a Versus match: what `lastBattle` holds once its result is credited (35 characters). */
+export const versusBattleId = (matchId: string): string => `vs-${matchId}`;
+
+/**
+ * Versus: no coins, a win counts in `versusWins`. Otherwise: coins, and a win counts in `computerWins`.
+ * A Versus result with a `battleId` is credited once (spec 9): a save already holding that tag as
+ * `lastBattle` comes back as the same object; otherwise the tag becomes `lastBattle`, win or lose.
+ */
+export function applyBattleResult(s: Save, r: BattleResult & { versus: boolean; battleId?: string }, now: number): Save {
+  if (r.versus && r.battleId !== undefined && s.lastBattle === r.battleId) return s;
   const next: Save = r.versus
-    ? { ...s, versusWins: s.versusWins + (r.won ? 1 : 0) }
+    ? {
+        ...s,
+        versusWins: s.versusWins + (r.won ? 1 : 0),
+        ...(r.battleId !== undefined ? { lastBattle: r.battleId } : {}),
+      }
     : { ...s, coins: s.coins + rewardFor(r), computerWins: s.computerWins + (r.won ? 1 : 0) };
   return touch(next, now);
 }
