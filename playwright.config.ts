@@ -6,6 +6,9 @@ import { defineConfig } from '@playwright/test';
 // project can be added later with the same specs.
 // LVT_E2E_PORT moves it, for a second checkout running its own e2e at the same time.
 const PORT = Number(process.env.LVT_E2E_PORT) || 5314;
+// The stand-in for the Realtime Database that the two-page Versus spec shares (tools/fake-rtdb-server.ts);
+// LVT_FAKEDB_PORT moves it.
+const FAKEDB = Number(process.env.LVT_FAKEDB_PORT) || 5316;
 
 export default defineConfig({
   testDir: 'e2e',
@@ -17,17 +20,26 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: [['list']],
   outputDir: 'artifacts/e2e',
-  webServer: {
-    // Always the fake cloud: a browser test never reaches the children's real data, whatever
-    // VITE_CLOUD is set to elsewhere (and every page URL carries ?cloud=fake as well).
-    command: `VITE_CLOUD=fake npm run build && npx vite preview --port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: false,
-    timeout: 240_000,
-  },
+  webServer: [
+    {
+      // Always the fake cloud: a browser test never reaches the children's real data, whatever
+      // VITE_CLOUD is set to elsewhere (and every page URL carries ?cloud=fake as well).
+      command: `VITE_CLOUD=fake npm run build && npx vite preview --port ${PORT} --strictPort`,
+      url: `http://localhost:${PORT}`,
+      reuseExistingServer: false,
+      timeout: 240_000,
+    },
+    {
+      command: `npx tsx tools/fake-rtdb-server.ts --port ${FAKEDB}`,
+      url: `http://localhost:${FAKEDB}/__peek?path=`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+  ],
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'off',
+    actionTimeout: 20_000, // a tap that cannot land fails with its reason, not with the test's timeout
     screenshot: 'only-on-failure',
   },
   projects: [

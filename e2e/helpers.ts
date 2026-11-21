@@ -1,6 +1,9 @@
-import type { Page } from '@playwright/test';
-import { expect } from './fixtures';
+import type { Browser, Page } from '@playwright/test';
+import { expect, watchPage } from './fixtures';
+import type { Problems } from './fixtures';
 
+/** A player's place on the players' screen: `p01` (Lukas) … `p30`. */
+export type Slot = `p${string}`;
 export type Side = 'plants' | 'zombies';
 export type Skill = 'easy' | 'medium' | 'hard';
 
@@ -31,9 +34,9 @@ export async function typePin(page: Page, pin: string): Promise<void> {
  * Title → PLAY → the players' pictures → Lukas → his number (chosen twice the first time on this
  * fresh browser, typed once after that) → Home. Only taps, on the fake cloud.
  */
-export async function logIn(page: Page, pin = '123'): Promise<void> {
+export async function logIn(page: Page, pin = '123', slot: Slot = 'p01'): Promise<void> {
   await page.locator('[data-action="play"]').click();
-  await page.locator('[data-player="p01"]').click();
+  await page.locator(`[data-player="${slot}"]`).click();
   const choosing = page.locator('[data-pin-step="1"]');
   const pad = page.locator('[data-screen="pinpad"]');
   await expect(choosing.or(pad)).toBeVisible();
@@ -360,3 +363,141 @@ export async function plantVia(page: Page, key: string, lane: number, col: numbe
   }, [key, lane, col] as const);
   await expect.poll(async () => plantAt(await snapshot(page), lane, col)?.key ?? null).toBe(key);
 }
+
+// ---- two devices: Versus over the local fake database (tools/fake-rtdb-server.ts) ----
+
+/** Where the stand-in database server listens (the same variable moves it in playwright.config.ts). */
+export const FAKEDB_URL = `http://localhost:${Number(process.env.LVT_FAKEDB_PORT) || 5316}`;
+
+/** Every extra page opened by `openVersusPage`, with what went wrong on it. */
+const watched = new Map<Page, Problems>();
+
+/**
+ * A second (or first) device: its own browser context (own storage, own connection), the iPad's
+ * size and touch, low graphics, sound off, on `/?debug&cloud=fake&fakedb=…&vsquick` (every Versus
+ * timeout a thirtieth). `build` puts the page on another build id, `testBaseHp` makes the bases
+ * that tough (a short match). Waits for the title.
+ */
+export async function openVersusPage(browser: Browser, opts: { build?: string; testBaseHp?: number } = {}): Promise<Page> {
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: false, deviceScaleFactor: 1 });
+  await context.addInitScript(() => {
+    try { localStorage.setItem('lvt2_settings', JSON.stringify({ music: 0, sfx: 0, muted: true, quality: 'low' })); } catch { /* none */ }
+  });
+  // A different build id makes the update notice reload the page once for a newer build (sessionStorage flag,
+  // see staleBuild.ts). The flag is set up front so the notice stays on screen for the test to see.
+  if (opts.build !== undefined) {
+    await context.addInitScript(() => {
+      try { sessionStorage.setItem('lvt2_stale_reload', '1'); } catch { /* none */ }
+    });
+  }
+  const page = await context.newPage();
+  watched.set(page, await watchPage(page));
+  const query = ['debug', 'cloud=fake', `fakedb=${FAKEDB_URL}`, 'vsquick'];
+  if (opts.testBaseHp !== undefined) query.push(`vstest=${opts.testBaseHp}`);
+  if (opts.build !== undefined) query.push(`vsbuild=${opts.build}`);
+  await page.goto(`/?${query.join('&')}`);
+  await page.evaluate(() => window.__lvt.ready);
+  await page.evaluate(() => window.__lvt.portraits);
+  await expect(page.locator('[data-screen="title"]')).toBeVisible();
+  return page;
+}
+
+/** What went wrong on a page opened by `openVersusPage` (console errors, WebGL warnings). */
+export function versusProblems(page: Page): Problems {
+  const p = watched.get(page);
+  if (p === undefined) throw new Error('not a page from openVersusPage');
+  return p;
+}
+
+/** Closes the context of a page from `openVersusPage` (and forgets it). */
+export async function closeVersusPage(page: Page): Promise<void> {
+  watched.delete(page);
+  await page.context().close().catch(() => {});
+}
+
+/** The stored value at a path under the test root (`v2test/…`), rules aside. */
+export async function fakePeek(path: string): Promise<unknown> {
+  const r = await fetch(`${FAKEDB_URL}/__peek?path=${encodeURIComponent(path)}`);
+  return r.json();
+}
+
+/** Empties the fake database (both pages' next log-in starts from nothing). */
+export async function fakeReset(): Promise<void> {
+  await fetch(`${FAKEDB_URL}/__reset`, { method: 'POST' });
+}
+
+/** Taps Play, then the Versus tile: "who is here". */
+export async function openWhoIsHere(page: Page): Promise<void> {
+  await page.locator('[data-home="play"]').click();
+  await page.locator('[data-play="versus"]').click();
+  await expect(page.locator('[data-screen="whoishere"]')).toBeVisible();
+}
+
+/** From Home: who is here → the other boy's face → the big swords. */
+export async function invite(page: Page, to: Slot): Promise<void> {
+  await openWhoIsHere(page);
+  await page.locator(`[data-face="${to}"]`).click();
+  await page.locator('[data-invite-card] [data-action="send"]').click();
+}
+
+/** On the invited device: the panel's tick. */
+export async function acceptInvite(page: Page): Promise<void> {
+  await page.locator('[data-invite-panel] [data-action="accept"]').click();
+}
+
+/** Both devices to the same live Versus battle: Lukas (p01) invites Toby (p02), Toby accepts. */
+export async function startVersus(lukas: Page, toby: Page): Promise<void> {
+  await logIn(lukas, '123', 'p01');
+  await logIn(toby, '123', 'p02');
+  await invite(lukas, 'p02');
+  await acceptInvite(toby);
+  await Promise.all([waitLive(lukas), waitLive(toby)]);
+}
+
+/** Records (tick → hash) of the Versus match on this page, on every frame, for `commonHashes`. */
+export function recordHashes(page: Page): Promise<void> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __hashes?: Record<number, number>; __lvt: { versus?: { hash(): number; tick(): number } } };
+    w.__hashes = {};
+    const tick = (): void => {
+      const v = w.__lvt.versus;
+      if (v !== undefined) {
+        const t = v.tick();
+        if (t >= 0 && w.__hashes![t] === undefined) w.__hashes![t] = v.hash();
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/** The ticks both pages have a recorded hash for, and the ones where the hashes differ. */
+export async function commonHashes(a: Page, b: Page): Promise<{ common: number; differing: number[] }> {
+  const read = (p: Page): Promise<Record<number, number>> => p.evaluate(() => (window as unknown as { __hashes: Record<number, number> }).__hashes);
+  const [ha, hb] = await Promise.all([read(a), read(b)]);
+  const ticks = Object.keys(ha).filter((t) => hb[Number(t)] !== undefined);
+  return { common: ticks.length, differing: ticks.filter((t) => ha[Number(t)] !== hb[Number(t)]).map(Number) };
+}
+
+/** The Versus match's tick on this page (-1 before one). */
+export const versusTick = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).versus.tick() as number);
+
+/** The keys of the cards in this page's tray, left to right. */
+export const trayKeys = (page: Page): Promise<string[]> =>
+  page.locator('[data-hud="tray"] [data-card]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.card as string));
+
+/** This boy's side in the live match. */
+export const mySide = (page: Page): Promise<Side> => page.evaluate(() => (window.__lvt as any).session.controller.playerFaction as Side);
+
+/**
+ * Taps a card and then a tile (real taps). A boy's own units go where his side starts: plants on
+ * the left, zombies at the right edge.
+ */
+export async function placeUnit(page: Page, key: string, lane: number, col: number): Promise<void> {
+  await page.locator(`[data-hud="tray"] [data-card="${key}"]`).click();
+  await clickTile(page, lane, col);
+}
+
+/** How many units the match shows on this page. */
+export const unitCount = (page: Page): Promise<number> =>
+  page.evaluate(() => (window.__lvt as any).session.controller.match.state.units.length as number);

@@ -13,6 +13,14 @@ import { CardTray } from '../ui/hud/CardTray';
 import { HeroButton } from '../ui/hud/HeroButton';
 import { SpellButtons } from '../ui/hud/SpellButtons';
 import type { SpellButtonVM } from '../ui/hud/SpellButtons';
+import { GettingReady } from '../ui/versus/GettingReady';
+import { RemotePause } from '../ui/versus/RemotePause';
+import { VersusNotice } from '../ui/versus/VersusNotice';
+import type { NoticeKind } from '../ui/versus/VersusNotice';
+import { VersusResult } from '../ui/versus/VersusResult';
+import type { VersusResultVM } from '../ui/versus/VersusResult';
+import { Waiting } from '../ui/versus/Waiting';
+import type { FaceVM } from '../ui/versus/types';
 import { BattleScreen } from '../ui/screens/BattleScreen';
 import type { BattlePowers, BattleSessionLike } from '../ui/screens/BattleScreen';
 import * as lawnScene from './lawn';
@@ -23,6 +31,8 @@ import './hudGallery.css';
 //   view=battle (default): the lawn with the full battle HUD over it, fed by fake signals that
 //     respond to taps (cards select, the hero and spells toggle). `side=plants|zombies`,
 //     `cards=1..10` (default 10), `hero=charging|ready|selected|off`, `spells=0..2` (default 2).
+//   view=versus: the battle with one Versus overlay over it: `overlay=ready|hourglass|face|flag|paused|result|update|broken|shrug|gone`
+//     (`side=` is Lukas's side; the other boy is Toby). Layout checks and the screenshot tour use it.
 //   view=states: every state of the hero and spell buttons for both sides, and a three-card tray
 //     for each side, on a plain backdrop.
 //
@@ -89,6 +99,33 @@ const BOYS: BoyPortraits = {
 
 const noop = (): void => {};
 
+const LUKAS: FaceVM = { slot: 'p01', name: 'Lukas', picture: 'peashooter' };
+const TOBY: FaceVM = { slot: 'p02', name: 'Toby', picture: 'brainEater' };
+const NOTICES: readonly NoticeKind[] = ['update', 'broken', 'shrug', 'gone'];
+
+/** A Versus overlay as the battle shows it, with made-up players (Lukas on `side`, Toby on the other). */
+function VersusOverlay({ overlay, side, portraits }: { overlay: string; side: Faction; portraits: Record<string, string> }) {
+  const mine = side === 'plants' ? LUKAS : TOBY;
+  const theirs = side === 'plants' ? TOBY : LUKAS;
+  if (overlay === 'ready') {
+    return <GettingReady me={mine} them={theirs} mySide={side} blocks={{ connected: true, bothReady: false, sameBuild: false }} portraits={portraits} />;
+  }
+  if (overlay === 'hourglass') return <Waiting who={theirs} stage="hourglass" portraits={portraits} onFlag={noop} side={side === 'plants' ? 'zombies' : 'plants'} />;
+  if (overlay === 'face' || overlay === 'flag') {
+    return <Waiting who={theirs} stage={overlay} portraits={portraits} onFlag={noop} line={`${theirs.name} is asleep`} />;
+  }
+  if (overlay === 'paused') return <RemotePause who={theirs} portraits={portraits} onResume={noop} />;
+  if (overlay === 'result') {
+    const vm: VersusResultVM = {
+      winner: TOBY, loser: LUKAS, them: 'p02', rematch: 'offer', rankUp: null,
+      score: { left: LUKAS, leftWins: 0, right: TOBY, rightWins: 1 },
+    };
+    return <div class="layer layer--dim"><div class="panel px pal-cream"><VersusResult vm={vm} portraits={portraits} onRematch={noop} onHome={noop} /></div></div>;
+  }
+  const kind = NOTICES.find((k) => k === overlay);
+  return kind === undefined ? null : <VersusNotice kind={kind} onHome={noop} />;
+}
+
 function States({ portraits }: { portraits: Record<string, string> }) {
   const heroStates = [
     { label: '0', ready: false, fraction: 0, selected: false },
@@ -136,7 +173,7 @@ function States({ portraits }: { portraits: Record<string, string> }) {
 export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () => void {
   const lvt = installDebug();
   const ui = document.getElementById('ui') as HTMLElement;
-  const view = params.get('view') === 'states' ? 'states' : 'battle';
+  const view = params.get('view') === 'states' ? 'states' : params.get('view') === 'versus' ? 'versus' : 'battle';
   const side: Faction = params.get('side') === 'zombies' ? 'zombies' : 'plants';
   const count = Math.max(1, Math.min(10, Math.trunc(Number(params.get('cards') ?? 10)) || 10));
   const hero = params.get('hero') ?? 'ready';
@@ -156,6 +193,18 @@ export function mount(canvas: HTMLCanvasElement, params: URLSearchParams): () =>
   const show = (portraits: Record<string, string>): void => {
     if (view === 'states') {
       render(<States portraits={portraits} />, ui);
+    } else if (view === 'versus') {
+      render(
+        <>
+          <BattleScreen
+            session={fakeSession(side, hand(side, count))} portraits={portraits} boys={BOYS}
+            settings={DEFAULT_SETTINGS} onSettingsChange={noop} onRestart={noop} onQuit={noop}
+            powers={fakePowers(side, hero, spellCount)}
+          />
+          <VersusOverlay overlay={params.get('overlay') ?? 'face'} side={side} portraits={portraits} />
+        </>,
+        ui,
+      );
     } else {
       render(
         <BattleScreen

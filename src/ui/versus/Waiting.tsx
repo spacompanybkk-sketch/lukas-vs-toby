@@ -38,8 +38,8 @@ export function Waiting({ who, stage, portraits, onFlag, line, side }: {
       <div class="vs-stall__who">
         <VersusFace face={who} portraits={portraits} size={STALL_FACE_PX} />
         <span class="vs-stall__zzz" data-zzz aria-hidden="true"><PixelIcon art={ZZZ} /></span>
+        <span class="vs-stall__glass" data-slow-hourglass data-anim="slow" aria-hidden="true"><PixelIcon art={HOURGLASS} /></span>
       </div>
-      <span class="vs-stall__glass" data-slow-hourglass data-anim="slow" aria-hidden="true"><PixelIcon art={HOURGLASS} /></span>
       {line !== undefined && <span class="vs-stall__line inked" data-line>{line}</span>}
       {stage === 'flag' && (
         <button

@@ -1,12 +1,16 @@
 // Screenshot tool: `node tools/shots.mjs <scenario...> [--headed]`.
 //
+// `node tools/shots.mjs versus` is the odd one out: the two-device Versus pictures come from the e2e run
+// (two pages over the local fake database), so it runs `e2e/versus.spec.ts` with LVT_SHOTS=1, which writes
+// artifacts/shots/versus-*.png at 1024x768 (take the browser lock and keep the lid open, as for any e2e run).
+//
 // Opens each scenario in Playwright's bundled Chromium (at 1440x900 unless the scenario
 // sets its own viewport), waits for `window.__lvt.ready`, and saves
 // artifacts/shots/<scenario>.png, or one artifacts/shots/<scenario>-<suffix>.png per frame
 // for a scenario that lists `frames`. Exits non-zero on any page error or if the 3D canvas
 // came out as one flat colour. `LVT_PORT=<port>` runs the dev server on another port, for a
 // second checkout whose server must not clash with this one's.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import net from 'node:net';
@@ -1209,6 +1213,12 @@ async function main() {
   const args = process.argv.slice(2);
   const headed = args.includes('--headed');
   const names = args.filter((a) => !a.startsWith('--'));
+  if (names.length === 1 && names[0] === 'versus') {
+    const run = spawnSync('npx', ['playwright', 'test', 'e2e/versus.spec.ts', '--project=ipad'], {
+      stdio: 'inherit', env: { ...process.env, LVT_SHOTS: '1' },
+    });
+    return run.status ?? 1;
+  }
   const chosen = names.length ? names.map((n) => SCENARIOS.find((s) => s.name === n) ?? n) : SCENARIOS;
   const unknown = chosen.filter((s) => typeof s === 'string');
   if (unknown.length) {

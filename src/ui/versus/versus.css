@@ -43,7 +43,7 @@
 @keyframes vs-bounce { 0%, 100% { translate: 0 0; } 50% { translate: 0 -14px; } }
 
 /* ---- The invite card ---- */
-.vs-veil { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: var(--menu-dim); }
+.vs-veil { position: absolute; inset: 0; z-index: 5; pointer-events: auto; display: grid; place-items: center; background: var(--menu-dim); }
 .vs-card {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2.4vh, 24px);
   padding: clamp(18px, 3vh, 32px) clamp(24px, 4vw, 48px); max-width: calc(100vw - 2 * var(--gutter-x));
@@ -65,8 +65,8 @@
 @keyframes vs-pulse { 0% { scale: 1; } 100% { scale: 1.08; } }
 @keyframes vs-shake { 0%, 100% { translate: 0; } 20% { translate: -14px; } 40% { translate: 14px; } 60% { translate: -10px; } 80% { translate: 8px; } }
 
-.vs-dots { position: absolute; left: 50%; bottom: -8px; translate: -50% 0; display: flex; gap: 8px; }
-.vs-dots__dot { width: 14px; height: 14px; background: var(--ink); animation: vs-dot 900ms steps(2, jump-none) infinite; }
+.vs-dots { position: absolute; left: 50%; bottom: 40px; translate: -50% 0; display: flex; gap: 8px; }
+.vs-dots__dot { width: 18px; height: 18px; background: var(--white); box-shadow: 0 0 0 3px var(--ink); animation: vs-dot 900ms steps(2, jump-none) infinite; }
 .vs-dots__dot:nth-child(2) { animation-delay: 300ms; }
 .vs-dots__dot:nth-child(3) { animation-delay: 600ms; }
 @keyframes vs-dot { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
@@ -83,7 +83,7 @@
 
 /* ---- The invite panel: full width, sliding in from the top ---- */
 .vs-panel {
-  position: fixed; top: var(--gutter-top); left: 0; right: 0; z-index: 20;
+  position: fixed; top: var(--gutter-top); left: 0; right: 0; z-index: 20; pointer-events: auto;
   min-height: 160px; display: flex; align-items: center; justify-content: center;
   animation: vs-slide 260ms steps(5, end) both;
 }
@@ -119,17 +119,22 @@
   position: fixed; z-index: 4; top: calc(var(--gutter-top) + 96px); display: block; width: 40px; height: 40px;
   pointer-events: none; animation: vs-bounce 1400ms steps(4, end) infinite;
 }
-.vs-stall-glass--plants { left: calc(var(--gutter-x) + 12px); }
-.vs-stall-glass--zombies { right: calc(var(--gutter-x) + 12px); }
+/* beside the silent boy's base bar, not over his picture */
+.vs-stall-glass--plants { left: calc(var(--gutter-x) + 262px); }
+.vs-stall-glass--zombies { right: calc(var(--gutter-x) + 262px); }
 
 /* ---- Waiting / his pause: dimmed lawn, his face big, Zzz or the pause sign ---- */
-.vs-stall { place-items: center; align-content: center; gap: clamp(14px, 3vh, 28px); z-index: 6; }
+.vs-stall {
+  place-items: center; align-content: center; gap: clamp(10px, 2vh, 20px); z-index: 6;
+  /* the card tray fills the bottom third of a battle: the face, the line and the buttons sit above it */
+  padding-bottom: calc(var(--gutter-bottom) + 30vh);
+}
 .vs-stall__who { position: relative; animation: px-pop var(--t-pop) steps(4, end) both; }
 .vs-stall__who .vs-face__name { color: var(--white); }
 .vs-stall__zzz { position: absolute; right: -56px; top: -48px; width: 80px; height: 80px; animation: vs-zzz 2400ms steps(4, end) infinite; }
 @keyframes vs-zzz { 0% { translate: 0 8px; opacity: 0.4; } 50% { opacity: 1; } 100% { translate: 0 -10px; opacity: 0.4; } }
 .vs-stall__sign { position: absolute; right: -40px; top: -40px; width: 96px; height: 96px; }
-.vs-stall__glass { display: block; width: 56px; height: 56px; }
+.vs-stall__glass { position: absolute; left: -76px; top: 8px; display: block; width: 56px; height: 56px; }
 .vs-stall__glass[data-anim='slow'] { animation: vs-turn 3000ms steps(4, end) infinite; }
 @keyframes vs-turn { 0%, 40% { rotate: 0deg; } 50%, 90% { rotate: 180deg; } 100% { rotate: 360deg; } }
 .vs-stall__line.inked { font-family: var(--font-body); font-size: var(--fs-body); color: var(--white); }
