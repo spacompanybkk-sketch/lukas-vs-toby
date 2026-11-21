@@ -29,18 +29,35 @@ export interface LockstepMatchOptions {
 type Winner = Faction | 'draw';
 type SyncRecord = Extract<ControlRecord, { kind: 'sync' }>;
 
-const turnOf = (tick: number) => Math.floor(tick / TURN_TICKS);
 const isWinner = (v: unknown): v is Winner => v === 'plants' || v === 'zombies' || v === 'draw';
 
-/** The winner named in an end record (`{"w":…,"t":…,"h":…}`), or null when it names none. */
-function endWinner(raw: string): Winner | null {
+/**
+ * The `w` of an end record from a device whose match broke (a mismatch after three repairs, or a
+ * write the database refused): no winner, and the other device goes home too (spec 6.6 step 5).
+ */
+export const BROKEN_END = 'broken';
+
+interface EndRecord { w: Winner | typeof BROKEN_END; t: unknown; h: unknown }
+
+/** An end record (`{"w":…,"t":…,"h":…}`), or null when it names no winner and is not broken. */
+function parseEnd(raw: string): EndRecord | null {
   try {
-    const o = JSON.parse(raw) as { w?: unknown } | null;
-    return o && isWinner(o.w) ? o.w : null;
+    const o = JSON.parse(raw) as Partial<EndRecord> | null;
+    return o && (isWinner(o.w) || o.w === BROKEN_END) ? { w: o.w, t: o.t, h: o.h } : null;
   } catch {
     return null;
   }
 }
+
+/**
+ * Pause numbers say who wrote them and whether they are a heartbeat: `n = 4·seq + 2·(zombies) + beat`.
+ * A heartbeat is the pause record written again every `heartbeatMs` by a device that is present
+ * (not hidden) while the match is paused; it never pauses by itself. It is how a paused device
+ * knows the other is still there (spec 6.8: no limit while both are present).
+ */
+const pauseNumber = (seq: number, seat: Faction, beat: boolean) => 4 * seq + (seat === 'zombies' ? 2 : 0) + (beat ? 1 : 0);
+const pauseWriter = (n: number): Faction => (Math.floor(n / 2) % 2 === 1 ? 'zombies' : 'plants');
+const isBeat = (n: number) => n % 2 === 1;
 
 /** The same `Match` object takes the snapshot's state (the render layer keeps its reference). */
 export function restoreInto(match: Match, snapshot: string): void {
@@ -63,6 +80,7 @@ export class LockstepMatch {
   readonly seat: Faction;
   readonly host: boolean;
   private readonly me: Slot;
+  private readonly otherSlot: Slot;
   private readonly otherSeat: Faction;
   private readonly delay: number;
   private readonly channel: MatchChannel;
@@ -72,7 +90,11 @@ export class LockstepMatch {
   private readonly lockstep: Lockstep;
 
   private _pausedBy: Slot | null = null;
-  private pauseN = 0;
+  private pauseSeq = 0; // the highest pause sequence seen or written
+  private pausedSince: number | null = null;
+  private otherLifeAt = -Infinity; // when the other device last showed it is there
+  private isHidden = false;
+  private heartbeat: unknown = null;
   private result: VersusOutcome | null = null;
   private disposed = false;
   private unlisten: (() => void) | null = null;
@@ -97,7 +119,8 @@ export class LockstepMatch {
 
   // end records
   private ownWinner: Winner | null = null;
-  private otherWinner: Winner | null = null;
+  private ownEndRecord: EndRecord | null = null;
+  private otherEnd: EndRecord | null = null;
   private endTimer: unknown = null;
 
   // taps and stalls
@@ -112,6 +135,7 @@ export class LockstepMatch {
     this.seat = opts.seat;
     this.host = opts.host;
     this.me = opts.me;
+    this.otherSlot = opts.other;
     this.otherSeat = opts.seat === 'plants' ? 'zombies' : 'plants';
     this.delay = opts.delay;
     this.channel = opts.channel;
@@ -137,25 +161,26 @@ export class LockstepMatch {
     return tap;
   }
 
-  /** Runs one tick if it may: both turns held, not paused, not repairing, not over. */
+  /** Runs one tick if it may: both turns held, not paused, not writing a repair, not over. */
   tryStep(): StepAnswer {
     if (this.result) return { kind: 'over' };
     if (this.pendingSync) this.applySync();
     if (this.match.state.winner !== null) return { kind: 'over' };
     this.compareHashes();
     if (this.result) return { kind: 'over' };
-    if (this.repairing !== 'none') {
-      this.stopWaiting();
-      return { kind: 'wait', why: 'repair' };
+    // every wait below counts towards the stall stages, so none can last unseen
+    if (this.repairing === 'writing') {
+      this.waitOnOther();
+      return this.result ? { kind: 'over' } : { kind: 'wait', why: 'repair' };
     }
     if (this._pausedBy !== null) {
-      this.stopWaiting();
-      return { kind: 'wait', why: 'paused' };
+      this.endWait();
+      this.checkPausedSilence();
+      return this.result ? { kind: 'over' } : { kind: 'wait', why: 'paused' };
     }
     const tick = this.match.state.tick;
     if (!this.lockstep.canRun(tick)) {
-      if (this.lockstep.firstMissing(this.otherSeat) <= turnOf(tick)) this.waitOnOther();
-      else this.stopWaiting();
+      this.waitOnOther();
       return this.result ? { kind: 'over' } : { kind: 'wait', why: 'turns' };
     }
     this.stopWaiting();
@@ -183,7 +208,9 @@ export class LockstepMatch {
     if (state.tick % HASH_EVERY_TICKS === 0) {
       const hash = this.match.hash();
       this.ring.put(state.tick, hash);
-      this.lockstep.offerHash(state.tick, hash);
+      // a guest that found a mismatch keeps stepping, but its hashes are known bad until the
+      // host's snapshot comes: they are not sent (the one already offered still goes)
+      if (this.repairing !== 'awaiting') this.lockstep.offerHash(state.tick, hash);
     }
     if (state.winner !== null) this.ownEnd(state.winner);
     this.publishDue();
@@ -207,8 +234,13 @@ export class LockstepMatch {
     return out;
   }
 
-  /** How long stepping has been waiting on the other seat's turns (0 when it is not). */
+  /**
+   * How long the other seat has been silent: while stepping waits (on turns or a repair write), the
+   * time waited; while paused, the time since the other device last showed it is there, once that
+   * passes `hereMs` (before that it counts as here); else 0.
+   */
   silentMs(): number {
+    if (this._pausedBy !== null) return this.pausedSilence();
     return this.waitingSince === null ? 0 : this.now() - this.waitingSince;
   }
 
@@ -219,9 +251,8 @@ export class LockstepMatch {
 
   resume(): void {
     if (this.result) return;
-    this._pausedBy = null;
+    this.setPaused(null);
     this.writeRetrying({ kind: 'resume' });
-    this.changed();
   }
 
   /** The white flag in the pause menu: a forfeit, the other seat wins (spec 6.7). */
@@ -241,12 +272,15 @@ export class LockstepMatch {
   /** The page hides: pause, with a write that can leave as it hides. */
   hidden(): void {
     if (this.result) return;
+    this.isHidden = true; // a hidden page sends no heartbeats: its silence is what the other measures
     this.writePause(true);
   }
 
   /** The page is back: own taps never published are dropped, the streams reopen from the turns lacking. */
   visible(): void {
     if (this.result || this.disposed) return;
+    this.isHidden = false;
+    this.beat();
     if (this.lockstep.dropUnpublished().length > 0) this.changed();
     this.unlisten?.();
     this.listen();
@@ -287,6 +321,7 @@ export class LockstepMatch {
     switch (e.kind) {
       case 'turn':
         if (e.seat !== this.seat) {
+          this.otherLifeAt = this.now();
           this.lockstep.receive(e.seat, e.k, e.raw);
         } else if (!this.written.has(e.k) && !this.lockstep.adoptOwn(e.k, e.raw)) {
           // an own turn the database holds differently from what this screen already ran
@@ -295,24 +330,27 @@ export class LockstepMatch {
         }
         return;
       case 'pause':
-        this.pauseN = Math.max(this.pauseN, e.n);
-        if (this._pausedBy !== e.by) {
-          this._pausedBy = e.by;
-          this.changed();
-        }
+        if (!this.seated(e.by) || !Number.isSafeInteger(e.n) || e.n < 0) return;
+        this.pauseSeq = Math.max(this.pauseSeq, Math.floor(e.n / 4));
+        if (pauseWriter(e.n) === this.otherSeat) this.otherLifeAt = this.now();
+        if (!isBeat(e.n)) this.setPaused(e.by);
         return;
       case 'resume':
-        if (this._pausedBy !== null) {
-          this._pausedBy = null;
-          this.changed();
-        }
+        this.setPaused(null);
         return;
-      case 'end':
+      case 'end': {
         if (e.seat === this.seat) return;
-        this.otherWinner = endWinner(e.raw);
-        if (this.ownWinner !== null && this.otherWinner !== null) this.resolveEnd();
+        const rec = parseEnd(e.raw);
+        if (rec?.w === BROKEN_END) {
+          this.finish({ kind: 'unfinished', why: 'broken' });
+          return;
+        }
+        this.otherEnd = rec;
+        if (this.ownWinner !== null && this.otherEnd !== null) this.resolveEnd();
         return;
+      }
       case 'quit': {
+        if (!this.seated(e.by)) return;
         const winner = e.by === this.me ? this.otherSeat : this.seat;
         this.finish({ kind: 'forfeit', winner, by: e.by });
         return;
@@ -348,7 +386,7 @@ export class LockstepMatch {
       this.inFlight = false;
       if (answer === 'refused') {
         console.warn(`[versus] the database refused own turns ${batch.map((b) => b.k).join(', ')}`);
-        this.finish({ kind: 'unfinished', why: 'broken' });
+        this.broken();
         return;
       }
       for (const { k } of batch) this.lockstep.acked(k);
@@ -386,11 +424,58 @@ export class LockstepMatch {
     return handle;
   }
 
+  private seated(slot: Slot): boolean {
+    return slot === this.me || slot === this.otherSlot;
+  }
+
   private writePause(keepalive: boolean): void {
-    this.pauseN++;
-    this._pausedBy = this.me;
-    this.writeRetrying({ kind: 'pause', by: this.me, n: this.pauseN }, keepalive);
+    this.setPaused(this.me);
+    this.writeRetrying({ kind: 'pause', by: this.me, n: pauseNumber(++this.pauseSeq, this.seat, false) }, keepalive);
+  }
+
+  /** Enters, changes or leaves the paused state; heartbeats run while paused and not hidden. */
+  private setPaused(by: Slot | null): void {
+    if (by === this._pausedBy) return;
+    if (by !== null && this._pausedBy === null) this.pausedSince = this.now();
+    this._pausedBy = by;
+    if (by === null) {
+      this.pausedSince = null;
+      if (this.heartbeat !== null) {
+        this.timers.clear(this.heartbeat);
+        this.handles.delete(this.heartbeat);
+        this.heartbeat = null;
+      }
+      this.showStage('none');
+    } else {
+      this.beat();
+    }
     this.changed();
+  }
+
+  /** Schedules the next heartbeat: the pause record written again, once (a lost one is simply missed). */
+  private beat(): void {
+    if (this.heartbeat !== null || this._pausedBy === null || this.isHidden || this.result) return;
+    this.heartbeat = this.later(() => {
+      this.heartbeat = null;
+      const by = this._pausedBy;
+      if (by === null || this.isHidden || this.result) return;
+      void this.channel.write({ kind: 'pause', by, n: pauseNumber(++this.pauseSeq, this.seat, true) }).catch(() => 'offline');
+      this.beat();
+    }, this.t.heartbeatMs);
+  }
+
+  private pausedSilence(): number {
+    if (this.pausedSince === null) return 0;
+    const age = this.now() - Math.max(this.pausedSince, this.otherLifeAt);
+    return age >= this.t.hereMs ? age : 0;
+  }
+
+  /** Paused, and the other device silent for the stall timeouts: the same stages, the same end. */
+  private checkPausedSilence(): void {
+    const silent = this.pausedSilence();
+    this.maxSilent = Math.max(this.maxSilent, silent);
+    if (silent >= this.t.stall.unfinishedMs) this.finish({ kind: 'unfinished', why: 'silence' });
+    else this.showStage(stallStage(silent, this.t));
   }
 
   // ---- hashes and repair (spec 6.5, 6.6) ----
@@ -423,11 +508,13 @@ export class LockstepMatch {
     if (m) this.lastMismatch = m;
     if (this.repairCount >= MAX_REPAIRS) {
       console.warn(`[versus] mismatch after ${MAX_REPAIRS} repairs, the match is broken${this.describe(m)}`);
-      this.finish({ kind: 'unfinished', why: 'broken' });
+      this.broken();
       return;
     }
     if (!this.host) {
-      this.repairing = 'awaiting'; // the host repairs; stop until its snapshot comes
+      // the host repairs; this screen goes on stepping and publishing (spec 6.6 step 3: it stops
+      // only when it sees the record), so the host gets the hash that shows it the mismatch
+      this.repairing = 'awaiting';
       this.changed();
       return;
     }
@@ -440,7 +527,8 @@ export class LockstepMatch {
     this.repairing = 'writing';
     this.writeRetrying({ kind: 'sync', n, tick, snap }, false, (answer) => {
       if (answer === 'refused') {
-        this.finish({ kind: 'unfinished', why: 'broken' });
+        console.warn(`[versus] the database refused repair s${n}`);
+        this.broken();
         return;
       }
       this.repairing = 'none';
@@ -487,24 +575,30 @@ export class LockstepMatch {
     if (this.ownWinner !== null) return;
     this.ownWinner = winner;
     const { state } = this.match;
-    const raw = JSON.stringify({ w: winner, t: state.tick, h: this.match.hash() });
-    this.writeRetrying({ kind: 'end', seat: this.seat, raw });
-    if (this.otherWinner !== null) {
+    this.ownEndRecord = { w: winner, t: state.tick, h: this.match.hash() };
+    this.writeRetrying({ kind: 'end', seat: this.seat, raw: JSON.stringify(this.ownEndRecord) });
+    if (this.otherEnd !== null) {
       this.resolveEnd();
     } else {
       this.endTimer = this.later(() => this.finish({ kind: 'won', winner }), this.t.endWaitMs);
     }
   }
 
+  /** Both end records are in (spec 9): the same winner is the result; different winners show the host's. */
   private resolveEnd(): void {
-    const own = this.ownWinner!;
-    const other = this.otherWinner!;
-    if (own === other) {
-      this.finish({ kind: 'won', winner: own });
+    const own = this.ownEndRecord!;
+    const theirs = this.otherEnd!;
+    const other = theirs.w as Winner; // a broken end never gets here
+    if (own.w === other) {
+      if (own.t !== theirs.t || own.h !== theirs.h) {
+        console.warn(`[versus] the end records name the same winner but differ: own tick ${String(own.t)} hash ${String(own.h)}, other tick ${String(theirs.t)} hash ${String(theirs.h)}`);
+      }
+      this.finish({ kind: 'won', winner: own.w as Winner });
       return;
     }
-    console.warn(`[versus] the end records disagree: own ${own}, other ${other}`);
-    this.finish({ kind: 'disagree', shown: this.host ? own : other });
+    const ownW = own.w as Winner;
+    console.warn(`[versus] the end records disagree: own ${ownW}, other ${other}`);
+    this.finish({ kind: 'disagree', shown: this.host ? ownW : other });
   }
 
   private waitOnOther(): void {
@@ -515,29 +609,53 @@ export class LockstepMatch {
       this.finish({ kind: 'unfinished', why: 'silence' });
       return;
     }
-    const stage = stallStage(silent, this.t);
-    if (stage !== this.shownStage) {
-      this.shownStage = stage;
-      this.changed();
+    this.showStage(stallStage(silent, this.t));
+  }
+
+  private showStage(stage: StallStage): void {
+    if (stage === this.shownStage) return;
+    this.shownStage = stage;
+    this.changed();
+  }
+
+  /**
+   * This match is broken (spec 6.6 step 5). The other device must go home too, not sit through
+   * the stall stages: the turns due go out, plus one more so a hash still waiting rides along (the
+   * other may then see the mismatch itself), and the end record names no winner but `broken`.
+   */
+  private broken(): void {
+    if (this.result) return;
+    this.publishDue();
+    for (const turn of this.lockstep.takeDue(this.match.state.tick + TURN_TICKS)) {
+      this.written.add(turn.k);
+      this.outbox.push(turn);
     }
+    this.sendOutbox();
+    const { state } = this.match;
+    const rec: EndRecord = { w: BROKEN_END, t: state.tick, h: this.match.hash() };
+    if (this.ownWinner === null) this.writeRetrying({ kind: 'end', seat: this.seat, raw: JSON.stringify(rec) });
+    this.finish({ kind: 'unfinished', why: 'broken' });
   }
 
   private stopWaiting(): void {
+    this.endWait();
+    this.showStage('none');
+  }
+
+  /** Books a finished wait into the stats. */
+  private endWait(): void {
     if (this.waitingSince !== null) {
       const silent = this.now() - this.waitingSince;
       this.stalledTotal += silent;
       this.maxSilent = Math.max(this.maxSilent, silent);
       this.waitingSince = null;
     }
-    if (this.shownStage !== 'none') {
-      this.shownStage = 'none';
-      this.changed();
-    }
   }
 
   private finish(outcome: VersusOutcome): void {
     if (this.result) return;
     this.stopWaiting();
+    this.maxSilent = Math.max(this.maxSilent, this.pausedSilence());
     this.result = outcome;
     if (this.endTimer !== null) {
       this.timers.clear(this.endTimer);

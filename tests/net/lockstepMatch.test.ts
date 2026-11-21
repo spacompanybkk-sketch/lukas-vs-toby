@@ -24,22 +24,25 @@ interface Peer {
   /** Called before each `tryStep`: taps, nudges. */
   before?: (p: Peer) => void;
   stepping: boolean;
+  /** Frames this peer has seen; with `lagFrames`, it steps only every other frame until then. */
+  frames: number;
+  lagFrames: number;
 }
 
 type Wrap = (c: MatchChannel) => MatchChannel;
 
 /** p01 holds plants and hosts, p02 holds zombies; both on one in-memory database. */
-function pair(wrap: Partial<Record<Faction, Wrap>> = {}) {
+function pair(wrap: Partial<Record<Faction, Wrap>> = {}, { delay = 12, latency = LATENCY } = {}) {
   const clock = new VirtualClock();
-  const link = memoryPair({ clock, latencyMs: LATENCY });
+  const link = memoryPair({ clock, latencyMs: latency });
   const make = (seat: Faction): Peer => {
     const raw = seat === 'plants' ? link.plants : link.zombies;
     const lm = new LockstepMatch({
-      match: new Match(versusConfig(SETUP)), seat, delay: 12, host: seat === 'plants',
+      match: new Match(versusConfig(SETUP)), seat, delay, host: seat === 'plants',
       me: SETUP.seats[seat], other: SETUP.seats[seat === 'plants' ? 'zombies' : 'plants'],
       channel: wrap[seat]?.(raw) ?? raw, now: () => clock.now(), timers: clock,
     });
-    return { lm, hashes: new Map(), last: null, spawned: { plants: 0, zombies: 0 }, stepping: true };
+    return { lm, hashes: new Map(), last: null, spawned: { plants: 0, zombies: 0 }, stepping: true, frames: 0, lagFrames: 0 };
   };
   return { clock, store: link.store, a: make('plants'), b: make('zombies') };
 }
@@ -54,6 +57,8 @@ async function frame(clock: VirtualClock, peers: Peer[], ms = FRAME): Promise<vo
   await flush();
   for (const p of peers) {
     if (!p.stepping) continue;
+    p.frames++;
+    if (p.frames < p.lagFrames && p.frames % 2 === 1) continue;
     p.before?.(p);
     const answer = p.lm.tryStep();
     p.last = answer;
@@ -192,59 +197,106 @@ describe('LockstepMatch on an in-memory channel', () => {
     for (const [tick, hash] of sent) expect(hash).toBe(a.hashes.get(tick));
   });
 
-  it('repairs a forced desync from the host within 2 s', async () => {
-    const { clock, store, a, b } = pair();
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    let nudgedAt = -1;
-    b.before = nudgeAt([300], (p) => {
-      p.lm.match.state.players.plants.energy += 1;
-      nudgedAt = clock.now();
-    });
-    started(a, b);
-    await until(clock, [a, b], () => nudgedAt >= 0);
-    // whenever both screens stand on the same tick after the repair, their whole states agree
-    const sameTick: boolean[] = [];
-    while (clock.now() < nudgedAt + 2000) {
-      await frame(clock, [a, b]);
-      const t = a.lm.match.state.tick;
-      if (a.lm.repairs() === 1 && b.lm.repairs() === 1 && b.lm.match.state.tick === t) {
-        sameTick.push(a.lm.match.hash() === b.lm.match.hash());
+  /** Repair under even and uneven stepping, for delays on and off a turn boundary (D ≡ 0 and ≢ 0 mod 6). */
+  const REPAIR_CASES = [
+    { delay: 12, latency: 100, lag: 'none', nudge: 'guest' },
+    { delay: 13, latency: 100, lag: 'none', nudge: 'guest' },
+    { delay: 12, latency: 100, lag: 'guest', nudge: 'guest' },
+    { delay: 13, latency: 100, lag: 'guest', nudge: 'guest' },
+    { delay: 13, latency: 30, lag: 'guest', nudge: 'guest' }, // the review's deadlock
+    { delay: 9, latency: 30, lag: 'guest', nudge: 'host' },
+    { delay: 20, latency: 30, lag: 'guest', nudge: 'guest' },
+    { delay: 13, latency: 100, lag: 'host', nudge: 'host' },
+  ] as const;
+
+  /** The pair of a repair case: the lagging peer steps every other frame for its first 20 s. */
+  function repairPair(c: (typeof REPAIR_CASES)[number], wrap: Partial<Record<Faction, Wrap>> = {}) {
+    const p = pair(wrap, { delay: c.delay, latency: c.latency });
+    if (c.lag === 'guest') p.b.lagFrames = 600;
+    if (c.lag === 'host') p.a.lagFrames = 600;
+    return { ...p, nudged: c.nudge === 'guest' ? p.b : p.a };
+  }
+
+  describe.each(REPAIR_CASES)('repair with delay $delay, latency $latency, lagging $lag, nudging the $nudge', (c) => {
+    it('repairs a forced desync from the host within 2 s and stays repaired', async () => {
+      const { clock, store, a, b, nudged } = repairPair(c);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      let nudgedAt = -1;
+      nudged.before = nudgeAt([300], (p) => {
+        p.lm.match.state.players.plants.energy += 1;
+        nudgedAt = clock.now();
+      });
+      started(a, b);
+      await until(clock, [a, b], () => nudgedAt >= 0);
+      // whenever both screens stand on the same tick after the repair, their whole states agree
+      const sameTick: boolean[] = [];
+      while (clock.now() < nudgedAt + 2000) {
+        await frame(clock, [a, b]);
+        const t = a.lm.match.state.tick;
+        if (a.lm.repairs() === 1 && b.lm.repairs() === 1 && b.lm.match.state.tick === t) {
+          sameTick.push(a.lm.match.hash() === b.lm.match.hash());
+        }
       }
-    }
-    expect(a.lm.repairs()).toBe(1);
-    expect(b.lm.repairs()).toBe(1);
-    const sync = JSON.parse(store.get('sync/s1')!) as { tick: number; snap: string };
-    expect(sync.tick).toBeGreaterThan(300);
-    expect(sameTick.length).toBeGreaterThan(0);
-    expect(sameTick.every(Boolean)).toBe(true);
-    // and it stays repaired: no second repair, equal hashes from then on
-    await frames(clock, [a, b], 300);
-    expect(a.lm.repairs()).toBe(1);
-    expect(b.lm.repairs()).toBe(1);
-    for (const t of [...a.hashes.keys()].filter((k) => k > sync.tick && b.hashes.has(k))) {
-      expect(a.hashes.get(t), `tick ${t}`).toBe(b.hashes.get(t));
-    }
+      expect(a.lm.repairs()).toBe(1);
+      expect(b.lm.repairs()).toBe(1);
+      const sync = JSON.parse(store.get('sync/s1')!) as { tick: number; snap: string };
+      expect(sync.tick).toBeGreaterThan(300);
+      expect(sameTick.length).toBeGreaterThan(0);
+      expect(sameTick.every(Boolean)).toBe(true);
+      // and it stays repaired: no second repair, both keep going, equal hashes from then on
+      const ticks = [a.lm.match.state.tick, b.lm.match.state.tick];
+      await frames(clock, [a, b], 900);
+      expect(a.lm.repairs()).toBe(1);
+      expect(b.lm.repairs()).toBe(1);
+      expect(a.lm.match.state.tick).toBeGreaterThan(ticks[0]! + 300);
+      expect(b.lm.match.state.tick).toBeGreaterThan(ticks[1]! + 300);
+      for (const t of [...a.hashes.keys()].filter((k) => k > sync.tick && b.hashes.has(k))) {
+        expect(a.hashes.get(t), `tick ${t}`).toBe(b.hashes.get(t));
+      }
+    });
+
+    it('repairs three times, then a fourth mismatch ends both as broken within 2 s of each other', async () => {
+      const { clock, store, a, b, nudged } = repairPair(c);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      nudged.before = nudgeAt([300, 900, 1500, 2100], (p) => { p.lm.match.state.players.plants.energy += 1; });
+      const endedAt = new Map<Peer, number>();
+      for (const p of [a, b]) p.lm.onChange(() => { if (p.lm.outcome() && !endedAt.has(p)) endedAt.set(p, clock.now()); });
+      started(a, b);
+      await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null);
+      expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(Math.abs(endedAt.get(a)! - endedAt.get(b)!)).toBeLessThanOrEqual(2000);
+      expect([...store.keys()].filter((k) => k.startsWith('sync/')).sort()).toEqual(['sync/s1', 'sync/s2', 'sync/s3']);
+      expect(a.lm.repairs()).toBe(3);
+      expect(b.lm.repairs()).toBe(3);
+      const repairs = warn.mock.calls.map((m) => String(m[0])).filter((m) => /repair s[123]/.test(m));
+      expect(repairs.length).toBe(3);
+      for (const m of repairs) {
+        const [, own, other] = /own (\d+), other (\d+)/.exec(m) ?? [];
+        expect(own).toBeDefined();
+        expect(own).not.toBe(other);
+      }
+      expect(a.lm.tryStep()).toEqual({ kind: 'over' });
+    });
   });
 
-  it('repairs three times, then a fourth mismatch ends both as broken', async () => {
-    const { clock, store, a, b } = pair();
+  it.each([12, 13])('a refused repair breaks the host, and the guest goes home too (delay %i)', async (delay) => {
+    const refuseSync: Wrap = (ch) => ({
+      publishTurns: ch.publishTurns.bind(ch), listen: ch.listen.bind(ch), remove: ch.remove.bind(ch),
+      write: (rec, opts) => (rec.kind === 'sync' ? Promise.resolve('refused') : ch.write(rec, opts)),
+    });
+    const { clock, a, b, store } = pair({ plants: refuseSync }, { delay });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    b.before = nudgeAt([300, 900, 1500, 2100], (p) => { p.lm.match.state.players.plants.energy += 1; });
+    b.before = nudgeAt([300], (p) => { p.lm.match.state.players.plants.energy += 1; });
     started(a, b);
-    await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null);
+    await until(clock, [a, b], () => a.lm.outcome() !== null);
+    const brokeAt = clock.now();
     expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+    await until(clock, [a, b], () => b.lm.outcome() !== null);
+    expect(clock.now() - brokeAt).toBeLessThanOrEqual(1000);
+    expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'broken' });
     expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
-    expect([...store.keys()].filter((k) => k.startsWith('sync/')).sort()).toEqual(['sync/s1', 'sync/s2', 'sync/s3']);
-    expect(a.lm.repairs()).toBe(3);
-    expect(b.lm.repairs()).toBe(3);
-    const repairs = warn.mock.calls.map((c) => String(c[0])).filter((m) => /repair s[123]/.test(m));
-    expect(repairs.length).toBe(3);
-    for (const m of repairs) {
-      const [, own, other] = /own (\d+), other (\d+)/.exec(m) ?? [];
-      expect(own).toBeDefined();
-      expect(own).not.toBe(other);
-    }
-    expect(a.lm.tryStep()).toEqual({ kind: 'over' });
+    expect(warn.mock.calls.some((m) => /refused repair s1/.test(String(m[0])))).toBe(true);
   });
 
   it('pauses both from one peer and resumes both from the other', async () => {
@@ -314,12 +366,83 @@ describe('LockstepMatch on an in-memory channel', () => {
 
     it('two different winners show the host\'s and credit nobody', async () => {
       const { clock, a, b } = pair();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       a.before = fall('zombies');
       b.before = fall('plants');
       started(a, b);
       await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null);
       expect(a.lm.outcome()).toEqual({ kind: 'disagree', shown: 'plants' });
       expect(b.lm.outcome()).toEqual({ kind: 'disagree', shown: 'plants' });
+      const said = warn.mock.calls.map((m) => String(m[0]));
+      expect(said).toContain('[versus] the end records disagree: own plants, other zombies');
+      expect(said).toContain('[versus] the end records disagree: own zombies, other plants');
+    });
+
+    it('the same winner at a different hash is a win, with one warning on each side', async () => {
+      const { clock, a, b } = pair();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      a.before = fall('zombies');
+      b.before = nudgeAt([95], (p) => {
+        p.lm.match.state.baseHp.zombies = 0;
+        p.lm.match.state.players.plants.energy += 1; // same winner, another final state
+      });
+      started(a, b);
+      await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null);
+      expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      const differ = warn.mock.calls.map((m) => String(m[0])).filter((m) => /same winner but differ/.test(m));
+      expect(differ.length).toBe(2);
+      expect(differ[0]).toMatch(/own tick 96 hash \d+, other tick 96 hash \d+/);
+    });
+  });
+
+  describe('silence while paused (spec 6.8: no limit while both are present)', () => {
+    it('has no limit while both devices are present', async () => {
+      const { clock, a, b } = pair();
+      started(a, b);
+      await frames(clock, [a, b], 60);
+      a.lm.pause();
+      const silences: number[] = [];
+      for (let i = 0; i < 15 * 60; i++) {
+        await frame(clock, [a, b], 1000);
+        silences.push(a.lm.silentMs(), b.lm.silentMs());
+      }
+      expect(silences.every((s) => s === 0)).toBe(true);
+      expect(a.lm.outcome()).toBeNull();
+      expect(b.lm.outcome()).toBeNull();
+      expect(a.last).toEqual({ kind: 'wait', why: 'paused' });
+    });
+
+    it('ends unfinished when the other device hid and never came back', async () => {
+      const { clock, a, b } = pair();
+      started(a, b);
+      await frames(clock, [a, b], 60);
+      b.lm.hidden();
+      b.stepping = false;
+      const hidAt = clock.now();
+      await until(clock, [a], () => a.lm.pausedBy === 'p02');
+      await until(clock, [a], () => clock.now() >= hidAt + 39000);
+      expect(a.lm.silentMs()).toBe(0); // under 40 s counts as here
+      await until(clock, [a], () => clock.now() >= hidAt + 91000);
+      expect(stallStage(a.lm.silentMs())).toBe('flag');
+      for (let i = 0; i < 600 && a.lm.outcome() === null; i++) await frame(clock, [a], 1000);
+      expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'silence' });
+      expect(clock.now() - hidAt).toBeGreaterThanOrEqual(600000);
+      expect(clock.now() - hidAt).toBeLessThan(602000);
+      expect(a.lm.stats().maxSilentMs).toBeGreaterThanOrEqual(600000);
+    });
+
+    it('counts the other as here again once it is visible', async () => {
+      const { clock, a, b } = pair();
+      started(a, b);
+      await frames(clock, [a, b], 60);
+      b.lm.hidden();
+      await frames(clock, [a, b], 60, 1000);
+      expect(a.lm.silentMs()).toBeGreaterThan(0);
+      b.lm.visible();
+      await frames(clock, [a, b], 16, 1000); // the next heartbeat
+      expect(a.lm.silentMs()).toBe(0);
+      expect(a.lm.pausedBy).toBe('p02'); // still paused: coming back does not resume by itself
     });
   });
 
