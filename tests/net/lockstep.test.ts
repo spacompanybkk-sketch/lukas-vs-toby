@@ -174,6 +174,103 @@ describe('Lockstep', () => {
     expect(ls.takeDue(12)).toEqual([{ k: 3, raw: '{}' }]);
   });
 
+  describe('adoptOwn on rejoin', () => {
+    const dbRaw = '{"c":[[0,"hero",4]]}';
+
+    it('lets the database string win over a turn built here that has not run', () => {
+      const ls = plantsSeat();
+      ls.takeDue(0);
+      ls.submit(place(), 0); // runTick 12, turn 2
+      ls.takeDue(6); // builds turn 2 locally with the place
+      expect(ls.adoptOwn(2, dbRaw)).toBe(true);
+      expect(ls.pending()).toEqual([]); // the superseded tap will never run
+      ls.receive('zombies', 2, '{}');
+      expect(ls.canRun(12)).toBe(true);
+      expect(ls.commandsAt(12)).toEqual([{ type: 'hero', faction: 'plants', lane: 4 }]);
+    });
+
+    it('changes nothing when the database holds the same string', () => {
+      const ls = plantsSeat();
+      ls.takeDue(0);
+      const tap = ls.submit(place(), 0);
+      const [built] = ls.takeDue(6);
+      expect(ls.adoptOwn(2, built!.raw)).toBe(true);
+      expect(ls.pending()).toEqual([tap]);
+      ls.receive('zombies', 2, '{}');
+      expect(ls.commandsAt(12)).toEqual([place()]);
+    });
+
+    it('answers false when the turn already ran from a different string', () => {
+      const ls = plantsSeat();
+      ls.takeDue(0);
+      ls.acked(0);
+      ls.receive('zombies', 0, '{}');
+      ls.commandsAt(0);
+      expect(ls.adoptOwn(0, dbRaw)).toBe(false);
+      expect(ls.commandsAt(0)).toEqual([{ type: 'hero', faction: 'plants', lane: 4 }]); // the database's from now on
+      expect(ls.adoptOwn(1, dbRaw)).toBe(true); // turn 1 has not run
+    });
+
+    it('drops own taps stamped into a turn the database already holds', () => {
+      const ls = plantsSeat();
+      ls.takeDue(0);
+      ls.submit(place(), 0); // runTick 12, turn 2, not taken yet
+      expect(ls.adoptOwn(2, dbRaw)).toBe(true);
+      expect(ls.pending()).toEqual([]);
+    });
+
+    it('does not jump over turns it does not hold', () => {
+      const ls = plantsSeat();
+      ls.adoptOwn(5, '{}');
+      expect(ls.firstMissing('plants')).toBe(0);
+      // turns 0–4 are still built here; 5 is not built again
+      expect(ls.takeDue(60).map((d) => d.k)).toEqual([0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11]);
+      for (let k = 0; k <= 4; k++) {
+        ls.acked(k);
+        ls.receive('zombies', k, '{}');
+        expect(ls.canRun(6 * k)).toBe(true);
+      }
+    });
+
+    it('stamps a tap past an adopted turn ahead of the take cursor', () => {
+      const ls = plantsSeat();
+      ls.takeDue(0); // turns 0, 1
+      ls.adoptOwn(2, '{}');
+      ls.adoptOwn(4, '{}');
+      const tap = ls.submit(place(), 0); // tick + delay = 12 lands in turn 2, held: next free is 3
+      expect(tap).toMatchObject({ runTick: 18 });
+      const tap2 = ls.submit(place(), 12); // 24 is turn 4, held: next free is 5
+      expect(tap2).toMatchObject({ runTick: 30 });
+    });
+  });
+
+  it('ignores hashes a record cannot carry', () => {
+    const ls = plantsSeat();
+    ls.offerHash(30, 77);
+    ls.offerHash(54001, 1);
+    ls.offerHash(60, 0x100000000);
+    ls.offerHash(-30, 1);
+    ls.offerHash(30.5, 1);
+    expect(ls.takeDue(0)[0]!.raw).toBe('{"h":[30,77]}');
+    ls.offerHash(54000, 0xffffffff);
+    expect(ls.takeDue(6)[0]!.raw).toBe('{"h":[54000,4294967295]}');
+  });
+
+  it.each([-1, 1.5, Number.NaN])('throws RangeError on a tap at tick %s', (tick) => {
+    expect(() => plantsSeat().submit(place(), tick)).toThrow(RangeError);
+  });
+
+  it('throws RangeError on a command no record can carry, keeping the valid taps beside it', () => {
+    const ls = plantsSeat();
+    const good = ls.submit(place(), 0);
+    expect(() => ls.submit({ type: 'hero', faction: 'plants', lane: 1.5 }, 0)).toThrow(RangeError);
+    expect(() => ls.submit({ type: 'place', faction: 'plants', unit: 'dragon' as never, lane: 2, col: 3 }, 0)).toThrow(RangeError);
+    expect(() => ls.submit({ type: 'belt', faction: 'plants', slot: 0, lane: 1, col: 1 }, 0)).toThrow(RangeError);
+    expect(ls.pending()).toEqual([good]);
+    const [, , turn2] = ls.takeDue(6);
+    expect(decodeTurn(turn2!.raw, 'plants').commands).toEqual([{ at: 0, cmd: place() }]);
+  });
+
   it('ignores turn indices outside 0..MAX_TURN', () => {
     const ls = plantsSeat();
     ls.receive('zombies', -1, '{}');

@@ -47,14 +47,21 @@ function toWire(at: number, cmd: Command): Wire {
   }
 }
 
-/** The record string of a turn. Throws RangeError on > 8 commands, > 400 characters, a belt, or an offset outside 0..5. */
+/**
+ * The record string of a turn. Throws RangeError on > 8 commands, > 400 characters, a belt, an
+ * offset outside 0..5, or any command `decodeTurn` would refuse (unknown unit or spell, a lane,
+ * column or id that is not a safe integer).
+ */
 export function encodeTurn(turn: Turn): string {
   if (turn.commands.length > MAX_TURN_COMMANDS) throw new RangeError(`${turn.commands.length} commands in one turn`);
   const out: { c?: Wire[]; h?: [number, number] } = {};
   if (turn.commands.length > 0) {
     out.c = turn.commands.map(({ at, cmd }) => {
       if (!isOffset(at)) throw new RangeError(`offset ${at} outside 0..${TURN_TICKS - 1}`);
-      return toWire(at, cmd);
+      const wire = toWire(at, cmd);
+      // the decoder's own checks: what it would refuse is never written
+      if (!fromWire(wire, cmd.faction)) throw new RangeError(`command no record can carry: ${JSON.stringify(cmd)}`);
+      return wire;
     });
   }
   if (turn.hash) out.h = [turn.hash[0], turn.hash[1]];

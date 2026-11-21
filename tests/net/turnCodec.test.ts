@@ -48,10 +48,21 @@ describe('encodeTurn', () => {
     const longest: Command = { type: 'place', faction: 'zombies', unit: 'skeletonWarrior', lane: 4, col: 9 };
     const full = Array.from({ length: 8 }, () => ({ at: 5, cmd: longest }));
     expect(encodeTurn({ commands: full, hash: [54000, 4294967295] }).length).toBeLessThanOrEqual(400);
-    // merges onto absurd ids do not
-    const merge: Command = { type: 'merge', faction: 'plants', unit: 'avocadoBunker', targetId: 1e20 };
+    // eight merges onto the largest safe ids do not
+    const merge: Command = { type: 'merge', faction: 'zombies', unit: 'skeletonWarrior', targetId: Number.MAX_SAFE_INTEGER };
     const huge = Array.from({ length: 8 }, () => ({ at: 0, cmd: merge }));
-    expect(() => encodeTurn({ commands: huge, hash: [54000, 4294967295] })).toThrow(RangeError);
+    expect(() => encodeTurn({ commands: huge.slice(0, 1), hash: null })).not.toThrow();
+    expect(() => encodeTurn({ commands: huge, hash: [54000, 4294967295] })).toThrow(/characters/);
+  });
+
+  it.each<[string, Command]>([
+    ['an unknown unit', { type: 'place', faction: 'plants', unit: 'dragon' as never, lane: 1, col: 2 }],
+    ['an unknown spell', { type: 'spell', faction: 'plants', spell: 'nuke' as never, lane: 1, col: 2 }],
+    ['a fractional lane', { type: 'hero', faction: 'plants', lane: 1.5 }],
+    ['a NaN column', { type: 'place', faction: 'plants', unit: 'peashooter', lane: 1, col: Number.NaN }],
+    ['an unsafe id', { type: 'remove', faction: 'plants', targetId: 1e20 }],
+  ])('throws RangeError on %s, which the decoder would refuse', (_name, cmd) => {
+    expect(() => encodeTurn({ commands: [{ at: 0, cmd }], hash: null })).toThrow(RangeError);
   });
 });
 

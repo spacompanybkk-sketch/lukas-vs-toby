@@ -9,6 +9,8 @@ export interface PendingTap { id: number; runTick: number; cmd: Command }
 const FACTIONS: readonly Faction[] = ['plants', 'zombies']; // the order commands of one tick run in
 /** The longest hash a turn can carry, for checking that a tap still fits in 400 characters. */
 const WIDEST_HASH = [MAX_TURN * TURN_TICKS, 0xffffffff] as const;
+const MAX_HASH_TICK = WIDEST_HASH[0];
+const MAX_HASH = WIDEST_HASH[1];
 
 interface Held { raw: string; turn: Turn }
 
@@ -28,8 +30,10 @@ export class Lockstep {
   readonly delay: number;
   private readonly turns: Record<Faction, Map<number, Held>> = { plants: new Map(), zombies: new Map() };
   private readonly ackedTurns = new Set<number>();
-  /** Own turns below this index are taken (published or adopted); taps never land in them. */
+  /** The lowest own turn not held (taken or adopted); own turns are only ever built from here on. */
   private nextTake = 0;
+  /** The highest tick `commandsAt` has been asked for (-1: none). */
+  private ranThrough = -1;
   private taps: PendingTap[] = [];
   private nextId = 1;
   private hash: readonly [number, number] | null = null;
@@ -54,12 +58,16 @@ export class Lockstep {
   /**
    * Stamps a tap made at `tick` to run at `max(tick + delay, 6 × first unpublished own turn)`.
    * `'full'` when that turn already holds 8 taps, the record would pass 400 characters, or the
-   * turn is past `MAX_TURN`. Throws RangeError on a belt command (Versus has no belt).
+   * turn is past `MAX_TURN`. A turn already held (adopted on rejoin) is skipped to the next free one.
+   * Throws RangeError on a `tick` that is not a whole number ≥ 0 and on a command no record can
+   * carry (a belt, an unknown unit or spell, a non-integer lane, column or id: `encodeTurn`'s checks).
    */
   submit(cmd: Command, tick: number): PendingTap | 'full' {
-    if (cmd.type === 'belt') throw new RangeError('a belt command is never sent');
-    const runTick = Math.max(tick + this.delay, TURN_TICKS * this.nextTake);
-    const k = turnOf(runTick);
+    if (!Number.isSafeInteger(tick) || tick < 0) throw new RangeError(`tap at tick ${tick}`);
+    encodeTurn({ commands: [{ at: 0, cmd }], hash: null }); // throws RangeError on a command no record can carry
+    let runTick = Math.max(tick + this.delay, TURN_TICKS * this.nextTake);
+    let k = turnOf(runTick);
+    while (this.turns[this.seat].has(k)) runTick = TURN_TICKS * ++k;
     if (k > MAX_TURN) return 'full';
     const tap: PendingTap = { id: this.nextId, runTick, cmd };
     const inTurn = [...this.tapsIn(k), tap];
@@ -81,30 +89,55 @@ export class Lockstep {
   takeDue(tick: number): { k: number; raw: string }[] {
     const out: { k: number; raw: string }[] = [];
     while (this.nextTake <= MAX_TURN && TURN_TICKS * this.nextTake + TURN_TICKS - 1 - this.delay < tick) {
-      const k = this.nextTake++;
+      const k = this.nextTake;
       const raw = encodeTurn({ commands: this.toTurnCommands(k, this.tapsIn(k)), hash: this.hash });
       this.hash = null;
       this.turns[this.seat].set(k, { raw, turn: decodeTurn(raw, this.seat) });
       out.push({ k, raw });
+      this.advance();
     }
     return out;
   }
 
-  /** The newest own hash (`tick` a multiple of 30); it rides on the next taken turn only. */
-  offerHash(tick: number, hash: number): void { this.hash = [tick, hash]; }
+  /** Moves `nextTake` over the own turns held from it on, one after another. */
+  private advance(): void {
+    while (this.turns[this.seat].has(this.nextTake)) this.nextTake++;
+  }
+
+  /**
+   * The newest own hash (`tick` a multiple of 30); it rides on the next taken turn only. Values a
+   * record cannot carry (tick outside 0..54000, hash outside 0..0xffffffff, not whole) are ignored.
+   */
+  offerHash(tick: number, hash: number): void {
+    const fits = (v: number, max: number) => Number.isSafeInteger(v) && v >= 0 && v <= max;
+    if (fits(tick, MAX_HASH_TICK) && fits(hash, MAX_HASH)) this.hash = [tick, hash];
+  }
 
   /** The database answered OK to own turn `k`: from now on it counts for `canRun`. */
   acked(k: number): void {
     if (this.turns[this.seat].has(k)) this.ackedTurns.add(k);
   }
 
-  /** Rejoin: own turn `k` is already in the database, taken and acknowledged. */
-  adoptOwn(k: number, raw: string): void {
-    if (!validTurn(k)) return;
+  /**
+   * Rejoin: own turn `k` is already in the database, so it is held and acknowledged. The database's
+   * string is the authority: it replaces a different string this device built for `k`, and own
+   * taps stamped into `k` leave `pending()` (they will never run). Answers false only when some
+   * tick of `k` already ran from a different string: this screen has drifted from the other and
+   * the caller must repair (spec 6.6). Otherwise true (also for a `k` outside 0..MAX_TURN, ignored).
+   */
+  adoptOwn(k: number, raw: string): boolean {
+    if (!validTurn(k)) return true;
     const own = this.turns[this.seat];
-    if (!own.has(k)) own.set(k, { raw, turn: decodeTurn(raw, this.seat) });
+    const before = own.get(k);
+    let clean = true;
+    if (before?.raw !== raw) {
+      if (before && this.ranThrough >= TURN_TICKS * k) clean = false;
+      own.set(k, { raw, turn: decodeTurn(raw, this.seat) });
+      this.taps = this.taps.filter((p) => turnOf(p.runTick) !== k);
+    }
     this.ackedTurns.add(k);
-    this.nextTake = Math.max(this.nextTake, k + 1);
+    this.advance();
+    return clean;
   }
 
   /** The other seat's turn `k`. Repeats (the first string is kept) and own-seat records are ignored. */
@@ -131,6 +164,7 @@ export class Lockstep {
   commandsAt(tick: number): Command[] {
     const k = turnOf(tick);
     const at = tick - k * TURN_TICKS;
+    this.ranThrough = Math.max(this.ranThrough, tick);
     this.taps = this.taps.filter((p) => p.runTick > tick);
     return FACTIONS.flatMap((f) =>
       (this.turns[f].get(k)?.turn.commands ?? []).filter((c) => c.at === at).map((c) => c.cmd));
@@ -156,9 +190,10 @@ export class Lockstep {
 
   /** After a sleep: removes and returns own taps in turns not yet taken (no one ever ran them). */
   dropUnpublished(): PendingTap[] {
-    const cut = TURN_TICKS * this.nextTake;
-    const dropped = this.taps.filter((p) => p.runTick >= cut);
-    this.taps = this.taps.filter((p) => p.runTick < cut);
+    const own = this.turns[this.seat];
+    const taken = (p: PendingTap) => own.has(turnOf(p.runTick));
+    const dropped = this.taps.filter((p) => !taken(p));
+    this.taps = this.taps.filter(taken);
     return dropped;
   }
 }
