@@ -21,9 +21,9 @@ describe('player screen pictures', () => {
 });
 
 describe('Versus pictures', () => {
-  it('registers all ten named in the plan, and the minus', () => {
+  it('registers all ten named in the plan, the minus and the crown', () => {
     expect(Object.keys(ALL_VERSUS_PICTURES).sort()).toEqual(
-      ['BENCH', 'CRACKED_BLOCK', 'MINUS', 'PAUSE_SIGN', 'QUESTION', 'SHRUG', 'SWAP', 'TABLETS_SWORDS', 'UPDATE', 'WHITE_FLAG', 'ZZZ'],
+      ['BENCH', 'CRACKED_BLOCK', 'CROWN', 'MINUS', 'PAUSE_SIGN', 'QUESTION', 'SHRUG', 'SWAP', 'TABLETS_SWORDS', 'UPDATE', 'WHITE_FLAG', 'ZZZ'],
     );
   });
 

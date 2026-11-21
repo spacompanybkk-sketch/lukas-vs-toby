@@ -18,6 +18,8 @@ import type { Faction } from '../../sim/types';
 import { BOYS } from './BaseBars';
 import type { BoyPortraits } from './BaseBars';
 import { formatClock } from './TopBar';
+import { VersusResult } from '../versus/VersusResult';
+import type { VersusResultVM } from '../versus/VersusResult';
 import './hud.css';
 
 export interface ResultOverlayProps {
@@ -42,8 +44,10 @@ export interface ResultOverlayProps {
   onMap?(): void;
   /** The turntable on the stage, for the unlocked unit (none: its card picture). */
   turntable?: Turntable;
-  /** Card portraits by unit key (the unlocked unit's picture without a turntable). */
+  /** Card portraits by unit key (the unlocked unit's picture without a turntable; the Versus faces). */
   cards?: Record<string, string>;
+  /** A Versus match on two devices: the faces, the scoreboard strip, rematch and home (`onMenu`) in place of the chips and buttons. */
+  versus?: { vm: VersusResultVM; onRematch(): void };
 }
 
 /** The Almanac's turntable, as the result uses it. */
@@ -93,6 +97,7 @@ export function resultWord(result: NonNullable<BattleResult>): 'VICTORY!' | 'DEF
 /** VICTORY! / DEFEAT / DRAW, the winner's portrait, the match time, Play again and Menu. */
 export function ResultOverlay(props: ResultOverlayProps) {
   if (props.level !== undefined && props.level !== null) return <LevelResultOverlay {...props} level={props.level} />;
+  if (props.versus !== undefined) return <VersusResultOverlay {...props} versus={props.versus} />;
   const { result, playerFaction, seconds, portraits = {}, onPlayAgain, onMenu, coins = null, rankUp = null } = props;
   const word = resultWord(result);
   const tone = word === 'VICTORY!' ? 'win' : word === 'DEFEAT' ? 'lose' : 'draw';
@@ -127,6 +132,20 @@ export function ResultOverlay(props: ResultOverlayProps) {
             <span class="ico ico--home" aria-hidden="true" /><span class="btn__label">Menu</span>
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The Versus variant: the word, then the Versus result (faces, scoreboard, rank-up, rematch, home). */
+function VersusResultOverlay({ result, playerFaction, onMenu, cards = {}, versus }: ResultOverlayProps & { versus: NonNullable<ResultOverlayProps['versus']> }) {
+  const word = resultWord(result);
+  const tone = word === 'VICTORY!' ? 'win' : word === 'DEFEAT' ? 'lose' : 'draw';
+  return (
+    <div data-screen="result" data-versus class={`layer layer--dim result result--${tone}`} role="dialog" aria-label={word}>
+      <div class={`result__panel result__panel--versus panel px pal-side side-${playerFaction}`}>
+        <h2 class="result__word inked">{word}</h2>
+        <VersusResult vm={versus.vm} portraits={cards} onRematch={versus.onRematch} onHome={onMenu} />
       </div>
     </div>
   );

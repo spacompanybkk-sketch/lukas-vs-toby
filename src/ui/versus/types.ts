@@ -17,9 +17,18 @@ export interface IncomingVM { from: FaceVM; me: FaceVM; mySide: Faction; head: H
 export const FACE_PX = 120;
 export const TOUCH_PX = 64;
 export const PANEL_TOUCH_PX = 112;
+/** Inline size of a ≥ `px` button (the stylesheet may make it bigger, never smaller). */
+export const touch = (px: number = TOUCH_PX): { minWidth: string; minHeight: string } => ({ minWidth: `${px}px`, minHeight: `${px}px` });
 /** The invite panel's tick and cross sit this far in from the screen's edges. */
 export const PANEL_EDGE_PX = 24;
 /** The most head-start steps. */
 export const HEAD_MAX = 5;
 
 export const otherSide = (side: Faction): Faction => (side === 'plants' ? 'zombies' : 'plants');
+
+/**
+ * How long the other device has been silent, as the battle shows it. Structurally Task 3's
+ * `StallStage` (src/net/timeouts.ts, lane S, not on this branch yet): the integration may import
+ * either; they are the same union.
+ */
+export type StallStage = 'none' | 'hourglass' | 'face' | 'flag' | 'unfinished';

@@ -214,7 +214,27 @@ export const MINUS = art(outlined([
   '............',
 ]));
 
+/** The winner: a gold crown with three points and red jewels. */
+export const CROWN = art(outlined([
+  '................',
+  '................',
+  '................',
+  '..y....y....y...',
+  '..yy..yyy..yy...',
+  '..yyy.yyy.yyy...',
+  '..yyyyyyyyyyy...',
+  '..yyyyyyyyyyy...',
+  '..yyryyyyyryy...',
+  '..yyyyyryyyyy...',
+  '..YYYYYYYYYYY...',
+  '..YYYYYYYYYYY...',
+  '................',
+  '................',
+  '................',
+  '................',
+]));
+
 /** Every Versus picture, for the tests. */
 export const ALL_VERSUS_PICTURES: Readonly<Record<string, PixelArt>> = Object.freeze({
-  TABLETS_SWORDS, BENCH, SWAP, ZZZ, WHITE_FLAG, CRACKED_BLOCK, SHRUG, UPDATE, PAUSE_SIGN, QUESTION, MINUS,
+  TABLETS_SWORDS, BENCH, SWAP, ZZZ, WHITE_FLAG, CRACKED_BLOCK, SHRUG, UPDATE, PAUSE_SIGN, QUESTION, MINUS, CROWN,
 });

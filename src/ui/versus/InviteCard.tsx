@@ -5,13 +5,10 @@ import { SWORDS } from '../screens/boardPictures';
 import { CROSS, PLUS } from '../screens/pictures';
 import { uiSound } from '../uiSound';
 import { MINUS, SWAP } from './pictures';
-import { HEAD_MAX, TOUCH_PX, otherSide } from './types';
+import { HEAD_MAX, otherSide, touch } from './types';
 import type { FaceVM, HeadVM, InviteCardState, InviteDraftVM } from './types';
 import { VersusFace } from './WhoIsHere';
 import './versus.css';
-
-/** Inline size of a ≥ 64 px button (the stylesheet may make it bigger, never smaller). */
-const touch = (px: number = TOUCH_PX) => ({ minWidth: `${px}px`, minHeight: `${px}px` });
 
 /** The head boy's side: mine when the head start is mine, else the other one. */
 export function headSide(head: HeadVM, me: FaceVM, mySide: Faction): Faction {
