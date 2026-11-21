@@ -12,6 +12,10 @@
  * be changed afterwards except with the current code (the script changes it and back), so keep
  * the same six-digit LVT_TEST_GROWNUP_CODE for every run.
  *
+ * The Versus rows (spec 7-8) tick p29 and p30 onto the Versus list, play the honest lobby and match
+ * writes with fixed match id VS_ID, try the forgeries the fake already refuses in
+ * tests/cloud/versusRules.test.ts, and clean everything up again (also at the start).
+ *
  * No SDK; plain fetch to the REST API. Never touches `v2`. Outside `v2test` it only makes requests
  * the rules must refuse: a read and a write on each retired old path (`presence`, `rooms`,
  * `challenges`) and on an unknown top-level path. If one of those writes lands (200), the closed
@@ -115,11 +119,45 @@ const B = 'p30';
 const hA = pinHash(A, '123');
 const hB = pinHash(B, '456');
 
+// Versus (spec 7-8).
+const VS_ID = '0123456789abcdef0123456789abcdef';
+const PUB = `B${'J0n-_x'.repeat(14)}Qw`;
+const BUILD = '2289558';
+const M = `vs/matches/${VS_ID}`;
+/** `proof/<slot>/<pin hash>` stamped with this update's time. */
+const proof = (slot, hash) => ({ [`proof/${slot}/${hash}`]: { touch: SV } });
+const pA = () => proof(A, hA);
+const pB = () => proof(B, hB);
+const grownUp = () => ({ [`admin/proof/${G}`]: { touch: SV } });
+const here = (busy = false) => ({ at: SV, busy });
+const invite = (extra = {}) => ({ pub: PUB, side: 'zombies', head: { slot: B, step: 3 }, build: BUILD, at: SV, ...extra });
+const reply = () => ({ ok: true, pub: PUB, build: BUILD, at: SV });
+const meta = (extra = {}) => ({
+  v: 1, build: BUILD, seed: 2718281828, seats: { plants: A, zombies: B }, host: B,
+  head: { slot: B, step: 3 }, turn: 6, delay: 12, created: SV, ...extra,
+});
+const matchPatch = (b) => call('PATCH', `${R}/${M}`, b);
+/** Everything the Versus rows leave behind, except the proof nodes and the match. */
+const vsCleanupBody = () => ({
+  ...pA(), ...pB(), ...grownUp(),
+  [`vs/here/${A}`]: null, [`vs/here/${B}`]: null,
+  [`vs/lobby/${A}/in/${B}`]: null, [`vs/lobby/${A}/back/${B}`]: null,
+  [`vs/lobby/${B}/in/${A}`]: null, [`vs/lobby/${B}/back/${A}`]: null,
+  [`vs/allowed/${A}`]: null, [`vs/allowed/${B}`]: null,
+});
+const proofCleanupBody = () => ({ [`proof/${A}/${hA}`]: null, [`proof/${B}/${hB}`]: null });
+/** Pause before a row whose proof must be stale (a different millisecond from the last write). */
+const later = (run) => async () => { await new Promise((r) => setTimeout(r, 50)); return run(); };
+
 /** [what, request, expected HTTP status]. 200 = allowed, 401 = refused by the rules. */
 const ROWS = [
   // Setup and honest use.
   ['grown-up code: set if none (200), or already set (401)', () => put(`${R}/admin/secret`, G), [200, 401]],
   ['grown-up proof with the right code', () => put(`${R}/admin/proof/${G}`, { touch: SV }), 200],
+  // Versus leftovers of a run that stopped half-way (401 when p29/p30 are already gone).
+  ['cleanup before: Versus here, lobby and list entries', () => patch(vsCleanupBody()), [200, 401]],
+  ['cleanup before: Versus proofs', () => patch(proofCleanupBody()), [200, 401]],
+  ['cleanup before: the Versus match', () => call('DELETE', `${R}/${M}`), 200],
   ['cleanup before: remove p29 with the grown-up proof', () => patch(removeBody(A)), 200],
   ['cleanup before: remove p30 with the grown-up proof', () => patch(removeBody(B)), 200],
   ['create p29 (secret + save + player + board in one update)', () => patch(createBody(A, 'CheckA', hA)), 200],
@@ -190,6 +228,59 @@ const ROWS = [
   ['write naming the current version', () => patch(ownerWrite(A, 'CheckA', hA)), 200],
   ['delete the grown-up code', () => call('DELETE', `${R}/admin/secret`), 401],
   ['delete the grown-up code with its proof', () => patch({ 'admin/secret': null, [`admin/proof/${G}`]: { touch: SV } }), 401],
+
+  // Versus (spec 7-8): p29 and p30 are not p01/p02, so the grown-up ticks them in first.
+  ['Versus: p29 not on the list cannot be here', () => patch({ ...pA(), [`vs/here/${A}`]: here() }), 401],
+  ['Versus: tick p29 in without the grown-up proof', () => put(`${R}/vs/allowed/${A}`, true), 401],
+  ['Versus: tick p29 and p30 in with the grown-up proof', () => patch({ [`vs/allowed/${A}`]: true, [`vs/allowed/${B}`]: true, ...grownUp() }), 200],
+  ['Versus: the list is public', () => get(`${R}/vs/allowed`), 200],
+  ['Versus: heartbeat with proof', () => patch({ ...pA(), [`vs/here/${A}`]: here() }), 200],
+  ['Versus: "who is here" is public', () => get(`${R}/vs/here`), 200],
+  ['Versus: heartbeat with a wrong proof hash', () => patch({ ...proof(A, WRONG), [`vs/here/${A}`]: here() }), 401],
+  ['Versus: heartbeat with someone else\'s proof', later(() => patch({ ...pB(), [`vs/here/${A}`]: here() })), 401],
+  ['Versus: stale touch (proof not stamped now)', () => patch({ [`proof/${A}/${hA}`]: { touch: 1 }, [`vs/here/${A}`]: here() }), 401],
+  ['Versus: heartbeat relying on an earlier proof', later(() => patch({ [`vs/here/${A}`]: here() })), 401],
+  ['Versus: read a proof', () => get(`${R}/proof/${A}`), 401],
+  ['Versus: invite from a slot not on the list', () => patch({ ...proof('p28', WRONG), [`vs/lobby/${A}/in/p28`]: invite({ head: null }) }), 401],
+  ['Versus: invite to yourself', () => patch({ ...pA(), [`vs/lobby/${A}/in/${A}`]: invite({ head: null }) }), 401],
+  ['Versus: invite with a 6-digit build', () => patch({ ...pB(), [`vs/lobby/${A}/in/${B}`]: invite({ build: '228955' }) }), 401],
+  ['Versus: invite p30 -> p29 with proof', () => patch({ ...pB(), [`vs/lobby/${A}/in/${B}`]: invite() }), 200],
+  ['Versus: a lobby is readable', () => get(`${R}/vs/lobby/${A}`), 200],
+  ['Versus: delete the invite without either party\'s proof', later(() => call('DELETE', `${R}/vs/lobby/${A}/in/${B}`)), 401],
+  ['Versus: meta naming the same player twice', () => patch({ ...pA(), [`${M}/meta`]: meta({ seats: { plants: A, zombies: A }, host: A, head: null }) }), 401],
+  ['Versus: meta with test set (allowed on v2test only)', () => patch({ ...pA(), [`vs/matches/${'f'.repeat(32)}/meta`]: meta({ test: 100 }) }), 200],
+  ['Versus: delete that test match', () => call('DELETE', `${R}/vs/matches/${'f'.repeat(32)}`), 200],
+  ['Versus: reply + meta with the invitee\'s proof in one update', () => patch({ ...pA(), [`vs/lobby/${B}/back/${A}`]: reply(), [`${M}/meta`]: meta() }), 200],
+  ['Versus: meta written twice', () => patch({ ...pA(), [`${M}/meta`]: meta({ seed: 1 }) }), 401],
+  ['Versus: ready', () => matchPatch({ 'ready/plants': SV, 'ready/zombies': SV }), 200],
+  ['Versus: turns 0..2 of both seats', async () => {
+    for (const k of ['t000000', 't000001', 't000002']) {
+      const res = await matchPatch({ [`turns/plants/${k}`]: '{}', [`turns/zombies/${k}`]: '{}' });
+      if (res.status !== 200) return res;
+    }
+    return { status: 200 };
+  }, 200],
+  ['Versus: the same turn value again', () => matchPatch({ 'turns/plants/t000001': '{}' }), 200],
+  ['Versus: a turn rewritten with another value', () => matchPatch({ 'turns/plants/t000001': '{"c":[]}' }), 401],
+  ['Versus: turn key t009001', () => matchPatch({ 'turns/plants/t009001': '{}' }), 401],
+  ['Versus: a 401-character turn', () => matchPatch({ 'turns/plants/t000003': 'x'.repeat(401) }), 401],
+  ['Versus: pause', () => matchPatch({ pause: { by: B, n: 1 } }), 200],
+  ['Versus: pause deleted', () => call('DELETE', `${R}/${M}/pause`), 200],
+  ['Versus: sync s1', () => matchPatch({ 'sync/s1': { tick: 1800, snap: '{}' } }), 200],
+  ['Versus: sync s4', () => matchPatch({ 'sync/s4': { tick: 1800, snap: '{}' } }), 401],
+  ['Versus: end', () => matchPatch({ 'end/plants': '{"w":"zombies"}', 'end/zombies': '{"w":"zombies"}' }), 200],
+  ['Versus: again', () => matchPatch({ 'again/plants': 1, 'again/zombies': 1 }), 200],
+  ['Versus: again 2', () => matchPatch({ 'again/plants': 2 }), 401],
+  ['Versus: quit', () => matchPatch({ quit: { by: A } }), 200],
+  ['Versus: an unknown child of a match', () => matchPatch({ chat: 'hi' }), 401],
+  ['Versus: read the match by its id', () => get(`${R}/${M}`), 200],
+  ['Versus: read a match by a wrong id (nothing there)', () => get(`${R}/vs/matches/${'0'.repeat(32)}`), 200],
+  ['Versus: read a malformed match id', () => get(`${R}/vs/matches/${VS_ID.toUpperCase()}`), 401],
+  ['Versus: list the matches', () => get(`${R}/vs/matches`), 401],
+  ['Versus: write vs/other', () => put(`${R}/vs/other`, 'hi'), 401],
+  ['Versus: delete the whole match', () => call('DELETE', `${R}/${M}`), 200],
+  ['Versus cleanup: here, lobby and list entries', () => patch(vsCleanupBody()), 200],
+  ['Versus cleanup: proofs', () => patch(proofCleanupBody()), 200],
 
   // The retired old paths and any unknown top-level path: closed to everyone.
   ...['presence', 'rooms', 'challenges', 'lvtRulesCheck'].flatMap((p) => [

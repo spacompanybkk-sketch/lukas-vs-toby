@@ -18,6 +18,15 @@
  *   board/{slot}               BoardRow                              read: anyone
  *   admin/secret               grown-up code hash                    read: nobody
  *   admin/proof/{hash}/touch   proof of knowing the grown-up code    read: nobody
+ *   proof/{slot}/{hash}/touch  proof of knowing a player's pin       read: nobody
+ *   vs/allowed/{slot}          true: the grown-up ticked him in      read: anyone
+ *   vs/here/{slot}             { at, busy } heartbeat                read: anyone
+ *   vs/lobby/{owner}/in|back/{from}   invites and replies            read: anyone, per owner
+ *   vs/matches/{id}            one private match                     read: whoever knows the id
+ *
+ * Versus (spec 7-8): "proven" = the same update writes `proof/<slot>/<its pin hash>/touch = now`;
+ * "allowed" = p01, p02, or ticked in under `vs/allowed`. The match id (32 hex digits from an ECDH
+ * secret) is the only thing keeping a match private, so `vs/matches` itself is never readable.
  *
  * Rules cascade (a grant at a parent cannot be taken back below), so reads and writes are granted
  * only at the nodes listed here, never at a root or a collection — except the two public
@@ -57,6 +66,19 @@ const PICTURE = `newData.isString() && newData.val().matches(/^(${PICTURE_KEYS.j
 const wholeIn = (lo, hi) =>
   `newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= ${lo} && newData.val() <= ${hi}`;
 const NOTHING_ELSE = { '.validate': false };
+const WHOLE = 'newData.isNumber() && newData.val() % 1 === 0';
+const NOW = 'newData.val() === now';
+const SEAT_RE = '/^(plants|zombies)$/';
+/** The short commit of a build. */
+const BUILD = "newData.isString() && newData.val().length >= 7 && newData.val().length <= 12 && newData.val().matches(/^[0-9a-f]+$/)";
+/** An uncompressed P-256 public key as base64url. */
+const PUB = "newData.isString() && newData.val().length === 87 && newData.val().matches(/^[A-Za-z0-9_-]+$/)";
+/** Turn keys t000000 … t009000 (30 minutes of 6-tick turns at 30 ticks a second). */
+const TURN_KEY_RE = '/^t00([0-8][0-9][0-9][0-9]|9000)$/';
+export const MAX_TURN_CHARS = 400;
+export const MAX_SNAP_CHARS = 200000;
+/** A slot as a value. */
+const SLOT_VALUE = `newData.isString() && newData.val().matches(${SLOT_RE})`;
 /** Longest save string accepted (a full save is about 2,000 characters). */
 export const MAX_SAVE_CHARS = 20000;
 
@@ -155,6 +177,182 @@ export function block(R) {
         },
       },
       $other: NOTHING_ELSE,
+    },
+    proof: {
+      $slot: {
+        $hash: {
+          // Only someone who knows the slot's pin hash can name this path; nobody can read it.
+          '.write': `${slotOk} && root.child('${R}/secrets/' + $slot).val() === $hash`,
+          '.validate': "newData.hasChildren(['touch'])",
+          touch: { '.validate': NOW },
+          $other: NOTHING_ELSE,
+        },
+      },
+    },
+    vs: versus(R, { top, adminProof }),
+    $other: NOTHING_ELSE,
+  };
+}
+
+/**
+ * `v2/vs` (spec 8.3). Rules cascade, so every grant sits at a leaf; `vs/matches/$id` grants only
+ * deleting the whole match, which cannot cascade to an ordinary write below it.
+ */
+function versus(R, { top, adminProof }) {
+  const secretOf = (S) => `root.child('${R}/secrets/' + ${S})`;
+  /** The same update writes `proof/<S>/<S's stored pin hash>/touch = now`, from `depth` below the root. */
+  const proven = (S, depth) =>
+    `(${secretOf(S)}.isString() && ${top(depth)}.child('proof/' + ${S} + '/' + ${secretOf(S)}.val() + '/touch').val() === now)`;
+  /** On the Versus list: the two brothers always, anyone else once the grown-up ticks him in. */
+  const allowed = (S) => `(${S} === 'p01' || ${S} === 'p02' || root.child('${R}/vs/allowed/' + ${S}).val() === true)`;
+  const isSlot = (v) => `${v}.matches(${SLOT_RE})`;
+  const seatOk = `$seat.matches(${SEAT_RE})`;
+  /** `meta` exists (after this update), from a node `up` levels below the match. */
+  const metaExists = (up) => `newData${'.parent()'.repeat(up)}.child('meta').exists()`;
+  /** One of the match's seats, from a node `up` levels below the match. */
+  const aSeat = (up) => {
+    const m = `newData${'.parent()'.repeat(up)}.child('meta/seats/`;
+    return `newData.isString() && (newData.val() === ${m}plants').val() || newData.val() === ${m}zombies').val())`;
+  };
+  /** Written once; the very same value again is fine (a retry of a lost answer). */
+  const once = (same) => `newData.exists() && (!data.exists() || ${same})`;
+  const sameVal = 'data.val() === newData.val()';
+  /** A per-seat record of the match: `$seat` plants|zombies, meta exists, written once. */
+  const seatRecord = (validate) => ({
+    $seat: {
+      '.write': `${seatOk} && ${metaExists(2)} && ${once(sameVal)}`,
+      '.validate': validate,
+    },
+  });
+  const lobbyEntry = (write, children) => ({
+    $from: {
+      '.write': `${isSlot('$owner')} && ${isSlot('$from')} && ((newData.exists() && ${write}) || (!newData.exists() && (${proven('$from', 5)} || ${proven('$owner', 5)})))`,
+      ...children,
+    },
+  });
+  const plantsSeat = "newData.child('seats/plants').val()";
+  const zombiesSeat = "newData.child('seats/zombies').val()";
+
+  return {
+    allowed: {
+      '.read': true,
+      $slot: {
+        // Ticked in, or out again (deleted), from the grown-up screen.
+        '.write': `$slot.matches(${SLOT_RE}) && ${adminProof(3)}`,
+        '.validate': 'newData.val() === true',
+      },
+    },
+    here: {
+      '.read': true,
+      $slot: {
+        '.write': `$slot.matches(${SLOT_RE}) && ${proven('$slot', 3)} && ${allowed('$slot')}`,
+        '.validate': "newData.hasChildren(['at', 'busy'])",
+        at: { '.validate': NOW },
+        busy: { '.validate': 'newData.isBoolean()' },
+        $other: NOTHING_ELSE,
+      },
+    },
+    lobby: {
+      $owner: {
+        // Nothing in a lobby is secret: slots, times, public keys.
+        '.read': isSlot('$owner'),
+        // An invite from $from to $owner.
+        in: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')} && ${allowed('$owner')} && $from !== $owner`, {
+          '.validate': "newData.hasChildren(['pub', 'side', 'build', 'at'])",
+          pub: { '.validate': PUB },
+          side: { '.validate': `newData.isString() && newData.val().matches(${SEAT_RE})` },
+          head: {
+            '.validate': "newData.hasChildren(['slot', 'step'])",
+            slot: { '.validate': 'newData.val() === $owner || newData.val() === $from' },
+            step: { '.validate': wholeIn(0, 5) },
+            $other: NOTHING_ELSE,
+          },
+          build: { '.validate': BUILD },
+          at: { '.validate': NOW },
+          $other: NOTHING_ELSE,
+        }),
+        // $from's answer to $owner's invite; the key only when he accepts.
+        back: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')}`, {
+          '.validate': "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
+          ok: { '.validate': 'newData.isBoolean()' },
+          pub: { '.validate': PUB },
+          build: { '.validate': BUILD },
+          at: { '.validate': NOW },
+          $other: NOTHING_ELSE,
+        }),
+        $other: NOTHING_ELSE,
+      },
+    },
+    matches: {
+      $id: {
+        // The id is the secret: anyone who knows it may read the match, nobody may list them.
+        '.read': '$id.length === 32 && $id.matches(/^[0-9a-f]+$/)',
+        // Only deleting the whole match; everything else is granted at the leaves.
+        '.write': '$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && !newData.exists()',
+        meta: {
+          // Written once, by one of the two seats with his pin proof in the same update.
+          '.write': `!data.exists() && newData.exists() && (${proven(plantsSeat, 4)} || ${proven(zombiesSeat, 4)})`,
+          '.validate': "newData.hasChildren(['v', 'build', 'seed', 'seats', 'host', 'turn', 'delay', 'created'])",
+          v: { '.validate': 'newData.val() === 1' },
+          build: { '.validate': BUILD },
+          seed: { '.validate': WHOLE },
+          seats: {
+            '.validate': `newData.hasChildren(['plants', 'zombies']) && newData.child('plants').val() !== newData.child('zombies').val() && ${allowed("newData.child('plants').val()")} && ${allowed("newData.child('zombies').val()")}`,
+            plants: { '.validate': SLOT_VALUE },
+            zombies: { '.validate': SLOT_VALUE },
+            $other: NOTHING_ELSE,
+          },
+          host: { '.validate': aSeat(2) },
+          head: {
+            '.validate': "newData.hasChildren(['slot', 'step'])",
+            slot: { '.validate': aSeat(3) },
+            step: { '.validate': wholeIn(0, 5) },
+            $other: NOTHING_ELSE,
+          },
+          turn: { '.validate': 'newData.val() === 6' },
+          delay: { '.validate': wholeIn(9, 30) },
+          // Smaller base health so a browser test ends in seconds: only on v2test.
+          test: R === 'v2test' ? { '.validate': wholeIn(1, 500) } : NOTHING_ELSE,
+          created: { '.validate': NOW },
+          $other: NOTHING_ELSE,
+        },
+        ready: seatRecord(NOW),
+        end: seatRecord(`newData.isString() && newData.val().length < 100`),
+        again: seatRecord(wholeIn(0, 1)),
+        turns: {
+          $seat: {
+            $k: {
+              // Write-once turn log, bounded in key range and size (spec 7.4).
+              '.write': `${seatOk} && $k.matches(${TURN_KEY_RE}) && ${metaExists(3)} && ${once(sameVal)}`,
+              '.validate': `newData.isString() && newData.val().length <= ${MAX_TURN_CHARS}`,
+            },
+          },
+        },
+        pause: {
+          '.write': `!newData.exists() || ${metaExists(1)}`,
+          '.validate': "newData.hasChildren(['by', 'n'])",
+          by: { '.validate': aSeat(2) },
+          n: { '.validate': WHOLE },
+          $other: NOTHING_ELSE,
+        },
+        quit: {
+          '.write': `${metaExists(1)} && ${once("data.child('by').val() === newData.child('by').val()")}`,
+          '.validate': "newData.hasChildren(['by'])",
+          by: { '.validate': aSeat(2) },
+          $other: NOTHING_ELSE,
+        },
+        sync: {
+          $n: {
+            // A snapshot from the host on a mismatch: at most three per match.
+            '.write': `$n.matches(/^s[1-3]$/) && ${metaExists(2)} && ${once("data.child('tick').val() === newData.child('tick').val() && data.child('snap').val() === newData.child('snap').val()")}`,
+            '.validate': "newData.hasChildren(['tick', 'snap'])",
+            tick: { '.validate': WHOLE },
+            snap: { '.validate': `newData.isString() && newData.val().length <= ${MAX_SNAP_CHARS}` },
+            $other: NOTHING_ELSE,
+          },
+        },
+        $other: NOTHING_ELSE,
+      },
     },
     $other: NOTHING_ELSE,
   };

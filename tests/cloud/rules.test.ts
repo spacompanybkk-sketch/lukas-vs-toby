@@ -31,9 +31,17 @@ describe('database.rules.json', () => {
     expect(rules['.write']).toBeUndefined();
   });
 
-  it('has the same block under v2 and v2test (only the root named inside differs)', () => {
-    const v2test = JSON.stringify(rules.v2test).replaceAll("'v2test/", "'v2/");
-    expect(v2test).toBe(JSON.stringify(rules.v2));
+  it('has the same block under v2 and v2test (only the root named inside, and the test rule of meta, differ)', () => {
+    const metaOf = (R: string) => ((((rules[R] as Rule).vs as Rule).matches as Rule)['$id'] as Rule).meta as Rule;
+    // The one real difference: `test` (smaller base health) is refused live and allowed on v2test.
+    expect(metaOf('v2').test).toEqual({ '.validate': false });
+    expect(String((metaOf('v2test').test as Rule)['.validate'])).toContain('newData.val() >= 1 && newData.val() <= 500');
+    const without = (R: string) => {
+      const copy = JSON.parse(JSON.stringify(rules[R])) as Rule;
+      delete ((((copy.vs as Rule).matches as Rule)['$id'] as Rule).meta as Rule).test;
+      return JSON.stringify(copy);
+    };
+    expect(without('v2test').replaceAll("'v2test/", "'v2/")).toBe(without('v2'));
     expect(JSON.stringify(rules.v2)).not.toContain('v2test');
   });
 
@@ -41,9 +49,13 @@ describe('database.rules.json', () => {
     const nodes = walk(rules[R] as Rule);
     const reads = nodes.filter((n) => '.read' in n.node).map((n) => n.path);
     const writes = nodes.filter((n) => '.write' in n.node).map((n) => n.path);
-    expect(reads).toEqual(['players', 'saves/$slot/$hash', 'board']);
+    expect(reads).toEqual(['players', 'saves/$slot/$hash', 'board', 'vs/allowed', 'vs/here', 'vs/lobby/$owner', 'vs/matches/$id']);
     expect(writes).toEqual([
       'players/$slot', 'secrets/$slot', 'saves/$slot', 'saves/$slot/$hash', 'board/$slot', 'admin/secret', 'admin/proof/$hash',
+      'proof/$slot/$hash', 'vs/allowed/$slot', 'vs/here/$slot', 'vs/lobby/$owner/in/$from', 'vs/lobby/$owner/back/$from',
+      'vs/matches/$id', 'vs/matches/$id/meta', 'vs/matches/$id/ready/$seat', 'vs/matches/$id/end/$seat',
+      'vs/matches/$id/again/$seat', 'vs/matches/$id/turns/$seat/$k', 'vs/matches/$id/pause', 'vs/matches/$id/quit',
+      'vs/matches/$id/sync/$n',
     ]);
     expect((rules[R] as Rule)['.read']).toBeUndefined();
     expect((rules[R] as Rule)['.write']).toBeUndefined();
@@ -67,5 +79,17 @@ describe('database.rules.json', () => {
       .toContain("root.child('v2/secrets/' + $slot).val() === $hash");
     expect(JSON.stringify(v2.secrets)).not.toContain('.read');
     expect(JSON.stringify(v2.admin)).not.toContain('.read');
+    expect(JSON.stringify(v2.proof)).not.toContain('.read');
+  });
+
+  it.each(['v2', 'v2test'])('%s checks the slot pattern on every lobby read and write', (R) => {
+    for (const { path, node } of walk(rules[R] as Rule)) {
+      if (!path.startsWith('vs/lobby/')) continue;
+      for (const k of ['.read', '.write'] as const) {
+        if (!(k in node)) continue;
+        expect(String(node[k]), `${path} ${k}`).toContain('$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/)');
+        if (path.includes('$from')) expect(String(node[k]), `${path} ${k}`).toContain('$from.matches(/^p(0[1-9]|[12][0-9]|30)$/)');
+      }
+    }
   });
 });
