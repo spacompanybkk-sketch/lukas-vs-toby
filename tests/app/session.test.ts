@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GATE_LOCK_MS, LOCK_MS, PlayerSession, lockKey, wrongKey } from '../../src/app/session';
 import { FakeDatabase } from '../../src/cloud/fakeCloud';
+import { pinHash } from '../../src/cloud/hash';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import { loadLocal, saveLocal } from '../../src/progress/localStore';
 import { OLD_SAVE_KEYS } from '../../src/progress/migrate';
@@ -178,6 +179,21 @@ describe('login and the lock-out', () => {
     const save = asSave(await s.login('p03', '123'));
     expect(save.name).toBe('Mia');
     expect(s.player.value?.slot).toBe('p03');
+  });
+
+  it('proofHash: the logged-in player\'s pin hash (never the pin), null after logout; the pin is stored nowhere', async () => {
+    expect(s.proofHash()).toBeNull();
+    asSave(await s.login('p03', '123'));
+    expect(s.proofHash()).toBe(await pinHash('p03', '123'));
+    s.logout();
+    expect(s.proofHash()).toBeNull();
+    // Nothing on the device holds the pin: no key, no value with it as a token of its own.
+    const token = /(^|[^0-9A-Za-z])123([^0-9A-Za-z]|$)/;
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i)!;
+      expect(key).not.toMatch(token);
+      expect(storage.getItem(key)).not.toMatch(token);
+    }
   });
 
   it('three wrong numbers in a row lock that player for 30 s; the lock survives a reload', async () => {
@@ -397,6 +413,35 @@ describe('grown-up', () => {
     expect(db.peek('v2/players/p03')).toBeNull();
     expect(loadLocal('p03', storage)).toBeNull();
     expect((await s.roster()).players.map((p) => p.slot)).toEqual(['p01', 'p02']);
+  });
+
+  it('delete: a grown-up proof already stored this millisecond is refused once, and the retry a beat later deletes', async () => {
+    await s.setGrownUp('135799');
+    clock.t += 1;
+    // The same proof stored in this very millisecond (the Versus deletes refuse to borrow it)...
+    expect(await s.checkGrownUp('135799')).toBe('ok');
+    const before = db.requests.length;
+    // ...and the server's clock moves on while the delete waits to try again.
+    setTimeout(() => { clock.t += 1; }, 10);
+    expect(await s.deletePlayer('p03', '135799')).toBe('ok');
+    expect(db.requests.slice(before).map((r) => r.status)).toEqual([401, 200]);
+    expect(db.peek('v2/players/p03')).toBeNull();
+  });
+
+  it('delete: the right code refused for another reason is "failed", never "wrong"', async () => {
+    await s.setGrownUp('135799');
+    clock.t += 1;
+    const real = createFakeCloud(db);
+    const refusing = new Proxy(real, {
+      get: (t, k) => (k === 'deletePlayer'
+        ? async () => 'wrong-pin'
+        : (t as unknown as Record<PropertyKey, unknown>)[k]),
+    });
+    const p = new PlayerSession();
+    p.configure({ cloud: refusing, storage: new MemoryStorage(), now: clock.now, window: null, document: null });
+    expect(await p.deletePlayer('p03', '135799')).toBe('failed');
+    expect(await p.deletePlayer('p03', '135800')).toBe('wrong');
+    p.dispose();
   });
 
   it('gives a forgotten number a new one and keeps the progress; the old number no longer works', async () => {

@@ -348,6 +348,14 @@ export class PlayerSession {
     this.d.sync.logout();
   }
 
+  /** The logged-in player's pin hash, never the pin: the Versus lobby's proof. Null when nobody is logged in. */
+  proofHash(): string | null {
+    return this.d.sync.proofHash();
+  }
+
+  /** A refused grown-up delete is sent once more after this pause (a new server millisecond). */
+  static readonly RETRY_GAP_MS = 50;
+
   /** How long logging out waits for an unsent save to reach the cloud. */
   static readonly LOGOUT_WAIT_MS = 2000;
 
@@ -448,10 +456,22 @@ export class PlayerSession {
 
   async deletePlayer(slot: Slot, code: string): Promise<'ok' | 'wrong' | 'offline' | 'failed'> {
     const { cloud, storage, sync } = this.d;
-    const gate = await this.checkGrownUp(code);
-    if (gate !== 'ok') return gate === 'other' ? 'failed' : gate;
-    const r = await cloud.deletePlayer(slot, await grownUpHash(code));
-    if (r !== 'ok') return r === 'offline' ? 'offline' : 'failed';
+    // One request, which proves the code itself: a separate check first would store the same
+    // grown-up proof, and the Versus deletes refuse a proof stored in the same server millisecond.
+    const hash = await grownUpHash(code);
+    let r = await cloud.deletePlayer(slot, hash);
+    if (r !== 'ok' && r !== 'offline') {
+      // Refused: perhaps only a proof of this very millisecond. Once more a beat later; then ask
+      // the code alone (a later millisecond) whether it was the code at all.
+      await new Promise<void>((resolve) => { setTimeout(resolve, PlayerSession.RETRY_GAP_MS); });
+      r = await cloud.deletePlayer(slot, hash);
+      if (r !== 'ok' && r !== 'offline') {
+        const gate = await this.checkGrownUp(code);
+        return gate === 'wrong' ? 'wrong' : gate === 'offline' ? 'offline' : 'failed';
+      }
+    }
+    if (r !== 'ok') return 'offline';
+    writeKey(storage, GROWN_UP_KNOWN, '1');
     if (sync.save.peek()?.slot === slot) sync.logout();
     this.forgetOnDevice(slot);
     if (lastSlot(storage) === slot) setLastSlot(null, storage);

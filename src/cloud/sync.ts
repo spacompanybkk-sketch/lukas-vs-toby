@@ -270,6 +270,11 @@ export class SaveSync {
     await this.running;
   }
 
+  /** The logged-in player's pin hash (the pin itself is never kept), for Versus proofs; null when nobody is. */
+  proofHash(): string | null {
+    return this.hash;
+  }
+
   /** Forgets the logged-in player (their device copy stays and is pushed at the next log-in). */
   logout(): void {
     this.session += 1;

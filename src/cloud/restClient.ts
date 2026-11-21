@@ -256,6 +256,14 @@ export class RestCloud implements Cloud {
       [`saves/${slot}`]: null,
       [`players/${slot}`]: null,
       [`board/${slot}`]: null,
+      // His Versus traces too, in the same update: otherwise the next player in this slot would
+      // start out ticked in. (The Versus grants refuse a grown-up proof already stored in the
+      // same server millisecond, so this is the grown-up's only proven write of the moment.)
+      // Invites and replies he left in other players' lobbies are not cleared: they age out by `at`.
+      [`vs/allowed/${slot}`]: null,
+      [`vs/here/${slot}`]: null,
+      [`vs/lobby/${slot}`]: null,
+      [`proof/${slot}`]: null,
       [`admin/proof/${grownUpHash}`]: { touch: SERVER_NOW },
     });
     return a.kind === 'ok' ? 'ok' : a.kind === 'denied' ? 'wrong-pin' : a.kind === 'offline' ? 'offline' : 'refused';
@@ -289,6 +297,28 @@ export function cloudMode(search: string, flag: string | undefined): CloudMode {
   if (!params.has('debug')) return 'live';
   const asked = params.get('cloud');
   return asked === 'fake' ? 'fake' : asked === 'test' ? 'test' : 'live';
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+/**
+ * The stand-in database server a page was pointed at with `?fakedb=http://localhost:<port>`
+ * (two-page browser tests, spec 10). Only in fake mode, and only plain http to localhost or
+ * 127.0.0.1 with a port and nothing after it; anything else is null.
+ */
+export function fakeDbUrl(search: string, mode: CloudMode): string | null {
+  if (mode !== 'fake') return null;
+  const asked = new URLSearchParams(search).get('fakedb');
+  if (!asked) return null;
+  let u: URL;
+  try {
+    u = new URL(asked);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'http:' || !LOCAL_HOSTS.has(u.hostname) || u.port === '') return null;
+  if (u.username !== '' || u.password !== '' || u.pathname !== '/' || u.search !== '' || u.hash !== '') return null;
+  return u.origin;
 }
 
 /** The cloud mode of this page. */
@@ -331,8 +361,13 @@ export function lazyCloud(load: () => Promise<Cloud>): Cloud {
   });
 }
 
-export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cloud {
+/**
+ * The cloud for a mode. In fake mode with `fakedb` (a stand-in server's address, from `fakeDbUrl`)
+ * it is the REST client on that server's `v2test` root, which alone allows `meta.test`.
+ */
+export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}, fakedb: string | null = null): Cloud {
   if (mode === 'fake') {
+    if (fakedb !== null) return new RestCloud({ baseUrl: fakedb, root: 'v2test' });
     return lazyCloud(async () => {
       const { FakeDatabase } = await import('./fakeCloud');
       return createFakeCloud(new FakeDatabase(fake));
@@ -341,13 +376,32 @@ export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cl
   return new RestCloud({ root: mode === 'test' ? 'v2test' : 'v2' });
 }
 
+let pageFake: Promise<FakeDatabase> | null = null;
+
+/**
+ * This page's one fake database (kept in `localStorage`), shared by its cloud and its streams
+ * (`pageConnection`). A load that fails is tried again on the next call.
+ */
+export function pageFakeDatabase(): Promise<FakeDatabase> {
+  pageFake ??= import('./fakeCloud').then(({ FakeDatabase }) => {
+    let storage: Storage | undefined;
+    try {
+      storage = typeof localStorage === 'undefined' ? undefined : localStorage;
+    } catch {
+      storage = undefined;
+    }
+    return new FakeDatabase(storage ? { storage } : {});
+  }).catch((e: unknown) => {
+    pageFake = null;
+    throw e;
+  });
+  return pageFake;
+}
+
 /** The cloud this page should use. */
 export function defaultCloud(): Cloud {
-  let storage: Storage | undefined;
-  try {
-    storage = typeof localStorage === 'undefined' ? undefined : localStorage;
-  } catch {
-    storage = undefined;
-  }
-  return createCloud(pageCloudMode(), storage ? { storage } : {});
+  const mode = pageCloudMode();
+  const fakedb = fakeDbUrl(typeof location === 'undefined' ? '' : location.search, mode);
+  if (mode === 'fake' && fakedb === null) return lazyCloud(async () => createFakeCloud(await pageFakeDatabase()));
+  return createCloud(mode, {}, fakedb);
 }

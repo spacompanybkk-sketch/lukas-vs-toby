@@ -445,7 +445,9 @@ describe('grown-up gate', () => {
     await see('[data-note]');
     expect(await session.login('p01', '777')).toMatchObject({ name: 'Lukas' });
     session.logout();
-    // Delete him: the code again confirms.
+    // Delete him: the code again confirms. A moment later (the delete clears his Versus records,
+    // whose rules refuse a grown-up proof already stored in the same millisecond, as the new number's was).
+    clock.t += 1;
     tap('[data-row="p01"] [data-action="delete"]');
     await see('[data-screen="grownup"] [data-pin-boxes]');
     await typePin('111111');
