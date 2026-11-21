@@ -2,12 +2,12 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
 import type { Page } from './fixtures';
-import { logIn, openTitle, waitLive } from './helpers';
+import { frames, logIn, openTitle, waitLive } from './helpers';
 
 // A base the level makes safe (#1): in the plant survive and conveyor levels the zombie base
 // cannot fall (the goal is the clock), so its bar is a padlock on stone instead of a full health
 // bar; every other base keeps the ordinary health bar. Found by data-safe, never by text.
-// SAFE_SHOTS=<dir> saves the top of the screen with the locked bar.
+// SAFE_SHOTS=<dir> saves p1-3 at the smallest and largest iPad sizes, whole and each base close up.
 
 /** Lukas, logged in, every level of both sides open and every lesson done. */
 async function setUp(page: Page): Promise<void> {
@@ -61,7 +61,16 @@ test('p1-3: the zombie base is locked (padlock, no health); the plant base is a 
   const shots = process.env.SAFE_SHOTS;
   if (shots !== undefined) {
     mkdirSync(shots, { recursive: true });
-    await page.screenshot({ path: join(shots, `${test.info().project.name}-p1-3.png`) });
+    const project = test.info().project.name;
+    // The smallest and the largest iPad size: the whole screen, and each base close up.
+    for (const size of [{ width: 1024, height: 650 }, { width: 1180, height: 746 }]) {
+      await page.setViewportSize(size);
+      await frames(page, 4);
+      const tag = `${project}-p1-3-${size.width}x${size.height}`;
+      await page.screenshot({ path: join(shots, `${tag}.png`) });
+      await zombies.screenshot({ path: join(shots, `${tag}-zombies.png`) });
+      await plants.screenshot({ path: join(shots, `${tag}-plants.png`) });
+    }
   }
   await quitToHome(page);
 
