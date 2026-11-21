@@ -159,3 +159,34 @@ describe('the beginner in fog', () => {
   });
 
 });
+
+// Step-2 Task 7: the Tundra's belt level (z2-5) is about choosing a fast lane. On a zombie belt with
+// ice the expert reads which lane gives (as he does in a Breakthrough); the average player and the
+// beginner play it as they play any belt. Without ice nothing changes for anyone.
+describe('the expert on an icy belt', () => {
+  const beltLanes = (id: string, who: 'average' | 'expert', seed: number): number[] =>
+    sent(id, who, 45, seed).filter((c) => c.cmd.type === 'belt' && !c.refused).map((c) => (c.cmd as { lane: number }).lane);
+  const share = (lanes: number[], of: readonly number[]): number => lanes.filter((l) => of.includes(l)).length / Math.max(1, lanes.length);
+
+  it('z2-5: he sends more of the belt down the icy lanes than the average player does', () => {
+    const icy = levelConfig(levelById('z2-5')!, standInSave('expert', levelById('z2-5')!), 1).lawn.ice!.lanes;
+    let expert = 0;
+    let average = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      expert += share(beltLanes('z2-5', 'expert', seed), icy);
+      average += share(beltLanes('z2-5', 'average', seed), icy);
+    }
+    expect(expert / 6).toBeGreaterThan(0.8);
+    expect(expert).toBeGreaterThan(average);
+  });
+
+  it('z1-5 (no ice): his belt play is what it was (seeds 1-3, the first 45 s)', () => {
+    expect([1, 2, 3].map((seed) => beltLanes('z1-5', 'expert', seed).join(''))).toMatchInlineSnapshot(`
+      [
+        "111111111",
+        "444444444",
+        "444444444",
+      ]
+    `);
+  });
+});

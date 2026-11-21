@@ -389,6 +389,11 @@ const SCENARIOS = [
   // the iPad's size (1024x650): entrance, wind-ups, strike, shield, phase 2 and defeat.
   { name: 'gallery-bosses-w2', url: '/?scene=gallery&models=moonHowler,frostMelon&t=0.4' },
   moves('moonHowler', [['windup', 'ability', 1.3], ['slam', 'ability', 1.62], ['howl', 'shoot', 1.0], ['roar', 'cheer', 0.3], ['glow', 'idle', 0.4, ['glow', 'glowEyes']], ['topple', 'die', 0.9]]),
+  moves('frostMelon', [
+    // (A part shown stays shown for the frames after it: the plain moves first.)
+    ['crank', 'shoot', 0.06], ['fling', 'shoot', 0.2], ['shake', 'ability', 0.2], ['sag', 'die', 1.0],
+    ['freeze', 'cheer', 1.8, ['crownGlow']], ['frost', 'idle', 0.4, ['frostCracks', 'frostSpikes', 'glowEyes']], ['plates', 'idle', 0.4, ['iceL', 'iceR']],
+  ]),
   ...[
     ['boss-howler-enter', 'moonHowler', [0.5, 1.0]],
     ['boss-howler-windup', 'moonHowler', [7.4, 8.05]], // the claw slam winds up 6.5–8 s
@@ -398,6 +403,15 @@ const SCENARIOS = [
     ['boss-howler-blind', 'moonHowler', [33.45, 34.5]], // the lane blinded
     ['boss-howler-phase2', 'moonHowler', [35]],
     ['boss-howler-defeat', 'moonHowler', [50.9, 51.4, 51.9]], // falls at 50.7 s, in its second howl's wind-up
+    // The Frost Melon on the Tundra's ice (lanes 0, 1, 3, 4) under the snow, with its demo table.
+    ['boss-melon-enter', 'frostMelon', [0.5, 1.0]],
+    ['boss-melon-barrage', 'frostMelon', [7.05, 7.2, 7.6, 8.4]], // the basket flings at 7 s; the frozen melons land by 8.6 s
+    ['boss-melon-summon', 'frostMelon', [13.05, 13.5]], // two Peashooters grow at 13 s
+    ['boss-melon-shield', 'frostMelon', [30.6, 31.2]], // the ice plates clap shut at 30.5 s (up for 8 s)
+    ['boss-melon-strike', 'frostMelon', [31.3, 31.45, 31.6, 33.2]], // the freeze winds up 30.9–33.4 s: two lanes blink blue, the crown blinks lit
+    ['boss-melon-frozen', 'frostMelon', [33.5, 34.5]], // the two lanes frozen
+    ['boss-melon-phase2', 'frostMelon', [36.5, 39.5]], // cracks, icicles and eyes alight; under the plates, then without
+    ['boss-melon-defeat', 'frostMelon', [47.5, 48.0, 48.6, 49.2]], // falls at 47.3 s; its shards at 48.5 s
   ].map(([name, boss, times]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
     return {

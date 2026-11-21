@@ -1,6 +1,7 @@
 import { prewarmModel } from '../voxel/build';
 import { brainTitan } from './bosses/brainTitan';
 import { elderOak } from './bosses/elderOak';
+import { frostMelon } from './bosses/frostMelon';
 import { moonHowler } from './bosses/moonHowler';
 import type { BossKey } from '../../sim/types';
 import type { ModelDef } from '../voxel/types';
@@ -69,8 +70,7 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   brainTitan,
   elderOak,
   moonHowler,
-  // stub: Task 2. The Frost Melon stands in the Oak's model (under its own key) until it is drawn.
-  frostMelon: { ...elderOak, key: 'frostMelon' },
+  frostMelon,
 };
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

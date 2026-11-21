@@ -189,6 +189,9 @@ test('H: the level card\'s difficulty is one, two, three skulls; a tap marks the
   await press(page.locator('[data-home="play"]'));
   await press(page.locator('[data-play="adventure"]'));
   await press(page.locator('[data-side="zombies"]'));
+  // Every zombie level is won, so the map opens on the Tundra: back to z1-1's own island.
+  await expect(page.locator('[data-screen="map"]')).toBeVisible();
+  for (let i = 0; i < 4 && await page.locator('[data-screen="map"]').getAttribute('data-world') !== '1'; i++) await press(page.locator('[data-action="world-prev"]'));
   await press(page.locator('[data-stone="z1-1"]'));
   const skills = page.locator('[data-screen="level-card"] [data-skill]');
   await expect(skills).toHaveCount(3);

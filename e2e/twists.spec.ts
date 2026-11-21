@@ -4,14 +4,15 @@ import type { Page } from './fixtures';
 import { frames, glContexts, logIn, openTitle, tilePoint, waitLive } from './helpers';
 
 // Worlds machinery Task 9: each lawn twist in a level played by taps. Fog is the real Moonlit
-// Meadow (p2-*, reach 7, 7, 6, 6, 5, 5, 5, 5). The other worlds have no levels yet, so the stand-in
-// worlds on the debug hook (`__lvt.previewWorlds`, copies of world 1 with their arena's twist; it
-// never copies over a world with real levels) are opened from the map by taps:
+// Meadow (p2-*, reach 7, 7, 6, 6, 5, 5, 5, 5) and ice the real Frozen Tundra (z2-1: lane 2 iced,
+// Peashooters on (1,3), (3,3) and (2,4), no computer). The other worlds have no levels yet, so the
+// stand-in worlds on the debug hook (`__lvt.previewWorlds`, copies of world 1 with their arena's
+// twist; it never copies over a world with real levels) are opened from the map by taps:
 //   plants world 3 = Desert, rocks [13, 21] (lane × 8 + col) · world 5 = Citadel, lava [13, 24]
-//   (lane × 10 + col); zombies world 2 = Tundra, ice lanes 1 and 3 (parked: debug hook only).
-// The copies are of p1-1 (Peashooters only, Brain Eaters down lane 2 from 20 s) and z1-1 (Brain
-// Eaters against Peashooters on (1,2) and (3,2)). Energy and the card's recharge are topped up
-// by the test so that each placement is one tap on the card and one on the tile.
+//   (lane × 10 + col).
+// The copies are of p1-1 (Peashooters only, Brain Eaters down lane 2 from 20 s). Energy and the
+// card's recharge are topped up by the test so that each placement is one tap on the card and one
+// on the tile.
 
 async function press(target: Locator): Promise<void> {
   if (test.info().project.name === 'ipad') await target.tap();
@@ -26,9 +27,9 @@ async function tapAt(page: Page, at: { x: number; y: number }): Promise<void> {
 /**
  * Lukas, with every level before world `world`'s level `n` won and every lesson learnt, the stand-in
  * worlds on the map (only where a world has no real levels); the side's map (it opens on the next
- * level's world), that level started by taps. The plants' world 2 is the real Moonlit Meadow, with
- * the cards a player who got there by playing holds (the Mango-pult after p2-3, the Avocado Bunker
- * after p2-6). With `lessons`, the world-2 lessons are not yet learnt (the stand-ins carry theirs)
+ * level's world), that level started by taps. World 2 is real on both sides (the Moonlit Meadow,
+ * the Frozen Tundra), with the cards a player who got there by playing holds (the Mango-pult after
+ * p2-3, the Avocado Bunker after p2-6; Hot Topic after z2-3, the Cowboy Zombie after z2-6). With `lessons`, the world-2 lessons are not yet learnt (the stand-ins carry theirs)
  * and every card is unlocked.
  */
 async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1): Promise<void> {
@@ -44,10 +45,10 @@ async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 
     for (let m = 1; m < upTo; m++) stars[`${l}${w}-${m}`] = 2;
     const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((d) => (d.teaches ?? []).map((t) => t.id))
       .filter((id) => !withLessons || !/^[pz]2-/.test(id));
-    const meadow = s === 'plants' && w >= 2;
+    const second = w >= 2;
     const earned = s === 'plants'
-      ? ['potatoMine', 'kernelPult', ...(meadow && (w > 2 || upTo > 3) ? ['mangoPult'] : []), ...(meadow && (w > 2 || upTo > 6) ? ['avocadoBunker'] : [])]
-      : ['desertZombie', 'skeletonArcher'];
+      ? ['potatoMine', 'kernelPult', ...(second && (w > 2 || upTo > 3) ? ['mangoPult'] : []), ...(second && (w > 2 || upTo > 6) ? ['avocadoBunker'] : [])]
+      : ['desertZombie', 'skeletonArcher', ...(second && (w > 2 || upTo > 3) ? ['hotTopic'] : []), ...(second && (w > 2 || upTo > 6) ? ['cowboyZombie'] : [])];
     const unlocked = withLessons
       ? (s === 'plants' ? ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] : ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'])
       : earned;
@@ -175,26 +176,27 @@ test('fog (the real p2-2, a battle, reach 7): a Peashooter at the back fades its
   expect(await glContexts(page)).toBe(1);
 });
 
-test('ice: a Brain Eater sent down an icy lane overtakes one sent a moment earlier down a plain lane', async ({ page }) => {
+test('ice (the real z2-1, lane 2 iced): a Brain Eater sent down the icy lane overtakes one sent a moment earlier down a plain lane', async ({ page }) => {
   test.setTimeout(120_000);
   await playStandIn(page, 'zombies', 2);
   await expect.poll(() => lawnWorld(page)).toBe('tundra');
-  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.ice.lanes)).toEqual([1, 3]);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.ice.lanes)).toEqual([2]);
   // The plain lane first, then the icy one, each by a tap on its spawn tile. Plain lane 0 is the
-  // back one: its zombie stands behind lane 1's tile, so the second tap is not taken for a tap on
-  // the first zombie (which would merge it).
+  // back one (and no Peashooter guards it): its zombie stands well behind lane 2's tile, so the
+  // second tap is not taken for a tap on the first zombie (which would merge it).
   await place(page, 'brainEater', 0, 9);
   await expect.poll(async () => (await units(page)).filter((u) => u.faction === 'zombies' && u.key === 'brainEater').length).toBe(1);
-  await place(page, 'brainEater', 1, 9);
+  await place(page, 'brainEater', 2, 9);
   await expect.poll(async () => (await units(page)).filter((u) => u.faction === 'zombies' && u.key === 'brainEater').length).toBe(2);
   const walkers = async (): Promise<{ plain: Seen; icy: Seen }> => {
     const zs = (await units(page)).filter((u) => u.faction === 'zombies' && u.key === 'brainEater');
-    return { plain: zs.find((u) => u.lane === 0)!, icy: zs.find((u) => u.lane === 1)! };
+    return { plain: zs.find((u) => u.lane === 0)!, icy: zs.find((u) => u.lane === 2)! };
   };
   const at = await walkers();
   expect(at.icy.id).toBeGreaterThan(at.plain.id); // the icy one really was sent second
   expect(at.icy.x).toBeGreaterThanOrEqual(at.plain.x);
-  // On to column 7 (both still walking: the Peashooters stand on column 2): the icy one gets there first.
+  // On to column 7 (both still walking: lane 2's Peashooter stands on column 4 and its peas do not
+  // fell a Brain Eater in three tiles): the icy one gets there first.
   let first: 'plain' | 'icy' | null = null;
   for (let i = 0; i < 200 && first === null; i++) {
     await page.evaluate(() => (window.__lvt as any).fastForward(3));
@@ -229,7 +231,7 @@ test('lava: a Peashooter tapped onto a lava tile is planted and burns; a Brain E
   expect(await glContexts(page)).toBe(1);
 });
 
-// ---- Step 2, Task 3: the twist lessons (the real Meadow; the parked ice lesson on its stand-in) --
+// ---- Step 2, Task 3: the twist lessons (the real Meadow and the real Tundra) --
 
 const tick = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.match.state.tick as number);
 const showing = (page: Page): Promise<string | null> => page.evaluate(() => (window.__lvt as any).session?.twistShow?.kind ?? null);
@@ -281,7 +283,7 @@ test('fog pan: p2-1 holds with the cards dimmed and Pause usable; the glove taps
   expect(await glContexts(page)).toBe(1);
 });
 
-test('ice pan: z2-1 holds and pans; a tap anywhere (the sky) ends it and the level plays', async ({ page }) => {
+test('ice pan: the real z2-1 holds and pans; a tap anywhere (the sky) ends it and the level plays', async ({ page }) => {
   test.setTimeout(120_000);
   await playStandIn(page, 'zombies', 2, true);
   await expect.poll(() => lawnWorld(page)).toBe('tundra');

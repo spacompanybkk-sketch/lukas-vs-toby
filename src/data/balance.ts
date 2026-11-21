@@ -456,7 +456,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       ],
     },
     frostMelon: {
-      recharge: 0, hp: 6000, armor: 0, speed: 0,
+      recharge: 0, hp: 10500, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false }, // the ice plates
@@ -469,7 +469,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         [
           { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } }, // the freeze
           { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 6, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
         ],
       ],
     },

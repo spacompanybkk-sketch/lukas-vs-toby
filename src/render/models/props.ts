@@ -342,6 +342,26 @@ function acornGeometry(): BufferGeometry {
   return batch.build();
 }
 
+/** The Frost Melon's frozen melon: longest edge (tiles), its trail of ice and how fast it rolls (turns a second). */
+export const FROZEN_MELON_SIZE = 0.46;
+export const FROZEN_MELON_TRAIL = 0xb8ecff;
+export const FROZEN_MELON_TUMBLE = 0.7;
+const FROZEN = { body: '#3FB6EA', stripe: '#1E6FB8', frost: '#F4FBFF', under: '#17508A' } as const;
+
+/**
+ * The Frost Melon's barrage (the simulation's `acorn`, drawn as its boss's look asks): a round melon
+ * frozen blue, dark stripes running round it, a cap of white frost on top and a dark underside, so
+ * it stands off the Tundra's snow as it rolls through the air. Seven cells each way.
+ */
+function frozenMelonGeometry(): BufferGeometry {
+  const n = 7;
+  const body = paint(FROZEN.body);
+  const stripe = paint(FROZEN.stripe);
+  const frost = paint(FROZEN.frost);
+  const under = paint(FROZEN.under);
+  return blob(FROZEN_MELON_SIZE / n, n, n, n, round, (i, j) => (j >= n - 2 ? frost : j === 0 ? under : i % 3 === 0 ? stripe : body));
+}
+
 /** The pea once it has passed through a Torchwood: the same pea, burning. */
 function burningPeaGeometry(): BufferGeometry {
   const n = 5;
@@ -445,6 +465,14 @@ export function makeProjectile(kind: ProjectileKind, burning = false): Object3D 
     ? new Mesh(shared('pea-burning', burningPeaGeometry), glowingProp())
     : new Mesh(shared(kind, SHOT_GEOMETRY[kind]), plasticMaterial());
   mesh.name = fire ? 'projectile-pea-burning' : `projectile-${kind}`;
+  mesh.castShadow = true;
+  return mesh;
+}
+
+/** A frozen melon, centred on its own origin, FROZEN_MELON_SIZE across (the Frost Melon's barrage). */
+export function makeFrozenMelon(): Object3D {
+  const mesh = new Mesh(shared('frozen-melon', frozenMelonGeometry), plasticMaterial());
+  mesh.name = 'projectile-frozen-melon';
   mesh.castShadow = true;
   return mesh;
 }

@@ -23,7 +23,7 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   // phase 3: the bosses, two each (a signature call for the entrance and the patterns, a defeat sting)
   | 'titanRoar' | 'titanDefeat' | 'oakCreak' | 'oakDefeat'
   // step 2: the world-2 bosses, two each as above
-  | 'howlerHowl' | 'howlerDefeat'
+  | 'howlerHowl' | 'howlerDefeat' | 'melonCrack' | 'melonDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
   | 'strikeWindup' | 'strikeImpact';
 
@@ -701,6 +701,38 @@ function howlerDefeat(v: Voice, t: number, p: number): void {
 }
 
 /**
+ * The Frost Melon's crack: a hollow knock on a big melon ("tock"), then ice splitting across it (two
+ * sharp cracks of bright noise, each with a glassy ping) and a little shiver of chimes. Cold and
+ * funny, not scary.
+ */
+function melonCrack(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 190 * p, to: 110 * p, glide: 0.09, at: t, attack: 0.003, peak: 0.42, decay: 0.16 });
+  tone(v, { type: 'triangle', freq: 380 * p, to: 240 * p, glide: 0.06, at: t, attack: 0.002, peak: 0.14, decay: 0.08 });
+  [0.2, 0.36].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.001, peak: 0.26 - i * 0.05, decay: 0.07, filter: 'highpass', freq: 3200 + i * 900, q: 1 });
+    tone(v, { type: 'triangle', freq: (1560 + i * 520) * p, to: (1900 + i * 620) * p, glide: 0.05, at: t + off, attack: 0.002, peak: 0.12, decay: 0.12 });
+  });
+  [2093, 2637, 3136, 2637].forEach((f, i) => {
+    tone(v, { type: 'sine', freq: f * p, at: t + 0.52 + i * 0.07, attack: 0.003, peak: 0.07, decay: 0.16 });
+  });
+}
+
+/**
+ * The Frost Melon beaten: a crack running across it faster and faster (ticks of bright noise), a
+ * big hollow "splot" as it sags, then its ice tinkling down in five falling chimes.
+ */
+function melonDefeat(v: Voice, t: number, p: number): void {
+  [0, 0.13, 0.23, 0.3, 0.35].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.001, peak: 0.14 + i * 0.03, decay: 0.05, filter: 'highpass', freq: 2600 + i * 500, q: 1 });
+  });
+  tone(v, { type: 'sine', freq: 150 * p, to: 48 * p, glide: 0.22, at: t + 0.42, attack: 0.004, peak: 0.45, decay: 0.3 });
+  noise(v, { at: t + 0.42, attack: 0.004, peak: 0.2, decay: 0.2, filter: 'lowpass', freq: 1400 * p, to: 300 * p, glide: 0.2, q: 0.8 });
+  [2637, 2093, 1760, 1397, 1047].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + 0.62 + i * 0.11, attack: 0.002, peak: 0.16 - i * 0.015, decay: 0.14 });
+  });
+}
+
+/**
  * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
  * and filtered) and a rising whistle, like something about to fall on the marked tiles.
  */
@@ -726,7 +758,7 @@ export const SFX: Record<SfxName, Recipe> = {
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
-  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, strikeWindup, strikeImpact,
+  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, strikeWindup, strikeImpact,
 };
 
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];

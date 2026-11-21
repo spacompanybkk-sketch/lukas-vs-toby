@@ -301,19 +301,18 @@ test('both boss levels start from the map, show the boss bar, and end with the r
     await win(page, id, enemy);
     await expect(page.locator(`[data-level-result="${id}"]`)).toHaveAttribute('data-stars', '3');
     await expect(page.locator('.lresult__stars[data-lit="3"]')).toBeVisible();
-    // Level 8 is the last of the Backyard: the plants go on to the Moonlit Meadow's first level;
-    // the zombies' world 2 (the Frozen Tundra) has no levels yet, so no next level.
-    if (side === 'plants') await expect(page.locator('[data-action="next-level"]')).toHaveAttribute('data-next', 'p2-1');
-    else await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
+    // Level 8 is the last of the Backyard: the plants go on to the Moonlit Meadow's first level,
+    // the zombies to the Frozen Tundra's.
+    const onward = side === 'plants' ? 'p2-1' : 'z2-1';
+    await expect(page.locator('[data-action="next-level"]')).toHaveAttribute('data-next', onward);
     expect((await progress(page)).coins).toBe(coins + 90);
     expect((await progress(page))[side].stars[id]).toBe(3);
     await press(page.locator('[data-screen="result"] [data-action="map"]'));
-    if (side === 'plants') {
-      // The Meadow has opened: the map shows it, p2-1 next; the arrow back shows p1-8's stars.
-      await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', 'meadow');
-      await expect(page.locator('[data-stone="p2-1"]')).toHaveAttribute('data-state', 'next');
-      await press(page.locator('[data-action="world-prev"]'));
-    }
+    // World 2 has opened (the Meadow, the Tundra): the map shows it, its first level next; the
+    // arrow back shows level 8's stars.
+    await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', side === 'plants' ? 'meadow' : 'tundra');
+    await expect(page.locator(`[data-stone="${onward}"]`)).toHaveAttribute('data-state', 'next');
+    await press(page.locator('[data-action="world-prev"]'));
     await expect(page.locator(`[data-stone="${id}"]`)).toHaveAttribute('data-stars', '3');
     await press(page.locator('[data-screen="map"] [data-action="back"]'));
     await press(page.locator('[data-screen="play"] [data-action="back"]'));
@@ -376,11 +375,9 @@ test('after all of it a reload shows the same stars, coins, unlocks and best wav
   expect(await progress(page)).toEqual(kept);
   for (const side of ['plants', 'zombies'] as const) {
     await toMap(page, side);
-    // Lukas's map opens on the Meadow he has opened; his Backyard is one arrow back.
-    if (side === 'plants') {
-      await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', 'meadow');
-      await press(page.locator('[data-action="world-prev"]'));
-    }
+    // Each map opens on the world 2 its player has opened; world 1 is one arrow back.
+    await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', side === 'plants' ? 'meadow' : 'tundra');
+    await press(page.locator('[data-action="world-prev"]'));
     for (const [id, n] of Object.entries(kept[side].stars)) {
       await expect(page.locator(`[data-stone="${id}"]`)).toHaveAttribute('data-stars', String(n));
     }

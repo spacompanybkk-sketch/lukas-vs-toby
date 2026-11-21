@@ -17,6 +17,8 @@ export interface StrikeWarning {
   fill: string; frame: string; opacity: number;
   /** The fill drawn as a crawling pixel dither (smoke) that stays up, not a solid blink. */
   dither?: boolean;
+  /** The colour the blow lands in (its rings and sparkles), where the outline's would be too dark. Left out: `frame`. */
+  blow?: string;
 }
 
 /** Which of the shows `BossFx` knows each moment of the fight uses. */
@@ -56,6 +58,8 @@ export interface BossShows {
   strikeWarnings?: Partial<Record<StatusKind | 'none', StrikeWarning>>;
   /** The units it summons come on as its pups, with wolf ears (the Howler's); views only. */
   pups?: boolean;
+  /** What its barrage throws: acorns (left out), or frozen melons that tumble and trail ice. */
+  barrage?: 'acorn' | 'frozenMelon';
   /**
    * Seconds its slam clip (`ability`) takes to raise the arm; the clip is sped up or slowed so the
    * rise fills each slam's own wind-up. Left out: the clip is timed to the wind-up as it is.
@@ -161,6 +165,44 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       pups: true,
     },
   },
-  // stub: Task 2. The Frost Melon wears the Oak's row until its own is drawn.
-  frostMelon: { ...SHIPPED.elderOak },
+  frostMelon: {
+    // The model is at half resolution, like the Oak's (see frostMelon.ts).
+    scale: 4,
+    // A green melon under a cap of snow and an icicle crown, frosty brows and a frosty moustache.
+    face: [
+      [2, 0, 2, 3, '#7FD3F5'],
+      [5, 0, 2, 3, '#B8ECFF'],
+      [8, 0, 2, 3, '#7FD3F5'],
+      [0, 4, 12, 8, '#3FA34D'],
+      [0, 4, 1, 8, '#27733A'],
+      [11, 4, 1, 8, '#27733A'],
+      [1, 3, 10, 2, '#F4FBFF'],
+      [2, 5, 8, 6, '#BFEBB0'],
+      [2, 5, 3, 1, '#E8FAFF'],
+      [7, 5, 3, 1, '#E8FAFF'],
+      [3, 6, 2, 2, 'eye'],
+      [7, 6, 2, 2, 'eye'],
+      [3, 9, 6, 1, '#B8ECFF'],
+      [4, 10, 4, 1, '#3B1530'],
+    ],
+    bar: { fill: 'var(--c-sky)', hi: 'var(--c-sky-hi)' },
+    call: 'melonCrack',
+    defeat: 'melonDefeat',
+    fx: {
+      roar: 'ability', summon: 'sparkles', shield: 'ice', defeat: 'shards', eyes: 'follow',
+      // The freeze: it swells and shivers, its crown rising, through the strike's wind-up, then stamps.
+      strike: 'cheer',
+      // Its icicle crown lights up and blinks with the lanes about to freeze.
+      strikeParts: ['crownGlow'],
+      // Phase 2: glowing cracks in its rind, big icicles out of its top and its near end, its eyes alight.
+      phaseParts: ['frostCracks', 'frostSpikes', 'glowEyes'],
+      shards: ['#3FA34D', '#27733A', '#B8ECFF', '#7FD3F5', '#F4FBFF'],
+      // The freeze's lanes: deep-water navy blinking inside a frost-white outline. Seen on the real
+      // Tundra, any icy blue (the shared pale one, or a strong one) is lost on the icy lanes and makes
+      // a plain lane look like one more sheet of ice; the navy is dark on ice and on snow alike, the
+      // white outline stands on the ice. The blow lands in bright ice.
+      strikeWarnings: { stun: { fill: '#0A2A70', frame: '#F4FBFF', opacity: 0.85, blow: '#39C6FF' } },
+      barrage: 'frozenMelon',
+    },
+  },
 };
