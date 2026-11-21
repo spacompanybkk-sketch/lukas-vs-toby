@@ -3,6 +3,7 @@ import type { Save, Slot } from '../progress/save';
 // Types only: the fake (which evaluates rule strings with `new Function`) is loaded with a
 // dynamic import, and only when the cloud mode is `fake`.
 import type { FakeDatabase, FakeDatabaseOptions } from './fakeCloud';
+import { fakeDbUrl } from './connection';
 import type { BoardRow, Cloud, CloudError, PublicPlayer, SaveRecord } from './types';
 
 /** The old game's database (tag `old-game-final`, src/firebase/config.ts). */
@@ -331,8 +332,13 @@ export function lazyCloud(load: () => Promise<Cloud>): Cloud {
   });
 }
 
-export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cloud {
+/**
+ * The cloud for a mode. In fake mode with `fakedb` (a stand-in server's address, from `fakeDbUrl`)
+ * it is the REST client on that server's `v2test` root, which alone allows `meta.test`.
+ */
+export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}, fakedb: string | null = null): Cloud {
   if (mode === 'fake') {
+    if (fakedb !== null) return new RestCloud({ baseUrl: fakedb, root: 'v2test' });
     return lazyCloud(async () => {
       const { FakeDatabase } = await import('./fakeCloud');
       return createFakeCloud(new FakeDatabase(fake));
@@ -341,13 +347,32 @@ export function createCloud(mode: CloudMode, fake: FakeDatabaseOptions = {}): Cl
   return new RestCloud({ root: mode === 'test' ? 'v2test' : 'v2' });
 }
 
+let pageFake: Promise<FakeDatabase> | null = null;
+
+/**
+ * This page's one fake database (kept in `localStorage`), shared by its cloud and its streams
+ * (`pageConnection`). A load that fails is tried again on the next call.
+ */
+export function pageFakeDatabase(): Promise<FakeDatabase> {
+  pageFake ??= import('./fakeCloud').then(({ FakeDatabase }) => {
+    let storage: Storage | undefined;
+    try {
+      storage = typeof localStorage === 'undefined' ? undefined : localStorage;
+    } catch {
+      storage = undefined;
+    }
+    return new FakeDatabase(storage ? { storage } : {});
+  }).catch((e: unknown) => {
+    pageFake = null;
+    throw e;
+  });
+  return pageFake;
+}
+
 /** The cloud this page should use. */
 export function defaultCloud(): Cloud {
-  let storage: Storage | undefined;
-  try {
-    storage = typeof localStorage === 'undefined' ? undefined : localStorage;
-  } catch {
-    storage = undefined;
-  }
-  return createCloud(pageCloudMode(), storage ? { storage } : {});
+  const mode = pageCloudMode();
+  const fakedb = fakeDbUrl(typeof location === 'undefined' ? '' : location.search, mode);
+  if (mode === 'fake' && fakedb === null) return lazyCloud(async () => createFakeCloud(await pageFakeDatabase()));
+  return createCloud(mode, {}, fakedb);
 }
