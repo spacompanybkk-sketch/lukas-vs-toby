@@ -161,6 +161,16 @@
   inset: var(--px-bev);
   background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(26, 16, 8, 0.45) calc(10% - 2px) 10%);
 }
+/* A base the level makes safe: a stone bar with a padlock in the middle, no health to show. */
+.hud-base__bar--safe {
+  --fill: var(--c-stone);
+  --hi: var(--c-stone-hi);
+  --lo: var(--c-stone-lo);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hud-base__lock { display: block; height: 100%; width: auto; aspect-ratio: 1; }
 
 /* ---- Pause button ---- */
 .hud-pause { --ico-size: calc(max(var(--tap-min), var(--hud-h)) * 0.52); }
