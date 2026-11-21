@@ -238,7 +238,7 @@ describe('after a battle', () => {
     const factory: SessionFactory = (opts: BattleOptions): BattleSessionLike => {
       const hud: HudSignals = {
         energy: signal(150), cards: signal([]),
-        base: signal({ plants: { hp: 900, max: 1000 }, zombies: { hp: 0, max: 1000 } }),
+        base: signal({ plants: { hp: 900, max: 1000, safe: false }, zombies: { hp: 0, max: 1000, safe: false } }),
         seconds: signal(75), suddenDeath: signal(false), paused: signal(false),
         selected: signal<UnitKey | null>(null), shovel: signal(false),
         result: signal<null | { winner: Faction | 'draw'; playerWon: boolean }>(null), denied: signal(0),
