@@ -4,7 +4,7 @@ import { ALL_CARDS } from '../../src/data/units';
 import type { MatchChannel, WriteAnswer } from '../../src/net/channel';
 import { LockstepMatch, type StepAnswer } from '../../src/net/lockstepMatch';
 import { memoryPair } from '../../src/net/memoryChannel';
-import { stallStage } from '../../src/net/timeouts';
+import { VS_TIMEOUTS, stallStage } from '../../src/net/timeouts';
 import { decodeTurn } from '../../src/net/turnCodec';
 import { VirtualClock } from '../../src/net/virtualClock';
 import { Match } from '../../src/sim/match';
@@ -352,8 +352,8 @@ describe('LockstepMatch on an in-memory channel', () => {
       expect(JSON.parse(store.get('end/zombies')!)).toEqual(end);
     });
 
-    it('takes its own result after 10 s when the other end never comes', async () => {
-      const { clock, a, b } = pair();
+    it('the host takes its own result after 10 s when the other end never comes', async () => {
+      const { clock, store, a, b } = pair();
       a.before = fall('zombies');
       b.before = (p) => { if (p.lm.match.state.tick >= 90) p.stepping = false; };
       started(a, b);
@@ -363,6 +363,56 @@ describe('LockstepMatch on an in-memory channel', () => {
       expect(a.lm.outcome()).toBeNull();
       await frames(clock, [a], 10);
       expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      // the host wrote its record into the guest's empty slot: the guest, still not stepping, has
+      // the same outcome from the same two records (no one-sided win)
+      expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(store.get('end/zombies')).toBe(store.get('end/plants'));
+    });
+
+    it('a guest that ended alone never takes its own result: it waits, counted, and the host decides', async () => {
+      const { clock, store, a, b } = pair();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      // both states end at tick 96 the same way, but the host freezes at tick 90 for a minute
+      const hostFall = fall('zombies');
+      let froze = false;
+      a.before = (p) => {
+        if (!froze && p.lm.match.state.tick >= 90) { froze = true; p.stepping = false; }
+        hostFall(p);
+      };
+      b.before = fall('zombies');
+      started(a, b);
+      await until(clock, [a, b], () => b.lm.match.state.winner !== null);
+      expect(a.lm.match.state.tick).toBeLessThan(96); // the host has not reached the end
+      await frames(clock, [b], 60 * 30); // a minute: far past endWaitMs
+      expect(b.lm.outcome()).toBeNull();
+      expect(stallStage(b.lm.silentMs())).toBe('face'); // the wait shows
+      // the host comes back and reaches the guest's end with the same winner: both win
+      a.stepping = true;
+      await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null, 30 * 30);
+      expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(store.get('end/zombies')).toBe(store.get('end/plants'));
+    });
+
+    it('a guest that ended alone and a host gone for 10 minutes: the give-up goes into the host\'s slot, both unfinished', async () => {
+      const { clock, store, a, b } = pair();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      a.before = (p) => { if (p.lm.match.state.tick >= 90) p.stepping = false; };
+      b.before = fall('zombies');
+      started(a, b);
+      await until(clock, [a, b], () => b.lm.match.state.winner !== null);
+      const endedAt = clock.now();
+      let settledAt = -1;
+      b.lm.onChange(() => { if (settledAt < 0 && b.lm.outcome()) settledAt = clock.now(); });
+      for (let i = 0; i < 700 && b.lm.outcome() === null; i++) await frame(clock, [b], 1000);
+      expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'silence' });
+      expect(settledAt - endedAt).toBeGreaterThanOrEqual(600000);
+      expect(settledAt - endedAt).toBeLessThan(602000);
+      expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'broken' }); // written by the guest
+      // the frozen host's slot now holds the give-up: it ends unfinished too, and can never win
+      await frames(clock, [a, b], 60);
+      expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(a.lm.tap({ type: 'hero', faction: 'plants', lane: 0 })).toBe('full');
     });
 
     it('two different winners show the host\'s and credit nobody', async () => {
@@ -416,6 +466,9 @@ describe('LockstepMatch on an in-memory channel', () => {
       };
       started(a, b);
       await until(clock, [a, b], () => fellAt >= 0);
+      // the trap of t3r/drift-end: the guest awaits the snapshot and its drifted state has a winner
+      expect(awaiting(b)).toBe(true);
+      expect(b.lm.match.state.winner).toBe('zombies');
       await frames(clock, [a, b], 600);
       expect(store.has('end/zombies')).toBe(false);
       expect(store.has('end/plants')).toBe(false);
@@ -450,15 +503,19 @@ describe('LockstepMatch on an in-memory channel', () => {
       expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'broken' });
     });
 
-    it('a host that ended alone is the authority: it repairs, and both end with its winner', async () => {
+    it('a host that ended alone is the authority: the guest takes its end record, both end with its winner', async () => {
       const { clock, store, a, b } = pair({}, { delay });
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       a.before = nudgeAt([100], fall('plants')); // the host alone: zombies win at tick 101
+      let fellAt = -1;
+      a.lm.onChange(() => { if (fellAt < 0 && a.lm.match.state.winner !== null) fellAt = clock.now(); });
       started(a, b);
       await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null, 30 * 30);
+      expect(b.lm.match.state.winner).toBeNull(); // the trap: the guest's own state never ended
       expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'zombies' });
       expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'zombies' });
-      expect([a.lm.repairs(), b.lm.repairs()]).toEqual([1, 1]);
+      expect(clock.now() - fellAt).toBeLessThan(1000); // the guest took the record as it reached tick 101
+      expect([a.lm.repairs(), b.lm.repairs()]).toEqual([0, 0]);
       expect(store.get('end/zombies')).toBe(store.get('end/plants'));
       expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'zombies', t: 101 });
     });
@@ -522,23 +579,103 @@ describe('LockstepMatch on an in-memory channel', () => {
     });
   });
 
-  it.each([12, 13])('a host that breaks after writing its end deletes the match: the guest ends at once (delay %i)', async (delay) => {
+  /** Private state the reproductions check their trap against (no public view of it). */
+  const inner = (p: Peer) => p.lm as unknown as { repairing: string; lockstep: { hash: unknown } };
+
+  describe.each([9, 13, 15, 20].flatMap((delay) => (['zombies', 'plants'] as const).map((nudge) => ({ delay, nudge }))))(
+    'port of t3/slow: a guest that finds the mismatch first while lagging (delay $delay, latency 30, nudging $nudge)', ({ delay, nudge }) => {
+      it('the host still repairs, and both play on together', async () => {
+        const { clock, a, b } = pair({}, { delay, latency: 30 });
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        b.lagFrames = 600; // the guest skips every other frame for its first 20 s
+        b.frames = -1; // as the script counts them
+        const nudged = nudge === 'zombies' ? b : a;
+        let nudgedAt = -1;
+        const nudgeIt = nudgeAt([300], (p) => { p.lm.match.state.players.plants.energy += 1; nudgedAt = clock.now(); });
+        let guestFirst: boolean | null = null; // whether the guest awaited the snapshot before the host repaired
+        nudged.before = nudgeIt;
+        const watch = (p: Peer) => { if (guestFirst === null && inner(p).repairing === 'awaiting') guestFirst = a.lm.repairs() === 0; };
+        b.before = nudged === b ? (p) => { nudgeIt(p); watch(p); } : watch;
+        started(a, b);
+        for (let i = 0; i < 60 * 30 && !(a.lm.repairs() === 1 && b.lm.repairs() === 1); i++) await frame(clock, [a, b]);
+        expect(guestFirst).toBe(true); // the trap of round 1: the guest awaited on its own mismatch first
+        expect([a.lm.repairs(), b.lm.repairs()]).toEqual([1, 1]);
+        expect(clock.now() - nudgedAt).toBeLessThan(3000); // D 20 with the guest lagging takes 2.3 s
+        const ticks = [a.lm.match.state.tick, b.lm.match.state.tick];
+        await frames(clock, [a, b], 30 * 30);
+        expect(a.lm.match.state.tick).toBeGreaterThan(ticks[0]! + 300);
+        expect(b.lm.match.state.tick).toBeGreaterThan(ticks[1]! + 300);
+        expect([a.lm.repairs(), b.lm.repairs()]).toEqual([1, 1]);
+        expect([a.lm.silentMs(), b.lm.silentMs()]).toEqual([0, 0]);
+        const common = [...a.hashes.keys()].filter((t) => t > ticks[0]! && b.hashes.has(t));
+        expect(common.length).toBeGreaterThan(0);
+        for (const t of common) expect(a.hashes.get(t), `tick ${t}`).toBe(b.hashes.get(t));
+      });
+    });
+
+  describe.each([
+    { latency: 30, every: 3 }, { latency: 30, every: 2 }, { latency: 100, every: 3 }, { latency: 100, every: 2 },
+  ])('port of t3rrr/host-ends-first (delay 13, latency $latency, the guest skipping every $every-th frame)', ({ latency, every }) => {
+    it('a host that ends while the guest is parked on a drifted winner: both end with the host\'s winner', async () => {
+      const { clock, store, a, b } = pair({}, { delay: 13, latency });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      b.lagFrames = 900;
+      b.lagEvery = every;
+      b.frames = -1; // the script counts frames from 0: the same frames are skipped
+      const nudge = nudgeAt([300], (p) => { p.lm.match.state.players.plants.energy += 1; });
+      let guestFell = -1;
+      let hostFell = -1;
+      let hostFellAt = -1;
+      let trap: { repairs: number; guestParked: boolean; guestTick: number } | null = null;
+      b.before = (p) => {
+        nudge(p);
+        if (guestFell < 0 && inner(p).repairing === 'awaiting' && inner(p).lockstep.hash !== null) {
+          p.lm.match.state.baseHp.plants = 0; // the drifted state ends while its hash is still unsent
+          guestFell = p.lm.match.state.tick;
+        }
+      };
+      a.before = (p) => {
+        // the host's own state ends 6 or more ticks after the guest's drifted end, before any repair
+        if (guestFell >= 0 && hostFell < 0 && p.lm.match.state.tick >= guestFell + 6 && p.lm.repairs() === 0) {
+          p.lm.match.state.baseHp.zombies = 0;
+          hostFell = p.lm.match.state.tick;
+          hostFellAt = clock.now();
+          trap = { repairs: a.lm.repairs() + b.lm.repairs(), guestParked: inner(b).repairing === 'awaiting' && b.lm.match.state.winner !== null, guestTick: b.lm.match.state.tick };
+        }
+      };
+      started(a, b);
+      for (let i = 0; i < 60 * 30 && !(a.lm.outcome() && b.lm.outcome()); i++) await frame(clock, [a, b]);
+      // the trap of round 4: the host ended past the parked guest's tick before any repair
+      expect(guestFell).toBeGreaterThanOrEqual(0);
+      expect(hostFell).toBeGreaterThanOrEqual(guestFell + 6);
+      expect(trap).toEqual({ repairs: 0, guestParked: true, guestTick: guestFell + 1 });
+      expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(clock.now() - hostFellAt).toBeLessThan(2000);
+      expect(store.get('end/zombies')).toBe(store.get('end/plants'));
+    });
+  });
+
+  it.each([12, 13])('a host that ended alone needs no repair, so a database refusing repairs changes nothing (delay %i)', async (delay) => {
+    const syncs: number[] = [];
     const refuseSync: Wrap = (ch) => ({
       publishTurns: ch.publishTurns.bind(ch), listen: ch.listen.bind(ch), remove: ch.remove.bind(ch),
-      write: (rec, opts) => (rec.kind === 'sync' ? Promise.resolve('refused') : ch.write(rec, opts)),
+      write: (rec, opts) => {
+        if (rec.kind !== 'sync') return ch.write(rec, opts);
+        syncs.push(rec.n);
+        return Promise.resolve('refused');
+      },
     });
     const { clock, store, a, b } = pair({ plants: refuseSync }, { delay });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    a.before = nudgeAt([100], (p) => { p.lm.match.state.baseHp.plants = 0; }); // the host ends alone; its repair is refused
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    a.before = nudgeAt([100], (p) => { p.lm.match.state.baseHp.plants = 0; }); // the host ends alone
     started(a, b);
-    await until(clock, [a, b], () => a.lm.outcome() !== null, 30 * 30);
-    const brokeAt = clock.now();
-    expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
-    await until(clock, [a, b], () => b.lm.outcome() !== null, 30);
-    expect(clock.now() - brokeAt).toBeLessThanOrEqual(1000);
-    expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'gone' });
-    expect(store.size).toBe(0);
-    expect(warn.mock.calls.some((m) => /the match is deleted/.test(String(m[0])))).toBe(true);
+    await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null, 30 * 30);
+    expect(b.lm.match.state.winner).toBeNull(); // the guest's own state did not end
+    expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'zombies' });
+    expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'zombies' });
+    expect(syncs).toEqual([]);
+    expect(store.get('end/zombies')).toBe(store.get('end/plants'));
   });
 
   it('a deletion before the other\'s end record credits nobody, own end or not', async () => {
@@ -570,7 +707,9 @@ describe('LockstepMatch on an in-memory channel', () => {
     });
 
     it('ends unfinished when the other device hid and never came back', async () => {
-      const { clock, a, b } = pair();
+      const { clock, store, a, b } = pair();
+      let settledAt = -1;
+      a.lm.onChange(() => { if (settledAt < 0 && a.lm.outcome()) settledAt = clock.now(); });
       started(a, b);
       await frames(clock, [a, b], 60);
       b.lm.hidden();
@@ -583,9 +722,15 @@ describe('LockstepMatch on an in-memory channel', () => {
       expect(stallStage(a.lm.silentMs())).toBe('flag');
       for (let i = 0; i < 600 && a.lm.outcome() === null; i++) await frame(clock, [a], 1000);
       expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'silence' });
-      expect(clock.now() - hidAt).toBeGreaterThanOrEqual(600000);
-      expect(clock.now() - hidAt).toBeLessThan(602000);
+      expect(settledAt - hidAt).toBeGreaterThanOrEqual(600000);
+      expect(settledAt - hidAt).toBeLessThan(602000);
       expect(a.lm.stats().maxSilentMs).toBeGreaterThanOrEqual(600000);
+      // the give-up is stored in its own slot: the other device, back later, ends unfinished too
+      expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'broken' });
+      b.stepping = true;
+      b.lm.visible();
+      await frames(clock, [a, b], 10);
+      expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
     });
 
     it('counts the other as here again once it is visible', async () => {
@@ -604,6 +749,8 @@ describe('LockstepMatch on an in-memory channel', () => {
 
   it('measures silence only while waiting on turns; 3 s is the face, 10 min unfinished', async () => {
     const { clock, a, b } = pair();
+    let settledAt = -1;
+    a.lm.onChange(() => { if (settledAt < 0 && a.lm.outcome()) settledAt = clock.now(); });
     started(a, b);
     const silences: number[] = [];
     a.before = (p) => { if (p.last?.kind === 'ran') silences.push(p.lm.silentMs()); };
@@ -617,17 +764,60 @@ describe('LockstepMatch on an in-memory channel', () => {
     expect(stallStage(a.lm.silentMs())).toBe('face');
     expect(a.lm.outcome()).toBeNull();
     for (let i = 0; i < 700 && a.lm.outcome() === null; i++) await frame(clock, [a], 1000);
-    expect(clock.now() - cutAt).toBeGreaterThanOrEqual(600000 - 1000);
-    expect(clock.now() - cutAt).toBeLessThan(600000 + 1000);
+    expect(settledAt - cutAt).toBeGreaterThanOrEqual(600000 - 1000);
+    expect(settledAt - cutAt).toBeLessThan(600000 + 1000);
     expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'silence' });
     expect(a.lm.stats().maxSilentMs).toBeGreaterThanOrEqual(600000);
   }, 30000);
+
+  it('a white flag that loses the race to the host\'s end takes that end: no flag, no deletion', async () => {
+    let deaf = false; // the guest's stream is down: it hears nothing
+    const deafen: Wrap = (ch) => ({
+      publishTurns: ch.publishTurns.bind(ch), write: ch.write.bind(ch), remove: ch.remove.bind(ch),
+      listen: (from, on) => ch.listen(from, (e) => { if (!deaf) on(e); }),
+    });
+    const { clock, store, a, b } = pair({ zombies: deafen });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    a.before = nudgeAt([95], (p) => { p.lm.match.state.baseHp.zombies = 0; }); // the host's state ends
+    started(a, b);
+    await until(clock, [a, b], () => a.lm.match.state.winner !== null);
+    deaf = true; // the host's end record never reaches the guest
+    await frames(clock, [a, b], 11 * 30);
+    expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' }); // after endWaitMs, from both slots
+    expect(b.lm.outcome()).toBeNull();
+    await until(clock, [a, b], () => stallStage(b.lm.silentMs()) === 'flag', 100 * 30);
+    expect(store.get('end/zombies')).toBe(store.get('end/plants')); // the race is lost: the host filled it
+    b.lm.giveUp(); // its own slot already holds the host's record: the write is refused
+    await frames(clock, [a, b], 60);
+    expect(b.lm.outcome()).toBeNull(); // it does not settle a flag against a stored win
+    expect(store.size).toBeGreaterThan(0); // and nothing is deleted
+    deaf = false;
+    b.lm.visible(); // the stream is back: the slots decide
+    await frames(clock, [a, b], 5);
+    expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+  });
+
+  it('a forfeit is refused once an end record is known', async () => {
+    const { clock, store, a, b } = pair();
+    a.before = nudgeAt([95], (p) => { p.lm.match.state.baseHp.zombies = 0; });
+    b.before = (p) => { if (p.lm.match.state.tick >= 90) p.stepping = false; };
+    started(a, b);
+    await until(clock, [a, b], () => a.lm.match.state.winner !== null);
+    await frames(clock, [a, b], 15); // the host's end reaches the guest, which does not step
+    b.lm.forfeit();
+    a.lm.forfeit();
+    await frames(clock, [a, b], 15);
+    expect(store.has('quit')).toBe(false);
+    expect([a.lm.outcome(), b.lm.outcome()]).toEqual([null, null]);
+  });
 
   it('a white flag removes the match; the other sees it gone', async () => {
     const { clock, store, a, b } = pair();
     started(a, b);
     await frames(clock, [a, b], 30);
     a.lm.giveUp();
+    expect(a.lm.outcome()).toBeNull(); // first the give-up is stored in its own end slot
+    await frames(clock, [a, b], Math.ceil((2 * LATENCY) / FRAME) + 1);
     expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'flag' });
     await frames(clock, [a, b], 10);
     expect(store.size).toBe(0);
@@ -664,4 +854,131 @@ describe('LockstepMatch on an in-memory channel', () => {
     seen.push(...a.lm.refused());
     expect(seen).toEqual([bad.id]);
   });
+});
+
+/**
+ * Seeded random timing (all on the virtual clock): input delay 9–20, latency, which device lags or
+ * freezes and when, drifts injected on either device (also just before an end), and bases falling
+ * on one device, both, at different ticks, on different sides, or while the guest awaits a
+ * snapshot (and the host's own end some ticks later). A common fall later ends every match a
+ * repair undid. For every seed both properties must hold:
+ * - no silent wait: every frame a device does not step is counted in `silentMs()`, and both
+ *   settle within `endWaitMs` + 1 s of the last injected event (or the end of a freeze);
+ * - the same outcome on both: the same `won` winner, the same `disagree`, or both unfinished.
+ */
+describe('LockstepMatch under seeded random timing', () => {
+  /** 300 seeds keep this under 30 s with the full suite running beside it; the same generator passed 20 000 seeds once. */
+  const SEEDS = 300;
+  /** Seeds kept by name: the guest froze across the host's end, and the host's fill decided both. */
+  const NAMED = [6262, 18899];
+  const FRAME_MS = 1000 / 30;
+
+  function rng(seed: number): () => number {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const kindOf = (o: ReturnType<LockstepMatch['outcome']>): string => {
+    if (!o) return 'none';
+    if (o.kind === 'won') return `won ${o.winner}`;
+    if (o.kind === 'disagree') return `disagree ${o.shown}`;
+    if (o.kind === 'forfeit') return `forfeit ${o.winner}`;
+    return 'unfinished';
+  };
+
+  async function runSeed(seed: number): Promise<{ seed: number; a: string; b: string; span: number; uncounted: number }> {
+    const r = rng(seed);
+    const int = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1));
+    const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!;
+    const sides = ['plants', 'zombies'] as const;
+    const delay = int(9, 20);
+    const latency = pick([int(5, 60), int(60, 200), int(200, 400)]);
+    const lagger = pick(['none', 'plants', 'zombies'] as const);
+    const lagEvery = int(1, 4); // 1: frozen
+    const lagFrom = int(0, 1500);
+    const lagTo = lagFrom + (lagEvery === 1 ? int(10, 750) : int(30, 1200));
+    const driftCount = pick([0, 1, 1, 2]);
+    const pattern = pick(['both', 'host', 'guest', 'apart', 'sides', 'onAwait', 'onAwaitHostLater'] as const);
+    const tf = int(40, 1000);
+    const side = pick(sides);
+    const drifts: { seat: Faction; tick: number; side: Faction }[] = [];
+    for (let i = 0; i < driftCount; i++) drifts.push({ seat: pick(sides), tick: pick([int(30, 900), Math.max(1, tf - int(0, 45))]), side: pick(sides) });
+    const hostLater = int(0, 40);
+    const falls: Record<Faction, { tick: number; side: Faction } | null> = { plants: null, zombies: null };
+    if (pattern === 'both' || pattern === 'host' || pattern === 'apart' || pattern === 'sides') falls.plants = { tick: tf, side };
+    if (pattern === 'both' || pattern === 'guest') falls.zombies = { tick: tf, side };
+    if (pattern === 'apart') falls.zombies = { tick: tf + int(1, 60) * pick([1, -1]), side };
+    if (pattern === 'sides') falls.zombies = { tick: tf, side: side === 'plants' ? 'zombies' : 'plants' };
+    if (pattern.startsWith('onAwait') && driftCount === 0) drifts.push({ seat: pick(sides), tick: int(30, 900), side: 'plants' });
+    const finalTick = Math.max(tf, ...drifts.map((d) => d.tick)) + 600;
+
+    const clock = new VirtualClock();
+    const link = memoryPair({ clock, latencyMs: latency });
+    const make = (seat: Faction) => new LockstepMatch({
+      match: new Match(versusConfig(SETUP)), seat, delay, host: seat === 'plants',
+      me: SETUP.seats[seat], other: SETUP.seats[seat === 'plants' ? 'zombies' : 'plants'],
+      channel: link[seat], now: () => clock.now(), timers: clock,
+    });
+    const peers: Record<Faction, LockstepMatch> = { plants: make('plants'), zombies: make('zombies') };
+    const done: Record<Faction, Set<string>> = { plants: new Set(), zombies: new Set() };
+    const settled: Record<Faction, number> = { plants: -1, zombies: -1 };
+    const waitFrom: Record<Faction, number> = { plants: -1, zombies: -1 };
+    let lastEvent = 0;
+    let uncounted = 0;
+    let guestFell = -1;
+    for (const f of sides) peers[f].onChange(() => { if (settled[f] < 0 && peers[f].outcome()) settled[f] = clock.now(); });
+    peers.plants.start();
+    peers.zombies.start();
+    for (let frame = 1; (settled.plants < 0 || settled.zombies < 0) && clock.now() < 400000; frame++) {
+      clock.advance(FRAME_MS);
+      await flush();
+      if (lagger !== 'none' && frame === lagTo) lastEvent = clock.now();
+      for (const f of sides) {
+        if (lagger === f && frame >= lagFrom && frame < lagTo && frame % lagEvery === 0) continue;
+        const lm = peers[f];
+        const st = lm.match.state;
+        const once = (key: string, change: () => void) => { if (!done[f].has(key)) { done[f].add(key); change(); lastEvent = clock.now(); } };
+        drifts.forEach((d, i) => { if (d.seat === f && st.tick >= d.tick) once(`d${i}`, () => { st.players[d.side].energy += 1; }); });
+        const fl = falls[f];
+        if (fl && st.tick >= fl.tick && st.winner === null) once('fall', () => { st.baseHp[fl.side] = 0; });
+        if (pattern.startsWith('onAwait') && f === 'zombies' && st.winner === null && (lm as unknown as { repairing: string }).repairing === 'awaiting') {
+          once('fall', () => { st.baseHp[side] = 0; guestFell = st.tick; });
+        }
+        if (pattern === 'onAwaitHostLater' && f === 'plants' && guestFell >= 0 && st.tick >= guestFell + hostLater && st.winner === null) {
+          once('fall', () => { st.baseHp[pick(sides)] = 0; });
+        }
+        if (st.tick >= finalTick && st.winner === null) once('end', () => { st.baseHp.zombies = 0; });
+        const answer = lm.tryStep();
+        if (answer.kind === 'ran' || lm.outcome()) {
+          waitFrom[f] = -1;
+        } else {
+          if (waitFrom[f] < 0) waitFrom[f] = clock.now();
+          uncounted = Math.max(uncounted, clock.now() - waitFrom[f] - lm.silentMs() - 2 * FRAME_MS);
+        }
+      }
+      await flush();
+    }
+    return { seed, a: kindOf(peers.plants.outcome()), b: kindOf(peers.zombies.outcome()), span: Math.max(settled.plants, settled.zombies) - lastEvent, uncounted };
+  }
+
+  it(`${SEEDS} seeds and the named ones: both settle in bounded time, on the same outcome`, async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bad: unknown[] = [];
+    const kinds = new Map<string, number>();
+    for (const seed of [...NAMED, ...Array.from({ length: SEEDS }, (_, i) => i + 1)]) {
+      const res = await runSeed(seed);
+      kinds.set(res.a, (kinds.get(res.a) ?? 0) + 1);
+      const ok = res.a !== 'none' && res.a === res.b && res.span <= VS_TIMEOUTS.endWaitMs + 1000 && res.uncounted <= 0;
+      if (!ok) bad.push(res);
+    }
+    expect(bad).toEqual([]);
+    // the seeds reach every kind of end: agreeing wins of both sides, disagreements, unfinished
+    for (const k of ['won plants', 'won zombies', 'disagree plants', 'disagree zombies', 'unfinished']) expect(kinds.get(k) ?? 0).toBeGreaterThan(5);
+  }, 30000);
 });

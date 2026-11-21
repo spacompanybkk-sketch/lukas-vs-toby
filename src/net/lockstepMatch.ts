@@ -32,22 +32,31 @@ type SyncRecord = Extract<ControlRecord, { kind: 'sync' }>;
 const isWinner = (v: unknown): v is Winner => v === 'plants' || v === 'zombies' || v === 'draw';
 
 /**
- * The `w` of an end record from a device whose match broke (a mismatch after three repairs, or a
- * write the database refused): no winner, and the other device goes home too (spec 6.6 step 5).
+ * The `w` of an end record from a device whose match broke (a mismatch after three repairs, a
+ * write the database refused, or ten minutes of silence): no winner, and the other device goes
+ * home too (spec 6.6 step 5).
  */
 export const BROKEN_END = 'broken';
+/** The `w` of an end record from a device whose player gave up waiting (the white flag): no winner. */
+export const GONE_END = 'gone';
 
-interface EndRecord { w: Winner | typeof BROKEN_END; t: unknown; h: unknown }
+interface EndRecord { w: Winner | typeof BROKEN_END | typeof GONE_END; t: unknown; h: unknown }
 
-/** An end record (`{"w":…,"t":…,"h":…}`), or null when it names no winner and is not broken. */
+/** An end record (`{"w":…,"t":…,"h":…}`), or null when it is not one (read as broken: nobody wins). */
 function parseEnd(raw: string): EndRecord | null {
   try {
     const o = JSON.parse(raw) as Partial<EndRecord> | null;
-    return o && (isWinner(o.w) || o.w === BROKEN_END) ? { w: o.w, t: o.t, h: o.h } : null;
+    return o && (isWinner(o.w) || o.w === BROKEN_END || o.w === GONE_END) ? { w: o.w, t: o.t, h: o.h } : null;
   } catch {
     return null;
   }
 }
+
+/** A seat's `end` slot as the database holds it (write-once): the stored string and what it says. */
+interface EndSlot { raw: string; rec: EndRecord | null }
+
+/** A slot that ends the match with no winner, whatever the other slot holds. */
+const noWinner = (s: EndSlot | null): boolean => s !== null && (s.rec === null || !isWinner(s.rec.w));
 
 /**
  * Pause numbers say who wrote them and whether they are a heartbeat: `n = 4·seq + 2·(zombies) + beat`.
@@ -74,6 +83,18 @@ export function restoreInto(match: Match, snapshot: string): void {
  * repairs a desync from the host's snapshot, and turns pause, quit, silence, deletion and the
  * two end records into an outcome. Driven by the caller's `tryStep`; all time comes from the
  * injected `now` and `timers`.
+ *
+ * How a match ends, so that both screens always show the same outcome: the two `end` slots are
+ * write-once, so once both hold a value they never change, and the outcome is a function of the
+ * two values as the database holds them (`settleFromSlots`): a slot with no winner (`broken`,
+ * `gone`, unreadable) → unfinished; two winners → `won` if equal, else `disagree`. A device
+ * never settles a won, a disagree or an unfinished any other way; the only other outcomes are a
+ * `quit` record (forfeit) and the match deleted (`gone`). Giving up (silence, the white flag, a
+ * broken match) is a write too: into the own slot while it is empty, else into the other's empty
+ * slot. If that write is refused, the slot already holds the other's value, which decides.
+ * The host's state is the authority (spec 6.6), for the end as well: a guest that knows the host's
+ * end record and cannot reach the same end itself writes that record as its own, and a host whose
+ * guest stays silent for `endWaitMs` after the host's end writes it into the guest's empty slot.
  */
 export class LockstepMatch {
   readonly match: Match;
@@ -118,12 +139,15 @@ export class LockstepMatch {
   private ownConflict = false;
 
   // end records
-  private ownWinner: Winner | null = null;
-  private ownEndRecord: EndRecord | null = null;
-  private otherEnd: EndRecord | null = null;
+  /** Each seat's `end` slot as stored (from the stream, or from an own write answered `ok`). */
+  private readonly slots: Record<Faction, EndSlot | null> = { plants: null, zombies: null };
+  /** What this device wrote (or is writing) into its own slot; from then on it steps no more. */
+  private ownClaim: string | null = null;
+  /** What this device wrote (or is writing) into the other seat's empty slot. */
+  private fillClaim: string | null = null;
+  /** Why this device gave up, if it did: the outcome when the slots end with no winner. */
+  private conceding: 'broken' | 'flag' | 'silence' | null = null;
   private endTimer: unknown = null;
-  /** The host saw the other device play on past its own end: it repaired, and waits for the other's end. */
-  private endDisputed = false;
 
   // taps and stalls
   private refusedIds: number[] = [];
@@ -157,7 +181,7 @@ export class LockstepMatch {
 
   /** An own tap, stamped at the current tick (see `Lockstep.submit`); `'full'` once the match is over. */
   tap(cmd: Command): PendingTap | 'full' {
-    if (this.result || this.match.state.winner !== null) return 'full';
+    if (this.result || this.match.state.winner !== null || this.ending()) return 'full';
     const tap = this.lockstep.submit(cmd, this.match.state.tick);
     if (tap !== 'full') this.changed();
     return tap;
@@ -167,16 +191,28 @@ export class LockstepMatch {
   tryStep(): StepAnswer {
     if (this.result) return { kind: 'over' };
     if (this.pendingSync) this.applySync();
-    if (this.match.state.winner !== null) return this.atOwnEnd(this.match.state.winner);
-    if (this.host && this.otherEndPassed()) {
-      // the other device wrote an end for a tick this screen has run past without one: the two
-      // states differ, and that record can never be rewritten (write-once), so nobody wins
-      console.warn(`[versus] the other end record names tick ${String(this.otherEnd!.t)}; this screen ran past it with no winner`);
+    if (this.ending()) return this.waitForEnd();
+    const { winner, tick: now } = this.match.state;
+    const hostEnd = this.hostEnd();
+    if (hostEnd && this.takesHostEnd(hostEnd, winner, now)) {
+      this.claimOwn(hostEnd.raw);
+      return this.waitForEnd();
+    }
+    if (winner !== null) {
+      if (this.repairing === 'awaiting') return this.parked();
+      this.claimEnd(winner);
+      return this.waitForEnd();
+    }
+    if (this.host && this.guestEndPassed(now)) {
+      // the guest wrote an end for a tick this screen has reached without one: the two states
+      // differ, and that record can never be rewritten (write-once), so nobody wins
+      console.warn(`[versus] the other end record names tick ${String(this.slots[this.otherSeat]!.rec!.t)}; this screen ran past it with no winner`);
       this.broken();
-      return { kind: 'over' };
+      return this.result ? { kind: 'over' } : this.waitForEnd();
     }
     this.compareHashes();
     if (this.result) return { kind: 'over' };
+    if (this.ending()) return this.waitForEnd(); // a mismatch broke the match, or the guest took the host's end
     // every wait below counts towards the stall stages, so none can last unseen
     if (this.repairing === 'writing') {
       this.waitOnOther();
@@ -222,7 +258,7 @@ export class LockstepMatch {
       if (this.repairing !== 'awaiting') this.lockstep.offerHash(state.tick, hash);
     }
     // a guest waiting for the host's snapshot knows its state is wrong: its winner is not one
-    if (state.winner !== null && this.repairing !== 'awaiting') this.ownEnd(state.winner);
+    if (state.winner !== null && this.repairing !== 'awaiting') this.claimEnd(state.winner);
     this.publishDue();
     if (mine.length > 0 || refused) this.changed();
     return events;
@@ -245,8 +281,8 @@ export class LockstepMatch {
   }
 
   /**
-   * How long the other seat has been silent: while stepping waits (on turns or a repair write), the
-   * time waited; while paused, the time since the other device last showed it is there, once that
+   * How long the other seat has been silent: while stepping waits (on turns, a repair, or the end
+   * records once this screen's own end is claimed), the time waited; while paused, the time since the other device last showed it is there, once that
    * passes `hereMs` (before that it counts as here); else 0.
    */
   silentMs(): number {
@@ -265,18 +301,22 @@ export class LockstepMatch {
     this.writeRetrying({ kind: 'resume' });
   }
 
-  /** The white flag in the pause menu: a forfeit, the other seat wins (spec 6.7). */
+  /**
+   * The white flag in the pause menu: a forfeit, the other seat wins (spec 6.7). Not once an end
+   * record is known: then the slots decide the outcome, and a forfeit could contradict them.
+   */
   forfeit(): void {
-    if (this.result) return;
+    if (this.result || this.ending() || this.slots[this.otherSeat] !== null) return;
     this.writeRetrying({ kind: 'quit', by: this.me });
     this.finish({ kind: 'forfeit', winner: this.otherSeat, by: this.me });
   }
 
-  /** The white flag while waiting on a silent seat: the match is deleted and nobody wins. */
+  /**
+   * The white flag while waiting on a silent seat: nobody wins, and the match is deleted. The
+   * outcome comes once the give-up is stored in an end slot (see `concede`), then the match goes.
+   */
   giveUp(): void {
-    if (this.result) return;
-    this.finish({ kind: 'unfinished', why: 'flag' });
-    this.removeRetrying();
+    this.concede('flag');
   }
 
   /** The page hides: pause, with a write that can leave as it hides. */
@@ -333,7 +373,6 @@ export class LockstepMatch {
         if (e.seat !== this.seat) {
           this.otherLifeAt = this.now();
           this.lockstep.receive(e.seat, e.k, e.raw);
-          this.checkPlaysOn(e.k);
         } else if (!this.written.has(e.k) && !this.lockstep.adoptOwn(e.k, e.raw)) {
           // an own turn the database holds differently from what this screen already ran
           console.warn(`[versus] own turn ${e.k} in the database differs from the one this screen ran`);
@@ -349,17 +388,10 @@ export class LockstepMatch {
       case 'resume':
         this.setPaused(null);
         return;
-      case 'end': {
-        if (e.seat === this.seat) return;
-        const rec = parseEnd(e.raw);
-        if (rec?.w === BROKEN_END) {
-          this.finish({ kind: 'unfinished', why: 'broken' });
-          return;
-        }
-        this.otherEnd = rec;
-        if (this.ownWinner !== null && this.otherEnd !== null) this.resolveEnd();
+      case 'end':
+        // either seat's slot, the own one too: the other device may have filled it (see concede)
+        this.know(e.seat, e.raw);
         return;
-      }
       case 'quit': {
         if (!this.seated(e.by)) return;
         const winner = e.by === this.me ? this.otherSeat : this.seat;
@@ -370,8 +402,8 @@ export class LockstepMatch {
         if (!this.host && e.n > this.repairCount) this.pendingSync = e;
         return;
       case 'gone':
-        // a device deletes after both end records exist, and its own end comes first; a deletion
-        // without it is a give-up or a break, so it credits nobody, own end or not
+        // a device deletes only once the slots decide the match (a give-up stored first, or both
+        // ends), and the stream delivers in order: a deletion seen first credits nobody
         this.finish({ kind: 'unfinished', why: 'gone' });
         return;
       default:
@@ -486,8 +518,8 @@ export class LockstepMatch {
   private checkPausedSilence(): void {
     const silent = this.pausedSilence();
     this.maxSilent = Math.max(this.maxSilent, silent);
-    if (silent >= this.t.stall.unfinishedMs) this.finish({ kind: 'unfinished', why: 'silence' });
-    else this.showStage(stallStage(silent, this.t));
+    this.showStage(stallStage(silent, this.t));
+    if (silent >= this.t.stall.unfinishedMs) this.concede('silence');
   }
 
   // ---- hashes and repair (spec 6.5, 6.6) ----
@@ -518,6 +550,13 @@ export class LockstepMatch {
 
   private mismatch(m: { tick: number; own: number; other: number } | string | null): void {
     if (m && typeof m !== 'string') this.lastMismatch = m;
+    const hostEnd = this.hostEnd();
+    if (hostEnd) {
+      // the host's state has ended and is the authority: its end is this screen's end too
+      console.warn(`[versus] mismatch after the host's end${this.describe(m)}; taking the host's end`);
+      this.claimOwn(hostEnd.raw);
+      return;
+    }
     if (this.repairCount >= MAX_REPAIRS) {
       console.warn(`[versus] mismatch after ${MAX_REPAIRS} repairs, the match is broken${this.describe(m)}`);
       this.broken();
@@ -559,13 +598,8 @@ export class LockstepMatch {
     const sync = this.pendingSync!;
     this.pendingSync = null;
     if (sync.n <= this.repairCount) return;
-    if (this.ownEndRecord !== null) {
-      // this screen already wrote an end from a state the host now overrules; the record is
-      // write-once and cannot be taken back, so nobody wins (the host sees the same, see tryStep)
-      console.warn(`[versus] repair s${sync.n} came after this screen wrote its end at tick ${String(this.ownEndRecord.t)}`);
-      this.broken();
-      return;
-    }
+    // once an end slot of this screen is claimed, its state no longer matters: the slots decide
+    if (this.ending()) return;
     const was = this.match.state.tick;
     restoreInto(this.match, sync.snap);
     // ticks the host ran that this screen skips: their own taps ran there, so they leave pending()
@@ -591,128 +625,188 @@ export class LockstepMatch {
 
   // ---- end, stall, outcome ----
 
-  private ownEnd(winner: Winner): void {
-    if (this.ownWinner !== null) return;
-    this.ownWinner = winner;
-    const { state } = this.match;
-    this.ownEndRecord = { w: winner, t: state.tick, h: this.match.hash() };
-    this.writeRetrying({ kind: 'end', seat: this.seat, raw: JSON.stringify(this.ownEndRecord) });
-    if (this.otherEnd !== null) {
-      this.resolveEnd();
-    } else {
-      this.endTimer = this.later(() => this.finish({ kind: 'won', winner }), this.t.endWaitMs);
-    }
+  /** This screen steps no more: its own end slot is claimed (by its own write, or filled by the other). */
+  private ending(): boolean {
+    return this.ownClaim !== null || this.slots[this.seat] !== null;
   }
 
-  /** Both end records are in (spec 9): the same winner is the result; different winners show the host's. */
-  /**
-   * `tryStep` once this screen's state has a winner. A guest waiting for the host's snapshot
-   * waits on (its winner comes from a state it knows is wrong); a screen whose state was just
-   * restored to an ended one writes its end now; a host whose end is disputed waits for the
-   * other's end. Each of these waits counts towards the stall stages.
-   */
-  private atOwnEnd(winner: Winner): StepAnswer {
-    if (this.repairing === 'awaiting') {
-      // parked on a state it knows is wrong: the hash that shows the host the mismatch may still
-      // be waiting for a turn to ride on, and no turn is taken while the tick stands still
-      this.takeOneAhead();
-    }
-    if (this.repairing === 'awaiting' || this.endDisputed) {
-      this.waitOnOther();
-      return this.result ? { kind: 'over' } : { kind: 'wait', why: 'repair' };
-    }
-    this.ownEnd(winner);
-    return { kind: 'over' };
+  /** For the guest: the host's end record, when it is known and names a winner. */
+  private hostEnd(): EndSlot | null {
+    const s = this.slots[this.otherSeat];
+    return !this.host && s?.rec && isWinner(s.rec.w) ? s : null;
   }
 
   /**
-   * The other seat's turn `k` arrived after this screen ended at tick E. A device that ended at E
-   * too took its last turns at tick E: only those with `6k + 5 − delay < E`. A later turn means
-   * the other device is still playing, so the two states differ. The host's state is the authority:
-   * the host repairs from its ended state (the other then ends the same way) and waits for that
-   * end instead of crediting its own alone. A guest's end record is wrong and can never be
-   * rewritten, so it breaks; the host breaks too once it runs past that record's tick.
+   * Whether a guest that knows the host's end (tick E) takes it as its own instead of stepping on.
+   * It does whenever its own state cannot give the same end: it knows its state is wrong (it
+   * awaits a snapshot), it has a winner at another tick, or it reached E without one. It also does
+   * while paused: the match is over, and a pause must not hold the other device's result. Only a
+   * winner of its own at E itself is written as its own record (spec 9 compares the two).
    */
-  private checkPlaysOn(k: number): void {
-    const end = this.ownEndRecord;
-    if (end === null || this.result || typeof end.t !== 'number') return;
-    if (TURN_TICKS * k + TURN_TICKS - 1 - this.delay < end.t) return;
-    if (!this.host) {
-      console.warn(`[versus] the host plays on past this screen's end at tick ${end.t}`);
-      this.broken();
-      return;
-    }
-    if (this.endDisputed) return;
-    this.endDisputed = true;
-    if (this.endTimer !== null) {
-      this.timers.clear(this.endTimer);
-      this.handles.delete(this.endTimer);
-      this.endTimer = null;
-    }
-    this.mismatch(`the other screen plays on past this screen's end at tick ${end.t}`);
+  private takesHostEnd(end: EndSlot, winner: Winner | null, tick: number): boolean {
+    const t = end.rec!.t;
+    if (typeof t !== 'number' || this.repairing === 'awaiting') return true;
+    if (winner !== null) return tick !== t;
+    return tick >= t || this._pausedBy !== null;
+  }
+
+  /** The state has a winner: a guest that knows the host's end may take that; else its own record. */
+  private claimEnd(winner: Winner): void {
+    const { tick } = this.match.state;
+    const hostEnd = this.hostEnd();
+    if (hostEnd && this.takesHostEnd(hostEnd, winner, tick)) this.claimOwn(hostEnd.raw);
+    else this.claimOwn(JSON.stringify({ w: winner, t: tick, h: this.match.hash() }));
+  }
+
+  /**
+   * Writes `raw` into the own end slot, once. The slot is known when the write is answered `ok`;
+   * a refused write means the other device filled it first, and its value arrives on the stream.
+   * A host that wrote a winner fills the guest's slot with the same record if it is still empty
+   * after `endWaitMs` (the host's state is the authority; a guest that comes back takes it too).
+   */
+  private claimOwn(raw: string): void {
+    if (this.ending()) return;
+    this.ownClaim = raw;
+    this.writeRetrying({ kind: 'end', seat: this.seat, raw }, false, (answer) => {
+      if (answer === 'ok') this.know(this.seat, raw);
+    });
+    const rec = parseEnd(raw);
+    if (this.host && rec && isWinner(rec.w)) this.endTimer = this.later(() => this.fill(raw), this.t.endWaitMs);
     this.changed();
   }
 
-  /** The other's end record names a tick this screen has passed with no winner of its own. */
-  private otherEndPassed(): boolean {
-    const t = this.otherEnd?.t;
-    return this.ownWinner === null && typeof t === 'number' && this.match.state.tick > t;
+  /** Writes `raw` into the other seat's slot if it is still empty (write-once: the first value stays). */
+  private fill(raw: string): void {
+    if (this.result || this.fillClaim !== null || this.slots[this.otherSeat] !== null) return;
+    this.fillClaim = raw;
+    this.writeRetrying({ kind: 'end', seat: this.otherSeat, raw }, false, (answer) => {
+      if (answer === 'ok') this.know(this.otherSeat, raw);
+    });
   }
 
-  private resolveEnd(): void {
-    const own = this.ownEndRecord!;
-    const theirs = this.otherEnd!;
-    const other = theirs.w as Winner; // a broken end never gets here
-    if (own.w === other) {
-      if (own.t !== theirs.t || own.h !== theirs.h) {
-        console.warn(`[versus] the end records name the same winner but differ: own tick ${String(own.t)} hash ${String(own.h)}, other tick ${String(theirs.t)} hash ${String(theirs.h)}`);
-      }
-      this.finish({ kind: 'won', winner: own.w as Winner });
+  /** A seat's slot as the database holds it; the first value is the only one it can hold. */
+  private know(seat: Faction, raw: string): void {
+    if (this.slots[seat] !== null) return;
+    this.slots[seat] = { raw, rec: parseEnd(raw) };
+    if (seat !== this.seat || raw !== this.ownClaim) this.otherLifeAt = this.now(); // written by the other device
+    this.settleFromSlots();
+    this.changed();
+  }
+
+  /**
+   * The outcome from the two slots (spec 9), the same on both devices since both read the same
+   * write-once values: a slot with no winner ends the match unfinished whatever the other holds;
+   * two winners give `won` when they agree, else `disagree` with the host's shown.
+   */
+  private settleFromSlots(): void {
+    if (this.result) return;
+    const mine = this.slots[this.seat];
+    const theirs = this.slots[this.otherSeat];
+    if (noWinner(mine) || noWinner(theirs)) {
+      const gone = [mine, theirs].some((s) => s?.rec?.w === GONE_END);
+      this.finish({ kind: 'unfinished', why: this.conceding ?? (gone ? 'gone' : 'broken') });
+      if (this.conceding === 'flag') this.removeRetrying(); // the white flag deletes the match (spec 6.7)
       return;
     }
+    if (mine === null || theirs === null) return;
+    const own = mine.rec!;
+    const other = theirs.rec!;
     const ownW = own.w as Winner;
-    console.warn(`[versus] the end records disagree: own ${ownW}, other ${other}`);
-    this.finish({ kind: 'disagree', shown: this.host ? ownW : other });
+    const otherW = other.w as Winner;
+    if (ownW === otherW) {
+      if (own.t !== other.t || own.h !== other.h) {
+        console.warn(`[versus] the end records name the same winner but differ: own tick ${String(own.t)} hash ${String(own.h)}, other tick ${String(other.t)} hash ${String(other.h)}`);
+      }
+      this.finish({ kind: 'won', winner: ownW });
+      return;
+    }
+    console.warn(`[versus] the end records disagree: own ${ownW}, other ${otherW}`);
+    this.finish({ kind: 'disagree', shown: this.host ? ownW : otherW });
+  }
+
+  /**
+   * This device gives up (ten minutes of silence, the white flag, a broken match) and nobody may
+   * win. Settling at once could contradict the other device, which may be completing the end at
+   * this moment; so the give-up is a write into an empty slot, and the slots decide:
+   * - own slot empty: write `broken` (or `gone` for the flag) into it. A guest that knows the host's
+   *   end takes that instead (the host's end stands).
+   * - own slot claimed with a winner: write into the other's empty slot (the host: its own record,
+   *   which the guest would take anyway; the guest: `broken`).
+   * A refused write means that slot was filled first, and its value decides when it arrives.
+   */
+  private concede(why: 'broken' | 'flag' | 'silence'): void {
+    if (this.result || this.conceding !== null) return;
+    this.conceding = why;
+    const hostEnd = this.hostEnd();
+    const { tick } = this.match.state;
+    const marker = () => JSON.stringify({ w: why === 'flag' ? GONE_END : BROKEN_END, t: tick, h: this.match.hash() });
+    if (!this.ending()) {
+      this.claimOwn(hostEnd ? hostEnd.raw : marker());
+    } else if (this.slots[this.otherSeat] === null) {
+      const own = this.ownClaim === null ? null : parseEnd(this.ownClaim);
+      this.fill(this.host && own && isWinner(own.w) ? this.ownClaim! : marker());
+    }
+    this.settleFromSlots();
+    this.changed();
+  }
+
+  /** The match is broken (spec 6.6 step 5): nobody wins, and the other device goes home too. */
+  private broken(): void {
+    if (this.result) return;
+    if (this.ending()) {
+      // the own slot is already claimed: the slots decide, a break changes nothing
+      console.warn('[versus] broken after this screen claimed its end: the end records decide');
+      return;
+    }
+    this.concede('broken');
+  }
+
+  /**
+   * The host passed the tick named in the guest's end record with no winner of its own: the two
+   * states differ there.
+   */
+  private guestEndPassed(tick: number): boolean {
+    const t = this.slots[this.otherSeat]?.rec?.t;
+    return this.slots[this.otherSeat] !== null && (typeof t !== 'number' || tick >= t);
+  }
+
+  /**
+   * The guest awaits the host's snapshot and its drifted state has a winner: it waits (counted
+   * towards the stall stages) for the snapshot, the host's end or the other's give-up. The hash
+   * that shows the host the mismatch may still wait for a turn to ride on, and no turn is taken
+   * while the tick stands still: one more turn goes out.
+   */
+  private parked(): StepAnswer {
+    this.takeOneAhead();
+    this.waitOnOther();
+    return this.result ? { kind: 'over' } : { kind: 'wait', why: 'repair' };
+  }
+
+  /** The own slot is claimed: waits for the slots to decide, counted like any other wait. */
+  private waitForEnd(): StepAnswer {
+    if (!this.result) {
+      if (this._pausedBy !== null) {
+        this.endWait();
+        this.checkPausedSilence();
+      } else {
+        this.waitOnOther();
+      }
+    }
+    return { kind: 'over' };
   }
 
   private waitOnOther(): void {
     const now = this.now();
     if (this.waitingSince === null) this.waitingSince = now;
     const silent = now - this.waitingSince;
-    if (silent >= this.t.stall.unfinishedMs) {
-      this.finish({ kind: 'unfinished', why: 'silence' });
-      return;
-    }
     this.showStage(stallStage(silent, this.t));
+    if (silent >= this.t.stall.unfinishedMs) this.concede('silence');
   }
 
   private showStage(stage: StallStage): void {
     if (stage === this.shownStage) return;
     this.shownStage = stage;
     this.changed();
-  }
-
-  /**
-   * This match is broken (spec 6.6 step 5). The other device must go home too, not sit through
-   * the stall stages: the turns due go out, plus one more so a hash still waiting rides along (the
-   * other may then see the mismatch itself), and the end record names no winner but `broken`.
-   */
-  private broken(): void {
-    if (this.result) return;
-    this.takeOneAhead();
-    const { state } = this.match;
-    const rec: EndRecord = { w: BROKEN_END, t: state.tick, h: this.match.hash() };
-    if (this.ownWinner === null) {
-      this.writeRetrying({ kind: 'end', seat: this.seat, raw: JSON.stringify(rec) });
-    } else if (this.host) {
-      // the own end record is written (write-once), so it cannot say broken; the guest would
-      // play on to silence. Deleting the match is the one signal that credits nobody: it ends
-      // the guest's match unfinished at once. (A guest that breaks here needs no signal: the
-      // host breaks once it runs past the guest's end record.)
-      console.warn('[versus] broken after this screen wrote its end: the match is deleted');
-      this.removeRetrying();
-    }
-    this.finish({ kind: 'unfinished', why: 'broken' });
   }
 
   /**
