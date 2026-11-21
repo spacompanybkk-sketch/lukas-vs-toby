@@ -396,6 +396,92 @@ describe('LockstepMatch on an in-memory channel', () => {
     });
   });
 
+  describe.each([12, 13])('a winner from a drifted state (delay %i)', (delay) => {
+    const fall = (side: Faction) => (p: Peer) => { p.lm.match.state.baseHp[side] = 0; };
+    /** Whether a guest has found a mismatch and waits for the host's snapshot (no public view of it). */
+    const awaiting = (p: Peer) => (p.lm as unknown as { repairing: string }).repairing === 'awaiting';
+
+    it.each([100, 30])('a guest waiting for the snapshot writes no end and plays on from it (latency %i)', async (latency) => {
+      const { clock, store, a, b } = pair({}, { delay, latency });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const nudge = nudgeAt([300], (p) => { p.lm.match.state.players.plants.energy += 1; });
+      let fellAt = -1;
+      b.before = (p) => {
+        nudge(p);
+        if (fellAt < 0 && awaiting(p)) {
+          fall('plants')(p); // the drifted state ends the match
+          fellAt = p.lm.match.state.tick;
+        }
+      };
+      started(a, b);
+      await until(clock, [a, b], () => fellAt >= 0);
+      await frames(clock, [a, b], 600);
+      expect(store.has('end/zombies')).toBe(false);
+      expect(store.has('end/plants')).toBe(false);
+      expect(a.lm.outcome()).toBeNull();
+      expect(b.lm.outcome()).toBeNull();
+      expect([a.lm.repairs(), b.lm.repairs()]).toEqual([1, 1]);
+      expect(b.lm.match.state.winner).toBeNull(); // the snapshot replaced the drifted end
+      expect(b.lm.match.state.tick).toBeGreaterThan(fellAt + 300);
+      for (const t of [...a.hashes.keys()].filter((k) => k > fellAt + 60 && b.hashes.has(k))) {
+        expect(a.hashes.get(t), `tick ${t}`).toBe(b.hashes.get(t));
+      }
+    });
+
+    it('a guest that ended alone before any hash check credits nobody: both end broken', async () => {
+      const { clock, store, a, b } = pair({}, { delay });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      b.before = nudgeAt([100], fall('plants')); // the guest alone: it says zombies won at tick 101
+      const endedAt = new Map<Peer, number>();
+      for (const p of [a, b]) p.lm.onChange(() => { if (p.lm.outcome() && !endedAt.has(p)) endedAt.set(p, clock.now()); });
+      started(a, b);
+      await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null, 30 * 30);
+      expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(Math.abs(endedAt.get(a)! - endedAt.get(b)!)).toBeLessThanOrEqual(2000);
+      // the host saw the guest's end passed, or the guest saw the host play on: whichever came first
+      expect(warn.mock.calls.some((m) => /plays on past this screen's end|ran past it with no winner/.test(String(m[0])))).toBe(true);
+      // nothing more happens later: the outcomes stay
+      await frames(clock, [a, b], 600);
+      expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+      expect(JSON.parse(store.get('end/zombies')!)).toMatchObject({ w: 'zombies', t: 101 }); // written, never rewritten
+      expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'broken' });
+    });
+
+    it('a host that ended alone is the authority: it repairs, and both end with its winner', async () => {
+      const { clock, store, a, b } = pair({}, { delay });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      a.before = nudgeAt([100], fall('plants')); // the host alone: zombies win at tick 101
+      started(a, b);
+      await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null, 30 * 30);
+      expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'zombies' });
+      expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'zombies' });
+      expect([a.lm.repairs(), b.lm.repairs()]).toEqual([1, 1]);
+      expect(store.get('end/zombies')).toBe(store.get('end/plants'));
+      expect(JSON.parse(store.get('end/plants')!)).toMatchObject({ w: 'zombies', t: 101 });
+    });
+
+    it('both reaching the same end settle at once, as before', async () => {
+      const { clock, a, b } = pair({}, { delay });
+      let fellAt = -1;
+      const fallBoth = (p: Peer) => {
+        if (p.lm.match.state.tick === 95) {
+          fall('zombies')(p);
+          if (fellAt < 0) fellAt = clock.now();
+        }
+      };
+      a.before = fallBoth;
+      b.before = fallBoth;
+      started(a, b);
+      await until(clock, [a, b], () => a.lm.outcome() !== null && b.lm.outcome() !== null);
+      expect(a.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(b.lm.outcome()).toEqual({ kind: 'won', winner: 'plants' });
+      expect(clock.now() - fellAt).toBeLessThan(1000); // the other's end, not the 10 s wait
+      expect([a.lm.repairs(), b.lm.repairs()]).toEqual([0, 0]);
+    });
+  });
+
   describe('silence while paused (spec 6.8: no limit while both are present)', () => {
     it('has no limit while both devices are present', async () => {
       const { clock, a, b } = pair();

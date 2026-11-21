@@ -122,6 +122,8 @@ export class LockstepMatch {
   private ownEndRecord: EndRecord | null = null;
   private otherEnd: EndRecord | null = null;
   private endTimer: unknown = null;
+  /** The host saw the other device play on past its own end: it repaired, and waits for the other's end. */
+  private endDisputed = false;
 
   // taps and stalls
   private refusedIds: number[] = [];
@@ -165,7 +167,14 @@ export class LockstepMatch {
   tryStep(): StepAnswer {
     if (this.result) return { kind: 'over' };
     if (this.pendingSync) this.applySync();
-    if (this.match.state.winner !== null) return { kind: 'over' };
+    if (this.match.state.winner !== null) return this.atOwnEnd(this.match.state.winner);
+    if (this.host && this.otherEndPassed()) {
+      // the other device wrote an end for a tick this screen has run past without one: the two
+      // states differ, and that record can never be rewritten (write-once), so nobody wins
+      console.warn(`[versus] the other end record names tick ${String(this.otherEnd!.t)}; this screen ran past it with no winner`);
+      this.broken();
+      return { kind: 'over' };
+    }
     this.compareHashes();
     if (this.result) return { kind: 'over' };
     // every wait below counts towards the stall stages, so none can last unseen
@@ -212,7 +221,8 @@ export class LockstepMatch {
       // host's snapshot comes: they are not sent (the one already offered still goes)
       if (this.repairing !== 'awaiting') this.lockstep.offerHash(state.tick, hash);
     }
-    if (state.winner !== null) this.ownEnd(state.winner);
+    // a guest waiting for the host's snapshot knows its state is wrong: its winner is not one
+    if (state.winner !== null && this.repairing !== 'awaiting') this.ownEnd(state.winner);
     this.publishDue();
     if (mine.length > 0 || refused) this.changed();
     return events;
@@ -323,6 +333,7 @@ export class LockstepMatch {
         if (e.seat !== this.seat) {
           this.otherLifeAt = this.now();
           this.lockstep.receive(e.seat, e.k, e.raw);
+          this.checkPlaysOn(e.k);
         } else if (!this.written.has(e.k) && !this.lockstep.adoptOwn(e.k, e.raw)) {
           // an own turn the database holds differently from what this screen already ran
           console.warn(`[versus] own turn ${e.k} in the database differs from the one this screen ran`);
@@ -504,8 +515,8 @@ export class LockstepMatch {
     }
   }
 
-  private mismatch(m: { tick: number; own: number; other: number } | null): void {
-    if (m) this.lastMismatch = m;
+  private mismatch(m: { tick: number; own: number; other: number } | string | null): void {
+    if (m && typeof m !== 'string') this.lastMismatch = m;
     if (this.repairCount >= MAX_REPAIRS) {
       console.warn(`[versus] mismatch after ${MAX_REPAIRS} repairs, the match is broken${this.describe(m)}`);
       this.broken();
@@ -537,7 +548,8 @@ export class LockstepMatch {
     this.changed();
   }
 
-  private describe(m: { tick: number; own: number; other: number } | null): string {
+  private describe(m: { tick: number; own: number; other: number } | string | null): string {
+    if (typeof m === 'string') return `: ${m}`;
     return m ? `: hashes at tick ${m.tick} differ: own ${m.own}, other ${m.other}` : ': own turn differs from the database';
   }
 
@@ -546,6 +558,13 @@ export class LockstepMatch {
     const sync = this.pendingSync!;
     this.pendingSync = null;
     if (sync.n <= this.repairCount) return;
+    if (this.ownEndRecord !== null) {
+      // this screen already wrote an end from a state the host now overrules; the record is
+      // write-once and cannot be taken back, so nobody wins (the host sees the same, see tryStep)
+      console.warn(`[versus] repair s${sync.n} came after this screen wrote its end at tick ${String(this.ownEndRecord.t)}`);
+      this.broken();
+      return;
+    }
     const was = this.match.state.tick;
     restoreInto(this.match, sync.snap);
     // ticks the host ran that this screen skips: their own taps ran there, so they leave pending()
@@ -585,6 +604,55 @@ export class LockstepMatch {
   }
 
   /** Both end records are in (spec 9): the same winner is the result; different winners show the host's. */
+  /**
+   * `tryStep` once this screen's state has a winner. A guest waiting for the host's snapshot
+   * waits on (its winner comes from a state it knows is wrong); a screen whose state was just
+   * restored to an ended one writes its end now; a host whose end is disputed waits for the
+   * other's end. Each of these waits counts towards the stall stages.
+   */
+  private atOwnEnd(winner: Winner): StepAnswer {
+    if (this.repairing === 'awaiting' || this.endDisputed) {
+      this.waitOnOther();
+      return this.result ? { kind: 'over' } : { kind: 'wait', why: 'repair' };
+    }
+    this.ownEnd(winner);
+    return { kind: 'over' };
+  }
+
+  /**
+   * The other seat's turn `k` arrived after this screen ended at tick E. A device that ended at E
+   * too took its last turns at tick E: only those with `6k + 5 − delay < E`. A later turn means
+   * the other device is still playing, so the two states differ. The host's state is the authority:
+   * the host repairs from its ended state (the other then ends the same way) and waits for that
+   * end instead of crediting its own alone. A guest's end record is wrong and can never be
+   * rewritten, so it breaks; the host breaks too once it runs past that record's tick.
+   */
+  private checkPlaysOn(k: number): void {
+    const end = this.ownEndRecord;
+    if (end === null || this.result || typeof end.t !== 'number') return;
+    if (TURN_TICKS * k + TURN_TICKS - 1 - this.delay < end.t) return;
+    if (!this.host) {
+      console.warn(`[versus] the host plays on past this screen's end at tick ${end.t}`);
+      this.broken();
+      return;
+    }
+    if (this.endDisputed) return;
+    this.endDisputed = true;
+    if (this.endTimer !== null) {
+      this.timers.clear(this.endTimer);
+      this.handles.delete(this.endTimer);
+      this.endTimer = null;
+    }
+    this.mismatch(`the other screen plays on past this screen's end at tick ${end.t}`);
+    this.changed();
+  }
+
+  /** The other's end record names a tick this screen has passed with no winner of its own. */
+  private otherEndPassed(): boolean {
+    const t = this.otherEnd?.t;
+    return this.ownWinner === null && typeof t === 'number' && this.match.state.tick > t;
+  }
+
   private resolveEnd(): void {
     const own = this.ownEndRecord!;
     const theirs = this.otherEnd!;
