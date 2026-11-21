@@ -45,6 +45,28 @@ describe('BaseBar: a base the level makes safe (#1)', () => {
     expect(bar.hasAttribute('aria-valuenow')).toBe(false);
   });
 
+  it('the padlock is big enough to read: it spans the bar\'s full height over the bevel, on dark stone, and the bar\'s box is untouched', async () => {
+    act(() => render(<BaseBar faction="zombies" vm={{ hp: 1000, max: 1000, safe: true }} you={false} portrait={undefined} />, root));
+    expect(need('.hud-base__bar--safe svg').classList.contains('hud-base__lock')).toBe(true);
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(`${process.cwd()}/src/ui/hud/hud.css`, 'utf8');
+    const rule = (sel: string): string => {
+      const m = css.match(new RegExp(`(?:^|\\n)${sel.replace(/[.-]/g, (c) => `\\${c}`)} \\{([^}]*)\\}`));
+      if (m === null) throw new Error(`no rule ${sel}`);
+      return m[1]!;
+    };
+    const lock = rule('.hud-base__lock');
+    // The bar's inner height loses the bevel on both sides; the lock takes it back (12 art pixels over the whole bar).
+    expect(lock).toMatch(/height: calc\(100% \+ 2 \* var\(--px-bev\)\);/);
+    expect(lock).toMatch(/margin-block: calc\(var\(--px-bev\) \* -1\);/);
+    expect(lock).toMatch(/aspect-ratio: 1;/);
+    const safe = rule('.hud-base__bar--safe');
+    // Dark stone, so the yellow lock and its ink outline stand out.
+    expect(safe).toMatch(/--fill: var\(--c-stone-lo\);/);
+    // The box stays the normal bar's: no size, padding or margin of its own.
+    expect(safe).not.toMatch(/(^|[\s;])(width|height|padding|margin|min-|max-)/);
+  });
+
   it('a normal bar is exactly what it was: no data-safe, the fill and its health colour', () => {
     act(() => render(<BaseBar faction="zombies" vm={{ hp: 400, max: 1000, safe: false }} you={false} portrait={undefined} />, root));
     expect(root.innerHTML).toBe(

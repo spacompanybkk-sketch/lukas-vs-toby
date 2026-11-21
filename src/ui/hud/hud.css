@@ -161,16 +161,25 @@
   inset: var(--px-bev);
   background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(26, 16, 8, 0.45) calc(10% - 2px) 10%);
 }
-/* A base the level makes safe: a stone bar with a padlock in the middle, no health to show. */
+/* A base the level makes safe: a dark stone bar with a padlock in the middle, no health to show.
+ * The bar keeps the normal bar's box; the lock spans its full height (over the bevel step), so its
+ * 12 art pixels stay crisp on the short iPad bar, and the dark stone lets its yellow and ink stand out. */
 .hud-base__bar--safe {
-  --fill: var(--c-stone);
-  --hi: var(--c-stone-hi);
-  --lo: var(--c-stone-lo);
+  --fill: var(--c-stone-lo);
+  --hi: var(--c-stone);
+  --lo: #4b525c;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.hud-base__lock { display: block; height: 100%; width: auto; aspect-ratio: 1; }
+.hud-base__lock {
+  display: block;
+  flex: none;
+  height: calc(100% + 2 * var(--px-bev));
+  margin-block: calc(var(--px-bev) * -1);
+  width: auto;
+  aspect-ratio: 1;
+}
 
 /* ---- Pause button ---- */
 .hud-pause { --ico-size: calc(max(var(--tap-min), var(--hud-h)) * 0.52); }
