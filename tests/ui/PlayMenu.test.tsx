@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { session } from '../../src/app/session';
 import { go, screen } from '../../src/app/store';
 import { FakeDatabase } from '../../src/cloud/fakeCloud';
 import { createFakeCloud } from '../../src/cloud/restClient';
 import type { CardKey } from '../../src/sim/types';
 import { App } from '../../src/ui/App';
+import { PlayMenu } from '../../src/ui/screens/PlayMenu';
+import { TABLETS_SWORDS } from '../../src/ui/versus/pictures';
 import { ADVENTURE_PICTURES, ENDLESS } from '../../src/ui/screens/adventurePictures';
 import { pixelPaths } from '../../src/ui/hud/PixelIcon';
 import { setUiSound } from '../../src/ui/uiSound';
@@ -67,8 +69,9 @@ describe('Play menu', () => {
     tap('[data-home="play"]');
     expect(screen.value.name).toBe('play');
     const modes = [...root.querySelectorAll<HTMLElement>('[data-play]')];
-    expect(modes.map((m) => m.dataset.play)).toEqual(['adventure', 'quick', 'free']);
-    for (const m of modes) {
+    // (The fourth tile, Versus, has its own tests below.)
+    expect(modes.map((m) => m.dataset.play)).toEqual(['adventure', 'quick', 'free', 'versus']);
+    for (const m of modes.slice(0, 3)) {
       expect(m.querySelector('svg.pixel-icon')).not.toBeNull();
       expect(m.textContent?.trim()).toBe(m.getAttribute('aria-label')); // the picture and its name
       expect(m.hasAttribute('data-locked')).toBe(false);
@@ -151,6 +154,65 @@ describe('Play menu', () => {
     tap('[data-action="back"]');
     tap('[data-action="back"]');
     expect(screen.value.name).toBe('title');
+  });
+});
+
+describe('the Versus tile', () => {
+  const tile = '[data-play="versus"]';
+  const drawn = (sel: string): string[] => [...need(sel).querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+  const menu = (versus?: { allowed: boolean; onOpen(): void }): void =>
+    void act(() => render(versus === undefined ? <PlayMenu /> : <PlayMenu versus={versus} />, root));
+
+  it('a fourth tile: two tablets with crossed swords, named Versus', async () => {
+    await player();
+    menu({ allowed: true, onOpen: () => {} });
+    expect([...root.querySelectorAll<HTMLElement>('[data-play]')].map((m) => m.dataset.play)).toEqual(['adventure', 'quick', 'free', 'versus']);
+    expect(drawn(`${tile} .play__pic`)).toEqual(pixelPaths(TABLETS_SWORDS).map((p) => p.d));
+    expect(need(tile).getAttribute('aria-label')).toBe('Versus');
+    expect(need(`${tile} [data-play-name]`).textContent).toBe('Versus');
+  });
+
+  it('allowed: no padlock, a tap clicks and opens', async () => {
+    await player();
+    const onOpen = vi.fn();
+    menu({ allowed: true, onOpen });
+    expect(need(tile).hasAttribute('data-locked')).toBe(false);
+    expect(q(`${tile} [data-player-lock]`)).toBeNull();
+    tap(tile);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(sounds.at(-1)).toBe('click');
+    expect(screen.value.name).not.toBe('sidepick');
+  });
+
+  it('not allowed: the padlock badge; a tap buzzes and nudges, and opens nothing', async () => {
+    await player();
+    const onOpen = vi.fn();
+    menu({ allowed: false, onOpen });
+    const b = need(tile);
+    expect(b.hasAttribute('data-locked')).toBe(true);
+    expect(q(`${tile} [data-player-lock]`)).not.toBeNull();
+    tap(tile);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(sounds.at(-1)).toBe('deny');
+    expect(b.className).toMatch(/is-nudged-a/);
+    tap(tile);
+    expect(b.className).toMatch(/is-nudged-b/);
+  });
+
+  it('without the Versus props (as App renders it until the lobby is wired) the tile shows locked', async () => {
+    await player();
+    menu();
+    expect(need(tile).hasAttribute('data-locked')).toBe(true);
+    tap(tile);
+    expect(sounds.at(-1)).toBe('deny');
+  });
+
+  it('the other three tiles are unchanged beside it', async () => {
+    await player();
+    menu({ allowed: false, onOpen: () => {} });
+    for (const mode of ['adventure', 'quick', 'free']) expect(need(`[data-play="${mode}"]`).hasAttribute('data-locked')).toBe(false);
+    tap('[data-play="quick"]');
+    expect(screen.value.name).toBe('sidepick');
   });
 });
 

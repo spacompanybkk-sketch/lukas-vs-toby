@@ -3,6 +3,8 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PauseMenu, QUIT_CONFIRM_MS } from '../../src/ui/hud/PauseMenu';
+import { pixelPaths } from '../../src/ui/hud/PixelIcon';
+import { WHITE_FLAG } from '../../src/ui/versus/pictures';
 
 let root: HTMLElement;
 const props = { onResume: vi.fn(), onRestart: vi.fn(), onSettings: vi.fn(), onQuit: vi.fn() };
@@ -61,6 +63,23 @@ describe('PauseMenu', () => {
     expect(quit().classList.contains('is-armed')).toBe(false);
     act(() => quit().click());
     expect(props.onQuit).not.toHaveBeenCalled();
+  });
+
+  it('in Versus (quitKind flag) Quit is a white flag where the door was, and still takes two taps', () => {
+    const flagPaths = pixelPaths(WHITE_FLAG).map((p) => p.d);
+    const drawnOn = (el: Element): string[] => [...el.querySelectorAll('path')].map((p) => p.getAttribute('d') ?? '');
+    expect(quit().querySelector('[data-quit-kind="flag"]')).toBeNull();
+    act(() => render(<PauseMenu {...props} quitKind="flag" />, root));
+    const flag = quit().querySelector('[data-quit-kind="flag"]');
+    expect(flag).not.toBeNull();
+    expect(drawnOn(flag as Element)).toEqual(flagPaths);
+    expect(quit().querySelector('[data-quit-to]')).toBeNull();
+    expect(quit().querySelector('.ico--home')).toBeNull();
+    act(() => quit().click());
+    expect(props.onQuit).not.toHaveBeenCalled();
+    expect(quit().classList.contains('is-armed')).toBe(true);
+    act(() => quit().click());
+    expect(props.onQuit).toHaveBeenCalledTimes(1);
   });
 
   it('the other buttons work with one tap and disarm Quit', () => {

@@ -13,11 +13,16 @@ import { LOCK } from './pictures';
 import './players.css';
 import './adventure.css';
 import { BackButton } from '../BackButton';
+import { TABLETS_SWORDS } from '../versus/pictures';
+import '../versus/versus.css';
 
-type Mode = 'adventure' | 'quick' | 'free';
+type Mode = 'adventure' | 'quick' | 'free' | 'versus';
 
-/** The names under the three pictures (also each tile's aria-label); shown in capitals by the stylesheet. */
-const MODE_NAME: Record<Mode, string> = { adventure: 'Adventure', quick: 'Quick Battle', free: 'Free Play' };
+/** The Versus tile's wiring (the lobby's): whether this player may play Versus, and what opening it does. */
+export interface VersusTileProps { allowed: boolean; onOpen(): void }
+
+/** The names under the four pictures (also each tile's aria-label); shown in capitals by the stylesheet. */
+const MODE_NAME: Record<Mode, string> = { adventure: 'Adventure', quick: 'Quick Battle', free: 'Free Play', versus: 'Versus' };
 
 function ModeName({ mode }: { mode: Mode }) {
   return <span class="play__name inked" data-play-name={mode}>{MODE_NAME[mode]}</span>;
@@ -34,29 +39,33 @@ function PlayerLock() {
 }
 
 /**
- * The Play menu: three big picture buttons. Adventure (a path up to a flag), Quick Battle (crossed
+ * The Play menu: four big picture buttons. Adventure (a path up to a flag), Quick Battle (crossed
  * swords and a robot: the side pick and a computer), Free Play (zombie heads growing under an arrow). A guest (nobody logged in)
  * has Quick Battle only: the other two carry a player picture with a padlock and refuse with a buzz.
+ * Versus (two tablets with crossed swords) opens the lobby when `versus.allowed`; otherwise (and
+ * without `versus`, and for a guest) it carries the same padlock and buzzes.
  */
-export function PlayMenu() {
+export function PlayMenu({ versus }: { versus?: VersusTileProps } = {}) {
   const me = session.player.value;
   const guest = me === null;
+  const versusLocked = guest || versus?.allowed !== true;
   const [nudge, setNudge] = useState<{ mode: Mode; n: number } | null>(null);
   const choose = (mode: Mode): void => {
-    if (guest && mode !== 'quick') {
+    if (mode === 'versus' ? versusLocked : guest && mode !== 'quick') {
       uiSound('deny');
       setNudge((was) => ({ mode, n: (was?.n ?? 0) + 1 }));
       return;
     }
     uiSound('click');
-    if (mode === 'quick') go({ name: 'sidepick' });
+    if (mode === 'versus') versus?.onOpen();
+    else if (mode === 'quick') go({ name: 'sidepick' });
     else go({ name: 'side', mode });
   };
   const hop = (mode: Mode): string => (nudge?.mode === mode ? (nudge.n % 2 === 1 ? ' is-nudged-a' : ' is-nudged-b') : '');
   return (
     <div data-screen="play" class="layer layer--menu play">
       <BackButton data-action="back" class="screen-back" onClick={() => { uiSound('click'); go({ name: guest ? 'title' : 'home' }); }} />
-      <div class="play__modes">
+      <div class="play__modes play__modes--four">
         <button
           type="button" data-play="adventure" aria-label={MODE_NAME.adventure} data-locked={guest ? '' : undefined}
           class={`btn play__mode pal-leaf${guest ? ' is-locked' : ''}${hop('adventure')}`} onClick={() => choose('adventure')}
@@ -82,6 +91,14 @@ export function PlayMenu() {
           <span class="play__pic"><PixelIcon art={ENDLESS} class="play__art" /></span>
           <ModeName mode="free" />
           {guest && <PlayerLock />}
+        </button>
+        <button
+          type="button" data-play="versus" aria-label={MODE_NAME.versus} data-locked={versusLocked ? '' : undefined}
+          class={`btn play__mode pal-purple${versusLocked ? ' is-locked' : ''}${hop('versus')}`} onClick={() => choose('versus')}
+        >
+          <span class="play__pic"><PixelIcon art={TABLETS_SWORDS} class="play__art" /></span>
+          <ModeName mode="versus" />
+          {versusLocked && <PlayerLock />}
         </button>
       </div>
     </div>

@@ -3,6 +3,7 @@ import type { ComponentChildren } from 'preact';
 import { PixelIcon } from './PixelIcon';
 import type { PixelArt } from './PixelIcon';
 import { PATH_FLAG } from '../screens/adventurePictures';
+import { WHITE_FLAG } from '../versus/pictures';
 import './hud.css';
 
 export interface PauseMenuProps {
@@ -15,6 +16,8 @@ export interface PauseMenuProps {
   bank?: ComponentChildren;
   /** Where Quit leads, drawn on it: home (a house, the default) or the Adventure map (the path with its flag). */
   quitTo?: 'home' | 'map';
+  /** What Quit is: leaving (the door, the default; its picture is `quitTo`) or, in Versus, giving up (a white flag). */
+  quitKind?: 'door' | 'flag';
 }
 
 /** How long an armed Quit waits for its second tap before it goes back to normal. */
@@ -43,7 +46,7 @@ const TICK: PixelArt = {
  * Dimmed overlay with four big picture buttons (three without Restart); Resume is the biggest. Quit takes two taps (the
  * first shows a tick on it), so a stray finger never throws a match away.
  */
-export function PauseMenu({ onResume, onRestart, onSettings, onQuit, bank, quitTo = 'home' }: PauseMenuProps) {
+export function PauseMenu({ onResume, onRestart, onSettings, onQuit, bank, quitTo = 'home', quitKind = 'door' }: PauseMenuProps) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return undefined;
@@ -72,11 +75,13 @@ export function PauseMenu({ onResume, onRestart, onSettings, onQuit, bank, quitT
             aria-label={armed ? 'Quit: tap again' : 'Quit'}
             onClick={() => { if (armed) onQuit(); else setArmed(true); }}
           >
-            {quitTo === 'map'
-              ? <span class="pause__where" data-quit-to="map" aria-hidden="true"><PixelIcon art={PATH_FLAG} /></span>
-              : <span class="ico ico--home" data-quit-to="home" aria-hidden="true" />}
+            {quitKind === 'flag'
+              ? <span class="pause__where" data-quit-kind="flag" aria-hidden="true"><PixelIcon art={WHITE_FLAG} /></span>
+              : quitTo === 'map'
+                ? <span class="pause__where" data-quit-to="map" aria-hidden="true"><PixelIcon art={PATH_FLAG} /></span>
+                : <span class="ico ico--home" data-quit-to="home" aria-hidden="true" />}
             {armed && <PixelIcon art={TICK} class="pause__tick" />}
-            <span class="btn__label inked">Quit</span>
+            <span class="btn__label inked">{quitKind === 'flag' ? 'Give up' : 'Quit'}</span>
           </button>
         </div>
         {armed && bank !== undefined && <div class="pause__bank" data-bank>{bank}</div>}
