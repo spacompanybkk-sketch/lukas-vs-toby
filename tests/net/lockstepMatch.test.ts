@@ -24,9 +24,10 @@ interface Peer {
   /** Called before each `tryStep`: taps, nudges. */
   before?: (p: Peer) => void;
   stepping: boolean;
-  /** Frames this peer has seen; with `lagFrames`, it steps only every other frame until then. */
+  /** Frames this peer has seen; until `lagFrames` it skips every `lagEvery`-th frame. */
   frames: number;
   lagFrames: number;
+  lagEvery: number;
 }
 
 type Wrap = (c: MatchChannel) => MatchChannel;
@@ -42,7 +43,7 @@ function pair(wrap: Partial<Record<Faction, Wrap>> = {}, { delay = 12, latency =
       me: SETUP.seats[seat], other: SETUP.seats[seat === 'plants' ? 'zombies' : 'plants'],
       channel: wrap[seat]?.(raw) ?? raw, now: () => clock.now(), timers: clock,
     });
-    return { lm, hashes: new Map(), last: null, spawned: { plants: 0, zombies: 0 }, stepping: true, frames: 0, lagFrames: 0 };
+    return { lm, hashes: new Map(), last: null, spawned: { plants: 0, zombies: 0 }, stepping: true, frames: 0, lagFrames: 0, lagEvery: 2 };
   };
   return { clock, store: link.store, a: make('plants'), b: make('zombies') };
 }
@@ -58,7 +59,7 @@ async function frame(clock: VirtualClock, peers: Peer[], ms = FRAME): Promise<vo
   for (const p of peers) {
     if (!p.stepping) continue;
     p.frames++;
-    if (p.frames < p.lagFrames && p.frames % 2 === 1) continue;
+    if (p.frames < p.lagFrames && p.frames % p.lagEvery === 0) continue;
     p.before?.(p);
     const answer = p.lm.tryStep();
     p.last = answer;
@@ -480,6 +481,75 @@ describe('LockstepMatch on an in-memory channel', () => {
       expect(clock.now() - fellAt).toBeLessThan(1000); // the other's end, not the 10 s wait
       expect([a.lm.repairs(), b.lm.repairs()]).toEqual([0, 0]);
     });
+  });
+
+  describe.each([
+    { delay: 13, every: 2 }, { delay: 13, every: 3 }, { delay: 9, every: 2 }, { delay: 9, every: 3 },
+  ])('a lagging guest parked on a drifted winner (delay $delay, skipping every $every-th frame)', ({ delay, every }) => {
+    it('still sends the hash that shows the host the mismatch, and the repair goes on', async () => {
+      const { clock, store, a, b } = pair({}, { delay, latency: 30 });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      b.lagFrames = 900;
+      b.lagEvery = every;
+      const inner = (p: Peer) => p.lm as unknown as { repairing: string; lockstep: { hash: unknown } };
+      const nudge = nudgeAt([300], (p) => { p.lm.match.state.players.plants.energy += 1; });
+      let fellAt = -1;
+      let sawAwaiting = false;
+      b.before = (p) => {
+        nudge(p);
+        if (!sawAwaiting && inner(p).repairing === 'awaiting') {
+          sawAwaiting = true;
+          // the review's condition: awaiting while its own hash has not ridden out on a turn yet
+          if (inner(p).lockstep.hash !== null) {
+            p.lm.match.state.baseHp.plants = 0;
+            fellAt = clock.now();
+          }
+        }
+      };
+      started(a, b);
+      await until(clock, [a, b], () => sawAwaiting);
+      expect(fellAt).toBeGreaterThanOrEqual(0); // the trap was set
+      await until(clock, [a, b], () => a.lm.repairs() === 1 && b.lm.repairs() === 1);
+      expect(clock.now() - fellAt).toBeLessThan(2000);
+      expect(b.lm.match.state.winner).toBeNull();
+      const ticks = [a.lm.match.state.tick, b.lm.match.state.tick];
+      await frames(clock, [a, b], 300);
+      expect(a.lm.match.state.tick).toBeGreaterThan(ticks[0]! + 100);
+      expect(b.lm.match.state.tick).toBeGreaterThan(ticks[1]! + 100);
+      expect(store.has('end/zombies')).toBe(false);
+      expect([a.lm.outcome(), b.lm.outcome()]).toEqual([null, null]);
+      expect([a.lm.repairs(), b.lm.repairs()]).toEqual([1, 1]);
+    });
+  });
+
+  it.each([12, 13])('a host that breaks after writing its end deletes the match: the guest ends at once (delay %i)', async (delay) => {
+    const refuseSync: Wrap = (ch) => ({
+      publishTurns: ch.publishTurns.bind(ch), listen: ch.listen.bind(ch), remove: ch.remove.bind(ch),
+      write: (rec, opts) => (rec.kind === 'sync' ? Promise.resolve('refused') : ch.write(rec, opts)),
+    });
+    const { clock, store, a, b } = pair({ plants: refuseSync }, { delay });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    a.before = nudgeAt([100], (p) => { p.lm.match.state.baseHp.plants = 0; }); // the host ends alone; its repair is refused
+    started(a, b);
+    await until(clock, [a, b], () => a.lm.outcome() !== null, 30 * 30);
+    const brokeAt = clock.now();
+    expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'broken' });
+    await until(clock, [a, b], () => b.lm.outcome() !== null, 30);
+    expect(clock.now() - brokeAt).toBeLessThanOrEqual(1000);
+    expect(b.lm.outcome()).toEqual({ kind: 'unfinished', why: 'gone' });
+    expect(store.size).toBe(0);
+    expect(warn.mock.calls.some((m) => /the match is deleted/.test(String(m[0])))).toBe(true);
+  });
+
+  it('a deletion before the other\'s end record credits nobody, own end or not', async () => {
+    const { clock, a, b } = pair();
+    a.before = nudgeAt([95], (p) => { p.lm.match.state.baseHp.zombies = 0; });
+    b.before = (p) => { if (p.lm.match.state.tick >= 90) p.stepping = false; };
+    started(a, b);
+    await until(clock, [a, b], () => a.lm.match.state.winner !== null);
+    b.lm.giveUp();
+    await frames(clock, [a], 15);
+    expect(a.lm.outcome()).toEqual({ kind: 'unfinished', why: 'gone' });
   });
 
   describe('silence while paused (spec 6.8: no limit while both are present)', () => {

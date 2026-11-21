@@ -370,8 +370,9 @@ export class LockstepMatch {
         if (!this.host && e.n > this.repairCount) this.pendingSync = e;
         return;
       case 'gone':
-        if (this.ownWinner !== null) this.finish({ kind: 'won', winner: this.ownWinner });
-        else this.finish({ kind: 'unfinished', why: 'gone' });
+        // a device deletes after both end records exist, and its own end comes first; a deletion
+        // without it is a give-up or a break, so it credits nobody, own end or not
+        this.finish({ kind: 'unfinished', why: 'gone' });
         return;
       default:
         return; // ready, again, link: not this layer's business
@@ -611,6 +612,11 @@ export class LockstepMatch {
    * other's end. Each of these waits counts towards the stall stages.
    */
   private atOwnEnd(winner: Winner): StepAnswer {
+    if (this.repairing === 'awaiting') {
+      // parked on a state it knows is wrong: the hash that shows the host the mismatch may still
+      // be waiting for a turn to ride on, and no turn is taken while the tick stands still
+      this.takeOneAhead();
+    }
     if (this.repairing === 'awaiting' || this.endDisputed) {
       this.waitOnOther();
       return this.result ? { kind: 'over' } : { kind: 'wait', why: 'repair' };
@@ -693,16 +699,33 @@ export class LockstepMatch {
    */
   private broken(): void {
     if (this.result) return;
+    this.takeOneAhead();
+    const { state } = this.match;
+    const rec: EndRecord = { w: BROKEN_END, t: state.tick, h: this.match.hash() };
+    if (this.ownWinner === null) {
+      this.writeRetrying({ kind: 'end', seat: this.seat, raw: JSON.stringify(rec) });
+    } else if (this.host) {
+      // the own end record is written (write-once), so it cannot say broken; the guest would
+      // play on to silence. Deleting the match is the one signal that credits nobody: it ends
+      // the guest's match unfinished at once. (A guest that breaks here needs no signal: the
+      // host breaks once it runs past the guest's end record.)
+      console.warn('[versus] broken after this screen wrote its end: the match is deleted');
+      this.removeRetrying();
+    }
+    this.finish({ kind: 'unfinished', why: 'broken' });
+  }
+
+  /**
+   * Publishes the turns due and one turn more, so a hash still waiting for a turn goes out even
+   * though the tick stands still. Taking it again at the same tick takes nothing.
+   */
+  private takeOneAhead(): void {
     this.publishDue();
     for (const turn of this.lockstep.takeDue(this.match.state.tick + TURN_TICKS)) {
       this.written.add(turn.k);
       this.outbox.push(turn);
     }
     this.sendOutbox();
-    const { state } = this.match;
-    const rec: EndRecord = { w: BROKEN_END, t: state.tick, h: this.match.hash() };
-    if (this.ownWinner === null) this.writeRetrying({ kind: 'end', seat: this.seat, raw: JSON.stringify(rec) });
-    this.finish({ kind: 'unfinished', why: 'broken' });
   }
 
   private stopWaiting(): void {
