@@ -39,7 +39,6 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'off',
-    actionTimeout: 20_000, // a tap that cannot land fails with its reason, not with the test's timeout
     screenshot: 'only-on-failure',
   },
   projects: [

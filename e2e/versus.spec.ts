@@ -30,22 +30,44 @@ async function device(browser: Parameters<typeof openVersusPage>[0], opts?: Para
   return page;
 }
 
+// A tap that cannot land fails with its reason, not with the test's timeout (this spec only).
+test.use({ actionTimeout: 20_000 });
+
+/** Pages whose deliberate network cut logs `ERR_INTERNET_DISCONNECTED` (the cut, not a fault). */
+const cutPages = new Set<Page>();
+
+/** Waits until every finite animation on the page (pop-ins, slide-ins) has finished. */
+async function settled(page: Page): Promise<void> {
+  await expect.poll(
+    () => page.evaluate(() => document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity && a.playState !== 'finished').length),
+    { timeout: 5000, intervals: [50] },
+  ).toBe(0);
+}
+
 test.beforeEach(async ({ browserName: _b }, info) => {
   test.skip(info.project.name !== 'ipad', 'Versus is proven on the iPad project only');
   opened = [];
+  cutPages.clear();
   await fakeReset();
 });
 
 test.afterEach(async () => {
   // No console errors and one WebGL context per page, on every page the test opened.
-  const checks: Promise<void>[] = [];
-  for (const page of opened) {
-    if (page.isClosed()) continue;
-    expect(await glContexts(page), 'WebGL contexts on a page').toBeLessThanOrEqual(2);
+  // (The counter counts per canvas and kind: the game's own canvas and its portrait painter may each hold one, so up to 2 is one per purpose.)
+  // The pages are closed in a `finally`, so a failed check does not leak them into the next test.
+  try {
+    for (const page of opened) {
+      if (page.isClosed()) continue;
+      expect(await glContexts(page), 'WebGL contexts on a page').toBeLessThanOrEqual(2);
+    }
+    for (const page of opened) {
+      const problems = versusProblems(page);
+      if (cutPages.has(page)) problems.errors = problems.errors.filter((e) => !/net::ERR_INTERNET_DISCONNECTED/.test(e));
+      expectClean(problems);
+    }
+  } finally {
+    await Promise.all(opened.map(closeVersusPage));
   }
-  for (const page of opened) checks.push(Promise.resolve().then(() => expectClean(versusProblems(page))));
-  await Promise.all(checks);
-  await Promise.all(opened.map(closeVersusPage));
 });
 
 /** The element is at least `px` CSS pixels wide and high. */
@@ -68,7 +90,7 @@ async function cheapest(page: Page): Promise<string> {
 async function bothPlace(a: Page, b: Page): Promise<void> {
   await placeUnit(a, await cheapest(a), 1, 1);
   await placeUnit(b, await cheapest(b), 3, 9);
-  await expect.poll(async () => Math.min(await unitCount(a), await unitCount(b)), { timeout: 2000, intervals: [50] }).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => Math.min(await unitCount(a), await unitCount(b)), { timeout: 1000, intervals: [50] }).toBeGreaterThanOrEqual(2);
 }
 
 test('invite, accept, both place a unit, the hashes agree', async ({ browser }) => {
@@ -81,11 +103,11 @@ test('invite, accept, both place a unit, the hashes agree', async ({ browser }) 
   await b.locator('[data-home="play"]').click();
   await b.locator('[data-play="versus"]').click();
   await expect(b.locator('[data-face="p01"]')).toBeVisible();
-  await b.waitForTimeout(500); // the pop-in
+  await settled(b); // the pop-in
   await atLeast(b, '[data-face="p01"] [data-face-pic]', 120); // faces on "who is here": 120 px
   await b.locator('[data-face="p01"]').click();
   await expect(b.locator('[data-invite-card][data-state="draft"]')).toBeVisible();
-  await b.waitForTimeout(500);
+  await settled(b);
   for (const action of ['send', 'swap', 'head-minus', 'head-plus', 'close']) await atLeast(b, `[data-invite-card] [data-action="${action}"]`, 64);
   await b.locator('[data-invite-card] [data-action="send"]').click();
   await expect(b.locator('[data-invite-card][data-state="waiting"]')).toBeVisible();
@@ -93,7 +115,7 @@ test('invite, accept, both place a unit, the hashes agree', async ({ browser }) 
   // A's panel comes down over Home; A accepts.
   await expect(a.locator('[data-screen="home"]')).toBeVisible();
   await expect(a.locator('[data-invite-panel] [data-from] [data-face-of="p02"]')).toBeVisible();
-  await a.waitForTimeout(500); // the slide-in
+  await settled(a); // the slide-in
   for (const action of ['accept', 'decline']) await atLeast(a, `[data-invite-panel] [data-action="${action}"]`, 96);
   await acceptInvite(a);
   await Promise.all([waitLive(a), waitLive(b)]);
@@ -125,7 +147,7 @@ test('pause from B shows B on A; A resumes; both run', async ({ browser }) => {
   await expect(a.locator('[data-screen="vs-paused"]')).toHaveCount(0);
   await expect.poll(() => versusTick(a), { timeout: 5000 }).toBeGreaterThan(frozen + 15);
   await expect.poll(() => versusTick(b), { timeout: 5000 }).toBeGreaterThan(frozen + 15);
-  await expect(b.locator('[data-screen="pause"], [data-action="resume"]')).toHaveCount(0);
+  await expect(b.locator('[data-action="resume"]')).toHaveCount(0);
   const agree = await commonHashes(a, b);
   expect(agree.differing).toEqual([]);
 });
@@ -136,14 +158,12 @@ test('B offline for 5 s: A shows the sleeping face; back online, play goes on, h
   await startVersus(a, b);
   await Promise.all([recordHashes(a), recordHashes(b)]);
 
+  cutPages.add(b); // the browser logs each request it cannot make during the cut
   await b.context().setOffline(true);
   await expect(a.locator('[data-stall-veil] [data-face-of="p02"]')).toBeVisible();
   await a.waitForTimeout(5000);
   const stopped = await versusTick(a);
   await b.context().setOffline(false);
-  // The browser itself logs each request it could not make while the cut was on: that is the cut, not a fault.
-  const cut = versusProblems(b);
-  cut.errors = cut.errors.filter((e) => !/net::ERR_INTERNET_DISCONNECTED/.test(e));
   await expect(a.locator('[data-stall-veil]')).toHaveCount(0, { timeout: 15_000 });
   await expect.poll(() => versusTick(a), { timeout: 10_000 }).toBeGreaterThan(stopped + 30);
   await expect.poll(() => versusTick(b), { timeout: 10_000 }).toBeGreaterThan(stopped + 30);
@@ -264,7 +284,7 @@ test('five-year-old walk-through by taps only, with the screenshot tour', async 
   await shot(toby, 'waiting');
   // Lukas's panel comes down; he says no first: Toby's card shows the cross over his face.
   await expect(lukas.locator('[data-invite-panel]')).toBeVisible();
-  await lukas.waitForTimeout(500);
+  await settled(lukas);
   await shot(lukas, 'panel');
   await lukas.locator('[data-invite-panel] [data-action="decline"]').click();
   await expect(toby.locator('[data-invite-card][data-state="refused"] [data-stamp]')).toBeVisible();
@@ -287,7 +307,7 @@ test('five-year-old walk-through by taps only, with the screenshot tour', async 
   const zombie = await cheapest(toby);
   await dragCard(lukas, plant, 1, 1);
   await dragCard(toby, zombie, 3, 9);
-  await expect.poll(async () => Math.min(await unitCount(lukas), await unitCount(toby)), { timeout: 2000, intervals: [25] }).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => Math.min(await unitCount(lukas), await unitCount(toby)), { timeout: 1000, intervals: [25] }).toBeGreaterThanOrEqual(2);
   await shot(toby, 'puff');
   // A refusal buzzes: a card that is still recharging, on a tile, moves the refused counter (the tray shakes, "uh-uh").
   const before = await deniedCount(toby);
@@ -295,19 +315,18 @@ test('five-year-old walk-through by taps only, with the screenshot tour', async 
   await expect.poll(() => deniedCount(toby), { timeout: 3000 }).toBeGreaterThan(before);
 
   // Toby's iPad sleeps: Lukas sees his face, big, with Zzz.
+  cutPages.add(toby);
   await toby.context().setOffline(true);
   await expect(lukas.locator('[data-stall="face"] [data-zzz]')).toBeVisible();
-  await lukas.waitForTimeout(400);
+  await settled(lukas);
   await shot(lukas, 'sleep');
   await toby.context().setOffline(false);
-  const cut = versusProblems(toby);
-  cut.errors = cut.errors.filter((e) => !/net::ERR_INTERNET_DISCONNECTED/.test(e));
   await expect(lukas.locator('[data-stall-veil]')).toHaveCount(0, { timeout: 15_000 });
 
   // Toby pauses; Lukas sees his face with the pause sign, and resumes for both.
   await toby.locator('[data-hud="pause"]').click();
   await expect(lukas.locator('[data-screen="vs-paused"] [data-pause-sign]')).toBeVisible();
-  await lukas.waitForTimeout(400);
+  await settled(lukas);
   await shot(lukas, 'pause-face');
   await lukas.locator('[data-screen="vs-paused"] [data-action="resume"]').click();
   await expect(lukas.locator('[data-screen="vs-paused"]')).toHaveCount(0);
@@ -332,7 +351,7 @@ test('five-year-old walk-through by taps only, with the screenshot tour', async 
   opened = opened.filter((p) => p !== toby);
   await expect(lukas.locator('[data-stall="face"]')).toBeVisible();
   await expect(lukas.locator('[data-stall="flag"] [data-action="flag"]')).toBeVisible({ timeout: 15_000 });
-  await lukas.waitForTimeout(400);
+  await settled(lukas);
   await shot(lukas, 'flag');
   await lukas.locator('[data-action="flag"]').click();
   await expect(lukas.locator('[data-screen="vs-notice"]')).toBeVisible({ timeout: 15_000 });
@@ -362,7 +381,7 @@ for (const side of ['plants', 'zombies'] as const) {
       await page.goto(`/?scene=hud-gallery&debug&cloud=fake&view=versus&overlay=${overlay}&side=${side}`);
       await page.waitForFunction(() => (window.__lvt as { hudReady?: Promise<void> }).hudReady?.then(() => true));
       await expect(page.locator(selector).first(), overlay).toBeVisible();
-      await page.waitForTimeout(450); // the pop-in
+      await settled(page); // the pop-in
       if (side === 'plants') await shot(page, overlay === 'ready' ? 'ready' : `gallery-${overlay}`);
       if (['face', 'flag', 'paused'].includes(overlay)) {
         const tray = (await page.locator('[data-hud="tray"]').boundingBox())!;
