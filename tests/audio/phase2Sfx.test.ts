@@ -18,6 +18,8 @@ const LONG: SfxName[] = ['megaMower', 'boneStorm', 'thunderbolt', 'meteor'];
 const BOSS: SfxName[] = ['titanRoar', 'titanDefeat', 'oakCreak', 'oakDefeat', 'howlerHowl', 'howlerDefeat', 'melonCrack', 'melonDefeat'];
 /** Any boss's strike: checked in bossLooks.test.ts. */
 const STRIKE: SfxName[] = ['strikeWindup', 'strikeImpact'];
+/** Versus on two devices: an invite arriving. Checked below. */
+const VERSUS: SfxName[] = ['chime'];
 
 interface Render { length: number; peak: number; layered: number; sources: number }
 
@@ -41,7 +43,7 @@ function render(name: SfxName, pitch = 1): Render {
 
 describe('phase 2 sound effects', () => {
   it('the name list is exactly the phase 1 names plus the new ones', () => {
-    expect([...SFX_NAMES].sort()).toEqual([...PHASE1, ...SHORT, ...LONG, ...BOSS, ...STRIKE].sort());
+    expect([...SFX_NAMES].sort()).toEqual([...PHASE1, ...SHORT, ...LONG, ...BOSS, ...STRIKE, ...VERSUS].sort());
     expect(new Set(SFX_NAMES).size).toBe(SFX_NAMES.length);
     expect(SHORT).toHaveLength(32);
   });
@@ -85,5 +87,25 @@ describe('phase 2 sound effects', () => {
       return ctx.params.filter((p) => p.name === 'frequency').map((p) => p.events[0]!.value);
     };
     expect(Math.min(...freqs('spellReady'))).toBeGreaterThan(Math.max(...freqs('heroReady')));
+  });
+
+  it('chime: two square notes a rising fifth apart, under 400 ms, audible with headroom', () => {
+    for (const pitch of [1, 0.94, 1.06]) {
+      const r = render('chime', pitch);
+      expect(r.length).toBeGreaterThan(0.1);
+      expect(r.length).toBeLessThan(0.4);
+      expect(r.peak).toBeGreaterThan(0.04);
+      expect(r.peak).toBeLessThanOrEqual(0.6);
+    }
+    const ctx = new FakeAudioContext();
+    const v = new Voice(ctx as unknown as BaseAudioContext, ctx.destination as unknown as AudioNode, makeNoise(ctx as unknown as BaseAudioContext));
+    SFX.chime(v, 1, 1);
+    const oscs = ctx.sources().filter((s) => s.kind === 'oscillator');
+    expect(oscs).toHaveLength(2);
+    expect(oscs.map((o) => (o as unknown as { type: string }).type)).toEqual(['square', 'square']);
+    expect(oscs[1]!.startTime!).toBeGreaterThan(oscs[0]!.startTime!);
+    const freqs = ctx.params.filter((p) => p.name === 'frequency' && p.events.length > 0 && p.events[0]!.value > 100).map((p) => p.events[0]!.value);
+    expect(freqs).toHaveLength(2);
+    expect(freqs[1]! / freqs[0]!).toBeCloseTo(1.5, 2);
   });
 });

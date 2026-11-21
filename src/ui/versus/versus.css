@@ -1,0 +1,101 @@
+/* Versus on two devices: the Play menu's fourth tile, "who is here", the invite card and panel,
+ * the grown-up ticks. Tokens: ../theme.css. Sizes the tests rely on (faces, buttons) are inline. */
+
+.vs-here svg.pixel-icon, .vs-veil svg.pixel-icon, .vs-panel svg.pixel-icon, .vs-ticks svg.pixel-icon {
+  display: block; width: 100%; height: 100%;
+}
+
+/* ---- Play menu: four tiles fit one row at 1024 wide ---- */
+.play__modes--four .play__mode {
+  width: clamp(160px, min(20vw, 36vh), 280px);
+  height: clamp(160px, min(20vw, 36vh), 280px);
+}
+.play__modes--four .play__mode:nth-child(4) { animation-delay: 180ms; }
+.play__mode[data-play='versus'] .play__art { width: 92% !important; height: 70% !important; }
+
+/* ---- A face: picture in its frame, side icon on the corner, name underneath ---- */
+.vs-face { display: inline-flex; flex-direction: column; align-items: center; gap: 6px; }
+.vs-face__pic { position: relative; display: block; flex: none; }
+.vs-face__pic > .pic-frame { width: 100%; height: 100%; box-sizing: border-box; }
+.vs-face__side { position: absolute; right: -14px; bottom: -14px; --ico-size: 44px; }
+.vs-face__name {
+  max-width: 100%; font-family: var(--font-body); font-weight: 600; font-size: var(--fs-body);
+  line-height: 1.1; color: var(--ink); white-space: nowrap; overflow: hidden; text-align: center;
+}
+
+/* ---- Who is here ---- */
+.vs-here { place-items: center; }
+.vs-here__row { display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(16px, 3vw, 40px); padding: 0 var(--gutter-x); }
+.vs-here__face {
+  position: relative; flex-direction: column; padding: 14px 14px calc(var(--px-bev) + 10px);
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.vs-here__face.is-busy { filter: grayscale(0.85) brightness(0.75); }
+.vs-here__face.is-busy:active { transform: none; }
+.vs-here__badge { position: absolute; right: -12px; top: -12px; width: 48px; height: 48px; padding: 5px; }
+
+.vs-bench { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.vs-bench__seat { display: block; width: clamp(180px, 30vh, 260px); height: clamp(180px, 30vh, 260px); opacity: 0.85; }
+.vs-bench__glass { display: block; width: 72px; height: 72px; }
+.vs-bench__glass[data-anim='bounce'] { animation: vs-bounce 1400ms steps(4, end) infinite; }
+@keyframes vs-bounce { 0%, 100% { translate: 0 0; } 50% { translate: 0 -14px; } }
+
+/* ---- The invite card ---- */
+.vs-veil { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: var(--menu-dim); }
+.vs-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2.4vh, 24px);
+  padding: clamp(18px, 3vh, 32px) clamp(24px, 4vw, 48px); max-width: calc(100vw - 2 * var(--gutter-x));
+  animation: px-pop var(--t-pop) steps(4, end) both;
+}
+.vs-card[data-anim='shake'] { animation: vs-shake 480ms steps(6, end) 1 both; }
+.vs-card__close { position: absolute; top: -18px; right: -18px; padding: 8px; }
+.vs-card__faces { display: flex; align-items: center; gap: clamp(20px, 4vw, 56px); }
+.vs-card__face { position: relative; }
+.vs-card__swap, .vs-card__vs { width: 72px; height: 72px; padding: 8px; }
+.vs-card__vs { display: block; }
+.vs-card__send { min-width: 200px; padding: 10px 40px calc(var(--px-bev) + 10px); }
+.vs-card__send .vs-icon { width: 76px !important; height: 76px !important; }
+.vs-icon { width: 100%; height: 100%; }
+.btn .vs-icon { width: 70% !important; height: 70% !important; }
+
+.vs-card__face[data-anim='pulse'] { animation: vs-pulse 900ms steps(2, jump-none) infinite alternate; }
+.vs-card__face[data-anim='shake'] { animation: vs-shake 480ms steps(6, end) 1 both; }
+@keyframes vs-pulse { 0% { scale: 1; } 100% { scale: 1.08; } }
+@keyframes vs-shake { 0%, 100% { translate: 0; } 20% { translate: -14px; } 40% { translate: 14px; } 60% { translate: -10px; } 80% { translate: 8px; } }
+
+.vs-dots { position: absolute; left: 50%; bottom: -8px; translate: -50% 0; display: flex; gap: 8px; }
+.vs-dots__dot { width: 14px; height: 14px; background: var(--ink); animation: vs-dot 900ms steps(2, jump-none) infinite; }
+.vs-dots__dot:nth-child(2) { animation-delay: 300ms; }
+.vs-dots__dot:nth-child(3) { animation-delay: 600ms; }
+@keyframes vs-dot { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+.vs-stamp { position: absolute; inset: -12px -12px auto; height: calc(100% + 24px); display: block; animation: vs-stamp 200ms steps(3, end) both; }
+@keyframes vs-stamp { from { scale: 1.6; opacity: 0; } to { scale: 1; opacity: 1; } }
+
+/* ---- Head start: minus, five slots of sun or brain, plus ---- */
+.vs-head { display: flex; align-items: center; gap: 14px; }
+.vs-head__btn { width: 64px; padding: 8px; }
+.vs-head__pics { display: flex; align-items: center; gap: 6px; }
+.vs-head__pic { --ico-size: 40px; }
+.vs-head__empty { width: 40px; height: 40px; border: 3px dashed var(--c-cream-lo); box-sizing: border-box; }
+
+/* ---- The invite panel: full width, sliding in from the top ---- */
+.vs-panel {
+  position: fixed; top: var(--gutter-top); left: 0; right: 0; z-index: 20;
+  min-height: 160px; display: flex; align-items: center; justify-content: center;
+  animation: vs-slide 260ms steps(5, end) both;
+}
+@keyframes vs-slide { from { translate: 0 -110%; } to { translate: 0 0; } }
+.vs-panel__btn { position: absolute; top: 50%; translate: 0 -50%; padding: 12px; }
+.vs-panel__middle { display: flex; align-items: center; gap: 18px; padding: 10px 0; }
+.vs-panel__swords { display: block; width: 64px; height: 64px; }
+.vs-panel__head .vs-head__pic { --ico-size: 34px; }
+.vs-panel__head .vs-head__empty { width: 34px; height: 34px; }
+
+/* ---- Grown-up: who may play Versus ---- */
+.vs-ticks__title { display: flex; align-items: center; gap: 10px; }
+.vs-ticks__title-pic { width: 72px; height: 48px; }
+.grown__row.vs-ticks__row { grid-template-columns: auto 1fr auto; }
+.vs-ticks__box { width: 64px; min-width: 64px; height: 64px; padding: 8px; }
+.vs-ticks__box:disabled { filter: grayscale(0.4); cursor: default; }
+.vs-ticks__offline { display: block; width: 72px; height: 72px; padding: 8px; align-self: center; }

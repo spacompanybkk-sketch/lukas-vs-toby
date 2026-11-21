@@ -25,7 +25,9 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   // step 2: the world-2 bosses, two each as above
   | 'howlerHowl' | 'howlerDefeat' | 'melonCrack' | 'melonDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
-  | 'strikeWindup' | 'strikeImpact';
+  | 'strikeWindup' | 'strikeImpact'
+  // Versus on two devices: an invite arriving
+  | 'chime';
 
 export type Recipe = (v: Voice, t: number, p: number) => void;
 
@@ -159,6 +161,13 @@ function deny(v: Voice, t: number, p: number): void {
     const at = t + i * 0.11;
     tone(v, { type: 'triangle', freq: f * p, at, attack: 0.005, peak: 0.3, decay: 0.1 });
     tone(v, { type: 'square', freq: f * p, at, attack: 0.005, peak: 0.07, decay: 0.08, lowpass: 900 });
+  });
+}
+
+/** An invite arrives: a bright two-note "ding-DING", C5 then G5 (a rising fifth), square and soft. */
+function chime(v: Voice, t: number, p: number): void {
+  [523.25, 784.88].forEach((f, i) => {
+    tone(v, { type: 'square', freq: f * p, at: t + i * 0.12, attack: 0.005, peak: 0.12, decay: i === 0 ? 0.12 : 0.22 });
   });
 }
 
@@ -759,6 +768,7 @@ export const SFX: Record<SfxName, Recipe> = {
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
   titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, strikeWindup, strikeImpact,
+  chime,
 };
 
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];
