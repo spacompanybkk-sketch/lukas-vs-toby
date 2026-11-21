@@ -48,7 +48,7 @@ function hand(side: Faction, count: number): CardVM[] {
 function fakeSession(side: Faction, cards: CardVM[]): BattleSessionLike {
   const hud: HudSignals = {
     energy: signal(125), cards: signal(cards),
-    base: signal({ plants: { hp: 820, max: 1000 }, zombies: { hp: 640, max: 1000 } }),
+    base: signal({ plants: { hp: 820, max: 1000, safe: false }, zombies: { hp: 640, max: 1000, safe: false } }),
     seconds: signal(74), suddenDeath: signal(false), paused: signal(false),
     selected: signal<UnitKey | null>(cards[0]?.unit ?? null), shovel: signal(false),
     result: signal(null), denied: signal(0),

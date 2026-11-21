@@ -102,6 +102,30 @@ describe('the controller in a level', () => {
   });
 });
 
+describe('the base bars know a safe base (#1)', () => {
+  const safeIn = (id: string): { plants: boolean; zombies: boolean } => {
+    const ctl = new BattleController(levelOptions(prepareLevel(levelById(id)!, me(), 4, me().slot)));
+    const base = ctl.hud.base.peek();
+    return { plants: base.plants.safe, zombies: base.zombies.safe };
+  };
+
+  it('a plant survive level (p1-3) and a plant conveyor level (p1-5): the zombie base is safe, the plant base is not', () => {
+    expect(safeIn('p1-3')).toEqual({ plants: false, zombies: true });
+    expect(safeIn('p1-5')).toEqual({ plants: false, zombies: true });
+  });
+
+  it('a battle level (p1-1), a boss level (p1-8) and a zombie-side level (z1-3): neither base is safe', () => {
+    expect(safeIn('p1-1')).toEqual({ plants: false, zombies: false });
+    expect(safeIn('p1-8')).toEqual({ plants: false, zombies: false });
+    expect(safeIn('z1-3')).toEqual({ plants: false, zombies: false });
+  });
+
+  it('a Quick Battle: neither base is safe', () => {
+    const base = new BattleController({ playerFaction: 'plants', skill: 'easy', seed: 7 }).hud.base.peek();
+    expect([base.plants.safe, base.zombies.safe]).toEqual([false, false]);
+  });
+});
+
 describe('levelRecord: the stars from the end of the match', () => {
   it('a win with the base whole is 3 stars; at 60% 2; at 30% 1; a loss 0', () => {
     expect(levelRecord(playToEnd(p11()))).toMatchObject({ levelId: 'p1-1', side: 'plants', won: true, stars: 3 });

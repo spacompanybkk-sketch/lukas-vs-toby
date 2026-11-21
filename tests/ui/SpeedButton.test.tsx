@@ -47,7 +47,7 @@ describe('SpeedButton', () => {
 function fakeSession(speed?: SpeedLike): BattleSessionLike {
   const hud: HudSignals = {
     energy: signal(50), cards: signal([]),
-    base: signal({ plants: { hp: 1000, max: 1000 }, zombies: { hp: 1000, max: 1000 } }),
+    base: signal({ plants: { hp: 1000, max: 1000, safe: false }, zombies: { hp: 1000, max: 1000, safe: false } }),
     seconds: signal(0), suddenDeath: signal(false), paused: signal(false),
     selected: signal<UnitKey | null>(null), shovel: signal(false),
     result: signal<null | { winner: Faction | 'draw'; playerWon: boolean }>(null), denied: signal(0),

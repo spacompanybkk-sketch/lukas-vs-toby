@@ -1,5 +1,7 @@
 import type { BaseVM } from '../../app/BattleController';
 import type { Faction } from '../../sim/types';
+import { LOCK } from '../screens/pictures';
+import { PixelIcon } from './PixelIcon';
 import './hud.css';
 
 /** Portrait data URLs of the two boys, when rendered; otherwise flat chips with their initials. */
@@ -24,7 +26,7 @@ export const BOYS: Record<Faction, { name: string; key: keyof BoyPortraits }> = 
   zombies: { name: 'TOBY', key: 'toby' },
 };
 
-/** Lukas's base health top left and Toby's top right, each under his portrait chip. */
+/** Lukas's base health top left and Toby's top right, each under his portrait chip; a base the level makes safe shows a padlock instead. */
 export function BaseBars({ base, playerFaction, portraits = {} }: BaseBarsProps) {
   return (
     <>
@@ -42,20 +44,27 @@ export function BaseBar({ faction, vm, you, portrait }: BaseBarProps) {
   const boy = BOYS[faction];
   return (
     <div
-      data-hud={`base-${faction}`}
+      data-hud={`base-${faction}`} data-safe={vm.safe ? '' : undefined}
       class={`hud-base hud-base--${faction} side-${faction}${you ? ' is-player' : ''}`}
     >
       <span class="hud-base__chip chip px pal-side">
         {portrait !== undefined ? <img src={portrait} alt="" draggable={false} /> : <span aria-hidden="true">{boy.name.charAt(0)}</span>}
       </span>
       <span class="hud-base__name inked">{boy.name}</span>
-      <span
-        class={`hud-base__bar px hud-base__bar--${level}`}
-        role="meter" aria-label={`${boy.name} base`} aria-valuemin={0} aria-valuemax={vm.max} aria-valuenow={vm.hp}
-      >
-        <span class="hud-base__fill" style={{ width: `${frac * 100}%` }} />
-        <span class="hud-base__ticks" aria-hidden="true" />
-      </span>
+      {vm.safe ? (
+        // The level makes this base immune (the goal is the clock): a padlock on stone, no health.
+        <span class="hud-base__bar px hud-base__bar--safe" role="img" aria-label={`${boy.name} base is safe in this level`}>
+          <PixelIcon art={LOCK} class="hud-base__lock" />
+        </span>
+      ) : (
+        <span
+          class={`hud-base__bar px hud-base__bar--${level}`}
+          role="meter" aria-label={`${boy.name} base`} aria-valuemin={0} aria-valuemax={vm.max} aria-valuenow={vm.hp}
+        >
+          <span class="hud-base__fill" style={{ width: `${frac * 100}%` }} />
+          <span class="hud-base__ticks" aria-hidden="true" />
+        </span>
+      )}
     </div>
   );
 }

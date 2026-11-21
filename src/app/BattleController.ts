@@ -63,7 +63,11 @@ export interface CardVM {
   affordable: boolean; rechargeFraction: number;
 }
 
-export interface BaseVM { hp: number; max: number }
+/**
+ * A base's bar. `safe`: the level makes this base immune (the match config's `invulnerableBase`,
+ * the zombie base in a plant survive or conveyor level), so the bar shows a padlock, not health.
+ */
+export interface BaseVM { hp: number; max: number; safe: boolean }
 export type BattleResult = null | { winner: Faction | 'draw'; playerWon: boolean };
 
 export interface HudSignals {
@@ -313,7 +317,7 @@ export class BattleController {
     }
     this.hud = {
       energy: signal(0), cards: signal<CardVM[]>([]),
-      base: signal({ plants: { hp: 0, max: 0 }, zombies: { hp: 0, max: 0 } }),
+      base: signal({ plants: { hp: 0, max: 0, safe: false }, zombies: { hp: 0, max: 0, safe: false } }),
       seconds: signal(0), suddenDeath: signal(false), paused: signal(false),
       selected: signal<UnitKey | null>(null), shovel: signal(false),
       result: signal<BattleResult>(null), denied: signal(0),
@@ -1004,10 +1008,10 @@ export class BattleController {
     set(this.hud.seconds, Math.floor(s.tick / TICKS_PER_SECOND));
     set(this.hud.suddenDeath, s.suddenDeath);
 
-    const hp = (f: Faction): BaseVM => ({ hp: Math.max(0, s.baseHp[f]), max: s.baseMaxHp[f] });
+    const hp = (f: Faction): BaseVM => ({ hp: Math.max(0, s.baseHp[f]), max: s.baseMaxHp[f], safe: s.config.invulnerableBase === f });
     const base = { plants: hp('plants'), zombies: hp('zombies') };
     const old = this.hud.base.peek();
-    const changed = (f: Faction): boolean => old[f].hp !== base[f].hp || old[f].max !== base[f].max;
+    const changed = (f: Faction): boolean => old[f].hp !== base[f].hp || old[f].max !== base[f].max || old[f].safe !== base[f].safe;
     if (changed('plants') || changed('zombies')) this.hud.base.value = base;
 
     const cards: CardVM[] = s.config.cards[this.playerFaction].map((unit, i) => {
