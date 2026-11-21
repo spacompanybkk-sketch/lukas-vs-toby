@@ -19,6 +19,38 @@ import type { FreePlayRecord } from '../adventure/freePlay';
 import { Tutorial } from './tutorial';
 import { heroHidden } from '../adventure/levels';
 import type { TutorialAction } from './tutorial';
+import type { PendingTap } from '../net/lockstep';
+import type { LockstepMatch, VersusOutcome } from '../net/lockstepMatch';
+import { VS_TIMEOUTS, stallStage } from '../net/timeouts';
+import type { StallStage, VersusTimeouts } from '../net/timeouts';
+import type { Slot } from '../progress/save';
+
+/**
+ * This device's seat in a two-device Versus match (spec 6.2): the lockstep link, whose `match` the
+ * battle plays, and the two players' slots. The owner starts the link and disposes of it.
+ * `timeouts`: the link's own table (default `VS_TIMEOUTS`), for the stall stages.
+ */
+export interface OnlineSeat { link: LockstepMatch; me: Slot; other: Slot; timeouts?: VersusTimeouts }
+
+/**
+ * An own tap waiting to run (spec 6.4): where it goes, and the card or spell. `refused`: it was
+ * refused when it ran; the mark stays `REFUSED_MARK_STEPS` steps, then goes.
+ */
+export interface PendingMark {
+  id: number; faction: Faction; lane: number; col: number; unit: UnitKey | null; spell: SpellKey | null; refused: boolean;
+}
+
+/** The HUD of a two-device Versus match besides the usual. */
+export interface OnlineSignals {
+  stall: Signal<StallStage>; // of the other device
+  pausedBy: Signal<Slot | null>;
+  pending: Signal<readonly PendingMark[]>; // a refused mark stays 600 ms with refused: true, then goes
+  outcome: Signal<VersusOutcome | null>;
+  repairs: Signal<number>;
+}
+
+/** A refused tap's mark stays this many steps: 600 ms at 30 steps a second (the game loop steps on while stalled). */
+export const REFUSED_MARK_STEPS = 18;
 
 /**
  * `skill` is the difficulty the player picked (see `src/ai/difficulty.ts`). `upgrades`: the
@@ -45,6 +77,12 @@ export interface BattleOptions {
    * computer plays (the waves are the other side). `skill`, `cards` and `upgrades` are not used.
    */
   free?: FreePlayPlay;
+  /**
+   * Two-device Versus: this device's seat (`versus` must be true and `playerFaction` the link's
+   * seat; no `play`, no `free`). The match is the link's, no computer plays, own commands go
+   * through the link and run `delay` ticks later, and the link decides when a tick runs.
+   */
+  online?: OnlineSeat;
 }
 
 /** The player's upgrades for their own side: the cards of `side` in `upgrades`, none in Versus. */
@@ -237,6 +275,14 @@ export class BattleController {
   readonly endless: EndlessSignals | null;
   /** The level's tutorial (`play.teach`), or null: none, or every step already done. */
   readonly tutorial: Tutorial | null;
+  /** A two-device Versus match's own HUD; null outside one. */
+  readonly online: OnlineSignals | null;
+  /** This device's seat in a two-device Versus match, or null. */
+  private readonly seat: OnlineSeat | null;
+  /** Online: the marks of the own taps pending, by tap id (kept as first shown). */
+  private readonly marks = new Map<number, PendingMark>();
+  /** Online: refused taps' marks still shown, and the steps each has left. */
+  private refusedMarks: { mark: PendingMark; left: number }[] = [];
   private readonly bot: Bot;
   /** The ids of the cards on the belt, in belt order (see `BeltCardVM`). */
   private readonly beltIds: number[] = [];
@@ -273,8 +319,17 @@ export class BattleController {
     // only some of them; its random moves (`randomLegal`) play any card in its hand.
     this.play = opts.play ?? null;
     this.free = opts.free ?? null;
+    this.seat = opts.online ?? null;
     const botSeed = (Math.imul(opts.seed, 2654435761) + 1) >>> 0;
-    if (this.play !== null) {
+    if (this.seat !== null) {
+      // Two-device Versus: the link's match, and the other seat's commands come through the link.
+      if (this.play !== null || this.free !== null) throw new Error('an online seat plays Versus, not a level or Free Play');
+      if (opts.versus !== true) throw new Error('an online seat plays only with versus: true');
+      if (this.seat.link.seat !== opts.playerFaction) throw new Error(`the online seat is ${this.seat.link.seat}, not ${opts.playerFaction}`);
+      this.match = this.seat.link.match;
+      this.bot = { faction: this.opponent, think: () => [] };
+      this.level = null;
+    } else if (this.play !== null) {
       // An Adventure level: its own match, and its own computer (none for a scripted level).
       const { def, config } = this.play;
       if (def.side !== opts.playerFaction) throw new Error(`level ${def.id} is played on the ${def.side} side`);
@@ -335,8 +390,14 @@ export class BattleController {
       mode, cards: [...(this.match.state.config.endless?.cards ?? [])], wave: signal(0), nextWave: signal(RING_STEPS), clock: signal(0),
       banner: signal<{ wave: number; big: boolean; n: number } | null>(null), bonus: signal(0), quit: signal(false),
     };
+    this.online = this.seat === null ? null : {
+      stall: signal<StallStage>('none'), pausedBy: signal<Slot | null>(null),
+      pending: signal<readonly PendingMark[]>([]), outcome: signal<VersusOutcome | null>(null), repairs: signal(0),
+    };
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
+    // pause records, end slots and repairs arrive between steps (and while the loop is paused)
+    this.seat?.link.onChange(() => this.refresh());
     const teach = this.play?.teach ?? [];
     this.tutorial = teach.length === 0 ? null : new Tutorial(teach, {
       match: this.match, playerFaction: this.playerFaction,
@@ -373,14 +434,61 @@ export class BattleController {
     return this.tutorial !== null && !this.tutorial.allows(action);
   }
 
-  /** Queues the player's command for the next tick (and tells the tutorial, whose step it may end). */
-  private queue(cmd: Command): void {
+  /**
+   * Queues the player's command for the next tick (and tells the tutorial, whose step it may end).
+   * Online it is a tap through the link, run `delay` ticks later: null when taken; `'ignored'`, with
+   * a denial, when its turn already holds all it can (`'full'`).
+   */
+  private queue(cmd: Command): 'ignored' | null {
+    const seat = this.seat;
+    if (seat !== null) {
+      if (seat.link.tap(cmd) === 'full') {
+        this.hud.denied.value += 1;
+        return 'ignored';
+      }
+      this.refresh(); // the pending spend and the mark show at once
+      return null;
+    }
     this.queued = cmd;
     this.tutorial?.queued(cmd);
+    return null;
   }
 
-  /** One tick: the computer's commands and the player's queued one go to the match together. */
+  /**
+   * No room for another command now: offline, one is already queued for the coming tick. Online
+   * the turn's room is the link's to say, when the tap is made (`queue`).
+   */
+  private turnFull(): boolean {
+    return this.seat === null && this.queued !== null;
+  }
+
+  /**
+   * What the match would answer to `cmd`, and online also what the own pending taps already claim
+   * (spec 6.4): their price against the energy (`'no-energy'`), and a plant's tile (`'occupied'`).
+   */
+  private refusal(cmd: Command): CommandRejection | null {
+    const reason = this.match.check(cmd);
+    const link = this.seat?.link;
+    if (reason !== null || link === undefined) return reason;
+    if ((cmd.type === 'place' || cmd.type === 'merge') && this.shownEnergy() < priceOf(cmd.unit)) return 'no-energy';
+    if (cmd.type === 'place' && cmd.faction === 'plants'
+      && link.pending().some(({ cmd: p }) => p.type === 'place' && p.lane === cmd.lane && p.col === cmd.col)) return 'occupied';
+    return null;
+  }
+
+  /** The player's energy as the HUD shows it: the state's, less what the own pending taps will spend. */
+  private shownEnergy(): number {
+    const energy = this.match.state.players[this.playerFaction].energy;
+    return this.seat === null ? energy : Math.max(0, energy - this.seat.link.pendingSpend());
+  }
+
+  /**
+   * One tick: the computer's commands and the player's queued one go to the match together.
+   * Online the link runs the tick, only when both seats' turns are held and nobody paused; it is
+   * asked every step, paused or over too, since it also waits out the stall and settles the end.
+   */
   step(): SimEvent[] {
+    if (this.seat !== null) return this.stepOnline(this.seat.link);
     if (this.hud.paused.peek() || this.over()) return [];
     const tutorial = this.tutorial;
     if (tutorial !== null) {
@@ -394,6 +502,31 @@ export class BattleController {
     const plants = this.playerFaction === 'plants' ? mine : theirs;
     const zombies = this.playerFaction === 'plants' ? theirs : mine;
     const events = this.match.step([...plants, ...zombies]);
+    this.took(events);
+    this.refresh();
+    tutorial?.events(events);
+    const winner = this.match.state.winner;
+    if (winner !== null && this.hud.result.peek() === null) {
+      this.hud.result.value = { winner, playerWon: winner === this.playerFaction };
+    }
+    return events;
+  }
+
+  /** One online step: the refused marks a step older, the link's tick if it ran, the HUD refreshed. */
+  private stepOnline(link: LockstepMatch): SimEvent[] {
+    if (this.refusedMarks.length > 0) {
+      for (const r of this.refusedMarks) r.left -= 1;
+      this.refusedMarks = this.refusedMarks.filter((r) => r.left > 0);
+    }
+    const answer = link.tryStep();
+    const events = answer.kind === 'ran' ? answer.events : [];
+    this.took(events);
+    this.refresh();
+    return events;
+  }
+
+  /** What a tick's events change in the controller's own bookkeeping (charges, belt, waves). */
+  private took(events: readonly SimEvent[]): void {
     for (const e of events) {
       if (e.type === 'heroUsed' && e.faction === this.playerFaction) {
         this.heroPeriod = seconds(this.match.balance.hero[this.playerFaction].chargeSeconds);
@@ -408,13 +541,6 @@ export class BattleController {
       }
       if (e.type === 'gardenBroken' && this.endless !== null) this.endless.bonus.value += 1;
     }
-    this.refresh();
-    tutorial?.events(events);
-    const winner = this.match.state.winner;
-    if (winner !== null && this.hud.result.peek() === null) {
-      this.hud.result.value = { winner, playerWon: winner === this.playerFaction };
-    }
-    return events;
   }
 
   /** A decided level's record (`levelRecord`); null while it runs, and in a Quick Battle. */
@@ -540,14 +666,14 @@ export class BattleController {
       this.tutorial?.refresh();
       return;
     }
-    if (this.queued !== null) return;
+    if (this.turnFull()) return;
     const cmd: Command = { type: 'spell', faction: this.playerFaction, spell: key, lane: 0, col: 0 };
-    const reason = this.match.check(cmd);
+    const reason = this.refusal(cmd);
     if (reason !== null) {
       this.deny(reason);
       return;
     }
-    this.queue(cmd);
+    if (this.queue(cmd) !== null) return;
     // Cast: nothing is waiting to be aimed any more (and a card put aside for it comes back).
     if (this.hud.heroSelected.peek() || this.hud.spellSelected.peek() !== null) this.powerDone();
   }
@@ -587,7 +713,7 @@ export class BattleController {
     }
     return {
       unit, lane: target.tile.lane, col: target.tile.col,
-      ok: this.match.check(cmd) === null,
+      ok: this.refusal(cmd) === null,
       mergeTargetId: cmd.type === 'merge' ? cmd.targetId : null,
     };
   }
@@ -599,7 +725,7 @@ export class BattleController {
    */
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
-    if (this.hud.paused.peek() || this.queued !== null) return 'ignored';
+    if (this.hud.paused.peek() || this.turnFull()) return 'ignored';
     if (this.endedTwist()) return 'ignored';
     if (this.tutorial?.holding === true && !this.tutorialTap(tile, unitId)) return 'ignored';
     if (this.hud.heroSelected.peek()) return tile === null ? this.deny('bad-lane') : this.heroLane(tile.lane);
@@ -612,17 +738,15 @@ export class BattleController {
       const play = this.beltCommand(slot, target.tile);
       const refused = this.match.check(play);
       if (refused !== null) return this.deny(refused);
-      this.queue(play);
-      return null;
+      return this.queue(play);
     }
     const cmd = this.buildClickCommand(target);
     if (cmd === 'no-selection') return this.deny('not-in-hand');
     if (cmd === 'no-tile') return this.deny('bad-lane');
     if (cmd === 'no-target') return this.deny('no-target');
-    const reason = this.match.check(cmd);
+    const reason = this.refusal(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queue(cmd);
-    return null;
+    return this.queue(cmd);
   }
 
   /**
@@ -660,7 +784,7 @@ export class BattleController {
     if (unit === null || !isCard(unit) || this.hud.shovel.peek() || this.hud.paused.peek() || this.over()) return null;
     const me = this.match.state.players[this.playerFaction];
     // A belt card is free and never recharges.
-    if (this.levelHud.beltSlot.peek() === null && ((me.recharge[unit] ?? 0) > 0 || me.energy < priceOf(unit))) return null;
+    if (this.levelHud.beltSlot.peek() === null && ((me.recharge[unit] ?? 0) > 0 || this.shownEnergy() < priceOf(unit))) return null;
     const units = this.match.state.units;
     for (let i = 0; i < units.length; i++) {
       const u = units[i] as Unit;
@@ -791,13 +915,13 @@ export class BattleController {
    */
   heroLane(lane: number): CommandRejection | 'ignored' | null {
     if (this.over()) return 'match-over';
-    if (this.hud.paused.peek() || this.queued !== null || this.level?.heroHidden === true) return 'ignored';
+    if (this.hud.paused.peek() || this.turnFull() || this.level?.heroHidden === true) return 'ignored';
     if (this.endedTwist()) return 'ignored';
     const cmd: Command = { type: 'hero', faction: this.playerFaction, lane };
     if (this.refused({ kind: 'command', cmd })) return 'ignored';
-    const reason = this.match.check(cmd);
+    const reason = this.refusal(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queue(cmd);
+    if (this.queue(cmd) !== null) return 'ignored';
     this.powerDone();
     return null;
   }
@@ -851,17 +975,38 @@ export class BattleController {
     });
   }
 
+  /** Pauses or resumes; online the pause is shared: it writes the pause (or resume) record (spec 6.7). */
   setPaused(paused: boolean): void {
-    this.hud.paused.value = paused;
+    const link = this.seat?.link;
+    if (link === undefined) {
+      this.hud.paused.value = paused;
+      return;
+    }
+    if (paused) link.pause();
+    else link.resume();
+    this.refresh();
+  }
+
+  /**
+   * The pause menu's white flag in two-device Versus: a forfeit, the other seat wins. It is an end
+   * record, settled by the link about one round trip later: `hud.result` comes with `online.outcome`.
+   */
+  forfeit(): void {
+    this.seat?.link.forfeit();
+  }
+
+  /** The white flag while waiting on a silent seat: nobody wins (`online.outcome` unfinished, no result). */
+  giveUp(): void {
+    this.seat?.link.giveUp();
   }
 
   /** Casts the picked spell at the tapped tile, as `click` answers; on success the spell is put down. */
-  private castAt(spell: SpellKey, tile: Tile | null): CommandRejection | null {
+  private castAt(spell: SpellKey, tile: Tile | null): CommandRejection | 'ignored' | null {
     if (tile === null) return this.deny('bad-lane');
     const cmd: Command = { type: 'spell', faction: this.playerFaction, spell, lane: tile.lane, col: tile.col };
-    const reason = this.match.check(cmd);
+    const reason = this.refusal(cmd);
     if (reason !== null) return this.deny(reason);
-    this.queue(cmd);
+    if (this.queue(cmd) !== null) return 'ignored';
     this.powerDone();
     return null;
   }
@@ -922,7 +1067,7 @@ export class BattleController {
   }
 
   private over(): boolean {
-    return this.hud.result.peek() !== null || this.match.state.winner !== null;
+    return this.hud.result.peek() !== null || this.match.state.winner !== null || (this.online?.outcome.peek() ?? null) !== null;
   }
 
   private deny(reason: CommandRejection): CommandRejection {
@@ -1004,7 +1149,9 @@ export class BattleController {
     const s = this.match.state;
     const me = s.players[this.playerFaction];
     const set = <T>(sig: Signal<T>, v: T): void => { if (sig.peek() !== v) sig.value = v; };
-    set(this.hud.energy, me.energy);
+    if (this.seat !== null) this.refreshOnline(this.seat);
+    const energy = this.shownEnergy();
+    set(this.hud.energy, energy);
     set(this.hud.seconds, Math.floor(s.tick / TICKS_PER_SECOND));
     set(this.hud.suddenDeath, s.suddenDeath);
 
@@ -1019,7 +1166,7 @@ export class BattleController {
       const left = me.recharge[unit] ?? 0;
       return {
         unit, name: UNIT_INFO[unit].name, price: UNIT_INFO[unit].price, hotkey: HOTKEYS[i] ?? '',
-        affordable: me.energy >= UNIT_INFO[unit].price,
+        affordable: energy >= UNIT_INFO[unit].price,
         rechargeFraction: full > 0 ? stepUp(left / full) : 0,
       };
     });
@@ -1069,6 +1216,72 @@ export class BattleController {
       let sameBelt = old.length === now.length;
       for (let i = 0; sameBelt && i < now.length; i++) sameBelt = old[i]!.card === now[i] && old[i]!.id === this.beltIds[i];
       if (!sameBelt) this.levelHud.belt.value = now.map((card, i) => ({ card, id: this.beltIds[i] ?? 0 }));
+    }
+  }
+
+  /**
+   * Copies the link into the online signals: the stall, the pause (`hud.paused` follows it), the
+   * repairs, the pending marks (a tap refused when it ran counts a denial and its mark stays
+   * `REFUSED_MARK_STEPS` steps), and the outcome. `hud.result` comes only from the outcome: a win
+   * or a forfeit; the host's winner for a disagreement; none for an unfinished match.
+   */
+  private refreshOnline(seat: OnlineSeat): void {
+    const online = this.online!;
+    const { link } = seat;
+    const set = <T>(sig: Signal<T>, v: T): void => { if (sig.peek() !== v) sig.value = v; };
+    batch(() => {
+      set(online.stall, stallStage(link.silentMs(), seat.timeouts ?? VS_TIMEOUTS));
+      set(online.pausedBy, link.pausedBy);
+      set(this.hud.paused, link.pausedBy !== null);
+      set(online.repairs, link.repairs());
+
+      for (const id of link.refused()) {
+        this.hud.denied.value += 1;
+        const mark = this.marks.get(id);
+        if (mark !== undefined) this.refusedMarks.push({ mark: { ...mark, refused: true }, left: REFUSED_MARK_STEPS });
+      }
+      const pending = link.pending();
+      const shown: PendingMark[] = [];
+      const ids = new Set<number>();
+      for (const tap of pending) {
+        let mark = this.marks.get(tap.id);
+        if (mark === undefined) {
+          mark = this.markOf(tap);
+          this.marks.set(tap.id, mark);
+        }
+        ids.add(tap.id);
+        shown.push(mark);
+      }
+      for (const id of [...this.marks.keys()]) if (!ids.has(id)) this.marks.delete(id);
+      for (const r of this.refusedMarks) shown.push(r.mark);
+      const old = online.pending.peek();
+      if (old.length !== shown.length || old.some((m, i) => m !== shown[i])) online.pending.value = shown;
+
+      const outcome = link.outcome();
+      if (outcome !== null && online.outcome.peek() === null) {
+        online.outcome.value = outcome;
+        const winner = outcome.kind === 'disagree' ? outcome.shown : outcome.kind === 'unfinished' ? null : outcome.winner;
+        if (winner !== null && this.hud.result.peek() === null) {
+          this.hud.result.value = { winner, playerWon: winner === this.playerFaction };
+        }
+      }
+    });
+  }
+
+  /** Where an own pending tap shows: its tile (a merge or a dig: the target's, as it stands now). */
+  private markOf({ id, cmd }: PendingTap): PendingMark {
+    const mark: PendingMark = { id, faction: this.playerFaction, lane: 0, col: 0, unit: null, spell: null, refused: false };
+    const at = (targetId: number): void => {
+      const u = this.match.state.units.find((x) => x.id === targetId);
+      if (u !== undefined) { mark.lane = u.lane; mark.col = Math.floor(u.x); }
+    };
+    switch (cmd.type) {
+      case 'place': return { ...mark, lane: cmd.lane, col: cmd.col, unit: cmd.unit };
+      case 'merge': at(cmd.targetId); return { ...mark, unit: cmd.unit };
+      case 'remove': at(cmd.targetId); return mark;
+      case 'spell': return { ...mark, lane: cmd.lane, col: cmd.col, spell: cmd.spell };
+      case 'hero': return { ...mark, lane: cmd.lane, col: this.playerFaction === 'plants' ? 0 : COLS - 1 };
+      default: return mark; // a belt card never goes through the link (Versus has no belt)
     }
   }
 }
