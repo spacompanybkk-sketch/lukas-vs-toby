@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { Mesh, PerspectiveCamera, Scene, Vector3, type ShaderMaterial } from 'three';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { BattleSession, CHEER_SECONDS } from '../../src/app/BattleSession';
 import type { BattleSessionOptions } from '../../src/app/BattleSession';
 import type { Director, StageLike } from '../../src/app/Stage';
@@ -20,6 +20,13 @@ import { levelOptions, prepareLevel, type LevelPlay } from '../../src/app/levelS
 import { newSave } from '../../src/progress/save';
 import { NO_TWIST } from '../../src/sim/lawn';
 import { SAMPLE_LAWNS } from '../../src/render/world/TwistTiles';
+import { versusConfig, type VersusSetup } from '../../src/ai/versus';
+import type { MatchChannel } from '../../src/net/channel';
+import { LockstepMatch } from '../../src/net/lockstepMatch';
+import { memoryPair } from '../../src/net/memoryChannel';
+import { VS_TIMEOUTS, type VersusTimeouts } from '../../src/net/timeouts';
+import { VirtualClock } from '../../src/net/virtualClock';
+import { Match } from '../../src/sim/match';
 
 const DT = 1 / 60;
 
@@ -869,5 +876,223 @@ describe('tall plants never cover the tiles behind them', () => {
         expect(session.pick(at.x, at.y).tile, `${lane},${col}`).toEqual({ lane, col });
       }
     }
+  });
+});
+
+// ---- Two-device Versus: the online seat in the session and on the lawn ------------------------
+
+const VS_SETUP: VersusSetup = { seed: 1, seats: { plants: 'p01', zombies: 'p02' }, head: null };
+const VS_FRAME = 1000 / 30;
+
+async function settle(): Promise<void> {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+
+interface Seat {
+  stage: ReturnType<typeof fakeStage>; link: LockstepMatch; session: BattleSession;
+  play: MockInstance<AudioEngine['play']>; channel: MatchChannel;
+}
+
+/**
+ * Two online sessions on one in-memory database, each on its own stage: p01 plays plants and
+ * hosts, p02 zombies. Each frame is the game loop's: a step unless the stage is paused, then a
+ * frame. `frame(only)` runs just those seats (a hidden tab runs no frames at all).
+ */
+function onlineDuo(timeouts?: VersusTimeouts) {
+  const clock = new VirtualClock();
+  const db = memoryPair({ clock, latencyMs: 50 });
+  const make = (seat: Faction): Seat => {
+    const stage = fakeStage();
+    const me = VS_SETUP.seats[seat];
+    const other = VS_SETUP.seats[seat === 'plants' ? 'zombies' : 'plants'];
+    const link = new LockstepMatch({
+      match: new Match(versusConfig(VS_SETUP)), seat, delay: 12, host: seat === 'plants', me, other,
+      channel: db[seat], now: () => clock.now(), timers: clock, timeouts,
+    });
+    const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+    const play = vi.spyOn(audio, 'play');
+    const session = new BattleSession(stage, audio, {
+      playerFaction: seat, skill: 'easy', seed: VS_SETUP.seed, versus: true, online: { link, me, other, timeouts },
+    }, { introSeconds: 0, input: { isOverLawn: () => true } });
+    sessions.push(session);
+    links.push(link);
+    return { stage, link, session, play, channel: db[seat] };
+  };
+  const a = make('plants');
+  const b = make('zombies');
+  for (const s of [a, b]) {
+    s.link.start();
+    s.session.begin();
+  }
+  const frame = async (only: Seat[] = [a, b]) => {
+    clock.advance(VS_FRAME);
+    await settle();
+    for (const s of only) {
+      if (!s.stage.paused) s.session.step();
+      s.session.frame(0, VS_FRAME / 1000, s.stage.paused ? 0 : VS_FRAME / 1000);
+    }
+    await settle();
+  };
+  const frames = async (n: number, only?: Seat[]) => { for (let i = 0; i < n; i++) await frame(only); };
+  const until = async (done: () => boolean, max = 900, only?: Seat[]) => {
+    for (let i = 0; i < max && !done(); i++) await frame(only);
+    expect(done()).toBe(true);
+  };
+  return { clock, db, a, b, frame, frames, until };
+}
+
+const links: LockstepMatch[] = [];
+afterEach(() => {
+  for (const l of links.splice(0)) l.dispose();
+});
+
+describe('BattleSession online', () => {
+  it('shows the own pending taps on the lawn (online.pending → view.setPending) and plays place at once', async () => {
+    const { a, b, until } = onlineDuo();
+    const setPending = vi.spyOn(a.session.view, 'setPending');
+    a.session.controller.select('peashooter');
+    expect(a.session.click({ lane: 2, col: 1 }, null)).toBeNull();
+    const marks = a.session.controller.online!.pending.value;
+    expect(marks).toHaveLength(1);
+    expect(setPending).toHaveBeenLastCalledWith(marks);
+    expect(a.play).toHaveBeenCalledWith('place');
+    expect(b.play).not.toHaveBeenCalledWith('place');
+    await until(() => a.session.controller.online!.pending.value.length === 0);
+    expect(setPending).toHaveBeenLastCalledWith([]);
+    expect(a.session.view.pendingShown).toBe(0);
+  });
+
+  it('a tap refused when it runs buzzes once (no second deny from its event)', async () => {
+    const { a, until } = onlineDuo();
+    const me = a.session.controller.match.state.players.plants;
+    me.energy = 2000;
+    a.session.controller.select('potatoMine');
+    expect(a.session.click({ lane: 0, col: 0 }, null)).toBeNull();
+    expect(a.session.click({ lane: 3, col: 0 }, null)).toBeNull(); // the card recharges before this one runs
+    expect(a.play.mock.calls.filter(([n]) => n === 'place')).toHaveLength(2);
+    await until(() => a.session.controller.online!.pending.value.some((m) => m.refused));
+    await until(() => a.session.controller.online!.pending.value.length === 0);
+    expect(a.session.controller.hud.denied.value).toBe(1);
+    expect(a.play.mock.calls.filter(([n]) => n === 'deny')).toHaveLength(1);
+  });
+
+  it('a repair redraws the lawn once from the restored state, on the same stage and canvas', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { a, b, frame, until } = onlineDuo();
+    const rebuildA = vi.spyOn(a.session, 'rebuildView');
+    const rebuildB = vi.spyOn(b.session, 'rebuildView');
+    const canvases = document.querySelectorAll('canvas').length;
+    const oldView = b.session.view;
+    const oldDispose = vi.spyOn(oldView, 'dispose');
+    await until(() => b.session.controller.match.state.tick >= 20);
+    b.session.controller.match.state.players.plants.energy += 1; // the guest drifts
+    await until(() => b.session.controller.online!.repairs.value === 1 && a.session.controller.online!.repairs.value === 1);
+    await frame();
+    expect(rebuildB).toHaveBeenCalledTimes(1);
+    expect(rebuildA).toHaveBeenCalledTimes(1);
+    expect(oldDispose).toHaveBeenCalledTimes(1);
+    expect(b.session.view).not.toBe(oldView);
+    // one stage: still this session's, never handed over; one canvas, so one WebGL context
+    expect(b.stage.director).toBe(b.session);
+    expect(b.stage.handOvers).toBe(0);
+    expect(document.querySelectorAll('canvas').length).toBe(canvases);
+    // one lawn's worth: two bases, and the restored units drawn once each
+    const bases: string[] = [];
+    b.stage.scene.traverse((o) => { if (o.name === 'base-plants' || o.name === 'base-zombies') bases.push(o.name); });
+    expect(bases.sort()).toEqual(['base-plants', 'base-zombies']);
+    expect(b.session.view.unitCount).toBe(b.session.controller.match.state.units.length);
+  });
+
+  describe('Review Focus 5: a hidden tab pauses both screens', () => {
+    it('visibility(true) writes the pause with keepalive; the other screen is paused by this boy and its stall stays none; no 2X', async () => {
+      const { a, b, frames, until } = onlineDuo();
+      expect(a.session.speed.offered).toBe(false);
+      expect(b.session.speed.offered).toBe(false);
+      await frames(20);
+      const write = vi.spyOn(a.channel, 'write');
+      a.session.visibility(true);
+      expect(write).toHaveBeenCalledWith(expect.objectContaining({ kind: 'pause', by: 'p01' }), { keepalive: true });
+      expect(a.session.controller.online!.pausedBy.value).toBe('p01');
+      expect(a.session.controller.hud.paused.value).toBe(true);
+      // the hidden page draws nothing: only the other screen runs frames
+      await until(() => b.session.controller.online!.pausedBy.value === 'p01', 60, [b]);
+      expect(b.session.controller.hud.paused.value).toBe(true);
+      const tick = b.session.controller.match.state.tick;
+      await frames(90, [b]);
+      expect(b.session.controller.match.state.tick).toBe(tick);
+      expect(b.session.controller.online!.stall.value).toBe('none');
+      // back: still paused (coming back never resumes by itself), no heartbeat silence either
+      a.session.visibility(false);
+      await frames(30);
+      expect(a.session.controller.online!.pausedBy.value).toBe('p01');
+      expect(b.session.controller.online!.pausedBy.value).toBe('p01');
+    });
+
+    it('a stale pause record in the store does not pause a screen whose streams reopen on coming back', async () => {
+      const { a, b, frames, until } = onlineDuo();
+      await frames(20);
+      const write = vi.spyOn(a.channel, 'write');
+      a.session.visibility(true);
+      const pause = write.mock.calls[0]![0];
+      await until(() => b.session.controller.online!.pausedBy.value === 'p01', 60, [b]);
+      b.session.controller.setPaused(false);
+      await until(() => a.session.controller.online!.pausedBy.value === null && b.session.controller.online!.pausedBy.value === null, 60);
+      void a.channel.write(pause); // a retried pause landing after the resume: stored again
+      await frames(10, [b]);
+      a.session.visibility(false); // reopens the streams: the store's pause comes again
+      await frames(30);
+      expect(a.session.controller.online!.pausedBy.value).toBeNull();
+      expect(b.session.controller.online!.pausedBy.value).toBeNull();
+    });
+  });
+
+  it('keeps asking the link while paused: the stall stages move and the paused silence ends the match', async () => {
+    const t: VersusTimeouts = { ...VS_TIMEOUTS, hereMs: 2000, stall: { hourglassMs: 1000, faceMs: 3000, flagMs: 5000, unfinishedMs: 8000 } };
+    const { a, b, frames, until } = onlineDuo(t);
+    await frames(20);
+    a.session.visibility(true); // and stays hidden: only b runs frames
+    await until(() => b.session.controller.online!.pausedBy.value === 'p01', 60, [b]);
+    expect(b.stage.paused).toBe(true);
+    const step = vi.spyOn(b.session.controller, 'step');
+    await until(() => b.session.controller.online!.stall.value === 'hourglass', 200, [b]);
+    expect(step).toHaveBeenCalled();
+    await until(() => b.session.controller.online!.stall.value === 'face', 200, [b]);
+    await until(() => b.session.controller.online!.outcome.value !== null, 400, [b]);
+    expect(b.session.controller.online!.outcome.value).toEqual({ kind: 'unfinished', why: 'silence' });
+  });
+
+  it('keeps asking the link after the game is decided', async () => {
+    const { a, b, frames, until } = onlineDuo();
+    await frames(5);
+    for (const s of [a, b]) s.session.damageBase('zombies', 1e9);
+    await until(() => a.session.controller.hud.result.value !== null && b.session.controller.hud.result.value !== null);
+    expect(a.session.controller.online!.outcome.value).toEqual({ kind: 'won', winner: 'plants' });
+    const step = vi.spyOn(a.session.controller, 'step');
+    await frames(3);
+    expect(step).toHaveBeenCalled();
+  });
+
+  it('a single-player session still takes no step while paused', () => {
+    const stage = fakeStage();
+    const { session } = make(stage);
+    session.begin();
+    session.controller.setPaused(true);
+    const step = vi.spyOn(session.controller, 'step');
+    run(stage, 1);
+    session.step(); // even asked directly
+    expect(step).not.toHaveBeenCalled();
+    expect(session.controller.match.state.tick).toBe(0);
+  });
+
+  it('dispose lets go of the link: a later pause from the other screen reaches no signal of the disposed one', async () => {
+    const { a, b, frames } = onlineDuo();
+    await frames(10);
+    const online = a.session.controller.online!;
+    a.session.dispose();
+    b.session.controller.setPaused(true);
+    await frames(20, [b]);
+    expect(a.link.pausedBy).toBe('p02'); // the link itself still hears it (its owner disposes it)
+    expect(online.pausedBy.value).toBeNull();
+    expect(a.session.controller.hud.paused.value).toBe(false);
   });
 });

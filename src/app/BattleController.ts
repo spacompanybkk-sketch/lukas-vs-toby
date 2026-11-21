@@ -281,6 +281,8 @@ export class BattleController {
   private readonly seat: OnlineSeat | null;
   /** Online: the marks of the own taps pending, by tap id (kept as first shown). */
   private readonly marks = new Map<number, PendingMark>();
+  /** Online: stops listening to the link (`dispose`). */
+  private offLink: (() => void) | null = null;
   /** Online: refused taps' marks still shown, and the steps each has left. */
   private refusedMarks: { mark: PendingMark; left: number }[] = [];
   private readonly bot: Bot;
@@ -397,7 +399,7 @@ export class BattleController {
     this.heroPeriod = seconds(balance.hero[this.playerFaction].firstChargeSeconds);
     this.refresh();
     // pause records, end slots and repairs arrive between steps (and while the loop is paused)
-    this.seat?.link.onChange(() => this.refresh());
+    this.offLink = this.seat?.link.onChange(() => this.refresh()) ?? null;
     const teach = this.play?.teach ?? [];
     this.tutorial = teach.length === 0 ? null : new Tutorial(teach, {
       match: this.match, playerFaction: this.playerFaction,
@@ -1000,6 +1002,15 @@ export class BattleController {
     this.seat?.link.giveUp();
   }
 
+  /**
+   * Online: stops listening to the link, so a link that lives on (its owner disposes of it) no longer
+   * reaches these signals. Offline it does nothing. Safe to call twice.
+   */
+  dispose(): void {
+    this.offLink?.();
+    this.offLink = null;
+  }
+
   /** Casts the picked spell at the tapped tile, as `click` answers; on success the spell is put down. */
   private castAt(spell: SpellKey, tile: Tile | null): CommandRejection | 'ignored' | null {
     if (tile === null) return this.deny('bad-lane');
@@ -1268,7 +1279,7 @@ export class BattleController {
     });
   }
 
-  /** Where an own pending tap shows: its tile (a merge or a dig: the target's, as it stands now). */
+  /** Where an own pending tap shows: its tile (a merge or a dig: the target's, as it stands now; a zombie: its spawn end). */
   private markOf({ id, cmd }: PendingTap): PendingMark {
     const mark: PendingMark = { id, faction: this.playerFaction, lane: 0, col: 0, unit: null, spell: null, refused: false };
     const at = (targetId: number): void => {
@@ -1276,7 +1287,8 @@ export class BattleController {
       if (u !== undefined) { mark.lane = u.lane; mark.col = Math.floor(u.x); }
     };
     switch (cmd.type) {
-      case 'place': return { ...mark, lane: cmd.lane, col: cmd.col, unit: cmd.unit };
+      // a zombie comes on at its lane's spawn end, whatever column was tapped
+      case 'place': return { ...mark, lane: cmd.lane, col: cmd.faction === 'zombies' ? COLS - 1 : cmd.col, unit: cmd.unit };
       case 'merge': at(cmd.targetId); return { ...mark, unit: cmd.unit };
       case 'remove': at(cmd.targetId); return mark;
       case 'spell': return { ...mark, lane: cmd.lane, col: cmd.col, spell: cmd.spell };

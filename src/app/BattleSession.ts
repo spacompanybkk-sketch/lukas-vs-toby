@@ -12,8 +12,10 @@ import { MARKS_LOUD, MARKS_QUIET } from '../render/world/PlaceMarks';
 import { TwistShow } from '../render/world/TwistTiles';
 import { NO_TWIST } from '../sim/lawn';
 import type { CommandRejection, Faction, LawnConfig, SimEvent } from '../sim/types';
+import { STEPS_PER_SECOND } from '../game/GameLoop';
+import type { LockstepMatch } from '../net/lockstepMatch';
 import { BattleController } from './BattleController';
-import type { BattleOptions } from './BattleController';
+import type { BattleOptions, OnlineSignals } from './BattleController';
 import { BattleInput } from './input';
 import { modelsFor } from './prewarm';
 import { BattleSpeed, lessonShowing } from './speed';
@@ -74,7 +76,6 @@ const point = new Vector3();
  */
 export class BattleSession implements Director, InputTarget {
   readonly controller: BattleController;
-  readonly view: BattleView;
   /** True once the end of the match has played out and the result panel may show. */
   readonly resultReady: ReadonlySignal<boolean>;
   /** Resolves when the opening camera move has landed (the banners wait for it). */
@@ -92,11 +93,18 @@ export class BattleSession implements Director, InputTarget {
 
   /** A tap on the boss's entrance card ends the lawn's entrance show. */
   skipBossEntrance(): void {
-    this.view.bossFx.skipEntrance();
+    this.current.bossFx.skipEntrance();
   }
 
   private readonly stage: StageLike;
   private readonly audio: AudioEngine;
+  /** The view of the lawn; a repair builds a new one (`rebuildView`). */
+  private current: BattleView;
+  /** Two-device Versus: the controller's online signals and the seat's link, or null. */
+  private readonly online: OnlineSignals | null;
+  private readonly link: LockstepMatch | null;
+  /** Online, while the loop is paused: steps owed to the link (see `frame`). */
+  private idleOwed = 0;
   private readonly input: BattleInput;
   private readonly clock = new FeelClock();
   private readonly ready = signal(false);
@@ -137,16 +145,9 @@ export class BattleSession implements Director, InputTarget {
     this.world = world;
     this.theme = theme;
     stage.setWorld(world, lawn);
-    // The Bone Minion is no card, but a Necromancer or Grave Rise brings them: built ahead like the rest.
-    this.view = new BattleView(stage.scene, stage.camera, stage.lawn, stage.fx, opts.playerFaction, {
-      units: modelsFor(this.controller.match.state),
-      balance: this.controller.match.balance,
-    });
-    this.view.onFeel = (f) => this.clock.feel(f, stage.rig);
-    this.view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);
-    this.view.onHero = (side) => {
-      this.heroBanner.value = { side, n: (this.heroBanner.peek()?.n ?? 0) + 1 };
-    };
+    this.online = this.controller.online;
+    this.link = opts.online?.link ?? null;
+    this.current = this.makeView();
     this.input = new BattleInput(this, { canvas: stage.canvas, ...options.input });
     // A new card (or none) changes what the ghost should show where the pointer already is.
     const hud = this.controller.hud;
@@ -169,6 +170,24 @@ export class BattleSession implements Director, InputTarget {
       if (n > denied && !this.disposed) this.audio.play('deny');
       denied = n;
     }));
+    const online = this.online;
+    if (online !== null) {
+      // The own taps waiting to run show on the lawn (spec 6.4); a repair redraws it (6.6 item 4).
+      this.offEffects.push(online.pending.subscribe((marks) => {
+        if (!this.detached) this.current.setPending(marks);
+      }));
+      let repairs = online.repairs.peek();
+      this.offEffects.push(online.repairs.subscribe((n) => {
+        if (n === repairs) return;
+        repairs = n;
+        this.rebuildView();
+      }));
+    }
+  }
+
+  /** The 3D lawn's view of this battle (a new one after a repair). */
+  get view(): BattleView {
+    return this.current;
   }
 
   get playerFaction(): Faction {
@@ -200,8 +219,39 @@ export class BattleSession implements Director, InputTarget {
    * have. The choice itself is kept through all of them.
    */
   speedFactor(): number {
-    if (!this.live || this.view.bossFx.entering) return 1;
+    if (!this.live || this.current.bossFx.entering) return 1;
     return this.speed.factor();
+  }
+
+  /**
+   * After a repair (spec 6.6 item 4): the view is disposed and built again from the restored state,
+   * on the same stage and renderer, as a reload would draw it. Its marks, cue and pending taps follow.
+   */
+  rebuildView(): void {
+    if (this.detached) return;
+    this.current.dispose();
+    this.current = this.makeView();
+    this.current.applyEvents([], this.controller.match.state);
+    this.placeShown = -1;
+    this.current.setPlaceStrength(this.placeStrength);
+    if (this.online !== null) this.current.setPending(this.online.pending.peek());
+    this.input.refresh();
+  }
+
+  /**
+   * The page hides (`true`) or shows again (`false`). Two-device Versus: hiding pauses both screens
+   * with a write that can leave as the page goes (`link.hidden`); coming back reopens the streams
+   * (`link.visible`) and stays paused until a boy resumes. Otherwise a hidden page pauses the battle.
+   */
+  visibility(hidden: boolean): void {
+    if (this.disposed) return;
+    const link = this.link;
+    if (link !== null) {
+      if (hidden) link.hidden();
+      else link.visible();
+      return;
+    }
+    if (hidden && this.controller.hud.result.peek() === null) this.controller.setPaused(true);
   }
 
   // ---- Director ------------------------------------------------------------------------------
@@ -213,25 +263,31 @@ export class BattleSession implements Director, InputTarget {
 
   frame(alpha: number, realDt: number, gameDt: number): void {
     if (this.detached) return;
+    // Online the link is asked at the loop's pace even while the loop takes no steps (paused): it
+    // waits out the other device's silence and settles the end (`advance`).
+    const loopPaused = this.stage.paused;
+    if (loopPaused && this.online !== null && this.begun) this.idleSteps(realDt);
+    else this.idleOwed = 0;
+    if (this.detached) return;
     const state = this.controller.match.state;
     this.stage.paused = this.controller.hud.paused.peek();
     this.stage.timeScale = this.clock.tick(realDt) * this.speedFactor();
     this.time += gameDt;
-    this.view.setMergeCue(this.live ? this.controller.mergeCue() : null);
+    this.current.setMergeCue(this.live ? this.controller.mergeCue() : null);
     // Where the picked card may go: redrawn only when the tiles change (`placeTiles` keeps a version).
     const place = this.live ? this.controller.placeTiles() : -1;
     if (place !== this.placeShown) {
       this.placeShown = place;
-      this.view.setPlaceable(place < 0 ? null : this.controller.placeable);
+      this.current.setPlaceable(place < 0 ? null : this.controller.placeable);
     }
     // Quiet while a card just stays picked; loud while one is dragged or just after a tap.
     this.realTime += realDt > 0 ? realDt : 0;
     const strength = this.input.dragging() || this.realTime < this.loudUntil ? MARKS_LOUD : MARKS_QUIET;
     if (strength !== this.placeStrength) {
       this.placeStrength = strength;
-      this.view.setPlaceStrength(strength);
+      this.current.setPlaceStrength(strength);
     }
-    this.view.frame(state, alpha, gameDt, this.time);
+    this.current.frame(state, alpha, gameDt, this.time, realDt);
     this.twistFrame(realDt);
     if (!this.ended) this.audio.setIntensity(battleIntensity(state));
     else if (this.fallen && !this.ready.peek()) {
@@ -245,7 +301,7 @@ export class BattleSession implements Director, InputTarget {
     this.detached = true;
     this.endTwist();
     this.input.dispose();
-    this.view.dispose();
+    this.current.dispose();
     // The next director (a turntable after a level's result, the map) starts in normal time.
     this.stage.paused = false;
     this.stage.timeScale = 1;
@@ -261,6 +317,7 @@ export class BattleSession implements Director, InputTarget {
     this.disposed = true;
     for (const off of this.offEffects) off();
     this.offEffects.length = 0;
+    this.controller.dispose(); // the link may live on (its owner disposes of it): it no longer reaches this battle
     this.stage.release(this);
     this.detach();
   }
@@ -323,10 +380,10 @@ export class BattleSession implements Director, InputTarget {
     // covers the lanes behind it). `aimAt` says when a model hit counts: the shovel on a plant
     // whose tile is not the one under the finger, and the player's own zombie (see there).
     const tile = this.tileAt(nx, ny);
-    const hit = this.view.unitHitByRay(nx, ny);
+    const hit = this.current.unitHitByRay(nx, ny);
     const aimed = hit === null ? null : this.controller.aimAt(hit, tile);
     if (aimed !== null) return { tile: aimed, unitId: hit };
-    const unitId = hit ?? this.view.unitNearRay(nx, ny, rect);
+    const unitId = hit ?? this.current.unitNearRay(nx, ny, rect);
     return { tile, unitId };
   }
 
@@ -334,12 +391,17 @@ export class BattleSession implements Director, InputTarget {
     return this.controller.hover(tile, unitId);
   }
 
+  /** Online, a card's tap taken plays the place sound at once, though its unit comes `delay` ticks later (spec 6.4). */
   click(tile: Tile | null, unitId: number | null): CommandRejection | 'ignored' | null {
-    return this.controller.click(tile, unitId);
+    const hud = this.controller.hud;
+    const card = this.online !== null && hud.selected.peek() !== null && !hud.shovel.peek() && !this.aiming();
+    const answer = this.controller.click(tile, unitId);
+    if (answer === null && card && !this.disposed) this.audio.play('place');
+    return answer;
   }
 
   setPreview(p: AimPreview | null): void {
-    if (!this.detached) this.view.setPreview(p);
+    if (!this.detached) this.current.setPreview(p);
   }
 
   clearSelection(): void {
@@ -390,13 +452,35 @@ export class BattleSession implements Director, InputTarget {
     this.stage.rig.focus(null);
   }
 
+  /**
+   * One step. Online the controller is asked even paused or once the match is decided: the link
+   * decides whether a tick runs, and between ticks it waits out the stall and settles the end.
+   */
   private advance(withSound: boolean): void {
-    if (this.ended || this.controller.hud.paused.peek()) return;
+    const online = this.online !== null;
+    if (!online && (this.ended || this.controller.hud.paused.peek())) return;
+    const view = this.current;
     const events: SimEvent[] = this.controller.step();
-    this.view.applyEvents(events, this.controller.match.state);
-    if (withSound) playEventSounds(this.audio, events, this.playerFaction, { state: this.controller.match.state, gate: this.soundGate });
+    if (this.ended || this.detached) return;
+    // A repair in this step built a new view from the state after it: these events are in it already.
+    if (this.current === view) this.current.applyEvents(events, this.controller.match.state);
+    // Online an own tap refused when it runs is heard once, as the denial it counts (`hud.denied`).
+    const heard = online ? events.filter((e) => e.type !== 'commandRejected' || e.command.faction !== this.playerFaction) : events;
+    if (withSound) playEventSounds(this.audio, heard, this.playerFaction, { state: this.controller.match.state, gate: this.soundGate });
     if (this.controller.hud.result.peek() !== null) this.finish(withSound);
     else if (withSound) this.input.refresh(); // energy or the lawn changed: the ghost may turn red or green
+  }
+
+  /** Online, while the loop is paused: the steps the loop would have run in `realDt`, at most its five a frame. */
+  private idleSteps(realDt: number): void {
+    this.idleOwed += (realDt > 0 ? realDt : 0) * STEPS_PER_SECOND;
+    let n = 0;
+    while (this.idleOwed >= 1 && n < 5 && !this.detached) {
+      this.advance(true);
+      this.idleOwed -= 1;
+      n++;
+    }
+    if (this.idleOwed >= 1) this.idleOwed = 0;
   }
 
   /**
@@ -411,23 +495,23 @@ export class BattleSession implements Director, InputTarget {
     this.ended = true;
     if (this.controller.endless?.quit.peek() === true) {
       // A Free Play run ended from the pause menu: nothing fell; its result shows at once.
-      this.view.setPreview(null);
+      this.current.setPreview(null);
       if (withSound) this.audio.stopMusic(0.8);
       this.ready.value = true;
       return;
     }
     this.endSounds = withSound;
-    this.view.setPreview(null);
+    this.current.setPreview(null);
     if (withSound) {
       this.audio.stopMusic(0.8);
       this.audio.play('collapse');
     }
-    void this.view.celebrate(result.winner).then(() => {
+    void this.current.celebrate(result.winner).then(() => {
       if (this.disposed) return;
       this.fallen = true;
       if (result.winner !== 'draw') this.stage.rig.orbitVictory(result.winner, this.winnersX(result.winner));
       // Confetti over the winners while they cheer, and a little on behind the result panel.
-      this.view.cheer(result.winner, CHEER_SECONDS + 1.5);
+      this.current.cheer(result.winner, CHEER_SECONDS + 1.5);
     });
   }
 
@@ -471,6 +555,22 @@ export class BattleSession implements Director, InputTarget {
     const width = r.width > 0 ? r.width : window.innerWidth;
     const height = r.height > 0 ? r.height : window.innerHeight;
     return { left: r.left, top: r.top, width, height };
+  }
+
+  /** A view of this battle on the stage, its feel, tokens and hero banners wired to the session. */
+  private makeView(): BattleView {
+    const stage = this.stage;
+    // The Bone Minion is no card, but a Necromancer or Grave Rise brings them: built ahead like the rest.
+    const view = new BattleView(stage.scene, stage.camera, stage.lawn, stage.fx, this.controller.playerFaction, {
+      units: modelsFor(this.controller.match.state),
+      balance: this.controller.match.balance,
+    });
+    view.onFeel = (f) => this.clock.feel(f, stage.rig);
+    view.onEnergyToken = (side, from, amount) => this.flyToken(side, from, amount);
+    view.onHero = (side) => {
+      this.heroBanner.value = { side, n: (this.heroBanner.peek()?.n ?? 0) + 1 };
+    };
+    return view;
   }
 
   private flyToken(side: Faction, from: Vector3, amount: number): void {
