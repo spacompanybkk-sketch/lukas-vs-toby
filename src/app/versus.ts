@@ -19,7 +19,7 @@ import type { VersusOutcome } from '../net/lockstepMatch';
 import { REPLAY_SLICE_TICKS, replaySlice } from '../net/replay';
 import { VS_TIMEOUTS, inputDelay } from '../net/timeouts';
 import type { VersusTimeouts } from '../net/timeouts';
-import { TURN_TICKS } from '../net/turnCodec';
+import { MAX_TURN, TURN_TICKS } from '../net/turnCodec';
 import { isSlot } from '../progress/save';
 import type { Save, Slot } from '../progress/save';
 import { applyBattleResult, versusBattleId } from '../progress/rewards';
@@ -61,8 +61,8 @@ export const REFUSED_SHOWN_MS = 2000;
 export const EXPIRED_SHOWN_MS = 1000;
 /** A gap before a refused proof-carrying write is tried again (a new server millisecond). */
 const RETRY_GAP_MS = 60;
-/** The seats' turns the result's rematch watch must never ask for (past the last turn there is). */
-const NO_TURNS = 9001;
+/** The seats' turns the result's rematch watch must never ask for (the very last turn index: none is ever held there). */
+const NO_TURNS = MAX_TURN;
 const KEPT_CREDITS = 8;
 
 export type VersusPhase =
@@ -899,12 +899,11 @@ export class VersusFlow {
       });
     }
     this.checkRemoval(ctx);
+    this.showResult(ctx);
     if (ctx.rematchState === 'both' && !ctx.rematching) {
       ctx.rematching = true;
       void this.startRematch(ctx);
-      return;
     }
-    this.showResult(ctx);
   }
 
   /** Both `again` records exist: the finished match can go, but not before the other device has settled. */

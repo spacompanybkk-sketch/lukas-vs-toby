@@ -383,3 +383,239 @@ describe('accept, getting ready, the battle', () => {
     expect(toby.reload).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Review Focus 2 and 3: crossed invites, the same player on two devices', () => {
+  it('both pick each other in the same second: one meta, Lukas (the lower slot) stands, Toby withdraws and is shown Lukas', async () => {
+    const lukas = await device('p01');
+    const toby = await device('p02');
+    await until(seeing(toby, 'p01'));
+    await until(seeing(lukas, 'p02'));
+    lukas.flow.open();
+    toby.flow.open();
+    lukas.flow.pick('p02');
+    toby.flow.pick('p01');
+    lukas.flow.send();
+    toby.flow.send();
+    // Toby's card closes and Lukas's invite is the panel on his device; Lukas's own card stays and his panel stays hidden
+    await until(() => toby.flow.incoming.value !== null);
+    expect(toby.flow.incoming.value?.from.slot).toBe('p01');
+    expect(name(toby)).toBe('here');
+    expect(name(lukas)).toBe('card');
+    expect(phaseOf(lukas, 'card').state).toBe('waiting');
+    await pass(1000);
+    expect(lukas.flow.incoming.value).toBeNull();
+    expect(db.peek(`${root}/vs/lobby/p01/in/p02`)).toBeNull(); // Toby's invite was taken back
+    expect(db.peek(`${root}/vs/lobby/p02/in/p01`)).not.toBeNull(); // Lukas's stands
+    expect(matchIds()).toEqual([]);
+
+    toby.flow.accept();
+    await intoBattle(lukas, toby);
+    expect(matchIds()).toHaveLength(1);
+    expect(phaseOf(toby, 'battle').options.playerFaction).toBe('zombies'); // Lukas's card stood: he is the plants
+  });
+
+  it('a second device of the same player accepting after the first: its panel closes, its phase stays, no notice; exactly one match', async () => {
+    const lukas = await device('p01');
+    const lukas2 = await device('p01');
+    const toby = await device('p02');
+    await until(seeing(toby, 'p01'));
+    toby.flow.open();
+    toby.flow.pick('p01');
+    toby.flow.send();
+    await until(() => lukas.flow.incoming.value !== null && lukas2.flow.incoming.value !== null);
+    lukas2.flow.open();
+    const before = name(lukas2);
+    lukas.flow.accept();
+    lukas2.flow.accept(); // both pressed within the same moment: the first answer wins (meta is write-once)
+    await until(() => name(lukas) === 'battle' || name(lukas2) === 'battle');
+    await until(() => lukas.flow.incoming.value === null && lukas2.flow.incoming.value === null);
+    const winner = name(lukas) === 'battle' ? lukas : lukas2;
+    const loser = winner === lukas ? lukas2 : lukas;
+    await until(() => name(toby) === 'battle');
+    expect(name(loser)).toBe(loser === lukas2 ? before : 'closed');
+    expect(['closed', 'here']).toContain(name(loser));
+    expect(loser.reload).not.toHaveBeenCalled();
+    expect(matchIds()).toHaveLength(1);
+  });
+
+  it('a second device accepting well after the first answered: nothing is written, its panel is already gone', async () => {
+    const lukas = await device('p01');
+    const lukas2 = await device('p01');
+    const toby = await device('p02');
+    await until(seeing(toby, 'p01'));
+    toby.flow.open();
+    toby.flow.pick('p01');
+    toby.flow.send();
+    await until(() => lukas.flow.incoming.value !== null && lukas2.flow.incoming.value !== null);
+    lukas.flow.accept();
+    await until(() => name(lukas) === 'battle');
+    await until(() => lukas2.flow.incoming.value === null);
+    lukas2.flow.accept(); // nothing to accept
+    await pass(1000);
+    expect(name(lukas2)).toBe('closed');
+    expect(matchIds()).toHaveLength(1);
+  });
+});
+
+/** Both devices in the battle with their links started; `go` plays the match with no taps. */
+async function battle(testBaseHp?: number): Promise<{ lukas: Dev; toby: Dev; id: string; play: (frames: number) => Promise<void> }> {
+  const lukas = await device('p01', testBaseHp === undefined ? {} : { testBaseHp });
+  const toby = await device('p02', testBaseHp === undefined ? {} : { testBaseHp });
+  await invite(toby, lukas);
+  lukas.flow.accept();
+  await intoBattle(lukas, toby);
+  lukas.flow.battleBegan();
+  toby.flow.battleBegan();
+  const id = matchIds()[0]!;
+  const play = async (frames: number): Promise<void> => {
+    for (let i = 0; i < frames; i++) {
+      clock.advance(FRAME);
+      await settle();
+      for (const d of [lukas, toby]) if (d.flow.phase.value.name === 'battle') linkOf(d).tryStep();
+    }
+  };
+  return { lukas, toby, id, play };
+}
+
+const won = (winner: Faction | 'draw'): VersusOutcome => ({ kind: 'won', winner });
+const wins = (d: Dev): number => d.session.player.peek()!.versusWins;
+const lastBattle = (d: Dev): string | null => d.session.player.peek()!.lastBattle;
+
+describe('the credit', () => {
+  it('a win credits the winner once and the loser a plain loss; a second outcome changes nothing; no coins', async () => {
+    const { lukas, toby, id } = await battle();
+    lukas.flow.battleOutcome(won('plants'));
+    toby.flow.battleOutcome(won('plants'));
+    expect(wins(lukas)).toBe(1);
+    expect(wins(toby)).toBe(0);
+    expect(lastBattle(lukas)).toBe(`vs-${id}`);
+    expect(lastBattle(toby)).toBe(`vs-${id}`);
+    expect(lukas.session.player.peek()!.coins).toBe(0);
+    expect(name(lukas)).toBe('result');
+    expect(name(toby)).toBe('result');
+    const lv = phaseOf(lukas, 'result').vm;
+    expect(lv.winner?.slot).toBe('p01');
+    expect(lv.loser?.slot).toBe('p02');
+    expect(lv.them).toBe('p02');
+    expect(lv.score.leftWins).toBe(1);
+    expect(lv.rematch).toBe('offer');
+    expect(phaseOf(toby, 'result').vm.winner?.slot).toBe('p01');
+    lukas.flow.battleOutcome(won('zombies')); // a repeat of the delivery: nothing
+    lukas.flow.battleOutcome(won('plants'));
+    expect(wins(lukas)).toBe(1);
+    expect(phaseOf(lukas, 'result').vm.winner?.slot).toBe('p01');
+    // the key for rejoining is gone once the match is over
+    expect(lukas.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    expect(lukas.session.deviceStorage()?.getItem(VCREDITED_KEY)).toContain(id);
+  });
+
+  it('a forfeit credits the one who did not give up', async () => {
+    const { lukas, toby } = await battle();
+    toby.flow.battleOutcome({ kind: 'forfeit', winner: 'plants', by: 'p02' });
+    lukas.flow.battleOutcome({ kind: 'forfeit', winner: 'plants', by: 'p02' });
+    expect(wins(lukas)).toBe(1);
+    expect(wins(toby)).toBe(0);
+    expect(phaseOf(lukas, 'result').vm.winner?.slot).toBe('p01');
+  });
+
+  it('a draw and a disagreement credit nobody (the disagreement shows the host\'s winner)', async () => {
+    const { lukas, toby, id } = await battle();
+    lukas.flow.battleOutcome(won('draw'));
+    toby.flow.battleOutcome({ kind: 'disagree', shown: 'plants' });
+    expect(wins(lukas)).toBe(0);
+    expect(wins(toby)).toBe(0);
+    expect(lastBattle(lukas)).toBeNull();
+    expect(phaseOf(lukas, 'result').vm.winner).toBeNull();
+    expect(phaseOf(toby, 'result').vm.winner?.slot).toBe('p01');
+    expect(id).toBeTruthy();
+  });
+
+  it('unfinished: nobody is credited; broken shows the cracked block, the others the door; home goes out', async () => {
+    const { lukas, toby, id } = await battle();
+    lukas.flow.battleOutcome({ kind: 'unfinished', why: 'broken' });
+    toby.flow.battleOutcome({ kind: 'unfinished', why: 'flag' });
+    expect(wins(lukas)).toBe(0);
+    expect(lastBattle(lukas)).toBeNull();
+    expect(phaseOf(lukas, 'notice').kind).toBe('broken');
+    expect(phaseOf(toby, 'notice').kind).toBe('gone');
+    expect(lukas.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    lukas.flow.home();
+    expect(name(lukas)).toBe('closed');
+    // the match is deleted a moment after both have settled
+    await pass(VS_TIMEOUTS.endWaitMs + 1000);
+    expect(db.peek(`${root}/vs/matches/${id}`)).toBeNull();
+  });
+});
+
+describe('the rematch', () => {
+  /** Both devices at the result of a first match (Lukas plants won). */
+  async function atResult() {
+    const b = await battle();
+    b.lukas.flow.battleOutcome(won('plants'));
+    b.toby.flow.battleOutcome(won('plants'));
+    return b;
+  }
+
+  it('both press: match n + 1 with the sides swapped, a new seed and the same head start, meta written by the original invitee; the old match goes after both answered', async () => {
+    const { lukas, toby, id } = await atResult();
+    const old = await readMatch(fakeConnection(db, root), id, clock);
+    if (old === null || old === 'offline') throw new Error('no old match');
+    toby.flow.rematch();
+    expect(phaseOf(toby, 'result').vm.rematch).toBe('mine');
+    await until(() => phaseOf(lukas, 'result').vm.rematch === 'theirs');
+    lukas.flow.rematch();
+    expect(phaseOf(lukas, 'result').vm.rematch).toBe('both');
+    await until(() => name(lukas) === 'battle' && name(toby) === 'battle');
+    const ids = matchIds();
+    const next = ids.find((x) => x !== id)!;
+    expect(next).toBeDefined();
+    const fresh = await readMatch(fakeConnection(db, root), next, clock);
+    if (fresh === null || fresh === 'offline') throw new Error('no new match');
+    expect(fresh.meta.seats).toEqual({ plants: 'p02', zombies: 'p01' });
+    expect(fresh.meta.seed).not.toBe(old.meta.seed);
+    expect(fresh.meta.head).toEqual(old.meta.head);
+    expect(fresh.meta.host).toBe(old.meta.host); // Lukas accepted the first invite: he is the invitee and writes both
+    expect(phaseOf(lukas, 'battle').options.playerFaction).toBe('zombies');
+    expect(phaseOf(toby, 'battle').options.playerFaction).toBe('plants');
+    expect(linkOf(toby).host).toBe(false);
+    expect(lukas.session.deviceStorage()?.getItem(VMATCH_KEY)).toContain(next);
+    // the old one stays until the other device has surely settled, then goes
+    await until(() => db.peek(`${root}/vs/matches/${id}`) === null, VS_TIMEOUTS.endWaitMs + 2000);
+    expect(db.peek(`${root}/vs/matches/${next}/meta`)).not.toBeNull();
+    // and the second match is credited as its own
+    lukas.flow.battleBegan();
+    toby.flow.battleBegan();
+    lukas.flow.battleOutcome(won('zombies')); // Lukas is the zombies now
+    expect(wins(lukas)).toBe(2);
+    expect(lastBattle(lukas)).toBe(`vs-${next}`);
+  });
+
+  it('one presses home: the other\'s rematch is gone; the old match is removed once both answered', async () => {
+    const { lukas, toby, id } = await atResult();
+    toby.flow.rematch();
+    await until(() => phaseOf(lukas, 'result').vm.rematch === 'theirs');
+    lukas.flow.home();
+    expect(name(lukas)).toBe('closed');
+    await until(() => phaseOf(toby, 'result').vm.rematch === 'gone');
+    toby.flow.rematch(); // greyed: does nothing
+    expect(phaseOf(toby, 'result').vm.rematch).toBe('gone');
+    expect(db.peek(`${root}/vs/matches/${id}/again`)).toEqual({ plants: 0, zombies: 1 });
+    await until(() => db.peek(`${root}/vs/matches/${id}`) === null, VS_TIMEOUTS.endWaitMs + 2000);
+    expect(matchIds()).toEqual([]);
+    toby.flow.home();
+    expect(name(toby)).toBe('closed');
+  });
+
+  it('60 s without an answer: the offer is gone and the old match is removed', async () => {
+    const { lukas, toby, id } = await atResult();
+    lukas.flow.rematch();
+    await until(() => phaseOf(toby, 'result').vm.rematch === 'theirs');
+    await pass(VS_TIMEOUTS.rematchMs - 3000);
+    expect(phaseOf(lukas, 'result').vm.rematch).toBe('mine');
+    await pass(4000);
+    expect(phaseOf(lukas, 'result').vm.rematch).toBe('gone');
+    expect(phaseOf(toby, 'result').vm.rematch).toBe('gone');
+    await pass(1000);
+    expect(db.peek(`${root}/vs/matches/${id}`)).toBeNull();
+  });
+});
