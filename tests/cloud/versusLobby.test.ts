@@ -96,6 +96,17 @@ function device(
 
 const peekAt = (path: string) => db.peek(`v2/${path}`);
 
+/** A connection whose every request reaches the fake `ms` later (on the virtual clock). */
+function slowConn(ms: number): Connection {
+  const base = fakeConnection(db);
+  return {
+    ...base,
+    fetch: (input, init) => new Promise<Response>((resolve, reject) => {
+      clock.set(() => { base.fetch(input, init).then(resolve, reject); }, ms);
+    }),
+  };
+}
+
 beforeEach(async () => {
   clock = new VirtualClock();
   db = new FakeDatabase({ now: () => T0 + clock.now() });
@@ -228,6 +239,33 @@ describe('who is here', () => {
     expect(lukas.here.value).toEqual([]);
   });
 
+  it('a player the rules refuse (not ticked in) holds no streams', async () => {
+    const p05 = device('p05');
+    p05.start();
+    await pass(1_000, 10);
+    expect(peekAt('vs/here/p05')).toBeNull();
+    expect(db.openStreams()).toBe(0);
+    // Ticked in: his next heartbeat lands, and only then do his two streams open.
+    expect(await run(device('p01').setAllowed('p05', true, G))).toBe('ok');
+    await pass(15_000);
+    expect(peekAt('vs/here/p05')).not.toBeNull();
+    expect(db.openStreams()).toBe(2);
+  });
+
+  it('setAllowed: a wrong grown-up code is not sent again; a proof of this very millisecond is', async () => {
+    const lukas = device('p01');
+    let from = db.requests.length;
+    expect(await run(lukas.setAllowed('p05', true, '0'.repeat(64)))).toBe('refused');
+    // The tick, then the code alone (refused: a wrong code), and nothing more.
+    expect(db.requests.slice(from).map((r) => r.status)).toEqual([401, 401]);
+    expect(await run(lukas.setAllowed('p05', true, G))).toBe('ok');
+    from = db.requests.length;
+    // Again at once, in the same server millisecond: refused, the code checks out, sent again a beat later.
+    expect(await run(lukas.setAllowed('p05', false, G))).toBe('ok');
+    expect(db.requests.slice(from).map((r) => r.status)).toEqual([401, 200, 200]);
+    expect(peekAt('vs/allowed/p05')).toBeNull();
+  });
+
   it('logged out (no proof): refused without asking the database', async () => {
     const lukas = device('p01', { proof: () => null });
     const before = db.requests.length;
@@ -246,13 +284,7 @@ describe('who is here', () => {
 
   it('roundTrips(): the heartbeat round trips, newest last, at most 8', async () => {
     // Every request takes 120 ms there and back.
-    const base = fakeConnection(db);
-    const slow: Connection = {
-      ...base,
-      fetch: (input, init) => new Promise<Response>((resolve, reject) => {
-        clock.set(() => { base.fetch(input, init).then(resolve, reject); }, 120);
-      }),
-    };
+    const slow = slowConn(120);
     // A quick heartbeat (the timeouts are injectable), so ten of them pass in 12 s.
     const lukas = device('p01', { conn: slow, timeouts: { heartbeatMs: 1_200, hereMs: 4_000, inviteMs: 6_000 } });
     expect(lukas.roundTrips()).toEqual([]);
@@ -382,6 +414,43 @@ describe('invites', () => {
     // The same id with another meta (a write-once refusal) is taken too.
     expect(await run(lukas2.accept(inv, second.keys, meta({ seed: 99 }), first.id))).toBe('taken');
     expect(peekAt(`vs/matches/${first.id}/meta`)).toMatchObject({ seed: 2718281828 });
+  });
+
+  it('Review Focus 3: two devices of Lukas accepting at once: exactly one ok, one taken, one match, the reply untouched', async () => {
+    const inv = await invited();
+    // Two links of different speed, so that both devices read before either writes, and the two
+    // writes land in different server milliseconds (the rules, not a proof clash, must refuse one).
+    const lukas1 = device('p01', { conn: slowConn(20) });
+    const lukas2 = device('p01', { conn: slowConn(25) });
+    const k1 = await newKeyPair();
+    const k2 = await newKeyPair();
+    const id1 = await matchId(await sharedSecret(k1, inv.pub), 0);
+    const id2 = await matchId(await sharedSecret(k2, inv.pub), 0);
+    const from = db.requests.length;
+    const answers = await run(Promise.all([lukas1.accept(inv, k1, meta(), id1), lukas2.accept(inv, k2, meta({ seed: 99 }), id2)]));
+    expect([...answers].sort()).toEqual(['ok', 'taken']);
+    const winner = answers[0] === 'ok' ? { keys: k1, id: id1, loser: id2 } : { keys: k2, id: id2, loser: id1 };
+    // Both looked before either wrote: all four reads came before the first write.
+    const reqs = db.requests.slice(from);
+    const firstPatch = reqs.findIndex((r) => r.method === 'PATCH');
+    expect(reqs.slice(0, firstPatch).filter((r) => r.method === 'GET')).toHaveLength(4);
+    // The losing write was refused by the rules, in a later millisecond than the winning one.
+    const writes = reqs.filter((r) => r.method === 'PATCH');
+    expect(writes.map((r) => r.status)).toEqual([200, 401]);
+    expect(peekAt(`vs/matches/${winner.id}/meta`)).not.toBeNull();
+    expect(peekAt(`vs/matches/${winner.loser}`)).toBeNull();
+    expect(peekAt('vs/lobby/p02/back/p01')).toMatchObject({ ok: true, pub: winner.keys.pub });
+  });
+
+  it('accepted on one device, then declined on another: the reply stays yes, and the decline answers quietly', async () => {
+    const inv = await invited();
+    const lukas2 = device('p01');
+    const first = await accepted(lukas, inv);
+    expect(first.answer).toBe('ok');
+    const from = db.requests.length;
+    expect(await run(lukas2.decline('p02'))).toBe('ok');
+    expect(db.requests.slice(from).filter((r) => r.method === 'PATCH')).toEqual([]);
+    expect(peekAt('vs/lobby/p02/back/p01')).toMatchObject({ ok: true, pub: first.keys.pub });
   });
 
   it('an invite Toby cancelled cannot be accepted', async () => {

@@ -71,11 +71,20 @@ const meta = (extra: Record<string, Json> = {}): Json => ({
   head: { slot: 'p02', step: 3 }, turn: 6, delay: 12, created: SV, ...extra,
 });
 
-/** Toby (p02) invites Lukas (p01); Lukas accepts and creates the match in the same update. */
+/** The accepting update: the reply, the invite deleted, and meta, with Lukas's proof. */
+const acceptBody = (w: Awaited<ReturnType<typeof world>>, extra: Record<string, Json> = {}): Record<string, Json> =>
+  ({ ...w.proof('p01'), 'vs/lobby/p02/back/p01': reply(), 'vs/lobby/p01/in/p02': null, [w.m('meta')]: meta(), ...extra });
+
+/**
+ * Toby (p02) invites Lukas (p01); Lukas accepts and creates the match in the same update, which
+ * deletes the invite. Then Toby invites again (so a live invite sits in Lukas's lobby).
+ */
 async function matchWorld(R: Root = 'v2') {
   const w = await world(R);
   expect((await w.send({ ...w.proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
-  expect((await w.send({ ...w.proof('p01'), 'vs/lobby/p02/back/p01': reply(), [w.m('meta')]: meta() })).status).toBe(200);
+  expect((await w.send(acceptBody(w))).status).toBe(200);
+  w.clock.t += 1000;
+  expect((await w.send({ ...w.proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
   // Time moves on, so the proofs stored by those updates are stale from here.
   w.clock.t += 1000;
   return w;
@@ -111,10 +120,46 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
     expect((await r.get(`${R}/vs/matches/${ID}`)).data).toMatchObject({ meta: { seed: 2718281828, turn: 6 } });
   });
 
-  it('a declining reply needs no key', async () => {
-    const { send, proof } = await world(R);
-    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV } })).status).toBe(200);
-    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: true, build: BUILD, at: SV } })).status).toBe(401);
+  it('a declining reply needs no key; an accepting one does', async () => {
+    const { send, proof, clock } = await world(R);
+    expect((await send({ ...proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
+    clock.t += 1;
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: true, build: BUILD, at: SV }, 'vs/lobby/p01/in/p02': null })).status).toBe(401);
+    clock.t += 1;
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV }, 'vs/lobby/p01/in/p02': null })).status).toBe(200);
+  });
+
+  it('a reply only while the invite exists, and only in the update that deletes it', async () => {
+    const w = await world(R);
+    const { send, proof, clock, db, m } = w;
+    // No invite: refused, meta included.
+    expect((await send(acceptBody(w))).status).toBe(401);
+    expect(db.peek(`${R}/vs/matches/${ID}`)).toBeNull();
+    expect((await send({ ...proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
+    clock.t += 1;
+    // The invite left in place: refused.
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': reply(), [m('meta')]: meta() })).status).toBe(401);
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV } })).status).toBe(401);
+    expect(db.peek(`${R}/vs/lobby/p02/back`)).toBeNull();
+  });
+
+  it('two devices of Lukas accepting at once: the second update is refused as a whole; a stale decline cannot flip the yes', async () => {
+    const w = await world(R);
+    const { send, proof, clock, db } = w;
+    expect((await send({ ...proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
+    clock.t += 1;
+    expect((await send(acceptBody(w))).status).toBe(200);
+    clock.t += 1;
+    // Device 2: its own keys, so its own match id.
+    const other = 'abcdefabcdefabcdefabcdefabcdef12';
+    expect((await send({
+      ...proof('p01'), 'vs/lobby/p02/back/p01': reply({ pub: `C${PUB.slice(1)}` }), 'vs/lobby/p01/in/p02': null,
+      [`vs/matches/${other}/meta`]: meta({ seed: 9 }),
+    })).status).toBe(401);
+    expect(db.peek(`${R}/vs/matches/${other}`)).toBeNull();
+    clock.t += 1;
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV }, 'vs/lobby/p01/in/p02': null })).status).toBe(401);
+    expect(db.peek(`${R}/vs/lobby/p02/back/p01`)).toMatchObject({ ok: true, pub: PUB });
   });
 
   it('either party clears an invite or a reply with his proof', async () => {

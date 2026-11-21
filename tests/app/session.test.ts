@@ -415,6 +415,35 @@ describe('grown-up', () => {
     expect((await s.roster()).players.map((p) => p.slot)).toEqual(['p01', 'p02']);
   });
 
+  it('delete: a grown-up proof already stored this millisecond is refused once, and the retry a beat later deletes', async () => {
+    await s.setGrownUp('135799');
+    clock.t += 1;
+    // The same proof stored in this very millisecond (the Versus deletes refuse to borrow it)...
+    expect(await s.checkGrownUp('135799')).toBe('ok');
+    const before = db.requests.length;
+    // ...and the server's clock moves on while the delete waits to try again.
+    setTimeout(() => { clock.t += 1; }, 10);
+    expect(await s.deletePlayer('p03', '135799')).toBe('ok');
+    expect(db.requests.slice(before).map((r) => r.status)).toEqual([401, 200]);
+    expect(db.peek('v2/players/p03')).toBeNull();
+  });
+
+  it('delete: the right code refused for another reason is "failed", never "wrong"', async () => {
+    await s.setGrownUp('135799');
+    clock.t += 1;
+    const real = createFakeCloud(db);
+    const refusing = new Proxy(real, {
+      get: (t, k) => (k === 'deletePlayer'
+        ? async () => 'wrong-pin'
+        : (t as unknown as Record<PropertyKey, unknown>)[k]),
+    });
+    const p = new PlayerSession();
+    p.configure({ cloud: refusing, storage: new MemoryStorage(), now: clock.now, window: null, document: null });
+    expect(await p.deletePlayer('p03', '135799')).toBe('failed');
+    expect(await p.deletePlayer('p03', '135800')).toBe('wrong');
+    p.dispose();
+  });
+
   it('gives a forgotten number a new one and keeps the progress; the old number no longer works', async () => {
     await s.setGrownUp('135799');
     expect(await s.resetPin({ slot: 'p03', name: 'Mia', picture: 'sunflower' }, '135799', '999')).toBe('ok');

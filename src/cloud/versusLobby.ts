@@ -7,6 +7,7 @@ import type { Connection } from './connection';
 import { FAKE_DATABASE_URL, TIMEOUT_MS, isAutomated } from './restClient';
 import { RtdbStream } from './stream';
 import type { Json, StreamEvent, Timers } from './stream';
+import { PUB_RE } from './versusKeys';
 import type { KeyPair } from './versusKeys';
 
 /**
@@ -55,7 +56,6 @@ export interface LobbyDeps {
 
 const SV = Object.freeze({ '.sv': 'timestamp' });
 const HASH_RE = /^[0-9a-f]{64}$/;
-const PUB_RE = /^[A-Za-z0-9_-]{87}$/;
 const BUILD_RE = /^[0-9a-f]{7,12}$/;
 /** A refused proof-carrying write is tried once more after this pause (a new server millisecond). */
 const RETRY_GAP_MS = 50;
@@ -189,12 +189,12 @@ export class VersusLobby {
     this.t = d.timeouts ?? LOBBY_TIMEOUTS;
   }
 
-  /** Heartbeat now and every 15 s; streams `vs/here` and `vs/lobby/<me>` once the first heartbeat is answered. */
+  /** Heartbeat now and every 15 s; streams `vs/here` and `vs/lobby/<me>` once a heartbeat is answered `ok`. */
   start(): void {
     if (this.started) return;
     this.started = true;
     const gen = ++this.generation;
-    void this.beat(gen, true);
+    this.beat(gen);
   }
 
   /** Closes both streams and stops the heartbeat (the record ages out on the other devices). */
@@ -239,13 +239,39 @@ export class VersusLobby {
     return this.enqueue(() => this.sendProven({ [`vs/lobby/${to}/in/${this.me}`]: null }));
   }
 
-  /** No: `{ ok: false }` into the inviter's replies, and the invite out of my inbox, in one update. */
+  /**
+   * No: `{ ok: false }` into the inviter's replies, and the invite out of my inbox, in one update.
+   * The rules take a reply only while the invite exists and only in the update that deletes it, so
+   * when the invite is already gone (another device of mine answered it, or the inviter took it
+   * back) there is nothing to decline: the answer is a quiet `ok` and nothing is written.
+   */
   decline(from: Slot): Promise<WriteAnswer> {
     if (!isSlot(from) || from === this.me) return Promise.resolve('refused');
-    return this.enqueue(() => this.sendProven({
+    const body: Obj = {
       [`vs/lobby/${from}/back/${this.me}`]: { ok: false, build: this.d.build, at: SV },
       [`vs/lobby/${this.me}/in/${from}`]: null,
-    }));
+    };
+    return this.enqueue(async () => {
+      // Checked before each try and after the last refusal; a refusal is tried once more a beat later.
+      for (let attempt = 0; ; attempt++) {
+        const still = await this.inviteStill(from, null);
+        if (still === 'offline') return 'offline';
+        if (still === 'gone') return 'ok';
+        if (attempt === 2) return 'refused';
+        if (attempt === 1) await this.pause(RETRY_GAP_MS);
+        const a = await this.sendOnce(body);
+        if (a !== 'refused') return a;
+      }
+    });
+  }
+
+  /** Whether the invite from `from` is still in my inbox (the very one `inv`, when given). */
+  private async inviteStill(from: Slot, inv: Invite | null): Promise<'there' | 'gone' | 'offline'> {
+    const a = await this.request('GET', `vs/lobby/${this.me}/in/${from}`);
+    if (a.kind === 'offline') return 'offline';
+    if (a.kind !== 'ok' || !isObj(a.data)) return 'gone';
+    if (inv !== null && (a.data.pub !== inv.pub || a.data.at !== inv.at)) return 'gone';
+    return 'there';
   }
 
   /**
@@ -266,12 +292,11 @@ export class VersusLobby {
       return m !== null && sameMeta(m, meta) ? 'ok' : 'taken';
     };
     return this.enqueue(async () => {
-      const [mine, invite] = await Promise.all([there(), this.request('GET', `vs/lobby/${this.me}/in/${inv.from}`)]);
+      const [mine, still] = await Promise.all([there(), this.inviteStill(inv.from, inv)]);
       if (mine === 'ok' || mine === 'taken') return mine;
-      if (mine === 'offline' || invite.kind === 'offline') return 'offline';
+      if (mine === 'offline' || still === 'offline') return 'offline';
       // The invite is gone or another one: answered elsewhere, or taken back.
-      const still = invite.kind === 'ok' && isObj(invite.data) && invite.data.pub === inv.pub && invite.data.at === inv.at;
-      if (!still) return 'taken';
+      if (still === 'gone') return 'taken';
       const body: Obj = {
         [`vs/lobby/${inv.from}/back/${this.me}`]: { ok: true, pub: keys.pub, build: this.d.build, at: SV },
         [`vs/lobby/${this.me}/in/${inv.from}`]: null,
@@ -282,6 +307,11 @@ export class VersusLobby {
         if (a !== 'refused') return a;
         const after = await there();
         if (after === 'ok' || after === 'taken' || after === 'offline') return after;
+        // Refused with no meta of ours: another device of mine answered first (the rules take a
+        // reply only while the invite exists, in the update that deletes it). Close quietly.
+        const now = await this.inviteStill(inv.from, inv);
+        if (now === 'offline') return 'offline';
+        if (now === 'gone') return 'taken';
         if (attempt === 1) return 'refused';
         await this.pause(RETRY_GAP_MS);
       }
@@ -317,6 +347,10 @@ export class VersusLobby {
     return this.enqueue(async () => {
       const a = await this.write(body);
       if (a !== 'refused') return a;
+      // A wrong code is not tried again: the proof alone (whose rule has no same-millisecond
+      // check) tells a wrong code from a proof stored in this very millisecond.
+      const code = await this.write({ [`admin/proof/${grownUpHash}`]: { touch: SV } });
+      if (code !== 'ok') return code;
       await this.pause(RETRY_GAP_MS);
       return this.write(body);
     });
@@ -324,11 +358,10 @@ export class VersusLobby {
 
   // ---- heartbeat and streams ----
 
-  private async beat(gen: number, first: boolean): Promise<void> {
+  private beat(gen: number): void {
     if (gen !== this.generation) return;
-    this.beatTimer = this.timers.set(() => { void this.beat(gen, false); }, this.t.heartbeatMs);
-    await this.heartbeat();
-    if (first && gen === this.generation) this.openStreams();
+    this.beatTimer = this.timers.set(() => this.beat(gen), this.t.heartbeatMs);
+    void this.heartbeat();
   }
 
   private heartbeat(): Promise<WriteAnswer> {
@@ -336,6 +369,9 @@ export class VersusLobby {
       this.trips.push(ms);
       if (this.trips.length > MAX_ROUND_TRIPS) this.trips.shift();
       this.okSentLocal = Math.max(this.okSentLocal ?? sent, sent);
+      // The streams open on the first heartbeat the database took: a player it refuses (not on
+      // the Versus list) holds none.
+      if (this.started) this.openStreams();
       this.takeEcho();
     }));
   }

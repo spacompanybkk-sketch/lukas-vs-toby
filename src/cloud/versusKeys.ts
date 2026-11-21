@@ -12,7 +12,8 @@ export interface KeyPair {
 }
 
 const CURVE = { name: 'ECDH', namedCurve: 'P-256' } as const;
-const PUB_RE = /^[A-Za-z0-9_-]{87}$/;
+/** A public key as it travels: 87 base64url characters. */
+export const PUB_RE = /^[A-Za-z0-9_-]{87}$/;
 
 function toBase64url(bytes: Uint8Array): string {
   let bin = '';

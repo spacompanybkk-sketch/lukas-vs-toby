@@ -263,7 +263,16 @@ const ROWS = [
   ['Versus: meta naming the same player twice', () => patch({ ...pA(), [`${M}/meta`]: meta({ seats: { plants: A, zombies: A }, host: A, head: null }) }), 401],
   ['Versus: meta with test set (allowed on v2test only)', () => patch({ ...pA(), [`${M_TEST}/meta`]: meta({ test: 100 }) }), 200],
   ['Versus: delete that test match', () => call('DELETE', `${R}/${M_TEST}`), 200],
-  ['Versus: reply + meta with the invitee\'s proof in one update', () => patch({ ...pA(), [`vs/lobby/${B}/back/${A}`]: reply(), [`${M}/meta`]: meta() }), 200],
+  ['Versus: a reply that leaves the invite in place', () => patch({ ...pA(), [`vs/lobby/${B}/back/${A}`]: reply(), [`${M}/meta`]: meta() }), 401],
+  ['Versus: reply + meta + the invite deleted, with the invitee\'s proof in one update', later(() => patch({
+    ...pA(), [`vs/lobby/${B}/back/${A}`]: reply(), [`vs/lobby/${A}/in/${B}`]: null, [`${M}/meta`]: meta(),
+  })), 200],
+  ['Versus: a second device\'s accept (its own match id) once the invite is gone', later(() => patch({
+    ...pA(), [`vs/lobby/${B}/back/${A}`]: reply(), [`vs/lobby/${A}/in/${B}`]: null, [`${M_TEST}/meta`]: meta({ seed: 9 }),
+  })), 401],
+  ['Versus: a stale decline once the invite is gone', later(() => patch({
+    ...pA(), [`vs/lobby/${B}/back/${A}`]: { ok: false, build: BUILD, at: SV }, [`vs/lobby/${A}/in/${B}`]: null,
+  })), 401],
   ['Versus: meta written twice', () => patch({ ...pA(), [`${M}/meta`]: meta({ seed: 1 }) }), 401],
   ['Versus: ready', () => matchPatch({ 'ready/plants': SV, 'ready/zombies': SV }), 200],
   ['Versus: turns 0..2 of both seats', async () => {

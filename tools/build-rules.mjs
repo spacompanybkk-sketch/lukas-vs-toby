@@ -284,8 +284,11 @@ function versus(R, { top, adminProof }) {
           at: { '.validate': NOW },
           $other: NOTHING_ELSE,
         }),
-        // $from's answer to $owner's invite; the key only when he accepts.
-        back: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')}`, {
+        // $from's answer to $owner's invite; the key only when he accepts. Only while that invite
+        // (`lobby/$from/in/$owner`) exists, and only in the update that deletes it: of two devices
+        // of one player answering at once, the second is refused as a whole (meta included), and a
+        // stale "no" cannot overwrite a "yes".
+        back: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')} && root.child('${R}/vs/lobby/' + $from + '/in/' + $owner).exists() && !${top(5)}.child('vs/lobby/' + $from + '/in/' + $owner).exists()`, {
           '.validate': "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
           ok: { '.validate': 'newData.isBoolean()' },
           pub: { '.validate': PUB },
