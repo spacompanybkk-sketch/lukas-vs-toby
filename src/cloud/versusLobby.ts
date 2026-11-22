@@ -348,15 +348,6 @@ export class VersusLobby {
     return this.enqueue(() => this.sendProven({ [`vs/lobby/${this.me}/back/${from}`]: null }));
   }
 
-  /** Who may play Versus: every player that exists (the rules say the same). */
-  async allowed(): Promise<ReadonlySet<Slot> | 'offline'> {
-    const a = await this.request('GET', 'players');
-    if (a.kind !== 'ok') return 'offline';
-    const out = new Set<Slot>();
-    if (isObj(a.data)) for (const k of Object.keys(a.data)) if (isSlot(k)) out.add(k);
-    return out;
-  }
-
   /**
    * Ticks a player in or out (the grown-up screen), with the grown-up proof. Ticked out, his
    * "here" record and his lobby go in the same update, so he leaves the list at once.
