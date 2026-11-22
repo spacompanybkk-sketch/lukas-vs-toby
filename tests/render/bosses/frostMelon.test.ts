@@ -230,7 +230,7 @@ describe('the Frost Melon on the lawn', () => {
     expect(s.match.state.units.some((u) => u.faction === 'zombies' && u.stun > 0)).toBe(true);
   });
 
-  it('the freeze\'s lanes are warned of in deep navy inside a frost-white outline (its own colours, for the ice and the snow), the blow in bright ice', () => {
+  it('the freeze\'s lanes are warned of in deep navy inside a darker navy outline (its own colours, for the ice and the snow), the blow in bright ice', () => {
     const s = bossStage('frostMelon');
     s.until((e) => e.type === 'bossStrike' && e.windup);
     s.play(0.1);
@@ -240,7 +240,7 @@ describe('the Frost Melon on the lawn', () => {
       if (o.name === 'boss-strike-tile') frame = (o as unknown as { material: MeshBasicMaterial }).material;
       if (o.name === 'boss-strike-fill') fill = (o as unknown as { material: MeshBasicMaterial }).material;
     });
-    expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#F4FBFF');
+    expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#06163F'); // dark, so it reads on the snow lane with the fill blinked off
     expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#0A2A70');
     expect(fill!.opacity).toBeCloseTo(0.85);
     const ring = vi.spyOn(s.fx, 'ring');

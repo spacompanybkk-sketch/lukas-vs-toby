@@ -99,6 +99,8 @@ const ZOMBIE_BAR_FLOOR = 1.1;
 const BAR_ROWS = 6;
 /** A zombie keeps a raised bar row while a neighbour stays this much nearer than the overlap distance, so a pair at it does not flicker. */
 const BAR_HOLD = 0.1;
+/** With a boss up, a clump of zombies at it (they bite it all at once) shows this many bars; the rest of the clump's are left out. */
+const BOSS_CLUMP_BARS = 3;
 
 /**
  * The lowest row a zombie's bar may take: rows of `BAR_LIFT` over `ZOMBIE_BAR_FLOOR`, the first
@@ -466,6 +468,7 @@ export class BattleView {
       const h = state.hazards[i];
       if (h && !this.puddles.has(h.id)) this.puddles.add(h.id, h.lane, h.x, h.radius, h.ticksLeft / TICKS_PER_SECOND);
     }
+    const bossUp = this.list.some((v) => v.boss && !v.dying);
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
       if (!u || u.faction !== 'zombies') continue;
@@ -507,6 +510,7 @@ export class BattleView {
       const last = view.barRow;
       if (near && last > row && last <= top && (taken & (1 << last)) === 0) row = last;
       view.barRow = row;
+      view.barHidden = bossUp && row - base >= BOSS_CLUMP_BARS;
     }
     const stamp = ++this.stamp;
     for (let i = 0; i < state.projectiles.length; i++) {
@@ -514,7 +518,7 @@ export class BattleView {
       if (!p) continue;
       let view = this.projectiles.get(p.id);
       // In flight before this view was made (it joined late): drawn from where it is now.
-      if (!view) view = this.addProjectile(p.id, p.kind, p.faction, p.flight, p.targetX, p.lane, p.x, p.ownerId, true);
+      if (!view) view = this.addProjectile(p.id, p.kind, p.faction, p.flight, p.targetX, p.lane, p.x, p.ownerId, true, p.sourceKey);
       view.stamp = stamp;
       view.prevX = view.currX;
       view.currX = p.x;
@@ -608,7 +612,7 @@ export class BattleView {
     for (let lane = 0; lane < 5; lane++) {
       for (let i = 0; i < this.list.length; i++) {
         const view = this.list[i] as UnitView;
-        if (view.lane !== lane || view.dying || view.leaping || view.boss || !(view.hp < view.maxHp)) continue;
+        if (view.lane !== lane || view.dying || view.leaping || view.boss || view.barHidden || !(view.hp < view.maxHp)) continue;
         v1.copy(view.wrapper.position);
         v1.x += view.faction === 'plants' ? -BAR_SHIFT : BAR_SHIFT;
         // A lane's bars stand over its centre line, in rows one bar height apart (see `barRow`), so
@@ -1022,7 +1026,10 @@ export class BattleView {
         break;
       }
       case 'projectileSpawned':
-        this.addProjectile(e.projectileId, e.kind, e.faction, e.flight, e.targetX, e.lane, e.x, e.ownerId);
+        this.addProjectile(
+          e.projectileId, e.kind, e.faction, e.flight, e.targetX, e.lane, e.x, e.ownerId, false,
+          state.projectiles.find((p) => p.id === e.projectileId)?.sourceKey,
+        );
         break;
       case 'projectileHit':
         this.hitProjectile(e.projectileId, e.lane, e.x, e.targetId, e.targetBase, e.blocked, stillFlying(state, e.projectileId));
@@ -1493,11 +1500,13 @@ export class BattleView {
    */
   private addProjectile(
     id: number, kind: ProjectileKind, faction: Faction, flight: Flight, targetX: number | null, lane: number, x: number, ownerId: number,
-    late = false,
+    late = false, sourceKey?: UnitKey,
   ): ProjectileView {
     const owner = this.views.get(ownerId);
     // A barrage flies as its boss's look says: the Oak's acorns, the Frost Melon's frozen melons.
-    const frozen = kind === 'acorn' && owner !== undefined && throwsFrozenMelons(owner.key);
+    // What fired it is the projectile's own `sourceKey`; the boss's view may be gone by now.
+    const shooter = sourceKey ?? owner?.key;
+    const frozen = kind === 'acorn' && shooter !== undefined && throwsFrozenMelons(shooter);
     const object = frozen ? this.spareFrozen.pop() ?? makeFrozenMelon() : this.spare[kind].pop() ?? makeProjectile(kind);
     object.visible = false;
     object.scale.setScalar(PROJECTILE_SCALE[kind]);
