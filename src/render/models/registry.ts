@@ -71,6 +71,9 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   elderOak,
   moonHowler,
   frostMelon,
+  // STUBS (step-3 plan Task 1): the Titan's and the Oak's models under their own keys; Task 2 builds the real ones.
+  sandPharaoh: { ...brainTitan, key: 'sandPharaoh' },
+  cactusKing: { ...elderOak, key: 'cactusKing' },
 };
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

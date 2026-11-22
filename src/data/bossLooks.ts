@@ -128,6 +128,9 @@ const SHIPPED = {
 
 export const BOSS_LOOK: Record<BossKey, BossLook> = {
   ...SHIPPED,
+  // STUBS (step-3 plan Task 1): the shipped Titan and Oak looks; Task 2 gives the Pharaoh and the Cactus King their own.
+  sandPharaoh: SHIPPED.brainTitan,
+  cactusKing: SHIPPED.elderOak,
   moonHowler: {
     // The model is a unit's voxels, a little bigger than the Titan.
     scale: 2.6,

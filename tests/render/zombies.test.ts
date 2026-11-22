@@ -355,7 +355,7 @@ describe('the zombies', () => {
     // What one look means is checked for every flagged model in models.test.ts.
     expect(def.singleLevel).toBe(true);
     // The bosses (models/bosses) have one look too; among the zombies only the Bone Minion.
-    expect(modelKeys().filter((key) => getModelDef(key).singleLevel)).toEqual(['boneMinion', 'brainTitan', 'elderOak', 'moonHowler', 'frostMelon']);
+    expect(modelKeys().filter((key) => getModelDef(key).singleLevel)).toEqual(['boneMinion', 'brainTitan', 'elderOak', 'moonHowler', 'frostMelon', 'sandPharaoh', 'cactusKing']);
   });
 
   it('Hot Topic bites fast, snapping its hanging jaw shut', () => {

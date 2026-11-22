@@ -57,6 +57,8 @@ const TRIANGLE_OVERRIDES: Record<string, number> = {
   elderOak: 6000,
   moonHowler: 6000,
   frostMelon: 6000,
+  sandPharaoh: 6000,
+  cactusKing: 6000,
 };
 
 describe('the registry', () => {

@@ -22,8 +22,15 @@ import type { BossKey, CardKey, Faction, UnitKey } from '../sim/types';
  *
  * `after`: the step waits (no glove, nothing held) until the hero, or the spell it points at, is
  * first ready. Steps run in order.
+ *
+ * `after: 'foe'` (plant-side `tile` steps only for now): the step waits until an enemy unit (not a
+ * `rock`, not a Bone Minion's corpse; a boss counts) stands in the step's lane within 2 tiles in
+ * front of the step's tile: `0 ≤ x − (col + 0.5) ≤ 2` for plants (mirrored for zombies). Met, it arms
+ * like any step (glove, hold, `MISSING_HOLD_SECONDS` if its action stops being possible). If the foe
+ * leaves the window or dies before the step arms, it waits again. No clock skips it: a foe step that
+ * never arms never shows and holds nothing.
  */
-export type TutorialStep = { id: string; after?: 'hero' | 'spell' } & (
+export type TutorialStep = { id: string; after?: 'hero' | 'spell' | 'foe' } & (
   | { show: 'card'; card: CardKey; until: 'selected' }
   | { show: 'tile'; card: CardKey; lane: number; col: number; until: 'placed' }
   | { show: 'unit'; card: CardKey; until: 'merged' }

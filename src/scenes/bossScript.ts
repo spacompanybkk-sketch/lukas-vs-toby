@@ -29,6 +29,9 @@ export const BOSS_DEMO: Record<BossKey, BossConfig> = {
   elderOak: { key: 'elderOak', faction: 'plants', lane: 2 },
   moonHowler: { key: 'moonHowler', faction: 'zombies', lane: 2 },
   frostMelon: { key: 'frostMelon', faction: 'plants', lane: 2 },
+  // STUBS (step-3 plan Task 1): Task 2 writes their demo scripts.
+  sandPharaoh: { key: 'sandPharaoh', faction: 'zombies', lane: 2 },
+  cactusKing: { key: 'cactusKing', faction: 'plants', lane: 2 },
 };
 
 const plant = (unit: PreparedUnit['unit'], lane: number, col: number, level = 1): PreparedUnit =>
@@ -89,6 +92,8 @@ const DEMO_LAWN: Record<BossKey, LawnConfig> = {
   elderOak: NO_TWIST,
   moonHowler: { ...NO_TWIST, fog: 5 },
   frostMelon: { ...NO_TWIST, ice: { lanes: [0, 1, 3, 4], speed: 1.6 } },
+  sandPharaoh: NO_TWIST,
+  cactusKing: NO_TWIST,
 };
 
 /** The demo's setup: mode 'boss' with `boss`, the plain opponent above, no energy to spend, sudden death off. */
