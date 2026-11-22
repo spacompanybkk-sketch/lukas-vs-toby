@@ -131,6 +131,8 @@ interface Ctx {
   rematching: boolean;
   /** `vs/results/<id>` holds who won (written before the match is deleted). */
   resultKept: boolean;
+  /** The early write of the result, while it is in flight (removal waits for it instead of sending a second). */
+  resultPending: Promise<WriteAnswer> | null;
   rows: BoardRow[];
   rankUp: RankUp | null;
 }
@@ -467,6 +469,7 @@ export class VersusFlow {
     if (ctx === null || ctx.outcome !== null || (this._phase.peek().name !== 'battle' && !ctx.endedRejoin)) return;
     ctx.outcome = o;
     ctx.resultAt = this.now();
+    this.keepResult(ctx);
     ctx.link?.dispose();
     this.clear(this.heartbeat);
     this.heartbeat = null;
@@ -751,7 +754,7 @@ export class VersusFlow {
       channel: new CloudMatchChannel({ conn: this.conn, id: p.id, seat, me, timers: this.timers }),
       alive: true, unlisten: null, link: null, linkStarted: false, resumeOnStart: false, endedRejoin: false, timer: null,
       readySeen: { plants: false, zombies: false }, connected: false, outcome: null, resultAt: null,
-      again: {}, rematchState: 'offer', rematchTimer: null, rematching: false, resultKept: false, rows: [], rankUp: null,
+      again: {}, rematchState: 'offer', rematchTimer: null, rematching: false, resultKept: false, resultPending: null, rows: [], rankUp: null,
     };
   }
 
@@ -964,6 +967,23 @@ export class VersusFlow {
   }
 
   /**
+   * A win or a forfeit is written to `vs/results/<id>` the moment this device knows it, while the
+   * match still exists: the rule that accepts it needs the match's seats, and the other device
+   * deletes the match at about the same time.
+   */
+  private keepResult(ctx: Ctx): void {
+    const lobby = this.lobby;
+    const winner = ctx.outcome === null ? null : resultWinner(ctx.outcome);
+    if (winner === null || lobby === null || ctx.resultKept || ctx.resultPending !== null) return;
+    const pending = lobby.storeResult(ctx.id, winner).catch((): WriteAnswer => 'offline').then((a) => {
+      ctx.resultKept = a === 'ok';
+      ctx.resultPending = null;
+      return a;
+    });
+    ctx.resultPending = pending;
+  }
+
+  /**
    * Deletes the finished match at `notBefore`, but first (a win or a forfeit) leaves who won at
    * `vs/results/<id>` for a device that is away, and waits for both `end` records to exist until
    * the rematch window has passed.
@@ -974,6 +994,7 @@ export class VersusFlow {
     const deadline = (ctx.resultAt ?? this.now()) + this.t.rematchMs;
     const run = async (left: number): Promise<void> => {
       const again = (): void => { if (left > 0 && !this.disposed) this.after(this.t.retry.maxMs, () => void run(left - 1)); };
+      if (ctx.resultPending !== null) await ctx.resultPending;
       if (winner !== null && lobby !== null && !ctx.resultKept) {
         const a = await lobby.storeResult(ctx.id, winner).catch((): WriteAnswer => 'offline');
         if (a === 'offline') return again();

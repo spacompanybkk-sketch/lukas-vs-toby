@@ -563,6 +563,51 @@ describe('the credit', () => {
   });
 });
 
+describe('the result is kept as soon as the match ends (release gate)', () => {
+  const spies = (d: { flow: VersusFlow }) => {
+    const lobby = (d.flow as unknown as { lobby: { storeResult: (id: string, w: Faction) => Promise<string> } }).lobby;
+    const ctx = (d.flow as unknown as { ctx: { channel: { remove: () => Promise<string> } } }).ctx;
+    const order: string[] = [];
+    const store = vi.spyOn(lobby, 'storeResult').mockImplementation(async (...a) => {
+      order.push('store');
+      return 'ok' as never;
+    });
+    const remove = vi.spyOn(ctx.channel, 'remove');
+    remove.mockImplementation(async () => { order.push('remove'); return 'ok' as never; });
+    return { store, remove, order, lobby };
+  };
+
+  it('stores once at the outcome, before any removal, and removal does not store again after ok', async () => {
+    const { lukas } = await battle();
+    const s = spies(lukas);
+    lukas.flow.battleOutcome(won('plants'));
+    expect(s.store).toHaveBeenCalledTimes(1);
+    expect(s.remove).not.toHaveBeenCalled();
+    lukas.flow.rematch();
+    await pass(VS_TIMEOUTS.rematchMs + 3000);
+    expect(s.store).toHaveBeenCalledTimes(1);
+    expect(s.order[0]).toBe('store');
+  }, 60_000);
+
+  it('removal stores again when the early write answered offline', async () => {
+    const { lukas } = await battle();
+    const s = spies(lukas);
+    s.store.mockImplementationOnce(async () => 'offline' as never);
+    lukas.flow.battleOutcome(won('plants'));
+    expect(s.store).toHaveBeenCalledTimes(1);
+    lukas.flow.rematch();
+    await pass(VS_TIMEOUTS.rematchMs + 3000);
+    expect(s.store.mock.calls.length).toBeGreaterThanOrEqual(2);
+  }, 60_000);
+
+  it('a draw or an unfinished match stores nothing early', async () => {
+    const { lukas } = await battle();
+    const s = spies(lukas);
+    lukas.flow.battleOutcome(won('draw'));
+    expect(s.store).not.toHaveBeenCalled();
+  }, 60_000);
+});
+
 describe('the credit survives a sleeping device (C1) and waits for the right player (C5)', () => {
   it('the winner\'s device asleep through the end and the 60 s window, then reloads: credited once', async () => {
     const { lukas, toby, id } = await battle();
