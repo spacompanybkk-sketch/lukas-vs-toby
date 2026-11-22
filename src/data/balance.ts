@@ -473,9 +473,9 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         ],
       ],
     },
-    // The world-3 bosses, STUBS (step-3 plan Task 1): content design §2 phase-1 numbers, and a phase 2
-    // that repeats them, so every table is complete and valid. Task 4 replaces both rows with the
-    // tuned ones (Pharaoh 5500-8000, Cactus 9000-13000).
+    // The world-3 bosses (step-3 plan Task 4, content design §2), the world-2 cadence: phase 1 one
+    // attack every 9-12 s, phase 2 opens with its strike (the sandstorm / the rockfall) and runs
+    // three patterns. Tunable start values: the level tasks tune hp (Pharaoh 5500-8000, Cactus 9000-13000).
     sandPharaoh: {
       recharge: 0, hp: 6500, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },
@@ -489,8 +489,9 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
           { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
         ],
         [
-          { kind: 'summon', everySeconds: 9, unit: 'desertZombie', count: 2, level: 1 },
-          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2, target: 'tiles', count: 3, damage: 50, status: { kind: 'blind', seconds: 3 } }, // the sandstorm: three plants, wind-up 2 s
+          { kind: 'summon', everySeconds: 5, unit: 'skeletonWarrior', count: 2, level: 2 }, // wrapped as mummies
+          { kind: 'slam', everySeconds: 7, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
         ],
       ],
     },
@@ -506,8 +507,9 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
           { kind: 'summon', everySeconds: 12, unit: 'kernelPult', count: 2, level: 1, minCol: 1, maxCol: 4 },
         ],
         [
-          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 12, unit: 'kernelPult', count: 2, level: 1, minCol: 1, maxCol: 4 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'tiles', count: 3, damage: 220 }, // the rockfall: boulders on three zombie tiles
+          { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
         ],
       ],
     },

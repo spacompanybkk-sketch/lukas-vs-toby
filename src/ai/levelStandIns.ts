@@ -336,7 +336,13 @@ function createBeginner(side: Faction, seed: number, hero: boolean): Bot {
  * `cards` in all, the first of `cards` he holds that a tile takes, on `cols` (lo..hi, free tiles
  * short of the nearest zombie) or wherever `sensibleCols` says.
  */
-export interface BossAnswer { readonly cards: readonly CardKey[]; readonly want: number; readonly cols?: readonly [number, number] }
+export interface BossAnswer {
+  readonly cards: readonly CardKey[];
+  readonly want: number;
+  readonly cols?: readonly [number, number];
+  /** An ordered plan instead of `want` plants of `cards`: `[card, col]`, each planted in the boss's lane in turn (`bossAnswer`). */
+  readonly recipe?: readonly (readonly [CardKey, number])[];
+}
 
 /**
  * What each sensible player knows about each zombie boss (a plants level; plant bosses have no entry).
@@ -345,10 +351,18 @@ export interface BossAnswer { readonly cards: readonly CardKey[]; readonly want:
  * - Moon Howler: its dome bounces straight shots and the fog caps every shot at 5 tiles, so the
  *   expert plants two pults (the Mango-pult first) on columns 3-4 of its lane; the average player
  *   puts three Peashooters at the usual columns. The beginner knows nothing of either.
+ * - Sand Pharaoh: its sand swirl halves shots and its sandstorm blinds plants, so the expert follows
+ *   a recipe in its lane: a Peashooter at column 1, a Torchwood at column 3 in front of it (fire
+ *   peas), over the rocks of its lane; the average player puts three Peashooters. The Cactus King
+ *   (a plant boss) has no entry: only the expert's strike dodge knows its rockfall.
  */
 export const BOSS_ANSWER: Readonly<Partial<Record<BossKey, Readonly<Record<'average' | 'expert', BossAnswer>>>>> = {
   brainTitan: { expert: { cards: ['kernelPult'], want: 2 }, average: { cards: ['peashooter'], want: 3 } },
   moonHowler: { expert: { cards: ['mangoPult', 'kernelPult'], want: 2, cols: [3, 4] }, average: { cards: ['peashooter'], want: 3 } },
+  sandPharaoh: {
+    expert: { cards: ['peashooter', 'torchwood'], want: 2, recipe: [['peashooter', 1], ['torchwood', 3]] },
+    average: { cards: ['peashooter'], want: 3 },
+  },
 };
 
 /** The level's zombie boss with an answer, and its lane while it stands (a plants level), or null. */
@@ -370,6 +384,21 @@ function colsBetween(view: LaneView, lo: number, hi: number): number[] {
 }
 
 /**
+ * The next step of a recipe: the first `[card, col]` not standing yet, in order, as a placement, or
+ * null when the match refuses it now (no energy yet: he waits and keeps the order) or all stand. A
+ * step whose tile a rock or another plant holds, or whose card he lacks, is skipped.
+ */
+function recipeStep(match: Match, view: LaneView, recipe: readonly (readonly [CardKey, number])[]): Command | null {
+  for (const [card, col] of recipe) {
+    if (view.tiles[col]?.key === card) continue;
+    if (!match.state.config.cards.plants.includes(card) || !freeTile(view, col)) continue;
+    const cmd = placeCommand('plants', card, view.lane, col);
+    return match.check(cmd) === null ? cmd : null;
+  }
+  return null;
+}
+
+/**
  * The sensible player's next answer to the boss (`BOSS_ANSWER`), or null when there is no boss with
  * an answer, there are enough already, he holds none of its cards, or no tile takes one.
  */
@@ -381,6 +410,7 @@ function bossAnswer(match: Match, kind: 'average' | 'expert'): Command | null {
   if (held.length === 0) return null;
   const view = readLawn(match.state)[lane];
   if (view === undefined) return null;
+  if (answer.recipe !== undefined) return recipeStep(match, view, answer.recipe);
   if (view.plants.filter((p) => answer.cards.includes(p.key as CardKey)).length >= answer.want) return null;
   for (const card of held) {
     const cols = answer.cols === undefined ? sensibleCols(view, card) : colsBetween(view, answer.cols[0], answer.cols[1]);
