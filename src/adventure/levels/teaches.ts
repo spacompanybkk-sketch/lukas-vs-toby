@@ -89,4 +89,34 @@ export const TEACHES: Readonly<Record<string, readonly TutorialStep[]>> = {
     { id: 'z2-7.cowboy-card', show: 'card', card: 'cowboyZombie', until: 'selected' },
     { id: 'z2-7.cowboy-lane', show: 'tile', card: 'cowboyZombie', lane: 2, col: 9, until: 'placed' },
   ],
+
+  // World 3 (content design §3, plan Rulings 6-8). Written ahead of the level files (`p3.ts`,
+  // `z3.ts`, Tasks 6-7), as world 2's were.
+  //
+  // The Desert Canyon's rocks: the camera eases along the boulders, a ghost Peashooter is refused on
+  // one and hops beside it, a ghost Brain Eater walks over it (the zombies' side: it goes first);
+  // any tap ends it.
+  'p3-1': [{ id: 'p3-1.rocks', show: 'twist', until: 'tapped' }],
+  // The Torchwood: in front of the head-start Peashooter at [2,1], so its peas burn.
+  'p3-4': [
+    { id: 'p3-4.torch-card', show: 'card', card: 'torchwood', until: 'selected' },
+    { id: 'p3-4.torch-tile', show: 'tile', card: 'torchwood', lane: 2, col: 2, until: 'placed' },
+  ],
+  // The Cherry Bomber: its tile waits (no glove, nothing held) until the 40 s clump walking lane 2
+  // is in front of it, so the blast lands on the clump and not on empty sand.
+  'p3-7': [
+    { id: 'p3-7.cherry-card', show: 'card', card: 'cherryBomber', until: 'selected' },
+    { id: 'p3-7.cherry-tile', show: 'tile', card: 'cherryBomber', lane: 2, col: 4, until: 'placed', after: 'foe' },
+  ],
+  'z3-1': [{ id: 'z3-1.rocks', show: 'twist', until: 'tapped' }],
+  // The Necromancer: down the middle lane.
+  'z3-4': [
+    { id: 'z3-4.necro-card', show: 'card', card: 'necromancer', until: 'selected' },
+    { id: 'z3-4.necro-lane', show: 'tile', card: 'necromancer', lane: 2, col: 9, until: 'placed' },
+  ],
+  // The Trident Zombie: down lane 1.
+  'z3-7': [
+    { id: 'z3-7.trident-card', show: 'card', card: 'tridentZombie', until: 'selected' },
+    { id: 'z3-7.trident-lane', show: 'tile', card: 'tridentZombie', lane: 1, col: 9, until: 'placed' },
+  ],
 };

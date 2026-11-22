@@ -18,6 +18,7 @@ import { GHOST_PUFF } from '../../src/render/world/TwistTiles';
 import { hashState } from '../../src/sim/hash';
 import type { LawnConfig } from '../../src/sim/types';
 import { W2, w2Save } from './world2Lessons';
+import { W3, w3Save } from './world3Lessons';
 import { LEVELS } from '../../src/adventure/levels';
 import { TEACHES } from '../../src/adventure/levels/teaches';
 
@@ -62,11 +63,15 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+/** The audio of the session `start` made last (its `play` is a spy). */
+let lastAudio: AudioEngine;
+
 function start(stage: StageLike, def: LevelDef, teached: string[] = []): BattleSession {
   const audio = new AudioEngine(() => { throw new Error('no audio in tests'); });
+  lastAudio = audio;
   vi.spyOn(audio, 'play').mockImplementation(() => undefined);
   vi.spyOn(audio, 'startMusic').mockImplementation(() => undefined);
-  const save = { ...w2Save(def.side), teached };
+  const save = { ...(def.world === 3 ? w3Save(def.side) : w2Save(def.side)), teached };
   const play = { ...prepareLevel(def, save, 5), teach: stepsToTeach(def.teaches, save) };
   const session = new BattleSession(stage, audio, levelOptions(play), { introSeconds: 0, input: { isOverLawn: () => true } });
   sessions.push(session);
@@ -271,4 +276,45 @@ describe('the twist pan on the stage', () => {
     expect(bare.match.state.tick).toBe(ticks);
     expect(hashState(session.controller.match.state)).toBe(hashState(bare.match.state));
   });
+});
+
+describe('the rocks pan on the stage (worlds step 3, Task 3)', () => {
+  for (const id of ['p3-1', 'z3-1']) {
+    it(`${id}: ghosts among the boulders, the camera pans from shot to shot, the refusal buzzes ('deny') once a loop, a tap frees it all`, () => {
+      const stage = fakeStage();
+      const focus = vi.spyOn(stage.rig, 'focus');
+      const session = start(stage, W3[id]!);
+      expect(session.world).toBe('desert');
+      session.begin();
+      run(stage, 0.3);
+      const show = session.twistShow!;
+      expect(show.kind).toBe('rocks');
+      expect(show.zombieFirst).toBe(id === 'z3-1');
+      expect(inScene(stage, 'twist-show')).toHaveLength(1);
+      expect(inScene(stage, 'boulders')).toHaveLength(1);
+      expect(inScene(stage, 'ghost-peashooter')).toHaveLength(1);
+      expect(inScene(stage, 'ghost-brainEater')).toHaveLength(1);
+      const played = (): number => vi.mocked(lastAudio.play).mock.calls.filter(([name]) => name === 'deny').length;
+      run(stage, show.loops === 0 ? 12 : 0.1);
+      // One focus for every shot of the pan, in order, ending on the boulder the ghosts act on.
+      const boxes = focus.mock.calls.map(([box]) => box).filter((b) => b !== null);
+      expect(boxes.length).toBeGreaterThanOrEqual(show.pan.length);
+      expect(boxes.slice(0, show.pan.length)).toEqual([...show.pan]);
+      expect(played()).toBeGreaterThanOrEqual(1);
+      expect(played()).toBeLessThanOrEqual(show.loops + 1);
+      // Held all along: the match has not moved past its first tick.
+      expect(session.controller.match.state.tick).toBe(1);
+      expect(session.controller.match.state.units.filter((u) => u.faction === W3[id]!.side)).toHaveLength(0);
+      const freed = { n: 0 };
+      show.group.traverse((o) => { if (o instanceof Mesh) o.geometry.addEventListener('dispose', () => { freed.n += 1; }); });
+      session.controller.tapTwist();
+      run(stage, 0.1);
+      expect(session.twistShow).toBeNull();
+      expect(show.disposed).toBe(true);
+      expect(freed.n).toBeGreaterThan(0);
+      expect(inScene(stage, 'twist-show')).toHaveLength(0);
+      expect(inScene(stage, 'rock-refused')).toHaveLength(0);
+      expect(inScene(stage, 'boulders')).toHaveLength(1); // the lawn's own boulders stay
+    });
+  }
 });

@@ -6,6 +6,7 @@ import { MISSING_HOLD_SECONDS, rememberTaught, stepsToTeach } from '../../src/ap
 import type { LevelDef } from '../../src/adventure/types';
 import type { Save } from '../../src/progress/save';
 import { W2, lessonController, w2Save } from './world2Lessons';
+import { W3, w3Controller, w3Save } from './world3Lessons';
 import { seconds } from '../../src/data/balance';
 import { newSave } from '../../src/progress/save';
 import { SPELLS } from '../../src/sim/spells';
@@ -107,7 +108,7 @@ function tapGlove(c: BattleController): void {
  * hero's and spells' lessons come. Each armed step must end within 3 s of taps; the whole tutorial
  * must end. Never held without a valid action for more than the limit.
  */
-function follow(c: BattleController, maxSeconds: number): void {
+function follow(c: BattleController, maxSeconds: number, foeMayWait = false): void {
   const side: Faction = c.playerFaction;
   let streak = 0;
   let armedFor = 0;
@@ -124,6 +125,8 @@ function follow(c: BattleController, maxSeconds: number): void {
     expect(armedFor, `step ${t.current?.id} armed and not done in 3 s of taps`).toBeLessThan(seconds(3));
     if (s.winner !== null) break;
   }
+  // A foe wait whose foe never came (killed, or the match ended first) holds nothing: the lesson just never shows.
+  if (foeMayWait && c.tutorial!.current?.after === 'foe' && !c.tutorial!.holding) return;
   expect(c.tutorial!.current, `the tutorial ended (match over: ${c.match.state.winner})`).toBeNull();
   // Every lesson of the level was done by the child's taps (none dropped, none skipped).
   expect(c.tutorial!.taught.peek()).toEqual(c.play!.teach!.map((t) => t.id));
@@ -163,6 +166,16 @@ describe('the tutorial never freezes the match without an action to take', () =>
     }, 120_000);
   }
 
+  // Worlds step 3: the rocks pans, the new-card gloves and the Cherry Bomber's foe wait, on stand-in levels.
+  for (const id of Object.keys(W3)) {
+    it(`${id}: following the glove ends every step, on 50 seeds`, () => {
+      for (const seed of SEEDS) follow(w3Controller(W3[id]!, seed), 150);
+    }, 120_000);
+    it(`${id}: a child who never taps is held only with a valid action, on 50 seeds`, () => {
+      for (const seed of SEEDS) idle(w3Controller(W3[id]!, seed), 60);
+    }, 120_000);
+  }
+
   for (const side of ['plants', 'zombies'] as const) {
     for (const key of SPELLS[side]) {
       it(`${side === 'plants' ? 'p1-4' : 'z1-4'} with ${key} dealt first: the spell lesson ends, on 10 seeds`, () => {
@@ -197,11 +210,11 @@ function random(seed: number): () => number {
  * while any tap ends it (and the HUD shows it), any other step only while its glove's action is
  * valid (or for at most the limit). At the end he follows the glove, and the lessons end.
  */
-function chaos(def: LevelDef, seed: number): void {
+function chaos(def: LevelDef, seed: number, saveOf: (side: Faction) => Save = w2Save, lesson = lessonController): void {
   const rnd = random(seed * 7919 + 13);
   const pickOf = <T>(xs: readonly T[]): T | undefined => xs[Math.floor(rnd() * xs.length)];
-  let save: Save = w2Save(def.side);
-  let c = lessonController(def, seed, save);
+  let save: Save = saveOf(def.side);
+  let c = lesson(def, seed, save);
   const remember = (): void => { save = (c.tutorial?.taught.peek() ?? []).reduce(rememberTaught, save); };
   const side = def.side;
   let streak = 0;
@@ -221,8 +234,8 @@ function chaos(def: LevelDef, seed: number): void {
       else if (r < 0.7) c.hotkey('Escape');
       else if (r < 0.78) c.tapTwist();
       else if (r < 0.86) c.setPaused(!c.hud.paused.peek());
-      else if (r < 0.93) { remember(); c = lessonController(def, seed + i, save); } // Restart
-      else { remember(); c = lessonController(def, (seed * 31 + i) >>> 0, save); } // a reload mid-step
+      else if (r < 0.93) { remember(); c = lesson(def, seed + i, save); } // Restart
+      else { remember(); c = lesson(def, (seed * 31 + i) >>> 0, save); } // a reload mid-step
     }
     c.step();
     const t = c.tutorial;
@@ -237,12 +250,14 @@ function chaos(def: LevelDef, seed: number): void {
       streak = 0;
     }
     expect(streak, `${def.id}: held with no valid action at tick ${c.match.state.tick}`).toBeLessThanOrEqual(LIMIT);
-    if (c.match.state.winner !== null) { remember(); c = lessonController(def, seed + i, save); }
+    if (c.match.state.winner !== null) { remember(); c = lesson(def, seed + i, save); }
   }
   // Then he follows the glove (unpaused): every lesson left ends, and nothing holds the match.
   c.setPaused(false);
-  if (c.tutorial !== null) follow(c, 150);
-  expect(c.tutorial?.current ?? null, `${def.id}: a lesson left after following the glove`).toBeNull();
+  if (c.tutorial !== null) follow(c, 150, true);
+  // (An `after: 'foe'` step whose foe is gone just waits, holding nothing.)
+  const foeWait = c.tutorial?.current?.after === 'foe';
+  if (!foeWait) expect(c.tutorial?.current ?? null, `${def.id}: a lesson left after following the glove`).toBeNull();
   expect(c.tutorial?.holding ?? false).toBe(false);
   expect(c.tutorial?.twist.peek() ?? null).toBeNull();
   expect(c.tutorial?.glove.peek() ?? null).toBeNull();
@@ -269,5 +284,45 @@ describe('a child doing anything during the world-2 lessons never leaves the mat
     c.hotkey('1');
     expect(c.tutorial!.current).toBeNull();
     expect(c.tutorial!.glove.peek()).toBeNull();
+  });
+});
+
+describe('a child doing anything during the world-3 lessons never leaves the match held with no way on', () => {
+  for (const id of Object.keys(W3)) {
+    it(`${id}: random taps, drags, pauses, restarts and reloads, on 40 seeds`, () => {
+      for (const seed of SEEDS.slice(0, 40)) chaos(W3[id]!, seed, w3Save, w3Controller);
+    }, 120_000);
+  }
+  it('the rocks pan\'s hint glove: any tap ends it, Pause and Resume do not', () => {
+    for (const id of ['p3-1', 'z3-1']) {
+      const c = w3Controller(W3[id]!, 5);
+      for (let i = 0; i < seconds(4); i++) c.step();
+      expect(c.tutorial!.glove.peek()?.aim).toEqual({ kind: 'tap' });
+      c.setPaused(true);
+      c.setPaused(false);
+      expect(c.tutorial!.twistHolding).toBe(true);
+      c.hotkey('1');
+      expect(c.tutorial!.current).toBeNull();
+    }
+  });
+  it('the Cherry Bomber lesson: the clump killed before it arms, then the match ending, never hold the match', () => {
+    // The clump killed early (a mine, as Review Focus 2 has it): the step waits, holds nothing.
+    const c = w3Controller(W3['p3-7']!, 7);
+    c.step();
+    c.select('cherryBomber');
+    for (let i = 0; i < seconds(39); i++) c.step();
+    c.match.state.units = c.match.state.units.filter((u) => u.faction !== 'zombies');
+    for (let i = 0; i < seconds(30); i++) {
+      c.match.state.units = c.match.state.units.filter((u) => u.faction !== 'zombies' || u.x > 10.5);
+      c.step();
+      expect(c.tutorial!.holding).toBe(false);
+    }
+    expect(c.tutorial!.current?.id).toBe('p3-7.cherry-tile');
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    // The match ending first: the step never shows.
+    c.match.state.winner = 'plants';
+    c.step();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
   });
 });

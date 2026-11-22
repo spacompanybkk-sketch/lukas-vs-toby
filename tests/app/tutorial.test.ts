@@ -7,6 +7,7 @@ import { MISSING_HOLD_SECONDS, rememberTaught, stepsToTeach } from '../../src/ap
 import { seconds } from '../../src/data/balance';
 import { MAX_TEACHED, newSave } from '../../src/progress/save';
 import { W2 } from './world2Lessons';
+import { CLUMP, W3, w3Controller, w3Save } from './world3Lessons';
 import { spawnUnit } from '../../src/sim/spawn';
 import type { Save } from '../../src/progress/save';
 import type { Faction } from '../../src/sim/types';
@@ -50,8 +51,8 @@ describe('the lessons', () => {
   it('every step names a card its level deals, a tile on the lawn, an id unique across levels', () => {
     const ids = new Set<string>();
     for (const [id, steps] of Object.entries(TEACHES)) {
-      // A world-2 lesson written ahead of its level file is checked against its stand-in.
-      const def = levelById(id) ?? W2[id]!;
+      // A world-2 or world-3 lesson written ahead of its level file is checked against its stand-in.
+      const def = levelById(id) ?? W2[id] ?? W3[id]!;
       expect(def, id).toBeDefined();
       for (const s of steps) {
         expect(ids.has(s.id), s.id).toBe(false);
@@ -436,5 +437,173 @@ describe('cost while the glove waits (iPad)', () => {
       expect(checks).toBeGreaterThan(0);
       match.check = check;
     }
+  });
+});
+
+// Worlds step 3, Task 3 (plan Ruling 6): a step with `after: 'foe'` waits for an enemy in front of its tile.
+describe('the foe wait (p3-7: the Cherry Bomber lands on the clump)', () => {
+  const cherry = { ...W3['p3-7']!, waves: [] };
+  const TILE = { lane: 2, col: 4 };
+
+  /** The Cherry Bomber card step done (picked), the tile step waiting; nothing on the lawn but what a test puts there. */
+  function waiting(def = cherry, seed = 3): BattleController {
+    const c = w3Controller(def, seed);
+    c.step();
+    c.select('cherryBomber');
+    expect(c.tutorial!.current?.id).toBe('p3-7.cherry-tile');
+    return c;
+  }
+  const foe = (c: BattleController, lane: number, x: number, key: 'brainEater' | 'rock' = 'brainEater') =>
+    spawnUnit(c.match.state, c.match.balance, key, lane, x);
+
+  it('the lesson is the card, then the tile with `after: foe`', () => {
+    expect(TEACHES['p3-7']).toEqual([
+      { id: 'p3-7.cherry-card', show: 'card', card: 'cherryBomber', until: 'selected' },
+      { id: 'p3-7.cherry-tile', show: 'tile', card: 'cherryBomber', lane: 2, col: 4, until: 'placed', after: 'foe' },
+    ]);
+  });
+
+  it('unarmed with no foe: no glove, nothing held, the match runs on', () => {
+    const c = waiting();
+    const at = tick(c);
+    run(c, seconds(20));
+    expect(tick(c)).toBe(at + seconds(20));
+    expect(c.tutorial!.holding).toBe(false);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.actionPossible).toBe(false);
+  });
+
+  it('a foe outside the window does not arm it: behind the tile, past 2 tiles, another lane, a rock', () => {
+    const c = waiting();
+    foe(c, 2, 4.2); // behind the tile's middle (4.5)
+    foe(c, 2, 7.5); // 3 tiles in front
+    foe(c, 1, 5.5); // in front, but another lane
+    foe(c, 2, 5.5, 'rock'); // no one to blast
+    run(c, 2);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
+  });
+
+  it('a foe at the edge of the window (2 tiles in front) arms it: the glove points at the tile and the match is held', () => {
+    const c = waiting();
+    foe(c, 2, 6.5);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', ...TILE }, holding: true, step: 'p3-7.cherry-tile' });
+    const at = tick(c);
+    run(c, 30);
+    expect(tick(c)).toBe(at);
+    expect(c.click(TILE, null)).toBeNull();
+    c.step();
+    expect(c.match.state.units.some((u) => u.key === 'cherryBomber' && u.lane === 2)).toBe(true);
+    expect(c.tutorial!.current).toBeNull();
+    expect(c.tutorial!.taught.peek()).toEqual(['p3-7.cherry-card', 'p3-7.cherry-tile']);
+  });
+
+  it('the clump of the real level walking lane 2 arms it on arrival (not at the start)', () => {
+    const c = w3Controller(W3['p3-7']!);
+    c.step();
+    c.select('cherryBomber');
+    let armedAt = -1;
+    for (let i = 0; i < seconds(120) && armedAt < 0; i++) {
+      c.step();
+      if (c.tutorial!.glove.peek() !== null) armedAt = tick(c);
+    }
+    expect(armedAt).toBeGreaterThanOrEqual(seconds(CLUMP[0]!.at));
+    const near = c.match.state.units.filter((u) => u.faction === 'zombies' && u.lane === 2 && u.x - 4.5 >= 0 && u.x - 4.5 <= 2);
+    expect(near.length).toBeGreaterThan(0);
+  });
+
+  it('a foe that dies before the step arms sends it back to waiting; the next foe arms it', () => {
+    const c = waiting();
+    c.match.state.players.plants.energy = 0; // started by the foe, but not armed: the bomb cannot be paid for
+    const first = foe(c, 2, 5.5);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    c.match.state.players.plants.energy = 500;
+    first.hp = 0; // it dies before the step armed
+    c.match.state.units = c.match.state.units.filter((u) => u !== first);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
+    run(c, 10);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    foe(c, 2, 5.5);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', ...TILE }, holding: true });
+  });
+
+  it('a foe that is down (0 health) does not arm it', () => {
+    const c = waiting();
+    foe(c, 2, 5.5).hp = 0;
+    c.tutorial!.tick();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+  });
+
+  it('the foe dying after the step armed does not unarm it: the child is held with the glove up until he places the bomb', () => {
+    const c = waiting();
+    const f = foe(c, 2, 5.5);
+    c.step();
+    expect(c.tutorial!.holding).toBe(true);
+    c.match.state.units = c.match.state.units.filter((u) => u !== f);
+    run(c, 10);
+    expect(c.tutorial!.holding).toBe(true);
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', ...TILE } });
+    expect(c.click(TILE, null)).toBeNull();
+    c.step();
+    expect(c.tutorial!.current).toBeNull();
+  });
+
+  it('lets go after MISSING_HOLD_SECONDS when its action stops being possible, then waits to arm again', () => {
+    const c = waiting();
+    foe(c, 2, 5.5);
+    c.step();
+    expect(c.tutorial!.holding).toBe(true);
+    c.match.state.players.plants.energy = 0; // the held match cannot earn it back: the action is gone
+    const at = tick(c);
+    run(c, seconds(MISSING_HOLD_SECONDS) - 2);
+    expect(c.tutorial!.holding).toBe(true);
+    expect(tick(c)).toBe(at);
+    run(c, 4);
+    expect(c.tutorial!.holding).toBe(false);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    run(c, 5);
+    expect(tick(c)).toBeGreaterThan(at);
+    c.match.state.players.plants.energy = 500; // and if it comes back while the foe is still there, it arms again
+    c.step();
+    c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', ...TILE } });
+  });
+
+  it('never shows if the match ends first', () => {
+    const c = waiting();
+    c.match.state.winner = 'zombies';
+    foe(c, 2, 5.5);
+    run(c, 5);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
+    expect(c.tutorial!.current?.id).toBe('p3-7.cherry-tile');
+  });
+
+  it('Pause and HELP replay work while it waits and while it holds', () => {
+    const c = waiting();
+    c.setPaused(true);
+    run(c, 5);
+    c.setPaused(false);
+    foe(c, 2, 5.5);
+    c.step();
+    expect(c.tutorial!.holding).toBe(true);
+    c.setPaused(true);
+    expect(c.hud.paused.peek()).toBe(true);
+    c.setPaused(false);
+    expect(c.tutorial!.holding).toBe(true);
+    // HELP: a new battle with every step again, the foe wait included.
+    const done = { ...w3Save('plants'), teached: ['p3-7.cherry-card', 'p3-7.cherry-tile'] };
+    expect(w3Controller(cherry, 3, done).tutorial).toBeNull();
+    const again = w3Controller(cherry, 3, done, true);
+    expect(again.tutorial!.current?.id).toBe('p3-7.cherry-card');
+    again.step();
+    again.select('cherryBomber');
+    run(again, 5);
+    expect(again.tutorial!.holding).toBe(false); // waiting for a foe again
   });
 });
