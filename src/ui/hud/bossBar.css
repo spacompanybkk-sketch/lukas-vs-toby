@@ -101,8 +101,9 @@
   position: absolute;
   right: calc(100% + 10px);
   bottom: 0;
-  width: max(44px, calc(var(--hud-h) * 1.1));
-  height: max(44px, calc(var(--hud-h) * 1.1));
+  --intro: max(44px, calc(var(--hud-h) * 1.1));
+  width: var(--intro);
+  height: var(--intro);
   display: grid;
   place-items: center;
   border: 0;
@@ -112,6 +113,13 @@
   cursor: pointer;
   transform-origin: 100% 100%;
   animation: hud-boss-in 1500ms steps(15, end) forwards;
+}
+/* The drawn card is small (to clear the base bars); its tap reaches at least 64 px square: a
+   transparent area grows past it, over bars that take no taps (same trick as the 2X button). */
+.hud-boss-intro::after {
+  content: '';
+  position: absolute;
+  inset: min(0px, calc((var(--intro) - 64px) / 2));
 }
 .hud-boss-intro__card {
   width: 100%;

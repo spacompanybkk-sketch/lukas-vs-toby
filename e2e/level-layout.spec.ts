@@ -259,6 +259,16 @@ test('the boss entrance card never covers either base bar, at 1024 wide and the 
         expect(hit, `${size.width}x${size.height}: the entrance card covers ${bar.name}`).toBe(false);
       }
     }
+    // The tap reaches at least 64 px square although the drawn card is smaller (a transparent area).
+    const hit = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-hud="boss-intro"]')!;
+      const r = el.getBoundingClientRect();
+      const a = getComputedStyle(el, '::after');
+      const g = (v: string) => parseFloat(v) || 0;
+      return { w: r.width - g(a.left) - g(a.right), h: r.height - g(a.top) - g(a.bottom) };
+    });
+    expect(hit.w, `${size.width}x${size.height}: entrance tap width`).toBeGreaterThanOrEqual(63.5);
+    expect(hit.h, `${size.width}x${size.height}: entrance tap height`).toBeGreaterThanOrEqual(63.5);
     if (process.env.LVT_SHOT_DIR && size.width === 1024 && size.height === 768) await page.screenshot({ path: `${process.env.LVT_SHOT_DIR}/boss-intro-1024.png` });
   }
 });
