@@ -425,6 +425,44 @@ const SCENARIOS = [
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),
+  // The Desert Canyon's bosses (step 3 Task 2) as models and their moves, then each in the Desert at
+  // the iPad's size (1024x650): entrance, wind-ups, strike, shield, phase 2 and defeat.
+  { name: 'gallery-bosses-w3', url: '/?scene=gallery&models=sandPharaoh&t=0.4' },
+  moves('sandPharaoh', [
+    // (A part shown stays shown for the frames after it: the plain moves first.)
+    ['windup', 'ability', 1.3], ['slam', 'ability', 1.62], ['storm', 'shoot', 1.0], ['roar', 'cheer', 0.3], ['topple', 'die', 0.9],
+    ['glow', 'idle', 0.4, ['glowEyes']],
+  ]),
+  ...[
+    ['boss-pharaoh-enter', 'sandPharaoh', [0.5, 1.0]],
+    ['boss-pharaoh-summon', 'sandPharaoh', [9.05, 9.6]], // two Desert Zombies at 9 s
+    ['boss-pharaoh-windup', 'sandPharaoh', [19.2, 19.9]], // the staff slam winds up 18.5-20 s
+    ['boss-pharaoh-shield', 'sandPharaoh', [33, 35]], // the sand swirl from 32.3 s (up for 7 s)
+    ['boss-pharaoh-strike', 'sandPharaoh', [36.5, 37.2, 38.0, 38.35]], // the sandstorm winds up 36.2-38.2 s on three plants, then lands
+    ['boss-pharaoh-mummies', 'sandPharaoh', [43.3, 44.0]], // two Skeleton Warriors wrapped as mummies at 43.2 s
+    ['boss-pharaoh-phase2', 'sandPharaoh', [45]], // its eyes glowing
+    ['boss-pharaoh-defeat', 'sandPharaoh', [66.8, 67.6, 68.3]], // falls at 66.5 s; crumbles at 67.6 s
+  ].map(([name, boss, times]) => {
+    const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
+    return {
+      name,
+      url: url(times[0]),
+      viewport: { width: 1024, height: 650 },
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
+  // The Desert Canyon's bosses close up (`&focus=lane,x,half`): the Pharaoh at the zombies' edge, the Cactus King at the plant base.
+  ...[
+    ['boss-pharaoh-close', 'sandPharaoh', [1.0, 19.3, 33.5, 37.2, 43.6, 45.5, 67.6], '2,6.6,2.4'],
+  ].map(([name, boss, times, focus]) => {
+    const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&focus=${focus}&cloud=fake`;
+    return {
+      name,
+      url: url(times[0]),
+      viewport: { width: 1024, height: 650 },
+      frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
+    };
+  }),
   // A boss's strike (worlds machinery Task 5): the demo's test-only Titan (`&strike=`), its warning
   // on four tiles (3.5 s), its blow (5.05 s), its warning on a whole lane (9.5 s), in each tint.
   ...['stun', 'blind', 'burn', 'none'].map((status) => {

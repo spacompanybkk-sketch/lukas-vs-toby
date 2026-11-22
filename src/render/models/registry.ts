@@ -3,6 +3,7 @@ import { brainTitan } from './bosses/brainTitan';
 import { elderOak } from './bosses/elderOak';
 import { frostMelon } from './bosses/frostMelon';
 import { moonHowler } from './bosses/moonHowler';
+import { sandPharaoh } from './bosses/sandPharaoh';
 import type { BossKey } from '../../sim/types';
 import type { ModelDef } from '../voxel/types';
 import { avocadoBunker } from './plants/avocadoBunker';
@@ -71,8 +72,8 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   elderOak,
   moonHowler,
   frostMelon,
-  // STUBS (step-3 plan Task 1): the Titan's and the Oak's models under their own keys; Task 2 builds the real ones.
-  sandPharaoh: { ...brainTitan, key: 'sandPharaoh' },
+  sandPharaoh,
+  // STUB (step-3 plan Task 1): the Oak's model under its own key; the Cactus King's own follows.
   cactusKing: { ...elderOak, key: 'cactusKing' },
 };
 

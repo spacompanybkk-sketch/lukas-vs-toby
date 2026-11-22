@@ -24,6 +24,8 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   | 'titanRoar' | 'titanDefeat' | 'oakCreak' | 'oakDefeat'
   // step 2: the world-2 bosses, two each as above
   | 'howlerHowl' | 'howlerDefeat' | 'melonCrack' | 'melonDefeat'
+  // step 3: the Desert Canyon's bosses, two each as above
+  | 'pharaohCall' | 'pharaohDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
   | 'strikeWindup' | 'strikeImpact'
   // Versus on two devices: an invite arriving
@@ -742,6 +744,55 @@ function melonDefeat(v: Voice, t: number, p: number): void {
 }
 
 /**
+ * The Sand Pharaoh's call: a snake-charmer's reed horn (a buzzy saw through a nasal filter, with a
+ * wide wobble) climbing a desert scale in four steps, then a low gong. Grand and silly, not scary.
+ */
+function pharaohCall(v: Voice, t: number, p: number): void {
+  const nasal = filter(v, 'bandpass', 900, 3);
+  nasal.frequency.setValueAtTime(900, t);
+  nasal.frequency.linearRampToValueAtTime(1500, t + 0.45);
+  nasal.frequency.linearRampToValueAtTime(1000, t + 0.8);
+  const env = envelope(v, t, 0.04, 0.3, 0.55, 0.3);
+  const reed = [1, 1.012].map((detune) => {
+    const o = v.ctx.createOscillator();
+    o.type = 'sawtooth';
+    const steps = [293.66, 311.13, 369.99, 392];
+    o.frequency.setValueAtTime(steps[0]! * p * detune, t);
+    // Four steps up the scale, each a quick glide (a hard jump would click).
+    for (let i = 1; i < steps.length; i++) {
+      o.frequency.setValueAtTime(steps[i - 1]! * p * detune, t + 0.13 + (i - 1) * 0.16);
+      o.frequency.linearRampToValueAtTime(steps[i]! * p * detune, t + 0.16 + (i - 1) * 0.16);
+    }
+    o.connect(nasal);
+    v.play(o, t, env.end);
+    return o;
+  });
+  vibrato(v, reed.map((o) => o.frequency), 6, 5 * p, t, 0.12, env.end);
+  nasal.connect(env.gain);
+  env.gain.connect(v.input);
+  tone(v, { type: 'sine', freq: 110 * p, to: 98 * p, glide: 0.5, at: t + 0.7, attack: 0.004, peak: 0.34, decay: 0.5 });
+  tone(v, { type: 'triangle', freq: 221 * p, at: t + 0.7, attack: 0.004, peak: 0.1, decay: 0.4 });
+  noise(v, { at: t + 0.7, attack: 0.003, peak: 0.12, decay: 0.3, filter: 'bandpass', freq: 2200, q: 1.5 });
+}
+
+/**
+ * The Sand Pharaoh beaten: a sad reed sliding down the desert scale ("waaah, wah, wah"), the sand
+ * pouring out of it (a long falling hiss), then a soft gong-thump as it lands.
+ */
+function pharaohDefeat(v: Voice, t: number, p: number): void {
+  [392, 369.99, 311.13, 293.66].forEach((f, i) => {
+    const last = i === 3;
+    tone(v, {
+      type: 'sawtooth', freq: f * p, to: last ? f * 0.9 * p : undefined, glide: last ? 0.45 : undefined,
+      at: t + i * 0.2, attack: 0.02, peak: 0.16, hold: last ? 0.3 : 0.07, decay: last ? 0.3 : 0.08, lowpass: 1100,
+    });
+  });
+  noise(v, { at: t + 0.3, attack: 0.1, peak: 0.16, hold: 0.4, decay: 0.45, filter: 'highpass', freq: 3600, to: 1100, glide: 0.9 });
+  tone(v, { type: 'sine', freq: 100 * p, to: 42 * p, glide: 0.2, at: t + 1.05, attack: 0.003, peak: 0.42, decay: 0.3 });
+  tone(v, { type: 'triangle', freq: 200 * p, at: t + 1.05, attack: 0.003, peak: 0.08, decay: 0.35 });
+}
+
+/**
  * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
  * and filtered) and a rising whistle, like something about to fall on the marked tiles.
  */
@@ -767,7 +818,7 @@ export const SFX: Record<SfxName, Recipe> = {
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
-  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, strikeWindup, strikeImpact,
+  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, pharaohCall, pharaohDefeat, strikeWindup, strikeImpact,
   chime,
 };
 

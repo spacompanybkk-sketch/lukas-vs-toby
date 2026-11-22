@@ -30,10 +30,11 @@ import { BALANCE, type Balance } from '../data/balance';
 // the real lawn, with the clock and the boss bar over it (no tray, no sound). For judging the
 // bosses by eye and for the screenshot tool.
 //
-//   ?scene=boss-demo&boss=brainTitan|elderOak|moonHowler|frostMelon
+//   ?scene=boss-demo&boss=brainTitan|elderOak|moonHowler|frostMelon|sandPharaoh|cactusKing
 //                                               which boss (default the Brain Titan); the world-2
-//                                               bosses fight in their own world (the Meadow's fog,
-//                                               the Tundra's ice and snow) with their demo table
+//                                               and world-3 bosses fight in their own world (the
+//                                               Meadow's fog, the Tundra's ice and snow, the Desert's
+//                                               rocks and dust) with their demo table
 //   &world=<key>                                another world's look (the boss's lawn twist stays)
 //   &table=shipped                              the shipped `Balance.bosses` numbers, not the demo's own row
 //   &strike=stun|blind|burn|none                a test-only Titan that strikes first (tiles at 3–5 s,

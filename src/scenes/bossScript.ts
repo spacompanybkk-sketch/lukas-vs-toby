@@ -1,5 +1,6 @@
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance, BossPattern } from '../data/balance';
+import { rocks } from '../adventure/levels/helpers';
 import { ALL_CARDS } from '../data/units';
 import { Match, defaultConfig } from '../sim/match';
 import { NO_TWIST } from '../sim/lawn';
@@ -20,16 +21,19 @@ import type { BossConfig, BossKey, LawnConfig, MatchConfig, PreparedUnit, Script
 //   frostMelon  the zombies' world-2 boss, on the Tundra's ice (lanes 0, 1, 3, 4, as at z2-8):
 //               the Oak's waves of zombies.
 //
+//   sandPharaoh the plants' world-3 boss, in the Desert's rocks (as at p3-8): the Titan's garden (Peashooters,
+//               a Walnut wall on column 7), Desert Zombies down the outer lanes.
+//
 // The world-2 bosses fight with a demo table of their own (`demoBalance`): two phases and a strike
 // (the Howler's blinding howl, the Melon's freeze) on a quick clock, so every show of theirs can be
-// seen in a minute whatever `Balance.bosses` holds.
+// seen in a minute whatever `Balance.bosses` holds. The world-3 bosses fight their shipped numbers
+// (every show of the Pharaoh is up by 62 s).
 
 export const BOSS_DEMO: Record<BossKey, BossConfig> = {
   brainTitan: { key: 'brainTitan', faction: 'zombies', lane: 2 },
   elderOak: { key: 'elderOak', faction: 'plants', lane: 2 },
   moonHowler: { key: 'moonHowler', faction: 'zombies', lane: 2 },
   frostMelon: { key: 'frostMelon', faction: 'plants', lane: 2 },
-  // STUBS (step-3 plan Task 1): Task 2 writes their demo scripts.
   sandPharaoh: { key: 'sandPharaoh', faction: 'zombies', lane: 2 },
   cactusKing: { key: 'cactusKing', faction: 'plants', lane: 2 },
 };
@@ -92,7 +96,8 @@ const DEMO_LAWN: Record<BossKey, LawnConfig> = {
   elderOak: NO_TWIST,
   moonHowler: { ...NO_TWIST, fog: 5 },
   frostMelon: { ...NO_TWIST, ice: { lanes: [0, 1, 3, 4], speed: 1.6 } },
-  sandPharaoh: NO_TWIST,
+  // The rocks of p3-8 (two in its own lane, four round the garden).
+  sandPharaoh: { ...NO_TWIST, rocks: rocks([[2, 2], [2, 4], [0, 1], [4, 1], [1, 5], [3, 5]]) },
   cactusKing: NO_TWIST,
 };
 
