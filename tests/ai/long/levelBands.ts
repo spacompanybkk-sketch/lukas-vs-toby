@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { levelsFor } from '../../../src/adventure/levels';
 import type { LevelDef } from '../../../src/adventure/types';
 import {
-  BOSS_THREE_STARS, EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, campaignIndex, playFreePlay, playIdle,
-  playLevelSeries, summariseFreePlay, summariseLevel, worldTwoGate,
+  EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, bossStarBand, campaignIndex, levelGate, playFreePlay, playIdle,
+  playLevelSeries, summariseFreePlay, summariseLevel,
 } from '../../../src/ai/levelChecks';
 import type { FreePlayStats, LevelStats } from '../../../src/ai/levelChecks';
 import { LEVEL_STAND_INS } from '../../../src/ai/levelStandIns';
@@ -106,7 +106,6 @@ export function worldBandTests(world: 1 | 2 | 3 | 4 | 5): void {
   }
   for (const first of blocks()) {
     if (world === 1) backyardBandTests(first);
-    else if (world === 2) worldTwoBandTests(sides, first);
     else curveBandTests(world, sides, first);
   }
 }
@@ -125,57 +124,32 @@ function levelStats(first: number): (def: LevelDef, who: LevelStandIn) => Promis
   };
 }
 
-/**
- * Worlds 2–5 (ruling 11): the expert wins at least 95%; the average player sits in the curve's band
- * for the level's campaign index (a boss 5 lower); the beginner on Easy wins at least 70% through
- * world 2; every seed ends; median lengths 1.5–4 minutes (a boss up to 5).
- */
-function curveBandTests(world: number, sides: readonly Faction[], first: number): void {
-  const stats = levelStats(first);
-  for (const side of sides) {
-    describe(`world ${world} as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
-      for (const def of levelsFor(side, world)) {
-        const boss = def.kind === 'boss';
-        const i = campaignIndex(def);
-        const avg = averageWinBand(i, boss);
-        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
-        band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
-        const floor = beginnerWinMin(i);
-        if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
-        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
-          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
-        });
-        for (const who of LEVEL_STAND_INS) {
-          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
-        }
-      }
-    });
-  }
-}
-
 /** Seeds the idle-player check plays per level (as `backyard.test.ts`). */
 export const IDLE_SEEDS = 20;
 
 /**
- * World 2 (step-2 plan rulings 5-6, `worldTwoGate`): the expert wins at least 95% and the beginner
- * on Easy at least 70% everywhere; the average player is held to the win band (plants p2-1..8,
- * zombies z2-1..4), the star band (z2-5..7: his 3-star share in `averageStarBand`, the expert at
- * least 10 points above it, and he still wins 85%), or world 1's boss band (z2-8: 3 stars 35-60%);
- * no level is harder for him (a lower win rate) than the level two after it; an idle player loses
- * every level; every seed ends; median lengths 1.5-4 minutes (a boss up to 5). Win %, 2★+, 3★ and
- * length of every level and stand-in are printed either way (`record`).
+ * Worlds 2-5 (ruling 11; step-2 plan rulings 5-6 and step-3 rulings 1-4, `levelGate`): the expert
+ * wins at least 95% everywhere and the beginner on Easy at least `beginnerWinMin` (70% through
+ * world 2; Toby's 60 / 50% on z3 / z4-z5; none for the plants later); the average player is held to
+ * the win band (the plants on every level, z2-1..4), the star band (the other zombie levels: his
+ * 3-star share in `averageStarBand`, the expert at least 10 points above it, and he still wins
+ * 85%), or the world's boss band (a zombie boss: 3 stars in `bossStarBand`); no level is harder for
+ * him (a lower win rate) than the level two after it; an idle player loses every level; every seed
+ * ends; median lengths 1.5-4 minutes (a boss up to 5; Toby's "2-3 min" on z3 is a tuning target,
+ * recorded, not a gate). Win %, 2*+, 3* and length of every level and stand-in are printed either
+ * way (`record`).
  */
-function worldTwoBandTests(sides: readonly Faction[], first: number): void {
+function curveBandTests(world: 2 | 3 | 4 | 5, sides: readonly Faction[], first: number): void {
   const stats = levelStats(first);
   for (const side of sides) {
-    const levels = levelsFor(side, 2);
-    describe(`world 2 as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
+    const levels = levelsFor(side, world);
+    describe(`world ${world} as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
       for (const def of levels) {
         const boss = def.kind === 'boss';
         const i = campaignIndex(def);
-        const gate = worldTwoGate(def);
+        const gate = levelGate(def);
         band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
-        const floor = beginnerWinMin(i);
+        const floor = beginnerWinMin(i, side);
         if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
         if (gate === 'win') {
           const avg = averageWinBand(i, boss);
@@ -189,7 +163,8 @@ function worldTwoBandTests(sides: readonly Faction[], first: number): void {
             expect(lead, def.id).toBeGreaterThanOrEqual(STAR_LEVEL.expertLead - SLACK);
           });
         } else {
-          band(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, BOSS_THREE_STARS.lo, BOSS_THREE_STARS.hi, def.id));
+          const boss3 = bossStarBand(world);
+          band(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, boss3.lo, boss3.hi, def.id));
         }
         band(`${def.id} an idle player loses (${IDLE_SEEDS} seeds)`, async () => {
           const won = Array.from({ length: IDLE_SEEDS }, (_, k) => playIdle(def, first + k)).filter((r) => r.won).length;
@@ -202,13 +177,13 @@ function worldTwoBandTests(sides: readonly Faction[], first: number): void {
           band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
         }
       }
-      band(`${side} world 2: no level harder for the average player than the level two after it`, async () => {
+      band(`${side} world ${world}: no level harder for the average player than the level two after it`, async () => {
         const w = await Promise.all(levels.map(async (d) => (await stats(d, 'average')).win));
         for (let n = 0; n + 2 < w.length; n++) expect(w[n]!, `${levels[n]!.id} v ${levels[n + 2]!.id}`).toBeGreaterThanOrEqual(w[n + 2]! - SLACK);
       });
-      it(`${side} world 2: the record (win %, 2★+, 3★, median minutes)`, async () => {
+      it(`${side} world ${world}: the record (win %, 2★+, 3★, median minutes)`, async () => {
         // stdout, not console: the test config keeps console quiet, and this table is wanted either way.
-        process.stdout.write(`${await record(levels, stats, `world 2 as the ${side}, seeds ${first}..${first + SEEDS - 1}`)}\n`);
+        process.stdout.write(`${await record(levels, stats, `world ${world} as the ${side}, seeds ${first}..${first + SEEDS - 1}`)}\n`);
       }, LONG_MS);
     });
   }

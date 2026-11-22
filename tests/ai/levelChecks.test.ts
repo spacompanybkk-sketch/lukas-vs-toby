@@ -3,7 +3,7 @@ import { LEVELS, levelById } from '../../src/adventure/levels';
 import type { LevelDef } from '../../src/adventure/types';
 import {
   AVERAGE_STARS, BOSS_THREE_STARS, FAVOURITE_COUNT, STAR_LEVEL, averageCoinsOn, averageStarBand, averageUpgrades, averageWinBand,
-  beginnerWinMin, campaignIndex, coinsBefore, EXPERT_WIN_MIN, favouritesAt, playIdle, standInSave, worldTwoGate,
+  beginnerWinMin, bossStarBand, campaignIndex, coinsBefore, EXPERT_WIN_MIN, favouritesAt, levelGate, playIdle, standInSave,
 } from '../../src/ai/levelChecks';
 import { FAVOURITES } from '../../src/ai/levelStandIns';
 import { upgradeCost } from '../../src/progress/upgrades';
@@ -38,11 +38,11 @@ describe('the campaign index and the curve bands (ruling 11)', () => {
     expect(() => averageWinBand(41, false)).toThrow(RangeError);
   });
 
-  it('the expert wins at least 95% everywhere; the beginner on Easy at least 70% through world 2, then none', () => {
+  it('the expert wins at least 95% everywhere; the beginner on Easy at least 70% through world 2, then none for the plants', () => {
     expect(EXPERT_WIN_MIN).toBe(95);
-    expect(beginnerWinMin(1)).toBe(70);
-    expect(beginnerWinMin(16)).toBe(70);
-    expect(beginnerWinMin(17)).toBeNull();
+    expect(beginnerWinMin(1, 'plants')).toBe(70);
+    expect(beginnerWinMin(16, 'plants')).toBe(70);
+    expect(beginnerWinMin(17, 'plants')).toBeNull();
   });
 });
 
@@ -122,12 +122,54 @@ describe('world 2\'s bands (step-2 plan rulings 5-6)', () => {
   });
 
   it('the gate: plants the win band on all eight; zombies the win band on 1-4, the star band on 5-7, world 1\'s boss band on 8', () => {
-    for (let n = 1; n <= 8; n++) expect(worldTwoGate({ side: 'plants', n, kind: n === 8 ? 'boss' : 'battle' })).toBe('win');
-    const zombies = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => worldTwoGate({ side: 'zombies', n, kind: n === 8 ? 'boss' : 'battle' }));
+    for (let n = 1; n <= 8; n++) expect(levelGate({ side: 'plants', world: 2, n, kind: n === 8 ? 'boss' : 'battle' })).toBe('win');
+    const zombies = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => levelGate({ side: 'zombies', world: 2, n, kind: n === 8 ? 'boss' : 'battle' }));
     expect(zombies).toEqual(['win', 'win', 'win', 'win', 'stars', 'stars', 'stars', 'boss']);
     expect(STAR_LEVEL).toEqual({ averageWinMin: 85, expertLead: 10 });
     expect(BOSS_THREE_STARS).toEqual({ lo: 35, hi: 60 });
-    expect(beginnerWinMin(16)).toBe(70);
+    expect(beginnerWinMin(16, 'zombies')).toBe(70);
+  });
+
+  it('worlds 3-5 (ruling 1-3): plants win on all eight; zombies stars on 1-7 and the boss band on 8', () => {
+    const kind = (n: number): 'boss' | 'battle' => (n === 8 ? 'boss' : 'battle');
+    expect(levelGate({ side: 'zombies', world: 2, n: 4, kind: 'battle' })).toBe('win');
+    expect(levelGate({ side: 'zombies', world: 2, n: 5, kind: 'battle' })).toBe('stars');
+    expect(levelGate({ side: 'zombies', world: 2, n: 8, kind: 'boss' })).toBe('boss');
+    expect(levelGate({ side: 'plants', world: 2, n: 8, kind: 'boss' })).toBe('win');
+    expect(levelGate({ side: 'plants', world: 3, n: 8, kind: 'boss' })).toBe('win');
+    expect(levelGate({ side: 'zombies', world: 3, n: 1, kind: 'battle' })).toBe('stars');
+    expect(levelGate({ side: 'zombies', world: 3, n: 8, kind: 'boss' })).toBe('boss');
+    for (const world of [3, 4, 5] as const) {
+      for (let n = 1; n <= 8; n++) {
+        expect(levelGate({ side: 'plants', world, n, kind: kind(n) })).toBe('win');
+        expect(levelGate({ side: 'zombies', world, n, kind: kind(n) })).toBe(n === 8 ? 'boss' : 'stars');
+      }
+    }
+  });
+
+  it('the boss 3-star band falls by world: 35-60, 35-60, 38-58, 29-49, 20-40', () => {
+    expect([1, 2, 3, 4, 5].map((w) => bossStarBand(w as 1 | 2 | 3 | 4 | 5))).toEqual([
+      { lo: 35, hi: 60 }, { lo: 35, hi: 60 }, { lo: 38, hi: 58 }, { lo: 29, hi: 49 }, { lo: 20, hi: 40 },
+    ]);
+    expect(bossStarBand(3)).toEqual({ lo: 38, hi: 58 });
+    expect(bossStarBand(5)).toEqual({ lo: 20, hi: 40 });
+    expect(bossStarBand(1)).toEqual({ lo: 35, hi: 60 });
+  });
+
+  it('Toby\'s beginner floor: 70 through i 16, zombies 60 on 17-24 and 50 on 25-40, the plants none', () => {
+    expect(beginnerWinMin(16, 'zombies')).toBe(70);
+    expect(beginnerWinMin(17, 'zombies')).toBe(60);
+    expect(beginnerWinMin(24, 'zombies')).toBe(60);
+    expect(beginnerWinMin(25, 'zombies')).toBe(50);
+    expect(beginnerWinMin(40, 'zombies')).toBe(50);
+    expect(beginnerWinMin(17, 'plants')).toBeNull();
+    expect(beginnerWinMin(40, 'plants')).toBeNull();
+  });
+
+  it('content design 4: the world-3 bands at i 17 and 24 (boss)', () => {
+    expect(averageStarBand(17).lo).toBeCloseTo(56.0, 1);
+    const boss = averageWinBand(24, true);
+    expect([boss.lo, boss.hi].map((v) => Number(v.toFixed(1)))).toEqual([51.8, 72.8]);
   });
 
   it('the idle-player hook: nobody in the seat loses a battle and wins p1-3, the hold-out where waiting is the point', () => {

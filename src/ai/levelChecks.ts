@@ -58,7 +58,7 @@ export function averageWinBand(i: number, boss: boolean): WinBand {
 /**
  * The average player's 3-star band on campaign level `i` (9..40; step-2 plan ruling 5, provisional
  * until Michal's late-curve decision): `75 − 35·(i − 9)/31`, ±10. Held where a zombie level cannot
- * reach the win band (`worldTwoGate`).
+ * reach the win band (`levelGate`).
  */
 export function averageStarBand(i: number): WinBand {
   if (!Number.isInteger(i) || i <= LEVELS_PER_WORLD || i > LAST_LEVEL) throw new RangeError(`no star band on campaign level ${i}`);
@@ -67,26 +67,44 @@ export function averageStarBand(i: number): WinBand {
 }
 
 /**
- * Which band holds the average player on a world-2 level (step-2 plan rulings 5-6): the plants the
- * win band on all eight; the zombies the win band on z2-1..4, the star band on z2-5..7 (with
- * `STAR_LEVEL`), and world 1's boss band on z2-8 (`BOSS_THREE_STARS`). Win numbers are recorded
- * everywhere either way.
+ * Which band holds the average player on a level of worlds 2-5 (step-2 plan rulings 5-6, step-3
+ * ruling 1): the plants the win band on every level (a boss on `averageWinBand(i, true)`); the
+ * zombies the win band on z2-1..4, the star band on z2-5..7 and z3-1..z5-7 (with `STAR_LEVEL`), and
+ * the world's boss band (`bossStarBand`) on every boss. Win numbers are recorded everywhere either way.
  */
-export type WorldTwoGate = 'win' | 'stars' | 'boss';
-export function worldTwoGate(def: Pick<LevelDef, 'side' | 'n' | 'kind'>): WorldTwoGate {
-  if (def.side === 'plants' || def.n <= 4) return 'win';
-  return def.kind === 'boss' ? 'boss' : 'stars';
+export type LevelGate = 'win' | 'stars' | 'boss';
+export function levelGate(def: Pick<LevelDef, 'side' | 'world' | 'n' | 'kind'>): LevelGate {
+  if (def.side === 'plants') return 'win';
+  if (def.kind === 'boss') return 'boss';
+  return def.world === 2 && def.n <= 4 ? 'win' : 'stars';
 }
 /** On a star-band level the average player still wins this share, %, and the expert three-stars this many points more often. */
 export const STAR_LEVEL = { averageWinMin: 85, expertLead: 10 } as const;
-/** World 1's boss band, kept for z2-8: the average player three-stars 35-60% of seeds. */
-export const BOSS_THREE_STARS = { lo: 35, hi: 60 } as const;
+/** A zombie boss's band: the average player three-stars `lo`-`hi`% of seeds. */
+export interface BossBand { lo: number; hi: number }
+/** World 1's boss band (z2-8 keeps it): the average player three-stars 35-60% of seeds. */
+export const BOSS_THREE_STARS: BossBand = { lo: 35, hi: 60 };
+/** The boss 3-star band of `world`'s zombie boss (step-3 ruling 2): world 1's, shifted down with the curve from world 3 on. */
+export function bossStarBand(world: 1 | 2 | 3 | 4 | 5): BossBand {
+  switch (world) {
+    case 1: case 2: return BOSS_THREE_STARS;
+    case 3: return { lo: 38, hi: 58 };
+    case 4: return { lo: 29, hi: 49 };
+    case 5: return { lo: 20, hi: 40 };
+  }
+}
 
 /** The expert wins at least this share, %, of every level. */
 export const EXPERT_WIN_MIN = 95;
-/** The beginner on Easy wins at least 70% through world 2 (ruling 11); later he is not held to a band. */
-export function beginnerWinMin(i: number): number | null {
-  return i <= 2 * LEVELS_PER_WORLD ? 70 : null;
+/**
+ * The beginner on Easy wins at least 70% through world 2 (ruling 11, both sides). Later only Toby
+ * keeps a floor (step-3 ruling 3, content design 4): 60% on i 17-24 (z3), 50% on 25-40 (z4-z5); the
+ * plants have none.
+ */
+export function beginnerWinMin(i: number, side: Faction): number | null {
+  if (i <= 2 * LEVELS_PER_WORLD) return 70;
+  if (side === 'plants') return null;
+  return i <= 3 * LEVELS_PER_WORLD ? 60 : 50;
 }
 
 // ---- The average player's coins and Marketplace (recon 4, 8.11) ----
