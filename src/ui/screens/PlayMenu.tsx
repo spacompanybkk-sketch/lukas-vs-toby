@@ -42,8 +42,8 @@ function PlayerLock() {
  * The Play menu: four big picture buttons. Adventure (a path up to a flag), Quick Battle (crossed
  * swords and a robot: the side pick and a computer), Free Play (zombie heads growing under an arrow). A guest (nobody logged in)
  * has Quick Battle only: the other two carry a player picture with a padlock and refuse with a buzz.
- * Versus (two tablets with crossed swords) opens the lobby when `versus.allowed`; otherwise (and
- * without `versus`, and for a guest) it carries the same padlock and buzzes.
+ * Versus (two tablets with crossed swords) opens the lobby for every logged-in player (`versus.allowed`, true once
+ * the player list has loaded); without `versus`, or for a guest (nobody logged in), it carries the same padlock and buzzes.
  */
 export function PlayMenu({ versus }: { versus?: VersusTileProps } = {}) {
   const me = session.player.value;

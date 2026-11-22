@@ -357,9 +357,9 @@ Firebase SDK, no sign-in. Spec: `docs/superpowers/specs/2026-11-18-versus-two-de
 
 ### How to play
 
-1. **Play menu, fourth tile** (two tablets and crossed swords). A player who is not allowed Versus
-   sees the padlock and a buzz.
-2. **Who is here**: a row of big faces of the allowed players whose device is on a menu right now.
+1. **Play menu, fourth tile** (two tablets and crossed swords). Every player who is logged in may
+   play; a guest (nobody logged in) sees the padlock and a buzz.
+2. **Who is here**: a row of big faces of the players whose device is on a menu right now.
    A face in a battle is greyed with a swords badge. Tap a face to open the invite card.
 3. **Invite card**: both faces, each with the sun (plants) or brain (zombies) of the side he plays,
    a swap button, the head start as 0 to 5 pictures with a minus and a plus, a green swords button
@@ -377,7 +377,7 @@ Firebase SDK, no sign-in. Spec: `docs/superpowers/specs/2026-11-18-versus-two-de
    device later shows it as unfinished).
 6. **Pause** pauses both screens. The pause menu's door is a white flag (giving up).
 7. **Result**: the winner's face with a crown, the scoreboard strip, rematch (sides swapped, same
-   head start owner) or home. A rematch is a new match number; it needs both boys' ticks.
+   head start owner) or home. A rematch is a new match number; it needs both players' ticks.
 
 ### Rules and head start
 
@@ -399,19 +399,19 @@ stand-in, or 5 if none does (`tests/ai/long/versusHeadStart.test.ts`, `LVT_BALAN
 | child as plants | 0.5% | 0.0% | 0.5% | 0.0% | 0.0% | 0.0% | 5 (no step reaches 40%) |
 | child as zombies | 7.5% | 15.0% | 28.0% | 42.5% | 58.5% | 74.0% | 3 |
 
-### The grown-up ticks
+### Who may play
 
-Lukas (`p01`) and Toby (`p02`) may always play Versus. Any other player needs a tick in the
-grown-up screen's Versus list of faces; it writes `v2/vs/allowed/<slot>: true` behind the grown-up
-code proof. A stranger who makes a player on the public address cannot appear in "who is here",
-invite, be invited or create a match.
+Every player that exists (a `v2/players/<slot>` record) may play Versus; there is no grown-up
+tick any more. The rules check exactly that (`allowed(S)` in `tools/build-rules.mjs`), and a
+stranger without a player record still cannot appear in "who is here", invite, be invited or
+create a match. A guest (nobody logged in) has no pin proof, so the Versus tile stays locked.
 
 ### What is stored
 
 Under `v2/vs` (and the same under `v2test/vs`, both made by `tools/build-rules.mjs` from one
 function):
 
-- `allowed/<slot>`: the grown-up ticks.
+- `allowed/<slot>`: unused since every player may play (the node is still granted by the rules).
 - `here/<slot>`: `{at, busy}`, a heartbeat every 15 s while on a menu; a device that stops for 40 s
   drops off the list.
 - `lobby/<owner>/in/<from>` and `lobby/<owner>/back/<from>`: an invite (public key, side, head
@@ -452,7 +452,7 @@ against each other; its screenshot tour goes to `artifacts/shots/`.
 
 ### Publish checklist (owner only; no agent runs any of it)
 
-1. Confirm `v2/players` lists `p01` and `p02` (both boys have numbers; otherwise a stranger could claim a Versus slot).
+1. Confirm `v2/players` lists only the players who should be able to play Versus (every player may now).
 2. Back up the currently deployed rules (Firebase console → Realtime Database → Rules → copy, or the Firebase MCP `firebase_get_security_rules`) to `artifacts/rules-backup-<date>.json`.
 3. From an up-to-date checkout of the merged branch: `node tools/build-rules.mjs --check`, then `firebase deploy --only database`.
 4. `LVT_TEST_GROWNUP_CODE=<code> node tools/rules-check.mjs --yes-live` against `v2test`: every row passes, the new Versus rows included. Any surprise: deploy the backup at once.

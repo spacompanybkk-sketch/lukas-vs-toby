@@ -42,7 +42,6 @@ import { PlayMenu, PlaySide } from './screens/PlayMenu';
 import { MapScreen } from './screens/Map';
 import type { MapHost } from './screens/Map';
 import { Title } from './screens/Title';
-import type { VersusTicksProps } from './screens/GrownUp';
 import { GettingReady } from './versus/GettingReady';
 import { InviteCard } from './versus/InviteCard';
 import { InvitePanel } from './versus/InvitePanel';
@@ -194,7 +193,6 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
   const phase = versus?.phase.value ?? null;
   const incoming = versus?.incoming.value ?? null;
   useVersusRouting(versus, phase);
-  const ticks = useVersusTicks(versus, s.name === 'grownup');
   // The who-is-here list and its card are menus too: an invite may arrive there, and the device is "here".
   const onMenu = MENU_SCREENS.has(s.name) || (s.name === 'versus' && (phase?.name === 'here' || phase?.name === 'card'));
   useEffect(() => { versus?.onMenu(onMenu); }, [versus, onMenu]);
@@ -239,7 +237,7 @@ export function App({ createSession: given, portraits, boys, onSettingsChange, o
       body = <Marketplace portraits={portraits} />;
       break;
     case 'grownup':
-      body = <GrownUp portraits={portraits} versus={ticks} />;
+      body = <GrownUp portraits={portraits} />;
       break;
     case 'sidepick':
       body = <PlayerSidePick boys={boys} />;
@@ -583,18 +581,6 @@ function useVersusRouting(flow: VersusFlow | null, phase: VersusFlow['phase']['v
       go({ name: came === 'here' || came === 'card' ? 'play' : players.player.peek() !== null ? 'home' : 'title' });
     }
   }, [flow, phase?.name, battle]);
-}
-
-/** The grown-up screen's Versus list, fetched when that screen opens (none until it arrives, or without a connection). */
-function useVersusTicks(flow: VersusFlow | null, wanted: boolean): VersusTicksProps | undefined {
-  const [ticks, setTicks] = useState<VersusTicksProps | undefined>(undefined);
-  useEffect(() => {
-    if (flow === null || !wanted) return undefined;
-    let alive = true;
-    void flow.ticks().then((t) => { if (alive && t !== null) setTicks(t); }, () => undefined);
-    return () => { alive = false; };
-  }, [flow, wanted]);
-  return ticks;
 }
 
 /** The `versus` screen: "who is here", with the invite card over it, or getting ready. */

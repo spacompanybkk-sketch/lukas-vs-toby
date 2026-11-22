@@ -19,13 +19,13 @@
  *   admin/secret               grown-up code hash                    read: nobody
  *   admin/proof/{hash}/touch   proof of knowing the grown-up code    read: nobody
  *   proof/{slot}/{hash}/touch  proof of knowing a player's pin       read: nobody
- *   vs/allowed/{slot}          true: the grown-up ticked him in      read: anyone
+ *   vs/allowed/{slot}          unused since every player may play    read: anyone
  *   vs/here/{slot}             { at, busy } heartbeat                read: anyone
  *   vs/lobby/{owner}/in|back/{from}   invites and replies            read: anyone, per owner
  *   vs/matches/{id}            one private match                     read: whoever knows the id
  *
  * Versus (spec 7-8): "proven" = the same update writes `proof/<slot>/<its pin hash>/touch = now`;
- * "allowed" = p01, p02, or ticked in under `vs/allowed`. The match id (32 hex digits from an ECDH
+ * "allowed" = the player exists under `players` (the old `vs/allowed` grant is unused). The match id (32 hex digits from an ECDH
  * secret) is the only thing keeping a match private, so `vs/matches` itself is never readable.
  *
  * Rules cascade (a grant at a parent cannot be taken back below), so reads and writes are granted
@@ -212,8 +212,8 @@ function versus(R, { top, adminProof }) {
   /** The same update writes `proof/<S>/<S's stored pin hash>/touch = now`, from `depth` below the root. */
   const proven = (S, depth) =>
     `(${secretOf(S)}.isString() && ${top(depth)}.child('proof/' + ${S} + '/' + ${secretOf(S)}.val() + '/touch').val() === now && root.child('${R}/proof/' + ${S} + '/' + ${secretOf(S)}.val() + '/touch').val() !== now)`;
-  /** On the Versus list: the two brothers always, anyone else once the grown-up ticks him in. */
-  const allowed = (S) => `(${S} === 'p01' || ${S} === 'p02' || root.child('${R}/vs/allowed/' + ${S}).val() === true)`;
+  /** On the Versus list: every player that exists (a slot with a `players/<slot>` record). */
+  const allowed = (S) => `root.child('${R}/players/' + ${S}).exists()`;
   const isSlot = (v) => `${v}.matches(${SLOT_RE})`;
   const seatOk = `$seat.matches(${SEAT_RE})`;
   /** `meta` exists (after this update), from a node `up` levels below the match. */

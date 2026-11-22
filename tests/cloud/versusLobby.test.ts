@@ -217,39 +217,24 @@ describe('who is here', () => {
     expect(lukas.here.value).toEqual([{ slot: 'p02', at: expect.any(Number), busy: true }]);
   });
 
-  it('p05, not ticked in, is refused; once the grown-up ticks him in he appears', async () => {
+  it('every existing player (p05, no tick) may be here; allowed() lists the players', async () => {
     const lukas = device('p01');
     lukas.start();
     await settle();
-    const p05 = device('p05');
-    expect(await run(p05.setBusy(false))).toBe('refused');
-    expect(peekAt('vs/here/p05')).toBeNull();
-    expect(await run(lukas.allowed())).toEqual(new Set(['p01', 'p02']));
-    expect(await run(lukas.setAllowed('p05', true, '0'.repeat(64)))).toBe('refused');
-    expect(await run(lukas.setAllowed('p05', true, G))).toBe('ok');
     expect(await run(lukas.allowed())).toEqual(new Set(['p01', 'p02', 'p05']));
+    const p05 = device('p05');
     expect(await run(p05.setBusy(false))).toBe('ok');
     await settle();
     expect(lukas.here.value.map((h) => h.slot)).toEqual(['p05']);
-    // Ticked out again: off the list at once, his record cleared.
-    expect(await run(lukas.setAllowed('p05', false, G))).toBe('ok');
-    await settle();
-    expect(peekAt('vs/allowed/p05')).toBeNull();
-    expect(peekAt('vs/here/p05')).toBeNull();
-    expect(lukas.here.value).toEqual([]);
   });
 
-  it('a player the rules refuse (not ticked in) holds no streams', async () => {
-    const p05 = device('p05');
-    p05.start();
+  it('a slot with no player record is refused and holds no streams', async () => {
+    const p07 = device('p07', { proof: () => '7'.repeat(64) });
+    p07.start();
     await pass(1_000, 10);
-    expect(peekAt('vs/here/p05')).toBeNull();
+    expect(peekAt('vs/here/p07')).toBeNull();
     expect(db.openStreams()).toBe(0);
-    // Ticked in: his next heartbeat lands, and only then do his two streams open.
-    expect(await run(device('p01').setAllowed('p05', true, G))).toBe('ok');
-    await pass(15_000);
-    expect(peekAt('vs/here/p05')).not.toBeNull();
-    expect(db.openStreams()).toBe(2);
+    expect(await run(p07.setBusy(false))).toBe('refused');
   });
 
   it('setAllowed: a wrong grown-up code is not sent again; a proof of this very millisecond is', async () => {
@@ -489,11 +474,10 @@ describe('readMeta', () => {
 });
 
 describe('the grown-up removing a player', () => {
-  it('clears his tick, his "here", his lobby and his proofs in the same update', async () => {
+  it('clears his "here", his lobby and his proofs in the same update', async () => {
     const lukas = device('p01');
     lukas.start();
     await settle();
-    expect(await run(lukas.setAllowed('p05', true, G))).toBe('ok');
     const p05 = device('p05');
     p05.start();
     await settle();
@@ -505,12 +489,13 @@ describe('the grown-up removing a player', () => {
     await pass(1_000);
     const cloud = createFakeCloud(db);
     expect(await cloud.deletePlayer('p05', G)).toBe('ok');
-    for (const p of ['vs/allowed/p05', 'vs/here/p05', 'vs/lobby/p05', 'proof/p05', 'players/p05']) expect(peekAt(p)).toBeNull();
-    // The next player in that slot is not on the Versus list.
+    for (const p of ['vs/here/p05', 'vs/lobby/p05', 'proof/p05', 'players/p05']) expect(peekAt(p)).toBeNull();
+    // Removed: off the list (no player record). A new player in that slot may play again.
+    expect(await run(device('p05').setBusy(false))).toBe('refused');
     const h = await pinHash('p05', '000');
     expect(await cloud.createPlayer(saveFor('p05', 'New'), h)).toBe('ok');
     hashes.p05 = h;
     await pass(1_000);
-    expect(await run(device('p05').setBusy(false))).toBe('refused');
+    expect(await run(device('p05').setBusy(false))).toBe('ok');
   });
 });

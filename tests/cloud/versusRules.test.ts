@@ -37,8 +37,9 @@ function raw(db: FakeDatabase) {
 }
 
 /**
- * p01 Lukas (pin 123), p02 Toby (456): always on the Versus list. p05 (555): a stranger, not on
- * it. p06 (666): ticked in by the grown-up (code hash hex('a')).
+ * Every player that exists may play Versus: p01 Lukas (pin 123), p02 Toby (456), p03 (333),
+ * p05 (555), p06 (666). p07 has no player record (no pin, so nothing to prove). The grown-up's
+ * code hash is hex('a').
  */
 async function world(R: Root = 'v2') {
   const clock = makeClock();
@@ -46,12 +47,11 @@ async function world(R: Root = 'v2') {
   const cloud = createFakeCloud(db, R);
   const h: Record<string, string> = {
     p01: await pinHash('p01', '123'), p02: await pinHash('p02', '456'),
-    p05: await pinHash('p05', '555'), p06: await pinHash('p06', '666'),
+    p03: await pinHash('p03', '333'), p05: await pinHash('p05', '555'), p06: await pinHash('p06', '666'),
   };
-  for (const s of ['p01', 'p02', 'p05', 'p06'] as const) expect(await cloud.createPlayer(saveFor(s), h[s]!)).toBe('ok');
+  for (const s of ['p01', 'p02', 'p03', 'p05', 'p06'] as const) expect(await cloud.createPlayer(saveFor(s), h[s]!)).toBe('ok');
   expect(await cloud.setGrownUpCode(G)).toBe('ok');
   const r = raw(db);
-  expect((await r.patch(R, { 'vs/allowed/p06': true, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(200);
   clock.t = T0 + 1000;
   /** `proof/<slot>/<its pin hash>` written in this very update. */
   const proof = (slot: string, hash = h[slot]!, touch: Json = SV): Record<string, Json> =>
@@ -98,18 +98,18 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
     clock.t += 15_000;
     expect((await send({ ...proof('p01'), 'vs/here/p01': here(true) })).status).toBe(200);
     expect((await r.get(`${R}/vs/here`)).status).toBe(200);
-    expect((await r.get(`${R}/vs/allowed`)).data).toEqual({ p06: true });
   });
 
-  it('a player the grown-up ticked in may be here, invite and play', async () => {
+  it('any player (p03, not a brother, no tick) may be here, invite p01 and play', async () => {
     const { send, proof, m, clock } = await world(R);
-    expect((await send({ ...proof('p06'), 'vs/here/p06': here() })).status).toBe(200);
+    expect((await send({ ...proof('p03'), 'vs/here/p03': here() })).status).toBe(200);
     clock.t += 1;
-    expect((await send({ ...proof('p06'), 'vs/lobby/p01/in/p06': invite({ head: { slot: 'p06', step: 0 } }) })).status).toBe(200);
+    expect((await send({ ...proof('p03'), 'vs/lobby/p01/in/p03': invite({ head: { slot: 'p03', step: 0 } }) })).status).toBe(200);
     clock.t += 1;
     expect((await send({
-      ...proof('p06'), [m('meta')]: meta({ seats: { plants: 'p06', zombies: 'p01' }, host: 'p06', head: null }),
+      ...proof('p03'), [m('meta')]: meta({ seats: { plants: 'p03', zombies: 'p01' }, host: 'p03', head: null }),
     })).status).toBe(200);
+    expect((await send({ ...proof('p06'), 'vs/here/p06': here() })).status).toBe(200);
   });
 
   it('an invite and a reply with proof; meta with the invitee\'s proof in the same update as his reply', async () => {
@@ -213,27 +213,27 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
 });
 
 describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: forged requests are refused', (R) => {
-  it('a stranger not on the list cannot be here, invite, be invited or be seated', async () => {
+  it('a slot with no player record cannot be here, invite, be invited or be seated', async () => {
     const { send, proof, m } = await world(R);
-    expect((await send({ ...proof('p05'), 'vs/here/p05': here() })).status).toBe(401);
-    expect((await send({ ...proof('p05'), 'vs/lobby/p01/in/p05': invite({ head: null }) })).status).toBe(401);
-    expect((await send({ ...proof('p01'), 'vs/lobby/p05/in/p01': invite({ head: null }) })).status).toBe(401);
+    const ghost = (touch: Json = SV): Record<string, Json> => proof('p07', hex('7'), touch);
+    expect((await send({ ...ghost(), 'vs/here/p07': here() })).status).toBe(401);
+    expect((await send({ ...ghost(), 'vs/lobby/p01/in/p07': invite({ head: null }) })).status).toBe(401);
+    expect((await send({ ...proof('p01'), 'vs/lobby/p07/in/p01': invite({ head: null }) })).status).toBe(401);
     expect((await send({
-      ...proof('p05'), [m('meta')]: meta({ seats: { plants: 'p05', zombies: 'p02' }, host: 'p05', head: null }),
+      ...ghost(), [m('meta')]: meta({ seats: { plants: 'p07', zombies: 'p02' }, host: 'p07', head: null }),
     })).status).toBe(401);
     expect((await send({
-      ...proof('p02'), [m('meta')]: meta({ seats: { plants: 'p05', zombies: 'p02' }, head: null }),
+      ...proof('p02'), [m('meta')]: meta({ seats: { plants: 'p07', zombies: 'p02' }, head: null }),
     })).status).toBe(401);
   });
 
-  it('only the grown-up ticks a player in', async () => {
+  it('only the grown-up writes the unused vs/allowed node (and nobody needs it)', async () => {
     const { send, proof, r } = await world(R);
     expect((await r.put(`${R}/vs/allowed/p05`, true)).status).toBe(401);
     expect((await send({ ...proof('p05'), 'vs/allowed/p05': true })).status).toBe(401);
     expect((await send({ 'vs/allowed/p05': 'yes', [`admin/proof/${G}`]: { touch: SV } })).status).toBe(401);
     expect((await send({ 'vs/allowed/p31': true, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(401);
-    expect((await send({ 'vs/allowed/p06': null, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(200);
-    expect((await send({ ...proof('p06'), 'vs/here/p06': here() })).status).toBe(401);
+    expect((await send({ ...proof('p06'), 'vs/here/p06': here() })).status).toBe(200);
   });
 
   it('a listed slot with a wrong proof hash', async () => {

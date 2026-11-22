@@ -348,12 +348,12 @@ export class VersusLobby {
     return this.enqueue(() => this.sendProven({ [`vs/lobby/${this.me}/back/${from}`]: null }));
   }
 
-  /** Who may play Versus: p01, p02 and every slot the grown-up ticked in. */
+  /** Who may play Versus: every player that exists (the rules say the same). */
   async allowed(): Promise<ReadonlySet<Slot> | 'offline'> {
-    const a = await this.request('GET', 'vs/allowed');
+    const a = await this.request('GET', 'players');
     if (a.kind !== 'ok') return 'offline';
-    const out = new Set<Slot>(['p01', 'p02']);
-    if (isObj(a.data)) for (const [k, v] of Object.entries(a.data)) if (isSlot(k) && v === true) out.add(k);
+    const out = new Set<Slot>();
+    if (isObj(a.data)) for (const k of Object.keys(a.data)) if (isSlot(k)) out.add(k);
     return out;
   }
 

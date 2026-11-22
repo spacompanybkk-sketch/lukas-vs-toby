@@ -4,7 +4,6 @@ import { defaultHeadStart, rematchSetup, versusConfig } from '../ai/versus';
 import type { VersusSetup } from '../ai/versus';
 import { factionOf } from '../data/units';
 import type { Connection } from '../cloud/connection';
-import { grownUpHash } from '../cloud/hash';
 import type { BoardRow } from '../cloud/types';
 import { matchId, newKeyPair, sharedSecret } from '../cloud/versusKeys';
 import type { KeyPair } from '../cloud/versusKeys';
@@ -506,28 +505,6 @@ export class VersusFlow {
       this._phase.value = { name: 'closed' };
     }
     this.syncLobby();
-  }
-
-  /**
-   * The grown-up screen's Versus list: who may play now, and a way to tick one in or out with the
-   * grown-up's code (hashed here; the code itself is never sent). Null while there is no lobby
-   * (nobody logged in, or the connection is not up) or the database cannot be reached.
-   */
-  async ticks(): Promise<{ allowed: ReadonlySet<Slot>; set(slot: Slot, on: boolean, code: string): Promise<WriteAnswer> } | null> {
-    const lobby = this.lobby;
-    if (lobby === null) return null;
-    const allowed = await lobby.allowed();
-    if (allowed === 'offline') return null;
-    return {
-      allowed,
-      set: async (slot, on, code) => {
-        let hash: string;
-        try { hash = await grownUpHash(code); } catch { return 'refused'; }
-        const a = await lobby.setAllowed(slot, on, hash);
-        if (a === 'ok') void this.refreshAllowed(this.epoch);
-        return a;
-      },
-    };
   }
 
   /** Back to the battle after a reload (the title's "back to the battle" button). */

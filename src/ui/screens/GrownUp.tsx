@@ -13,19 +13,6 @@ import { PlayerPicture } from './PlayerPicture';
 import { ARROW, CHECK, CLOUD_OFF, COIN, CROSS, KEY, LOCK, TABLET } from './pictures';
 import './players.css';
 import { BackButton } from '../BackButton';
-import type { CloudError } from '../../cloud/types';
-import type { Slot } from '../../progress/save';
-import { TABLETS_SWORDS } from '../versus/pictures';
-import '../versus/versus.css';
-
-/**
- * Who may play Versus (the lobby's wiring): `allowed` lists the ticked players; `set` writes one
- * tick behind the grown-up code. Lukas (p01) and Toby (p02) may always play.
- */
-export interface VersusTicksProps { allowed: ReadonlySet<Slot>; set(slot: Slot, on: boolean, grownUpCode: string): Promise<'ok' | CloudError> }
-
-/** The boys: always allowed Versus, by the rules themselves. */
-const ALWAYS_VERSUS: ReadonlySet<Slot> = new Set<Slot>(['p01', 'p02']);
 
 type Step =
   | { name: 'code' }
@@ -51,7 +38,7 @@ const MISMATCH_MS = 450;
  * (the code typed again to confirm) or given a new number. With `versus`, a second list ticks
  * who may play Versus.
  */
-export function GrownUp({ portraits = {}, versus }: { portraits?: Record<string, string>; versus?: VersusTicksProps }) {
+export function GrownUp({ portraits = {} }: { portraits?: Record<string, string> }) {
   const [step, setStep] = useState<Step>({ name: 'code' });
   const [players, setPlayers] = useState<RosterEntry[] | null>(null);
   const code = useRef('');
@@ -183,7 +170,6 @@ export function GrownUp({ portraits = {}, versus }: { portraits?: Record<string,
               ))}
               {players !== null && players.length === 0 && <li class="grown__empty">No players yet.</li>}
             </ul>
-            {versus !== undefined && <VersusTicks players={players ?? []} portraits={portraits} versus={versus} code={code.current} />}
           </div>
         </div>
       );
@@ -289,58 +275,5 @@ function ResetWarning({ who, portraits, onBack, onGo }: { who: RosterEntry; port
         </div>
       </div>
     </div>
-  );
-}
-
-
-/**
- * The grown-up's Versus list: each player with a tick box. Lukas and Toby are always ticked (and
- * the box is fixed). A tick writes at once; while it is on its way the box shows the new state,
- * and an answer other than 'ok' puts it back (offline: the crossed-out cloud).
- */
-function VersusTicks({ players, portraits, versus, code }: { players: RosterEntry[]; portraits: Record<string, string>; versus: VersusTicksProps; code: string }) {
-  const [mine, setMine] = useState<ReadonlyMap<Slot, boolean>>(new Map());
-  const [offline, setOffline] = useState(false);
-  const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
-  const isOn = (slot: Slot): boolean => ALWAYS_VERSUS.has(slot) || (mine.get(slot) ?? versus.allowed.has(slot));
-  const toggle = async (slot: Slot): Promise<void> => {
-    const was = isOn(slot);
-    const put = (on: boolean): void => setMine((m) => new Map(m).set(slot, on));
-    uiSound('click');
-    put(!was);
-    setOffline(false);
-    const r = await versus.set(slot, !was, code);
-    if (!alive.current || r === 'ok') return;
-    put(was);
-    if (r === 'offline') setOffline(true);
-    else uiSound('deny');
-  };
-  return (
-    <>
-      <h2 class="grown__title vs-ticks__title" data-versus-title>
-        <span class="vs-ticks__title-pic" aria-hidden="true"><PixelIcon art={TABLETS_SWORDS} /></span>
-        Versus
-      </h2>
-      {offline && <span class="problem px pal-slate vs-ticks__offline" data-versus-offline aria-label="No connection"><PixelIcon art={CLOUD_OFF} /></span>}
-      <ul class="grown__list vs-ticks" data-versus-ticks>
-        {players.map((p) => {
-          const on = isOn(p.slot);
-          const fixed = ALWAYS_VERSUS.has(p.slot);
-          return (
-            <li key={p.slot} class="grown__row vs-ticks__row" data-tick-row={p.slot}>
-              <PlayerPicture picture={p.picture} portraits={portraits} class="grown__pic" frame={frameColor(p.slot)} />
-              <span class="grown__name">{p.name}</span>
-              <button
-                type="button" role="checkbox" data-action="versus-tick" aria-checked={on ? 'true' : 'false'} aria-label={`${p.name} may play Versus`}
-                disabled={fixed} class={`btn btn--square vs-ticks__box ${on ? 'pal-leaf' : 'pal-bone'}`} onClick={() => void toggle(p.slot)}
-              >
-                {on && <PixelIcon art={CHECK} class="grown__icon" />}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </>
   );
 }
