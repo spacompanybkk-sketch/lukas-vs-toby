@@ -84,6 +84,7 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'p3-2 average win': '85 / 83 / 82.5 (band 65.1-83.1; trend 74.1): misses on block 1 only, the other blocks sit on the top of the band; beginner 6 / 7.5 / 6.5 (plants have no beginner floor here)',
   'p3-3 average win': '89 / 89 / 90 (trend 72.5, top 81.5): the Cactus-lane garden is a clean level for the sensible player, 57.5 / 58 / 52.5% three stars; expert 96-96.5',
   'p3-6 average win': '77 / 76 / 71 (trend 67.9, top 76.9): misses on block 1 only, by a seed; 3 stars 2 / 2.5 / 1.5%',
+  // p3-7 average win passes on block 1 (71) but misses on blocks 2 and 3 (79.5 / 82.5): left unrecorded on purpose.
   'p3-7 median length, beginner': 'about 1.23 min on every block (1.5 minimum): the beginner has lost the 7-garden breakthrough in a minute, at 0% wins',
   'plants world 3: no level harder for the average player than the level two after it': 'p3-1 v p3-3: 79.5 v 88, 74 v 88, 72.5 v 89 (the opening level is the hardest of the three: 72.5-79.5% against 89-90); on blocks 2 and 3 p3-5 v p3-7 (76 v 79.5, 78 v 82.5) misses too',
   'z3-3 median length, expert': 'about 1.42 min on every block (1.5 minimum; average 2.11-2.16, beginner 3.25-3.32 min): he stacks the lane at once',

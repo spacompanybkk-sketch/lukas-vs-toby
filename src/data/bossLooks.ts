@@ -70,8 +70,8 @@ export interface BossShows {
    * pups, with wolf ears (the Howler's), or wrapped in bandages as mummies (the Pharaoh's).
    */
   summonLook?: 'pups' | 'mummies';
-  /** What its barrage throws: acorns (left out), or frozen melons that tumble and trail ice. */
-  barrage?: 'acorn' | 'frozenMelon';
+  /** What its barrage throws: acorns (left out), frozen melons that tumble and trail ice, or cactus needles that fly point first. */
+  barrage?: 'acorn' | 'frozenMelon' | 'needle';
   /**
    * Seconds its slam clip (`ability`) takes to raise the arm; the clip is sped up or slowed so the
    * rise fills each slam's own wind-up. Left out: the clip is timed to the wind-up as it is.
@@ -214,7 +214,9 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       shards: ['#4FA84A', '#2F7D3A', '#A6DB78', '#FF6FA8', '#FFD23D'],
       // The rockfall: boulders hang over the warned tiles and drop, in shadow on the sand.
       strikeBlow: 'boulder',
-      strikeWarnings: { none: { fill: '#2B1A10', frame: '#FF3B3B', opacity: 0.7, blow: '#C9A66B' } },
+      // Its barrage throws needles (thin green spikes), not acorns.
+      barrage: 'needle',
+      strikeWarnings: { none: { fill: '#2B1A10', frame: '#FF3B3B', opacity: 0.7, blow: '#F2A04A' } },
     },
   },
   moonHowler: {

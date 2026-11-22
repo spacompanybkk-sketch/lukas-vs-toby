@@ -34,6 +34,11 @@ export function throwsFrozenMelons(key: UnitKey): boolean {
   return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'frozenMelon';
 }
 
+/** Whether the barrage of the boss `key` flies as cactus needles (`fx.barrage`), not acorns. */
+export function throwsNeedles(key: UnitKey): boolean {
+  return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'needle';
+}
+
 /** Whether a unit key is a boss's. */
 export function isBossKey(key: UnitKey): key is BossKey {
   return Object.hasOwn(BOSS_HALF_WIDTH, key);
@@ -91,7 +96,11 @@ const SAND_PIXEL = 0.2;
 const SAND_PER_LAYER = 10;
 /** The boulders of a `strikeBlow: 'boulder'` hang this high over their tiles at the start of the wind-up (tiles). */
 const BOULDER_HEIGHT = 3.2;
-const BOULDER_ROCK = [hex('#8E7A5E'), hex('#A28C6C'), hex('#6B5A44'), hex('#C9A66B')];
+/** A falling boulder is rust red and orange, not the grey of the Desert's rock tiles, so a child can tell "it lands here" from "a rock stands here". */
+const BOULDER_ROCK = [hex('#B5482A'), hex('#D9662F'), hex('#8A2F1A'), hex('#F2A04A')];
+/** The warning ring under each boulder (hot orange, apart from the red tile frames) and the boulders and rings made when the fight starts. */
+const BOULDER_RING = '#FF8A1F';
+const BOULDER_POOL = 4;
 /** The shield plates each plate show slides in: bark (`barkL`, `barkR`) or ice (`iceL`, `iceR`). */
 const PLATES = { bark: ['barkL', 'barkR'], ice: ['iceL', 'iceR'] } as const;
 /**
@@ -185,6 +194,9 @@ export class BossFx {
   private boulderGeometry: ReturnType<BoxBatch['build']> | null = null;
   private boulderMaterial: MeshStandardMaterial | null = null;
   private readonly boulders: Mesh[] = [];
+  private boulderRingGeometry: ReturnType<BoxBatch['build']> | null = null;
+  private boulderRingMaterial: MeshBasicMaterial | null = null;
+  private readonly boulderRings: Mesh[] = [];
   private domeOn = false;
   /** The sand shield's swirl (made once, when a boss with `shield: 'sand'` comes on): three layers of pixels. */
   private sandRing: Group | null = null;
@@ -301,12 +313,38 @@ export class BossFx {
     const look = lookOf(view.key);
     view.setBulk(look.scale);
     this.dress(view, look);
+    this.prebuild(look);
     view.wrapper.add(this.dome);
     if (late) return;
     this.entranceLeft = ENTRANCE_SECONDS;
     this.roared = false;
     this.onFeel({ punch: 0.1, punchSeconds: ENTRANCE_SECONDS, focusZ: view.lane + 0.5 });
     this.ground(view.currX, view.lane, 1.2);
+  }
+
+  /**
+   * Everything the fight will need from the boss's look, made now so nothing is allocated while it
+   * runs: the boulders and their warning rings, and the summons' dress (wolf ears, mummy wraps).
+   */
+  private prebuild(look: BossLook): void {
+    if (look.fx.strikeBlow === 'boulder') this.growBoulders(BOULDER_POOL);
+    const dress = look.fx.summonLook;
+    if (dress === undefined) return;
+    while (this.dressed.filter((d) => d.look === dress).length < DRESS_POOL / 2 && this.dressed.length < DRESS_POOL) {
+      const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+      if (dress === 'pups') {
+        this.earGeometry ??= wolfEars();
+        const mesh = new Mesh(this.earGeometry, material);
+        mesh.name = 'boss-pup-ears';
+        this.dressed.push({ look: dress, meshes: [mesh], parts: ['head'], material, owner: null, root: null, source: null });
+      } else {
+        this.wrapGeometry ??= mummyWrap();
+        const head = new Mesh(this.wrapGeometry, material);
+        const torso = new Mesh(this.wrapGeometry, material);
+        head.name = torso.name = 'boss-mummy-wrap';
+        this.dressed.push({ look: dress, meshes: [head, torso], parts: ['head', 'torso'], material, owner: null, root: null, source: null });
+      }
+    }
   }
 
   /** Ends the entrance at once (a tap). */
@@ -734,6 +772,9 @@ export class BossFx {
           const boulder = this.boulders[i] as Mesh;
           if (boulder.visible) boulder.position.y = 0.02 + high;
         }
+        // The rings pulse in two hard steps (a size, a size bigger), faster in the last half second.
+        const big = Math.floor(this.time * (this.strikeLeft < 0.5 ? BLINK_FAST : BLINK_PER_SECOND) * 2) % 2 === 0;
+        for (let i = 0; i < this.boulderRings.length; i++) (this.boulderRings[i] as Mesh).scale.setScalar(big ? 1.18 : 0.92);
       }
     }
     if (this.barkSparkIn > 0) this.barkSparkIn -= dt;
@@ -821,6 +862,8 @@ export class BossFx {
     this.sandMaterial?.dispose();
     this.boulderGeometry?.dispose();
     this.boulderMaterial?.dispose();
+    this.boulderRingGeometry?.dispose();
+    this.boulderRingMaterial?.dispose();
     this.boss = null;
   }
 
@@ -1040,23 +1083,39 @@ export class BossFx {
     if (boulders) this.hangBoulders(tiles, n);
   }
 
-  /** A boulder over each of the first `n` of `tiles` (made on first use, kept). */
-  private hangBoulders(tiles: readonly { lane: number; col: number }[], n: number): void {
+  /** Boulders (each with its warning ring) up to `n`, made once and kept. */
+  private growBoulders(n: number): void {
     this.boulderGeometry ??= boulder();
     this.boulderMaterial ??= new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+    this.boulderRingGeometry ??= boulderRing();
+    this.boulderRingMaterial ??= new MeshBasicMaterial({ color: BOULDER_RING, transparent: true, opacity: 0.9, depthWrite: false });
     while (this.boulders.length < n) {
       const mesh = new Mesh(this.boulderGeometry, this.boulderMaterial);
       mesh.name = 'boss-boulder';
       mesh.renderOrder = 10;
       mesh.visible = false;
-      this.group.add(mesh);
+      const ring = new Mesh(this.boulderRingGeometry, this.boulderRingMaterial);
+      ring.name = 'boss-boulder-ring';
+      ring.renderOrder = 10;
+      ring.visible = false;
+      this.group.add(mesh, ring);
       this.boulders.push(mesh);
+      this.boulderRings.push(ring);
     }
+  }
+
+  /** A boulder over each of the first `n` of `tiles`, and its pulsing ring on the tile under it. */
+  private hangBoulders(tiles: readonly { lane: number; col: number }[], n: number): void {
+    this.growBoulders(n);
     for (let i = 0; i < this.boulders.length; i++) {
       const mesh = this.boulders[i] as Mesh;
+      const ring = this.boulderRings[i] as Mesh;
       const t = tiles[i];
-      mesh.visible = i < n && t !== undefined;
-      if (mesh.visible && t !== undefined) mesh.position.set(t.col + 0.5, 0.02 + BOULDER_HEIGHT, t.lane + 0.5);
+      mesh.visible = ring.visible = i < n && t !== undefined;
+      if (mesh.visible && t !== undefined) {
+        mesh.position.set(t.col + 0.5, 0.02 + BOULDER_HEIGHT, t.lane + 0.5);
+        ring.position.set(t.col + 0.5, 0.035, t.lane + 0.5);
+      }
     }
   }
 
@@ -1068,7 +1127,7 @@ export class BossFx {
       s.frame.visible = s.fill.visible = false;
     }
     for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = false;
-    for (let i = 0; i < this.boulders.length; i++) (this.boulders[i] as Mesh).visible = false;
+    for (let i = 0; i < this.boulders.length; i++) (this.boulders[i] as Mesh).visible = (this.boulderRings[i] as Mesh).visible = false;
   }
 
   /** The blow lands: soil and a ring on each of the three tiles, the camera shakes hard. */
@@ -1232,10 +1291,24 @@ function mummyWrap(): ReturnType<BoxBatch['build']> {
 function boulder(): ReturnType<BoxBatch['build']> {
   const b = new BoxBatch();
   const v = VOXEL;
-  b.box(-0.24, 0, -0.24, 0.48, 3 * v, 0.48, '#6B5A44');
-  b.box(-0.3, 3 * v, -0.3, 0.6, 4 * v, 0.6, '#8E7A5E');
-  b.box(-0.22, 7 * v, -0.22, 0.44, 3 * v, 0.44, '#A28C6C');
-  b.box(-0.12, 10 * v, -0.12, 0.24, 1.5 * v, 0.24, '#C9A66B');
+  b.box(-0.24, 0, -0.24, 0.48, 3 * v, 0.48, '#8A2F1A');
+  b.box(-0.3, 3 * v, -0.3, 0.6, 4 * v, 0.6, '#B5482A');
+  b.box(-0.22, 7 * v, -0.22, 0.44, 3 * v, 0.44, '#D9662F');
+  b.box(-0.12, 10 * v, -0.12, 0.24, 1.5 * v, 0.24, '#F2A04A');
+  return b.build();
+}
+
+/** A boulder's warning ring: a stepped orange square ring with a dot in the middle, flat on the tile (the shadow it will land in). */
+function boulderRing(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const r = 0.4;
+  const t = 0.1;
+  const h = 0.03;
+  b.box(-r, 0, -r, 2 * r, h, t, BOULDER_RING);
+  b.box(-r, 0, r - t, 2 * r, h, t, BOULDER_RING);
+  b.box(-r, 0, -r + t, t, h, 2 * r - 2 * t, BOULDER_RING);
+  b.box(r - t, 0, -r + t, t, h, 2 * r - 2 * t, BOULDER_RING);
+  b.box(-0.14, 0, -0.14, 0.28, h, 0.28, BOULDER_RING);
   return b.build();
 }
 

@@ -439,8 +439,8 @@ describe('the Cactus King on the lawn', () => {
     const debris = vi.spyOn(s.fx, 'debris');
     const ring = vi.spyOn(s.fx, 'ring');
     s.until((e) => e.type === 'bossStrike' && !e.windup);
-    expect(debris.mock.calls.filter((c) => (c[1] as number[]).includes(0x8e7a5e))).toHaveLength(3);
-    expect(ring.mock.calls.filter((c) => c[1] === 0xc9a66b)).toHaveLength(3);
+    expect(debris.mock.calls.filter((c) => (c[1] as number[]).includes(0xb5482a))).toHaveLength(3);
+    expect(ring.mock.calls.filter((c) => c[1] === 0xf2a04a)).toHaveLength(3);
     s.play(0.1);
     expect(shown(s.scene, 'boss-boulder')).toBe(0);
     expect(shown(s.scene, 'boss-strike-tile')).toBe(0);
