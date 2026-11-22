@@ -49,13 +49,13 @@ describe('database.rules.json', () => {
     const nodes = walk(rules[R] as Rule);
     const reads = nodes.filter((n) => '.read' in n.node).map((n) => n.path);
     const writes = nodes.filter((n) => '.write' in n.node).map((n) => n.path);
-    expect(reads).toEqual(['players', 'saves/$slot/$hash', 'board', 'vs/allowed', 'vs/here', 'vs/lobby/$owner', 'vs/matches/$id']);
+    expect(reads).toEqual(['players', 'saves/$slot/$hash', 'board', 'vs/here', 'vs/lobby/$owner', 'vs/matches/$id', 'vs/results/$id']);
     expect(writes).toEqual([
       'players/$slot', 'secrets/$slot', 'saves/$slot', 'saves/$slot/$hash', 'board/$slot', 'admin/secret', 'admin/proof/$hash',
-      'proof/$slot', 'proof/$slot/$hash', 'vs/allowed/$slot', 'vs/here/$slot', 'vs/lobby/$owner', 'vs/lobby/$owner/in/$from', 'vs/lobby/$owner/back/$from',
+      'proof/$slot', 'proof/$slot/$hash', 'vs/here/$slot', 'vs/lobby/$owner', 'vs/lobby/$owner/in/$from', 'vs/lobby/$owner/back/$from',
       'vs/matches/$id', 'vs/matches/$id/meta', 'vs/matches/$id/ready/$seat', 'vs/matches/$id/end/$seat',
-      'vs/matches/$id/again/$seat', 'vs/matches/$id/turns/$seat/$k', 'vs/matches/$id/pause', 'vs/matches/$id/quit',
-      'vs/matches/$id/sync/$n',
+      'vs/matches/$id/again/$seat', 'vs/matches/$id/turns/$seat/$k', 'vs/matches/$id/pause',
+      'vs/matches/$id/sync/$n', 'vs/results/$id',
     ]);
     expect((rules[R] as Rule)['.read']).toBeUndefined();
     expect((rules[R] as Rule)['.write']).toBeUndefined();

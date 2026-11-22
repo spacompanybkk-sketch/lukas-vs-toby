@@ -93,7 +93,7 @@ describe('requests', () => {
     await c.setGrownUpCode(G);
     expect(m.calls[0]!.body).toEqual({
       'secrets/p01': null, 'saves/p01': null, 'players/p01': null, 'board/p01': null,
-      'vs/allowed/p01': null, 'vs/here/p01': null, 'vs/lobby/p01': null, 'proof/p01': null,
+      'vs/here/p01': null, 'vs/lobby/p01': null, 'proof/p01': null,
       [`admin/proof/${G}`]: { touch: SV },
     });
     expect(m.calls[1]!.body).toEqual({

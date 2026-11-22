@@ -19,13 +19,13 @@
  *   admin/secret               grown-up code hash                    read: nobody
  *   admin/proof/{hash}/touch   proof of knowing the grown-up code    read: nobody
  *   proof/{slot}/{hash}/touch  proof of knowing a player's pin       read: nobody
- *   vs/allowed/{slot}          unused since every player may play    read: anyone
  *   vs/here/{slot}             { at, busy } heartbeat                read: anyone
  *   vs/lobby/{owner}/in|back/{from}   invites and replies            read: anyone, per owner
  *   vs/matches/{id}            one private match                     read: whoever knows the id
+ *   vs/results/{id}            { winner, by, at }: who won, kept 24 h  read: whoever knows the id
  *
  * Versus (spec 7-8): "proven" = the same update writes `proof/<slot>/<its pin hash>/touch = now`;
- * "allowed" = the player exists under `players` (the old `vs/allowed` grant is unused). The match id (32 hex digits from an ECDH
+ * "allowed" = the player exists under `players`. The match id (32 hex digits from an ECDH
  * secret) is the only thing keeping a match private, so `vs/matches` itself is never readable.
  *
  * Rules cascade (a grant at a parent cannot be taken back below), so reads and writes are granted
@@ -78,6 +78,10 @@ const TURN_KEY_RE = '/^t00([0-8][0-9][0-9][0-9]|9000)$/';
 export const MAX_TURN_CHARS = 400;
 export const MAX_SNAP_CHARS = 200000;
 /** A slot as a value. */
+/** A match id as a rule: 32 lowercase hex digits. */
+const ID32 = '$id.length === 32 && $id.matches(/^[0-9a-f]+$/)';
+/** How long a result record can be read (by the rule's clock, not a device's). */
+export const RESULT_KEPT_MS = 24 * 60 * 60 * 1000;
 const SLOT_VALUE = `newData.isString() && newData.val().matches(${SLOT_RE})`;
 /** Longest save string accepted (a full save is about 2,000 characters). */
 export const MAX_SAVE_CHARS = 20000;
@@ -227,9 +231,9 @@ function versus(R, { top, adminProof }) {
   const once = (same) => `newData.exists() && (!data.exists() || ${same})`;
   const sameVal = 'data.val() === newData.val()';
   /** A per-seat record of the match: `$seat` plants|zombies, meta exists, written once. */
-  const seatRecord = (validate) => ({
+  const seatRecord = (validate, alsoOk) => ({
     $seat: {
-      '.write': `${seatOk} && ${metaExists(2)} && ${once(sameVal)}`,
+      '.write': `${seatOk} && ${metaExists(2)} && ${once(alsoOk === undefined ? sameVal : `${sameVal} || (${alsoOk})`)}`,
       '.validate': validate,
     },
   });
@@ -244,14 +248,6 @@ function versus(R, { top, adminProof }) {
   const zombiesSeat = "newData.child('seats/zombies').val()";
 
   return {
-    allowed: {
-      '.read': true,
-      $slot: {
-        // Ticked in, or out again (deleted), from the grown-up screen.
-        '.write': `$slot.matches(${SLOT_RE}) && ${adminProof(3)}`,
-        '.validate': 'newData.val() === true',
-      },
-    },
     here: {
       '.read': true,
       $slot: {
@@ -288,10 +284,13 @@ function versus(R, { top, adminProof }) {
         // (`lobby/$from/in/$owner`) exists, and only in the update that deletes it: of two devices
         // of one player answering at once, the second is refused as a whole (meta included), and a
         // stale "no" cannot overwrite a "yes".
-        back: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')} && root.child('${R}/vs/lobby/' + $from + '/in/' + $owner).exists() && !${top(5)}.child('vs/lobby/' + $from + '/in/' + $owner).exists()`, {
+        // A "no" names the invite it answers (`inAt` = that invite's `at`): a stale "no" panel cannot
+        // decline a fresh invite from the same player.
+        back: lobbyEntry(`${proven('$from', 5)} && ${allowed('$from')} && root.child('${R}/vs/lobby/' + $from + '/in/' + $owner).exists() && !${top(5)}.child('vs/lobby/' + $from + '/in/' + $owner).exists() && (newData.child('ok').val() === true || newData.child('inAt').val() === root.child('${R}/vs/lobby/' + $from + '/in/' + $owner + '/at').val())`, {
           '.validate': "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
           ok: { '.validate': 'newData.isBoolean()' },
           pub: { '.validate': PUB },
+          inAt: { '.validate': 'newData.isNumber()' },
           build: { '.validate': BUILD },
           at: { '.validate': NOW },
           $other: NOTHING_ELSE,
@@ -334,7 +333,8 @@ function versus(R, { top, adminProof }) {
         },
         ready: seatRecord(NOW),
         end: seatRecord(`newData.isString() && newData.val().length < 100`),
-        again: seatRecord(wholeIn(0, 1)),
+        // Write-once, except that a rematch asked for (1) may be taken back (0) when its boy goes home.
+        again: seatRecord(wholeIn(0, 1), `data.val() === 1 && newData.val() === 0`),
         turns: {
           $seat: {
             $k: {
@@ -351,12 +351,6 @@ function versus(R, { top, adminProof }) {
           n: { '.validate': WHOLE },
           $other: NOTHING_ELSE,
         },
-        quit: {
-          '.write': `${metaExists(1)} && ${once("data.child('by').val() === newData.child('by').val()")}`,
-          '.validate': "newData.hasChildren(['by'])",
-          by: { '.validate': aSeat(2) },
-          $other: NOTHING_ELSE,
-        },
         sync: {
           $n: {
             // A snapshot from the host on a mismatch: at most three per match.
@@ -367,6 +361,21 @@ function versus(R, { top, adminProof }) {
             $other: NOTHING_ELSE,
           },
         },
+        $other: NOTHING_ELSE,
+      },
+    },
+    // Who won a finished match, left for a device that was away when the match was deleted.
+    results: {
+      $id: {
+        '.read': `${ID32} && data.child('at').val() > now - ${RESULT_KEPT_MS}`,
+        // Written before the match goes, by one of its two seats with his pin proof in the same update;
+        // the other seat may write the same winner again (both devices do, at about the same time),
+        // nobody a different one. Deleted by the player who wrote it (his proof) or the grown-up.
+        '.write': `${ID32} && ((newData.exists() && (!data.exists() || data.child('winner').val() === newData.child('winner').val()) && ${proven("newData.child('by').val()", 3)} && (root.child('${R}/vs/matches/' + $id + '/meta/seats/plants').val() === newData.child('by').val() || root.child('${R}/vs/matches/' + $id + '/meta/seats/zombies').val() === newData.child('by').val())) || (!newData.exists() && (${proven("data.child('by').val()", 3)} || ${adminProof(3)})))`,
+        '.validate': "newData.hasChildren(['winner', 'by', 'at'])",
+        winner: { '.validate': "newData.isString() && newData.val().matches(/^(plants|zombies)$/)" },
+        by: { '.validate': SLOT_VALUE },
+        at: { '.validate': NOW },
         $other: NOTHING_ELSE,
       },
     },

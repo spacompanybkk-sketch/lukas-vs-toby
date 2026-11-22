@@ -199,6 +199,14 @@ export class CloudMatchChannel implements MatchChannel {
     return JSON.stringify(back.data) === JSON.stringify(value) ? 'ok' : 'refused';
   }
 
+  /** How many of the two `end` records the match holds now (0-2); `offline` without an answer. */
+  async endsHeld(): Promise<number | 'offline'> {
+    const a = await request(this.conn, this.timers, 'GET', `${this.base}/end`);
+    if (a.kind === 'offline') return 'offline';
+    const held = a.kind === 'ok' && isObj(a.data) ? a.data : {};
+    return FACTIONS.filter((f) => typeof held[f] === 'string').length;
+  }
+
   async remove(): Promise<WriteAnswer> {
     const a = await request(this.conn, this.timers, 'DELETE', this.base);
     return a.kind;
@@ -307,6 +315,19 @@ export class CloudMatchChannel implements MatchChannel {
       root.close();
     };
   }
+}
+
+/** Who won a match that has been deleted (`vs/results/<id>`, readable for 24 h); null when there is no such record. */
+export async function readResult(
+  conn: Connection, id: string, timers: Timers = realTimers,
+): Promise<{ winner: Faction; by: Slot } | null | 'offline'> {
+  if (!ID_RE.test(id)) return null;
+  const a = await request(conn, timers, 'GET', `vs/results/${id}`);
+  if (a.kind === 'offline') return 'offline';
+  if (a.kind !== 'ok' || !isObj(a.data)) return null;
+  const { winner, by } = a.data;
+  if ((winner !== 'plants' && winner !== 'zombies') || typeof by !== 'string' || !isSlot(by)) return null;
+  return { winner, by };
 }
 
 /** One GET of the whole match (rejoin): meta, both turn logs and the control records; null when there is none. */

@@ -563,10 +563,73 @@ describe('the credit', () => {
   });
 });
 
+describe('the credit survives a sleeping device (C1) and waits for the right player (C5)', () => {
+  it('the winner\'s device asleep through the end and the 60 s window, then reloads: credited once', async () => {
+    const { lukas, toby, id } = await battle();
+    toby.flow.dispose(); // Toby's tablet falls asleep before the end
+    toby.session.dispose();
+    devices = devices.filter((d) => d !== toby);
+    lukas.flow.battleOutcome(won('zombies')); // Toby (zombies) won; Lukas's device finishes alone
+    expect(wins(lukas)).toBe(0);
+    lukas.flow.rematch();
+    // The match stays while Toby's end record is missing and the rematch window is open.
+    await pass(VS_TIMEOUTS.rematchMs - 5000);
+    expect(db.peek(`${root}/vs/matches/${id}`)).not.toBeNull();
+    await pass(10_000);
+    expect(db.peek(`${root}/vs/matches/${id}`)).toBeNull();
+    expect(db.peek(`${root}/vs/results/${id}`)).toMatchObject({ winner: 'zombies', by: 'p01' });
+    const t2 = await device('p02', { storage: toby.storage });
+    await until(() => wins(t2) === 1);
+    expect(lastBattle(t2)).toBe(`vs-${id}`);
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+    // reloading again, even with the key put back, credits nothing twice
+    t2.session.deviceStorage()?.setItem(VMATCH_KEY, JSON.stringify({ id, n: 0, seat: 'zombies', me: 'p02', other: 'p01', host: false }));
+    const t3 = await reborn(t2);
+    await pass(3000);
+    expect(wins(t3)).toBe(1);
+    expect(t3.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+  }, 60_000);
+
+  it('a draw leaves no result record, and the loser asleep is not credited anything', async () => {
+    const { lukas, toby, id } = await battle();
+    toby.flow.dispose();
+    toby.session.dispose();
+    devices = devices.filter((d) => d !== toby);
+    lukas.flow.battleOutcome(won('draw'));
+    lukas.flow.rematch();
+    await pass(VS_TIMEOUTS.rematchMs + 3000);
+    expect(db.peek(`${root}/vs/matches/${id}`)).toBeNull();
+    expect(db.peek(`${root}/vs/results`)).toBeNull();
+    const t2 = await device('p02', { storage: toby.storage });
+    await pass(3000);
+    expect(wins(t2)).toBe(0);
+    expect(t2.session.deviceStorage()?.getItem(VMATCH_KEY)).toBeNull();
+  }, 60_000);
+
+  it('a credit for a player who is not the one logged in waits, and is applied once at his log-in', async () => {
+    const toby = await device('p02');
+    const id = 'ab'.repeat(16);
+    const credit = (toby.flow as unknown as { applyCredit(id: string, me: Slot, won: boolean): void }).applyCredit.bind(toby.flow);
+    credit(id, 'p01', true); // not Toby's: nothing for him, held for Lukas
+    expect(wins(toby)).toBe(0);
+    expect(toby.session.deviceStorage()?.getItem('lvt2_vpending')).toContain(id);
+    const lukas = await device('p01', { storage: toby.storage });
+    await until(() => wins(lukas) === 1);
+    expect(lastBattle(lukas)).toBe(`vs-${id}`);
+    expect(lukas.session.deviceStorage()?.getItem('lvt2_vpending')).toBe('[]');
+    credit(id, 'p01', true);
+    const again = await reborn(lukas);
+    await pass(1000);
+    expect(wins(again)).toBe(1);
+  });
+});
+
 describe('the rematch', () => {
   /** Both devices at the result of a first match (Lukas plants won). */
   async function atResult() {
     const b = await battle();
+    // The link writes each seat's end record; these tests give the outcomes directly, so they stand in for it.
+    for (const seat of ['plants', 'zombies']) db.poke(`${root}/vs/matches/${b.id}/end/${seat}`, '{"w":"plants"}');
     b.lukas.flow.battleOutcome(won('plants'));
     b.toby.flow.battleOutcome(won('plants'));
     return b;
@@ -620,6 +683,16 @@ describe('the rematch', () => {
     expect(matchIds()).toEqual([]);
     toby.flow.home();
     expect(name(toby)).toBe('closed');
+  });
+
+  it('home after pressing rematch tells the other boy at once, not after 60 s', async () => {
+    const { lukas, toby, id } = await atResult();
+    toby.flow.rematch();
+    await until(() => phaseOf(lukas, 'result').vm.rematch === 'theirs');
+    toby.flow.home();
+    expect(name(toby)).toBe('closed');
+    await until(() => phaseOf(lukas, 'result').vm.rematch === 'gone', 1000);
+    expect(db.peek(`${root}/vs/matches/${id}/again`)).toEqual({ zombies: 0 });
   });
 
   it('60 s without an answer: the offer is gone and the old match is removed', async () => {

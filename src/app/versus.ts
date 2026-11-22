@@ -9,7 +9,7 @@ import { matchId, newKeyPair, sharedSecret } from '../cloud/versusKeys';
 import type { KeyPair } from '../cloud/versusKeys';
 import { VersusLobby } from '../cloud/versusLobby';
 import type { HereEntry, Invite, MatchMeta, Reply } from '../cloud/versusLobby';
-import { CloudMatchChannel, readMatch } from '../cloud/versusMatch';
+import { CloudMatchChannel, readMatch, readResult } from '../cloud/versusMatch';
 import type { StoredMatch } from '../cloud/versusMatch';
 import type { MatchChannel, MatchEvent, Timers, WriteAnswer } from '../net/channel';
 import { Lockstep } from '../net/lockstep';
@@ -52,6 +52,8 @@ import { versusCredit } from './versusCredit';
 export const VMATCH_KEY = 'lvt2_vmatch';
 /** The device key of the matches already credited on this device (a short list of match ids). */
 export const VCREDITED_KEY = 'lvt2_vcredited';
+/** Credits that could not be applied when they came (nobody, or another player, was logged in): `{ id, me, won }[]`. */
+export const VPENDING_KEY = 'lvt2_vpending';
 
 /** A rejoin replay that has not finished by now gives up: the device goes home. */
 export const REJOIN_REPLAY_MAX_MS = 60_000;
@@ -127,6 +129,8 @@ interface Ctx {
   rematchState: Rematch;
   rematchTimer: unknown;
   rematching: boolean;
+  /** `vs/results/<id>` holds who won (written before the match is deleted). */
+  resultKept: boolean;
   rows: BoardRow[];
   rankUp: RankUp | null;
 }
@@ -172,6 +176,35 @@ function parseKey(raw: string | null): VMatchKey | null {
     return null;
   }
 }
+
+interface PendingCredit { id: string; me: Slot; won: boolean }
+
+function readIds(store: Storage | undefined, key: string): string[] {
+  try {
+    const raw = store?.getItem(key);
+    if (raw != null) return (JSON.parse(raw) as unknown[]).filter((x): x is string => typeof x === 'string');
+  } catch {
+    // unreadable: as none
+  }
+  return [];
+}
+
+function readPending(store: Storage | undefined): PendingCredit[] {
+  try {
+    const raw = store?.getItem(VPENDING_KEY);
+    if (raw == null) return [];
+    return (JSON.parse(raw) as unknown[]).filter((x): x is PendingCredit => {
+      const o = x as Partial<PendingCredit> | null;
+      return o !== null && typeof o === 'object' && typeof o.id === 'string' && ID_RE.test(o.id) && typeof o.me === 'string' && isSlot(o.me) && typeof o.won === 'boolean';
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** The winning seat of an outcome that credits somebody (a win or a forfeit); null otherwise (a draw, unfinished, a disagreement). */
+const resultWinner = (o: VersusOutcome): Faction | null =>
+  o.kind === 'won' ? (o.winner === 'draw' ? null : o.winner) : o.kind === 'forfeit' ? o.winner : null;
 
 const bothEnded = (s: StoredMatch): boolean => {
   const ends = new Set(s.control.filter((c) => c.kind === 'end').map((c) => (c as { seat: Faction }).seat));
@@ -382,7 +415,7 @@ export class VersusFlow {
         if (inv.build !== this.build) {
           // Not the same game version: nobody plays, and the sender's card says so (the reply carries my build).
           this.dismiss(inv);
-          await lobby.decline(inv.from);
+          await lobby.decline(inv.from, inv.at);
           this.notice('update', 'here');
           return;
         }
@@ -414,7 +447,7 @@ export class VersusFlow {
     const inv = this.invite.peek();
     if (inv === null || this.lobby === null) return;
     this.dismiss(inv);
-    void this.lobby.decline(inv.from);
+    void this.lobby.decline(inv.from, inv.at);
   }
 
   // ---- the battle and after ----
@@ -439,12 +472,12 @@ export class VersusFlow {
     this.heartbeat = null;
     this.forgetKey();
     // A rejoined match has no rematch to wait for: it goes once the other device has surely settled.
-    if (ctx.rejoined) this.scheduleRemoval(ctx.channel, ctx.resultAt + this.t.endWaitMs);
+    if (ctx.rejoined) this.scheduleRemoval(ctx, ctx.resultAt + this.t.endWaitMs);
     const before = this.session.player.peek();
     this.credit(ctx, o);
     if (o.kind === 'unfinished') {
       // Nobody is credited. The match goes once the other device has surely settled too.
-      this.scheduleRemoval(ctx.channel, ctx.resultAt + this.t.endWaitMs);
+      this.scheduleRemoval(ctx, ctx.resultAt + this.t.endWaitMs);
       this.notice(o.why === 'broken' ? 'broken' : 'gone', 'closed');
       return;
     }
@@ -477,7 +510,8 @@ export class VersusFlow {
     const ph = this._phase.peek();
     const ctx = this.ctx;
     if (ph.name === 'result' && ctx !== null) {
-      if (!ctx.rematching && ctx.again[ctx.seat] === undefined && ctx.secret !== null) {
+      // Also after pressing rematch: the rules let a 1 become a 0, so the other boy leaves the wait at once.
+      if (!ctx.rematching && ctx.again[ctx.seat] !== 0 && ctx.secret !== null) {
         ctx.again[ctx.seat] = 0;
         // Written even though this screen goes: the other's rematch button greys and shows the door.
         void this.retry(ctx, () => ctx.channel.write({ kind: 'again', seat: ctx.seat, value: 0 }), true);
@@ -545,6 +579,7 @@ export class VersusFlow {
     this.pendingKey = null;
     this.accepting = false;
     if (slot === null) return;
+    this.applyPending(slot);
     void this.connect(ep, slot);
   }
 
@@ -716,7 +751,7 @@ export class VersusFlow {
       channel: new CloudMatchChannel({ conn: this.conn, id: p.id, seat, me, timers: this.timers }),
       alive: true, unlisten: null, link: null, linkStarted: false, resumeOnStart: false, endedRejoin: false, timer: null,
       readySeen: { plants: false, zombies: false }, connected: false, outcome: null, resultAt: null,
-      again: {}, rematchState: 'offer', rematchTimer: null, rematching: false, rows: [], rankUp: null,
+      again: {}, rematchState: 'offer', rematchTimer: null, rematching: false, resultKept: false, rows: [], rankUp: null,
     };
   }
 
@@ -807,23 +842,54 @@ export class VersusFlow {
 
   private credit(ctx: Ctx, o: VersusOutcome): void {
     const c = versusCredit(o, ctx.seat, ctx.me);
-    if (c === null || this.session.player.peek() === null) return;
+    if (c !== null) this.applyCredit(ctx.id, ctx.me, c.won);
+  }
+
+  /**
+   * Credits `me` once for match `id`. Only to the player who played it: when nobody, or another
+   * player, is logged in, the credit waits (`VPENDING_KEY`) for his next log-in.
+   */
+  private applyCredit(id: string, me: Slot, won: boolean): void {
+    const player = this.session.player.peek();
     const store = this.session.deviceStorage();
-    let credited: string[] = [];
-    try {
-      const raw = store?.getItem(VCREDITED_KEY);
-      if (raw != null) credited = (JSON.parse(raw) as unknown[]).filter((x): x is string => typeof x === 'string');
-    } catch {
-      credited = [];
+    if (player === null || player.slot !== me) {
+      this.holdCredit({ id, me, won });
+      return;
     }
+    const credited = readIds(store, VCREDITED_KEY);
     // Once per match even when a result of another kind came between (`lastBattle` is shared with Adventure).
-    if (credited.includes(ctx.id)) return;
-    this.session.update((s: Save) => applyBattleResult(s, { won: c.won, skill: 'easy', baseHpShare: 1, versus: true, battleId: versusBattleId(ctx.id) }, this.session.now()));
+    if (credited.includes(id)) return;
+    this.session.update((s: Save) => applyBattleResult(s, { won, skill: 'easy', baseHpShare: 1, versus: true, battleId: versusBattleId(id) }, this.session.now()));
     try {
-      store?.setItem(VCREDITED_KEY, JSON.stringify([...credited, ctx.id].slice(-KEPT_CREDITS)));
+      store?.setItem(VCREDITED_KEY, JSON.stringify([...credited, id].slice(-KEPT_CREDITS)));
     } catch {
       // `lastBattle` still guards the plain repeat
     }
+  }
+
+  private holdCredit(c: PendingCredit): void {
+    const store = this.session.deviceStorage();
+    const held = readPending(store);
+    if (held.some((h) => h.id === c.id && h.me === c.me)) return;
+    try {
+      store?.setItem(VPENDING_KEY, JSON.stringify([...held, c].slice(-KEPT_CREDITS)));
+    } catch {
+      // nowhere to keep it: the stored match or its result record still credit on rejoin
+    }
+  }
+
+  /** The credits held for `slot` while he was not logged in: applied now that he is. */
+  private applyPending(slot: Slot): void {
+    const store = this.session.deviceStorage();
+    const held = readPending(store);
+    const mine = held.filter((h) => h.me === slot);
+    if (mine.length === 0) return;
+    try {
+      store?.setItem(VPENDING_KEY, JSON.stringify(held.filter((h) => h.me !== slot)));
+    } catch {
+      return; // not removable: left for the next log-in, where the once-per-match check holds
+    }
+    for (const h of mine) this.applyCredit(h.id, h.me, h.won);
   }
 
   private showResult(ctx: Ctx): void {
@@ -853,7 +919,8 @@ export class VersusFlow {
     ctx.unlisten = ctx.channel.listen({ plants: NO_TURNS, zombies: NO_TURNS }, (e) => {
       if (this.ctx !== ctx || !ctx.alive || ctx.rematching) return;
       if (e.kind === 'again') {
-        if (ctx.again[e.seat] === undefined) ctx.again[e.seat] = e.value;
+        const had = ctx.again[e.seat];
+        if (had === undefined || (had === 1 && e.value === 0)) ctx.again[e.seat] = e.value;
         this.afterAgain(ctx);
       } else if (e.kind === 'gone' && ctx.rematchState !== 'both') {
         ctx.rematchState = 'gone';
@@ -878,7 +945,7 @@ export class VersusFlow {
         if (this.ctx !== ctx || ctx.rematching || ctx.rematchState === 'both') return;
         ctx.rematchState = 'gone';
         this.showResult(ctx);
-        this.scheduleRemoval(ctx.channel, ctx.resultAt ?? this.now());
+        this.scheduleRemoval(ctx, ctx.resultAt ?? this.now());
       });
     }
     this.checkRemoval(ctx);
@@ -892,14 +959,36 @@ export class VersusFlow {
   /** Both `again` records exist: the finished match can go, but not before the other device has settled. */
   private checkRemoval(ctx: Ctx): void {
     if (ctx.again.plants !== undefined && ctx.again.zombies !== undefined && ctx.resultAt !== null) {
-      this.scheduleRemoval(ctx.channel, ctx.resultAt + this.t.endWaitMs);
+      this.scheduleRemoval(ctx, ctx.resultAt + this.t.endWaitMs);
     }
   }
 
-  private scheduleRemoval(channel: CloudMatchChannel, notBefore: number): void {
+  /**
+   * Deletes the finished match at `notBefore`, but first (a win or a forfeit) leaves who won at
+   * `vs/results/<id>` for a device that is away, and waits for both `end` records to exist until
+   * the rematch window has passed.
+   */
+  private scheduleRemoval(ctx: Ctx, notBefore: number): void {
+    const lobby = this.lobby;
+    const winner = ctx.outcome === null ? null : resultWinner(ctx.outcome);
+    const deadline = (ctx.resultAt ?? this.now()) + this.t.rematchMs;
     const run = async (left: number): Promise<void> => {
-      const a = await channel.remove().catch((): WriteAnswer => 'offline');
-      if (a === 'offline' && left > 0 && !this.disposed) this.after(this.t.retry.maxMs, () => void run(left - 1));
+      const again = (): void => { if (left > 0 && !this.disposed) this.after(this.t.retry.maxMs, () => void run(left - 1)); };
+      if (winner !== null && lobby !== null && !ctx.resultKept) {
+        const a = await lobby.storeResult(ctx.id, winner).catch((): WriteAnswer => 'offline');
+        if (a === 'offline') return again();
+        ctx.resultKept = a === 'ok';
+      }
+      if (winner !== null && this.now() < deadline) {
+        const held = await ctx.channel.endsHeld().catch((): 'offline' => 'offline');
+        if (typeof held === 'number' && held < 2) {
+          // The other device has not written its end yet: look again, until the rematch window is over.
+          if (!this.disposed) this.after(this.t.endWaitMs, () => void run(left));
+          return;
+        }
+      }
+      const a = await ctx.channel.remove().catch((): WriteAnswer => 'offline');
+      if (a === 'offline') again();
     };
     this.after(Math.max(0, notBefore - this.now()), () => void run(3));
   }
@@ -927,7 +1016,7 @@ export class VersusFlow {
     if (!alive()) return;
     const swapped = meta !== null && meta.seats.plants === old.meta.seats.zombies && meta.seats.zombies === old.meta.seats.plants;
     if (meta === null || !swapped) {
-      this.scheduleRemoval(old.channel, (old.resultAt ?? this.now()) + this.t.endWaitMs);
+      this.scheduleRemoval(old, (old.resultAt ?? this.now()) + this.t.endWaitMs);
       this.notice('shrug', 'here');
       return;
     }
@@ -936,7 +1025,7 @@ export class VersusFlow {
       return;
     }
     // The old match stays until the other device has surely settled; it is no longer watched.
-    this.scheduleRemoval(old.channel, (old.resultAt ?? this.now()) + this.t.endWaitMs);
+    this.scheduleRemoval(old, (old.resultAt ?? this.now()) + this.t.endWaitMs);
     this.enterMatch({ meta, id, n, secret: old.secret, writer: old.writer });
   }
 
@@ -960,11 +1049,26 @@ export class VersusFlow {
     if (ep !== this.epoch || stored === 'offline') return; // no answer: the key stays for the next log-in
     // Any stored match that still exists: one that ended while this device was away is credited on rejoin.
     if (stored === null) {
+      // Deleted while this device was away: the result record, when there is one, still gives the credit.
+      if (await this.creditFromResult(key, ep) === 'offline') return;
       this.forgetKey();
       return;
     }
     this.pendingKey = key;
     this.rejoinable.value = true;
+  }
+
+  /** A match that is gone: credit this device from `vs/results/<id>` (once), if the record is there. */
+  private async creditFromResult(key: VMatchKey, ep: number): Promise<'done' | 'offline'> {
+    const conn = this.conn;
+    if (conn === null) return 'offline';
+    const res = await readResult(conn, key.id, this.timers);
+    if (res === 'offline') return 'offline';
+    if (ep === this.epoch && res !== null) {
+      const c = versusCredit({ kind: 'won', winner: res.winner }, key.seat, key.me);
+      if (c !== null) this.applyCredit(key.id, key.me, c.won);
+    }
+    return 'done';
   }
 
   private async doRejoin(key: VMatchKey, ep: number): Promise<void> {
@@ -977,6 +1081,11 @@ export class VersusFlow {
       return;
     }
     if (stored === null) {
+      if (await this.creditFromResult(key, ep) === 'offline') {
+        if (ep === this.epoch) this.rejoinable.value = true;
+        return;
+      }
+      if (ep !== this.epoch) return;
       this.forgetKey();
       this.notice('gone', 'closed');
       return;

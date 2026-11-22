@@ -243,18 +243,20 @@ export class VersusLobby {
    * No: `{ ok: false }` into the inviter's replies, and the invite out of my inbox, in one update.
    * The rules take a reply only while the invite exists and only in the update that deletes it, so
    * when the invite is already gone (another device of mine answered it, or the inviter took it
-   * back) there is nothing to decline: the answer is a quiet `ok` and nothing is written.
+   * back) there is nothing to decline: the answer is a quiet `ok` and nothing is written. The same
+   * when the invite there is a fresher one than the shown `at` (a stale "no" panel).
    */
-  decline(from: Slot): Promise<WriteAnswer> {
-    if (!isSlot(from) || from === this.me) return Promise.resolve('refused');
+  decline(from: Slot, at: number): Promise<WriteAnswer> {
+    if (!isSlot(from) || from === this.me || !Number.isFinite(at)) return Promise.resolve('refused');
+    // The "no" names the invite it answers (the rules compare it with the one in my inbox).
     const body: Obj = {
-      [`vs/lobby/${from}/back/${this.me}`]: { ok: false, build: this.d.build, at: SV },
+      [`vs/lobby/${from}/back/${this.me}`]: { ok: false, build: this.d.build, at: SV, inAt: at },
       [`vs/lobby/${this.me}/in/${from}`]: null,
     };
     return this.enqueue(async () => {
       // Checked before each try and after the last refusal; a refusal is tried once more a beat later.
       for (let attempt = 0; ; attempt++) {
-        const still = await this.inviteStill(from, null);
+        const still = await this.inviteStill(from, null, at);
         if (still === 'offline') return 'offline';
         if (still === 'gone') return 'ok';
         if (attempt === 2) return 'refused';
@@ -266,11 +268,12 @@ export class VersusLobby {
   }
 
   /** Whether the invite from `from` is still in my inbox (the very one `inv`, when given). */
-  private async inviteStill(from: Slot, inv: Invite | null): Promise<'there' | 'gone' | 'offline'> {
+  private async inviteStill(from: Slot, inv: Invite | null, at?: number): Promise<'there' | 'gone' | 'offline'> {
     const a = await this.request('GET', `vs/lobby/${this.me}/in/${from}`);
     if (a.kind === 'offline') return 'offline';
     if (a.kind !== 'ok' || !isObj(a.data)) return 'gone';
     if (inv !== null && (a.data.pub !== inv.pub || a.data.at !== inv.at)) return 'gone';
+    if (at !== undefined && a.data.at !== at) return 'gone';
     return 'there';
   }
 
@@ -349,25 +352,23 @@ export class VersusLobby {
   }
 
   /**
-   * Ticks a player in or out (the grown-up screen), with the grown-up proof. Ticked out, his
-   * "here" record and his lobby go in the same update, so he leaves the list at once.
+   * Leaves who won at `vs/results/<id>` (write-once, 24 h, with my proof), for a device that is
+   * away when the match is deleted. A refusal is read back: a result already there for the same
+   * winner (my own earlier try, or the other device's) reads as `ok`.
    */
-  setAllowed(slot: Slot, on: boolean, grownUpHash: string): Promise<WriteAnswer> {
-    if (!isSlot(slot) || slot === 'p01' || slot === 'p02' || !HASH_RE.test(grownUpHash)) return Promise.resolve('refused');
-    const body: Obj = {
-      [`vs/allowed/${slot}`]: on ? true : null,
-      ...(on ? {} : { [`vs/here/${slot}`]: null, [`vs/lobby/${slot}`]: null }),
-      [`admin/proof/${grownUpHash}`]: { touch: SV },
-    };
+  storeResult(id: string, winner: Faction): Promise<WriteAnswer> {
+    if (!/^[0-9a-f]{32}$/.test(id) || (winner !== 'plants' && winner !== 'zombies')) return Promise.resolve('refused');
+    const path = `vs/results/${id}`;
     return this.enqueue(async () => {
-      const a = await this.write(body);
-      if (a !== 'refused') return a;
-      // A wrong code is not tried again: the proof alone (whose rule has no same-millisecond
-      // check) tells a wrong code from a proof stored in this very millisecond.
-      const code = await this.write({ [`admin/proof/${grownUpHash}`]: { touch: SV } });
-      if (code !== 'ok') return code;
-      await this.pause(RETRY_GAP_MS);
-      return this.write(body);
+      for (let attempt = 0; ; attempt++) {
+        const a = await this.sendOnce({ [path]: { winner, by: this.me, at: SV } });
+        if (a !== 'refused') return a;
+        const back = await this.request('GET', path);
+        if (back.kind !== 'ok') return back.kind;
+        if (isObj(back.data)) return back.data.winner === winner ? 'ok' : 'refused';
+        if (attempt === 2) return 'refused';
+        await this.pause(RETRY_GAP_MS);
+      }
     });
   }
 
