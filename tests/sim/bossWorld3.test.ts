@@ -37,7 +37,7 @@ describe('the rows (content design §2)', () => {
   });
 
   it('the Cactus King: column 0, guard ×0.5, 8 s spine armour at half health; rockfall in phase 2', () => {
-    expect([cactus.hp, cactus.speed, cactus.col, cactus.guardFactor]).toEqual([11000, 0, 0, 0.5]);
+    expect([cactus.hp, cactus.speed, cactus.col, cactus.guardFactor]).toEqual([6200, 0, 0, 0.5]);
     expect(cactus.patterns.filter((p) => p.kind === 'shield')).toEqual([
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
     ]);

@@ -45,8 +45,8 @@ const BELT_GARDEN: [number, number][] = [[1, 2], [3, 2], [2, 3]];
 function growing(): Spawn[] {
   const taken = new Set([...BELT_ROCKS, ...BELT_GARDEN].map(([lane, col]) => lane * PLANT_COLS + col));
   const free: [number, number][] = [];
-  for (const col of [1, 0, 4, 5, 2, 3, 6, 7]) {
-    for (const lane of [1, 3, 0, 4, 2]) if (!taken.has(lane * PLANT_COLS + col)) free.push([lane, col]);
+  for (const lane of [1, 3, 0, 4, 2]) {
+    for (const col of [1, 0, 4, 5, 2, 3, 6, 7]) if (!taken.has(lane * PLANT_COLS + col)) free.push([lane, col]);
   }
   return regrow('peashooter', free.slice(0, 20).map(([lane, col], i): [number, number, number] => [20 + i * 12, lane, col]));
 }
@@ -57,7 +57,7 @@ export const Z3: LevelDef[] = [
     // there. No computer: Peashooters stand at [1,3] [2,3] [3,3] [2,4] and one at [0,2] and [4,2]; the
     // garden regrows every 40 s in lanes 1-3 only.
     ...base('z3-1', 1), side: 'zombies', kind: 'battle', cards: SEVEN,
-    baseHp: { plants: 5500, zombies: 7000 }, twist: { rocks: rocks([[0, 1], [0, 3], [4, 1], [4, 3]]) },
+    baseHp: { plants: 8000, zombies: 4400 }, twist: { rocks: rocks([[0, 1], [0, 3], [4, 1], [4, 3]]) },
     prepared: garden('peashooter', [[1, 3], [2, 3], [3, 3], [2, 4], [0, 2], [4, 2]]),
     waves: regrow('peashooter', [[40, 1, 2], [80, 3, 2], [120, 2, 2], [160, 1, 4], [200, 3, 4], [240, 2, 1]]),
   },
@@ -72,7 +72,7 @@ export const Z3: LevelDef[] = [
     // The one idea: a rock where a wall should stand leaves a hole - push the lane with the hole.
     // Unlocks the Necromancer.
     ...base('z3-3', 3), side: 'zombies', kind: 'breakthrough', cards: SEVEN,
-    seconds: 240, baseHp: { plants: 5000, zombies: 14000 }, twist: { rocks: rocks([[1, 5], [3, 5], [1, 2], [3, 2]]) },
+    seconds: 275, baseHp: { plants: 7500, zombies: 14000 }, twist: { rocks: rocks([[1, 5], [3, 5], [1, 2], [3, 2]]) },
     prepared: [
       ...garden('walnutBomb', [[0, 5], [2, 5], [4, 5]]),
       ...garden('peashooter', [[0, 2], [2, 2], [4, 2], [1, 1], [3, 1]]),
@@ -91,7 +91,7 @@ export const Z3: LevelDef[] = [
     // one more every 12 s (`growing`).
     ...base('z3-5', 5), side: 'zombies', kind: 'conveyor', cards: BELT,
     belt: { everySeconds: 5, cards: BELT },
-    seconds: 270, baseHp: { plants: 7000, zombies: 9300 }, twist: { rocks: rocks(BELT_ROCKS) },
+    seconds: 270, baseHp: { plants: 20000, zombies: 15500 }, twist: { rocks: rocks(BELT_ROCKS) },
     prepared: garden('peashooter', BELT_GARDEN),
     waves: growing(),
   },
@@ -100,7 +100,7 @@ export const Z3: LevelDef[] = [
     // Avocado Bunker with a Peashooter behind it in lanes 1 and 3; mines at [0,5] and [4,5] (the thin
     // flank is the trap); a Kernel-pult at [2,1]. Unlocks the Trident Zombie.
     ...base('z3-6', 6), side: 'zombies', kind: 'breakthrough', cards: EIGHT,
-    seconds: 240, baseHp: { plants: 4000, zombies: 14000 },
+    seconds: 255, baseHp: { plants: 7200, zombies: 14000 },
     twist: { rocks: rocks([[0, 4], [4, 4], [1, 1], [3, 1], [0, 6], [4, 6]]) },
     prepared: [
       ...garden('avocadoBunker', [[1, 5], [3, 5]]),
@@ -114,7 +114,7 @@ export const Z3: LevelDef[] = [
     // The one idea: the Trident's throw pierces three plants in a row. Easy x2.2.
     ...base('z3-7', 7), side: 'zombies', kind: 'battle', cards: NINE,
     baseHp: { plants: 4000, zombies: 4000 }, twist: { rocks: rocks(BACK_ROW_PLUS) },
-    opponent: { skill: 'easy', cards: SEVEN_PLANTS, incomeScale: 2.2 },
+    opponent: { skill: 'easy', cards: SEVEN_PLANTS, incomeScale: 2.5 },
   },
   {
     // Boss: the Cactus King guards the plant base across lanes 1-3, on the middle lane - rocks stand

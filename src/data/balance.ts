@@ -496,7 +496,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       ],
     },
     cactusKing: {
-      recharge: 0, hp: 11000, armor: 0, speed: 0,
+      recharge: 0, hp: 6200, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false }, // the spine armour

@@ -186,9 +186,10 @@ describe('from the Backyard to the Tundra', () => {
     expect(mapIslands(s, 'plants', LEVELS).find((i) => i.world === 2)?.locked).toBe(true);
   });
 
-  it('a Tundra graduate has nothing next (worlds 3-5 are still to come)', () => {
+  it('a Tundra graduate has nothing next in a campaign that ends at world 2', () => {
     const s = stars([...w1, ...levelsFor('zombies', 2).map((l) => l.id)]);
-    expect(nextLevel(s, 'zombies', LEVELS)).toBeNull();
-    expect(openingWorld(s, 'zombies', LEVELS)).toBe(2);
+    const upTo2 = LEVELS.filter((l) => l.world <= 2);
+    expect(nextLevel(s, 'zombies', upTo2)).toBeNull();
+    expect(openingWorld(s, 'zombies', upTo2)).toBe(2);
   });
 });
