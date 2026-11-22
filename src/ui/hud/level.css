@@ -242,6 +242,21 @@
   align-items: center;
   gap: 12px;
 }
+.lresult__traits {
+  grid-area: unlock;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 84px; /* name + chips: held from the start so the buttons below never move */
+}
+.lresult__unlock .lresult__traits { grid-area: auto; min-height: 0; align-items: flex-start; }
+.lresult__traits.is-hidden { visibility: hidden; }
+.lresult__name { font-size: 22px; line-height: 1.1; color: var(--white); }
+.lresult__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; animation: px-pop var(--t-pop) steps(4, end) both; }
+.lresult__chip { --lip: var(--px-lip); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; }
+.lresult__chip .pixel-icon { width: 28px; height: 28px; display: block; flex: none; }
+.lresult__chip-word { font-family: var(--font-display); font-size: 18px; color: var(--ink); line-height: 1; white-space: nowrap; }
 .lresult__burst {
   width: clamp(56px, 10vh, 88px);
   height: clamp(56px, 10vh, 88px);

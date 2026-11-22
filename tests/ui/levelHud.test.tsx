@@ -294,6 +294,30 @@ describe('the level result', () => {
     expect(need('[data-unlock] img').getAttribute('src')).toBe('data:mine');
   });
 
+  it('the unlock step shows the unit name and its trait chips (picture + word); the slot is held from the start so the buttons do not move', () => {
+    const turntable = { open: vi.fn(), close: vi.fn() };
+    show(<ResultOverlay {...base} level={win} turntable={turntable} onNext={() => {}} onMap={() => {}} />);
+    expect(need('[data-traits]').classList.contains('is-hidden')).toBe(true);
+    wait(5000);
+    const traits = need('[data-traits="potatoMine"]');
+    expect(traits.classList.contains('is-hidden')).toBe(false);
+    expect(traits.querySelector('.lresult__name')?.textContent).toBe('Potato Mine');
+    const chips = all('[data-trait]');
+    expect(chips.length).toBeGreaterThanOrEqual(2);
+    expect(chips.length).toBeLessThanOrEqual(3);
+    expect(chips[0]?.dataset.trait).toBe('Trap');
+    for (const c of chips) {
+      expect(c.querySelector('svg')).not.toBeNull();
+      expect(c.textContent?.trim()).toBe(c.dataset.trait);
+    }
+  });
+
+  it('without a turntable the chips sit with the card picture', () => {
+    show(<ResultOverlay {...base} level={win} cards={{ potatoMine: 'data:mine' }} />);
+    wait(5000);
+    expect(all('[data-unlock] [data-trait]').length).toBeGreaterThanOrEqual(2);
+  });
+
   it('picture buttons: next level (to the open one), replay, map', () => {
     const onNext = vi.fn();
     const onPlayAgain = vi.fn();

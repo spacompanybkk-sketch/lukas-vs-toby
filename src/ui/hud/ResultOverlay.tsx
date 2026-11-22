@@ -14,6 +14,8 @@ import './level.css';
 import { RankUpBadge } from '../screens/RankBlock';
 import { uiSound } from '../uiSound';
 import { PixelIcon } from './PixelIcon';
+import { UNIT_INFO, isCard } from '../../data/units';
+import { unitTraits } from '../unitTraits';
 import type { Faction } from '../../sim/types';
 import { BOYS } from './BaseBars';
 import type { BoyPortraits } from './BaseBars';
@@ -151,6 +153,23 @@ function VersusResultOverlay({ result, playerFaction, onMenu, cards = {}, versus
   );
 }
 
+/** An unlocked unit's name and its two or three traits as chips (picture + word). */
+export function UnitTraits({ unit, hidden = false }: { unit: UnitKey; hidden?: boolean }) {
+  return (
+    <div class={`lresult__traits${hidden ? ' is-hidden' : ''}`} data-traits={unit} aria-hidden={hidden ? 'true' : undefined}>
+      <span class="lresult__name inked">{isCard(unit) ? UNIT_INFO[unit].name : ''}</span>
+      <span class="lresult__chips">
+        {unitTraits(unit).map((t) => (
+          <span key={t.word} class="lresult__chip px pal-cream" data-trait={t.word}>
+            <PixelIcon art={t.icon} />
+            <span class="lresult__chip-word">{t.word}</span>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 type Step = 'stars' | 'coins' | 'unlock';
 
 /**
@@ -266,12 +285,17 @@ function LevelResultOverlay(props: ResultOverlayProps & { level: LevelOutcome })
               ? <CoinRain coins={level.coins}>{rankUp !== null && <RankUpBadge up={rankUp} />}</CoinRain>
               : rankUp !== null && <div class="coin-rain"><RankUpBadge up={rankUp} /></div>
           )}
+          {turntable !== undefined && level.unlocked !== null && (
+            // Always there while a unit is to be unlocked (hidden until its step) so the buttons never move.
+            <UnitTraits unit={level.unlocked} hidden={unlocked === null} />
+          )}
           {unlocked !== null && !onStage && (
             <div class="lresult__unlock" data-unlock={unlocked}>
               <span class="lresult__burst"><PixelIcon art={BURST} /></span>
               {cards[unlocked] !== undefined && (
                 <span class="lresult__unit card px pal-side"><img src={cards[unlocked]} alt="" draggable={false} /></span>
               )}
+              <UnitTraits unit={unlocked} />
             </div>
           )}
           <div class="row lresult__buttons">
