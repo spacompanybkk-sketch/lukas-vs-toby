@@ -517,3 +517,60 @@ describe('the cloud match channel, write by write', () => {
     stop();
   });
 });
+
+describe('gone on the root stream (shapes the real database may send)', () => {
+  /** A channel whose root stream is scripted by hand; returns the events and a way to send root stream events. */
+  function scripted(): { events: MatchEvent[]; send: (type: 'put' | 'patch', path: string, data: unknown) => void } {
+    const handlers: Record<string, (e: { data: string }) => void>[] = [];
+    const base = fakeConnection(db, 'v2');
+    const conn: Connection = {
+      ...base,
+      eventSource: (url) => {
+        const h: Record<string, (e: { data: string }) => void> = {};
+        if (!new URL(url).pathname.includes('/turns/')) handlers.push(h);
+        return { addEventListener: (t, fn) => { h[t] = fn; }, close: () => {}, onerror: null };
+      },
+    };
+    const events: MatchEvent[] = [];
+    const ch = new CloudMatchChannel({ conn, id: 'a'.repeat(32), seat: 'plants', me: 'p01', timers: clock });
+    ch.listen({ plants: 0, zombies: 0 }, (e) => events.push(e));
+    return {
+      events,
+      send: (type, path, data) => handlers[0]![type]!({ data: JSON.stringify({ path, data }) }),
+    };
+  }
+  const meta = { v: 1, seed: 1 };
+
+  it('a whole-root null is gone', () => {
+    const s = scripted();
+    s.send('put', '/', { meta });
+    s.send('put', '/', null);
+    expect(s.events.filter((e) => e.kind === 'gone')).toHaveLength(1);
+  });
+
+  it('per-child removal of meta (put null at /meta) is gone', () => {
+    const s = scripted();
+    s.send('put', '/', { meta, sync: { plants: { t: 30 } } });
+    s.send('put', '/sync', null);
+    expect(s.events.some((e) => e.kind === 'gone')).toBe(false);
+    s.send('put', '/meta', null);
+    expect(s.events.filter((e) => e.kind === 'gone')).toHaveLength(1);
+  });
+
+  it('a patch setting meta to null, or a later snapshot without meta, is gone', () => {
+    const a = scripted();
+    a.send('put', '/', { meta });
+    a.send('patch', '/', { meta: null });
+    expect(a.events.filter((e) => e.kind === 'gone')).toHaveLength(1);
+    const b = scripted();
+    b.send('put', '/', { meta });
+    b.send('put', '/', { sync: { plants: { t: 30 } } });
+    expect(b.events.filter((e) => e.kind === 'gone')).toHaveLength(1);
+  });
+
+  it('a root that never held meta is not gone', () => {
+    const s = scripted();
+    s.send('put', '/', { sync: { plants: { t: 30 } } });
+    expect(s.events.some((e) => e.kind === 'gone')).toBe(false);
+  });
+});

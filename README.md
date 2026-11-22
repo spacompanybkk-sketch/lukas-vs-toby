@@ -373,7 +373,8 @@ Firebase SDK, no sign-in. Spec: `docs/superpowers/specs/2026-11-18-versus-two-de
    trips, 12 ticks when there are too few samples). A hash is compared every second; a mismatch
    makes the host write a snapshot and the guest takes it (up to three repairs, then the match is
    called unfinished). A device that stops answering gets an hourglass after 1 s, a dimmed lawn
-   with a sleeping face after 3 s, and a white flag after 90 s.
+   with a sleeping face after 3 s, and a white flag after 90 s (the white flag deletes the match, nobody is credited, and the other
+   device later shows it as unfinished).
 6. **Pause** pauses both screens. The pause menu's door is a white flag (giving up).
 7. **Result**: the winner's face with a crown, the scoreboard strip, rematch (sides swapped, same
    head start owner) or home. A rematch is a new match number; it needs both boys' ticks.
@@ -417,7 +418,9 @@ function):
   start, build) and the reply. The writer is always `<from>`.
 - `matches/<id>`: `meta` (written once at accept: seed, seats, host, head start, turn, delay,
   build, test), `ready`, `pause`, `turns/<seat>/t<n>` (the commands of one turn, at most 400
-  characters), `sync/s1..s3` (repair snapshots), `end/<seat>`, `quit`, `again/<seat>`. The match id
+  characters), `sync/s1..s3` (repair snapshots), `end/<seat>`, `again/<seat>`. A forfeit is an `end/<seat>`
+  record whose winner is `quit` (written by the pause menu's white flag); the rules still define a
+  `quit` node but nothing writes or reads it. The match id
   is a hash of the two players' ECDH shared secret, so a third device cannot guess it. A match is
   deleted when it is over; nothing about it stays in the cloud.
 
@@ -425,14 +428,16 @@ Under `v2/proof/<slot>/<pin hash>/touch`: the per-write proof of who is writing.
 stored or logged, only its hash, as for the saves; every Versus write carries a fresh `touch`
 equal to the database clock (`now`).
 
-### Debug parameters (only with `?debug`, only in fake mode)
+### Debug parameters
+
+`vsquick`, `vstest` and `vsbuild` work only with `?debug`; `fakedb` needs fake mode but not `?debug`.
 
 | Parameter | Effect |
 |-----------|--------|
-| `cloud=fake` | The fake cloud (the default for a plain build). |
+| `cloud=fake` | The fake cloud (the default for a non-live build; a live build defaults to the real cloud). |
 | `fakedb=http://localhost:<port>` | Use the local fake database server below instead of the in-page fake; the `v2test` root is used. Only `http://localhost:<port>` and `http://127.0.0.1:<port>` are accepted. |
 | `vsquick` | Divides every Versus timeout by 30, so waits take a second instead of a minute. |
-| `vstest=<1..500>` | Sets `meta.test`: both bases get that health, so a match ends in seconds. Allowed by the rules only under `v2test`. |
+| `vstest=<1..500>` | Sets `meta.test`: both bases get that health, so a match ends in seconds. Allowed by the rules only under `v2test`, so it works only together with `fakedb` or `cloud=test` (the in-page fake uses `v2` and refuses it). |
 | `vsbuild=<hex>` | Overrides the build id (7 to 12 hex digits) so two pages can be put on different builds. |
 
 ### The fake database server
@@ -451,7 +456,7 @@ against each other; its screenshot tour goes to `artifacts/shots/`.
 2. Back up the currently deployed rules (Firebase console → Realtime Database → Rules → copy, or the Firebase MCP `firebase_get_security_rules`) to `artifacts/rules-backup-<date>.json`.
 3. From an up-to-date checkout of the merged branch: `node tools/build-rules.mjs --check`, then `firebase deploy --only database`.
 4. `LVT_TEST_GROWNUP_CODE=<code> node tools/rules-check.mjs --yes-live` against `v2test`: every row passes, the new Versus rows included. Any surprise: deploy the backup at once.
-5. One scripted two-window run on `?debug&cloud=test`: note the measured round trips and the chosen delay; confirm the stream event shapes, `startAt`/`endAt` on streams and `cancel` match the fake. Also confirm (Task 10) that deleting a match reaches a ranged root listener as a `put` of `null` at `/`, not as per-child removals; otherwise `gone` never fires.
+5. One scripted two-window run on `?debug&cloud=test`: note the measured round trips and the chosen delay; confirm the stream event shapes, `startAt`/`endAt` on streams and `cancel` match the fake. Also note (Task 10) how deleting a match reaches a ranged root listener: `gone` fires for a `put` of `null` at `/` and for a removal of `meta`, so either shape works; only a shape that does neither would need a code change.
 6. Optional, with go-ahead: install Playwright WebKit; run the determinism golden and `e2e/versus.spec.ts` in a WebKit project.
 7. `npm run build:live` then `npm run check:live` (must print `dist/ is live`), then the hosting deploy.
 8. Hands-on with the two iPads (Safari, last year's model) and the MacBook: invite, play, sleep one iPad, rematch.

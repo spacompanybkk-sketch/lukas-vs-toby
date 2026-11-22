@@ -20,7 +20,7 @@ import type { MatchMeta } from './versusLobby';
  *   `meta`, `pause`, `quit`, `ready`, `sync`) and never `turns`. Its range never changes, so its
  *   `put '/'` is the whole truth about the control nodes: it replaces what is held, and the
  *   difference becomes events (a pause gone while the stream was down is a `resume`; the root
- *   gone is `gone`).
+ *   gone, or its `meta` removed, is `gone`).
  * Own turns are not streamed: a device that must read its own log back (rejoin) uses `readMatch`.
  *
  * Writes are idempotent (8.4): a write whose answer was lost is sent again by the caller with the
@@ -252,6 +252,13 @@ export class CloudMatchChannel implements MatchChannel {
       let next = controls;
       if (e.kind === 'put') next = setAt(next, segments(e.path), e.data);
       else if (isObj(e.data)) for (const [k, v] of Object.entries(e.data)) next = setAt(next, [...segments(e.path), ...segments(k)], v);
+      // The database may announce a deletion as one whole-root null or as per-child removals: meta
+      // (write-once, so it only ever disappears with the match) going from there to none is `gone` too.
+      if (isObj(controls) && controls.meta !== undefined && !(isObj(next) && next.meta !== undefined)) {
+        gone = true;
+        emit({ kind: 'gone' });
+        return;
+      }
       const was = controlsOf(controls);
       const is = controlsOf(next);
       controls = next;
