@@ -308,6 +308,53 @@ describe('AudioEngine.unlock', () => {
       }
     });
 
+    it('after the iPad sleeps: Safari refuses on return, the next tap brings music and effects back', async () => {
+      vi.useFakeTimers();
+      const page = fakeDocument();
+      vi.stubGlobal('document', page.doc);
+      try {
+        const { engine, fake } = engineWith();
+        await engine.unlock();
+        engine.startMusic('backyard');
+        const step = (seconds: number): void => {
+          for (let t = 0; t < seconds * 1000 - 1e-6; t += 100) {
+            if (fake.state === 'running') fake.advance(0.1);
+            vi.advanceTimersByTime(100);
+          }
+        };
+        step(2);
+        page.hide();
+        fake.setState('interrupted'); // the screen locked
+        fake.resumeMode = 'reject'; // Safari refuses to resume outside a gesture
+        step(3);
+        const asleep = fake.sources().length;
+        engine.play('pea');
+        step(1);
+        expect(fake.sources().length).toBe(asleep); // nothing sounds while it sleeps
+
+        page.show();
+        await vi.advanceTimersByTimeAsync(500);
+        expect(engine.needsGesture).toBe(true); // refused: waiting for a tap
+        const refused = fake.sources().length; // (the silent unlock blip may add one)
+        engine.play('pea');
+        expect(fake.sources().length).toBe(refused);
+
+        fake.resumeMode = 'run';
+        await engine.unlock(); // the next tap, anywhere
+        expect(engine.needsGesture).toBe(false);
+        expect(engine.musicTheme).toBe('backyard');
+        const awake = fake.sources().length;
+        engine.play('pea');
+        expect(fake.sources().length).toBeGreaterThan(awake); // effects are back
+        const afterEffect = fake.sources().length;
+        step(3);
+        expect(fake.sources().length).toBeGreaterThan(afterEffect); // and the music keeps scheduling notes
+      } finally {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    });
+
     it('does nothing before the first unlock (no context is made) or while audio runs', async () => {
       const page = fakeDocument();
       vi.stubGlobal('document', page.doc);

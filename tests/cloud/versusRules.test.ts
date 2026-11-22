@@ -126,7 +126,86 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
     clock.t += 1;
     expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: true, build: BUILD, at: SV }, 'vs/lobby/p01/in/p02': null })).status).toBe(401);
     clock.t += 1;
-    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV }, 'vs/lobby/p01/in/p02': null })).status).toBe(200);
+    // A "no" names the invite it answers: without it, refused.
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV }, 'vs/lobby/p01/in/p02': null })).status).toBe(401);
+    clock.t += 1;
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV, inAt: T0 + 1000 }, 'vs/lobby/p01/in/p02': null })).status).toBe(200);
+  });
+
+  it('a "no" for an older invite cannot decline a fresh one from the same boy', async () => {
+    const { send, proof, clock, db } = await world(R);
+    expect((await send({ ...proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
+    const old = (db.peek(`${R}/vs/lobby/p01/in/p02`) as { at: number }).at;
+    clock.t += 1000;
+    expect((await send({ ...proof('p02'), 'vs/lobby/p01/in/p02': null })).status).toBe(200);
+    clock.t += 1000;
+    expect((await send({ ...proof('p02'), 'vs/lobby/p01/in/p02': invite() })).status).toBe(200);
+    const fresh = (db.peek(`${R}/vs/lobby/p01/in/p02`) as { at: number }).at;
+    expect(fresh).not.toBe(old);
+    clock.t += 1000;
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV, inAt: old }, 'vs/lobby/p01/in/p02': null })).status).toBe(401);
+    expect(db.peek(`${R}/vs/lobby/p01/in/p02`)).not.toBeNull();
+    clock.t += 1000;
+    expect((await send({ ...proof('p01'), 'vs/lobby/p02/back/p01': { ok: false, build: BUILD, at: SV, inAt: fresh }, 'vs/lobby/p01/in/p02': null })).status).toBe(200);
+    expect(db.peek(`${R}/vs/lobby/p01/in/p02`)).toBeNull();
+  });
+
+  it('a rematch asked for (1) may be taken back (0): once, and never the other way', async () => {
+    const { r, db, m } = await matchWorld(R);
+    const p = (b: Record<string, Json>) => r.patch(`${R}/vs/matches/${ID}`, b);
+    expect((await p({ 'again/plants': 1 })).status).toBe(200);
+    expect((await p({ 'again/plants': 1 })).status).toBe(200);
+    expect((await p({ 'again/plants': 0 })).status).toBe(200);
+    expect(db.peek(`${R}/${m('again/plants')}`)).toBe(0);
+    expect((await p({ 'again/plants': 0 })).status).toBe(200);
+    expect((await p({ 'again/plants': 1 })).status).toBe(401);
+    expect((await p({ 'again/zombies': 0 })).status).toBe(200);
+    expect((await p({ 'again/zombies': 1 })).status).toBe(401);
+    expect((await p({ 'again/plants': null })).status).toBe(401);
+  });
+
+  describe('who won (vs/results/<id>)', () => {
+    const result = (by: string, winner = 'plants'): Json => ({ winner, by, at: SV });
+    it('a seat with his proof leaves it before the match goes; anyone with the id reads it for 24 h; he may delete it', async () => {
+      const { send, proof, r, db, clock } = await matchWorld(R);
+      expect((await send({ ...proof('p01'), [`vs/results/${ID}`]: result('p01') })).status).toBe(200);
+      expect(db.peek(`${R}/vs/results/${ID}`)).toEqual({ winner: 'plants', by: 'p01', at: clock.t });
+      expect((await r.get(`${R}/vs/results/${ID}`)).data).toMatchObject({ winner: 'plants', by: 'p01' });
+      clock.t += 24 * 60 * 60 * 1000 - 1;
+      expect((await r.get(`${R}/vs/results/${ID}`)).status).toBe(200);
+      clock.t += 2;
+      expect((await r.get(`${R}/vs/results/${ID}`)).status).toBe(401);
+      expect((await send({ ...proof('p01'), [`vs/results/${ID}`]: null })).status).toBe(200);
+      expect(db.peek(`${R}/vs/results`)).toBeNull();
+    });
+
+    it('the winner cannot change: the other seat may write the same one, never another; the grown-up may delete it', async () => {
+      const { send, proof, db, clock } = await matchWorld(R);
+      expect((await send({ ...proof('p01'), [`vs/results/${ID}`]: result('p01') })).status).toBe(200);
+      clock.t += 1000;
+      expect((await send({ ...proof('p02'), [`vs/results/${ID}`]: result('p02', 'zombies') })).status).toBe(401);
+      expect((await send({ ...proof('p01'), [`vs/results/${ID}`]: result('p01', 'zombies') })).status).toBe(401);
+      expect(db.peek(`${R}/vs/results/${ID}`)).toMatchObject({ winner: 'plants', by: 'p01' });
+      expect((await send({ ...proof('p02'), [`vs/results/${ID}`]: null })).status).toBe(401);
+      expect((await send({ ...proof('p02'), [`vs/results/${ID}`]: result('p02') })).status).toBe(200); // the same winner again
+      clock.t += 1000;
+      expect(db.peek(`${R}/vs/results/${ID}`)).toMatchObject({ winner: 'plants', by: 'p02' });
+      expect((await send({ [`admin/proof/${G}`]: { touch: SV }, [`vs/results/${ID}`]: null })).status).toBe(200);
+    });
+
+    it('refused: no proof, someone else\'s proof, a stranger to the match, a draw, a wrong shape, a listing', async () => {
+      const { send, proof, r, db } = await matchWorld(R);
+      const put = (b: Record<string, Json>) => send(b);
+      expect((await put({ [`vs/results/${ID}`]: result('p01') })).status).toBe(401);
+      expect((await put({ ...proof('p02'), [`vs/results/${ID}`]: result('p01') })).status).toBe(401);
+      expect((await put({ ...proof('p03'), [`vs/results/${ID}`]: result('p03') })).status).toBe(401);
+      expect((await put({ ...proof('p01'), [`vs/results/${ID}`]: result('p01', 'draw') })).status).toBe(401);
+      expect((await put({ ...proof('p01'), [`vs/results/${ID}`]: { winner: 'plants', by: 'p01' } })).status).toBe(401);
+      expect((await put({ ...proof('p01'), [`vs/results/${ID}`]: { ...(result('p01') as object), extra: 1 } })).status).toBe(401);
+      expect((await put({ ...proof('p01'), [`vs/results/${'0'.repeat(32)}`]: result('p01') })).status).toBe(401);
+      expect((await r.get(`${R}/vs/results`)).status).toBe(401);
+      expect(db.peek(`${R}/vs/results`)).toBeNull();
+    });
   });
 
   it('a reply only while the invite exists, and only in the update that deletes it', async () => {
@@ -169,7 +248,7 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
     expect(db.peek(`${R}/vs/lobby`)).toBeNull();
   });
 
-  it('turns 0..2 of both seats, the same value again, ready, pause and its delete, sync, end, again, quit', async () => {
+  it('turns 0..2 of both seats, the same value again, ready, pause and its delete, sync, end, again', async () => {
     const { r, m, db } = await matchWorld(R);
     const p = (b: Record<string, Json>) => r.patch(`${R}/vs/matches/${ID}`, b);
     expect((await p({ 'ready/plants': SV, 'ready/zombies': SV })).status).toBe(200);
@@ -185,8 +264,6 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: the honest game', 
     expect((await p({ 'end/plants': '{"w":"zombies","t":6120,"h":118734552}' })).status).toBe(200);
     expect((await p({ 'end/plants': '{"w":"zombies","t":6120,"h":118734552}' })).status).toBe(200);
     expect((await p({ 'again/plants': 1, 'again/zombies': 0 })).status).toBe(200);
-    expect((await p({ quit: { by: 'p01' } })).status).toBe(200);
-    expect((await p({ quit: { by: 'p01' } })).status).toBe(200);
     expect(db.peek(`${R}/${m('turns/zombies/t000002')}`)).toBe('{"c":[[2,"place","sunflower",1,0]]}');
   });
 
@@ -227,12 +304,14 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: forged requests ar
     })).status).toBe(401);
   });
 
-  it('only the grown-up writes the unused vs/allowed node (and nobody needs it)', async () => {
+  it('the retired vs/allowed node is gone: nobody writes or lists it', async () => {
     const { send, proof, r } = await world(R);
+    const gu = { [`admin/proof/${G}`]: { touch: SV } };
     expect((await r.put(`${R}/vs/allowed/p05`, true)).status).toBe(401);
     expect((await send({ ...proof('p05'), 'vs/allowed/p05': true })).status).toBe(401);
-    expect((await send({ 'vs/allowed/p05': 'yes', [`admin/proof/${G}`]: { touch: SV } })).status).toBe(401);
-    expect((await send({ 'vs/allowed/p31': true, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(401);
+    expect((await send({ ...gu, 'vs/allowed/p05': true })).status).toBe(401);
+    expect((await send({ ...gu, 'vs/allowed/p05': null })).status).toBe(401);
+    expect((await r.get(`${R}/vs/allowed`)).status).toBe(401);
     expect((await send({ ...proof('p06'), 'vs/here/p06': here() })).status).toBe(200);
   });
 
@@ -265,8 +344,8 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: forged requests ar
     expect((await send({ [`vs/matches/${'0'.repeat(32)}/meta`]: meta() })).status).toBe(401);
     expect((await send({ [m('meta')]: null, 'vs/lobby/p02/back/p01': null })).status).toBe(401);
     // The grown-up's proof, likewise.
-    expect((await send({ 'vs/allowed/p05': null, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(200);
-    expect((await send({ 'vs/allowed/p05': true })).status).toBe(401);
+    expect((await send({ 'vs/here/p05': null, [`admin/proof/${G}`]: { touch: SV } })).status).toBe(200);
+    expect((await send({ 'vs/here/p05': null })).status).toBe(401);
     expect((await send({ 'vs/here/p01': null })).status).toBe(401);
   });
 
@@ -380,14 +459,13 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: forged requests ar
 
   it('match writes before the match exists', async () => {
     const { r } = await world(R);
-    for (const b of <Record<string, Json>[]>[{ 'turns/plants/t000000': '{}' }, { 'ready/plants': SV }, { 'end/plants': 'x' }, { quit: { by: 'p01' } }]) {
+    for (const b of <Record<string, Json>[]>[{ 'turns/plants/t000000': '{}' }, { 'ready/plants': SV }, { 'end/plants': 'x' }, { 'again/plants': 1 }]) {
       expect((await r.patch(`${R}/vs/matches/${ID}`, b)).status, JSON.stringify(b)).toBe(401);
     }
   });
 
   it.each<[string, Record<string, Json>]>([
     ['again: 2', { 'again/plants': 2 }],
-    ['again changed', { 'again/plants': 0 }],
     ['ready at an old time', { 'ready/zombies': T0 }],
     ['ready for a third seat', { 'ready/robots': SV }],
     ['ready changed', { 'ready/plants': SV }],
@@ -398,15 +476,14 @@ describe.each<Root>(['v2', 'v2test'])('Versus rules under %s: forged requests ar
     ['a snapshot over 200,000 characters', { 'sync/s2': { tick: 1, snap: 'x'.repeat(200_001) } }],
     ['a pause by a stranger', { pause: { by: 'p06', n: 1 } }],
     ['a pause without n', { pause: { by: 'p01' } }],
-    ['a quit by a stranger', { quit: { by: 'p06' } }],
-    ['a quit changed', { quit: { by: 'p02' } }],
+    ['a quit record (no longer granted)', { quit: { by: 'p01' } }],
     ['an unknown child of a match', { chat: 'hi' }],
   ])('%s', async (_what, body) => {
     const { r, clock } = await matchWorld(R);
     const p = (b: Record<string, Json>) => r.patch(`${R}/vs/matches/${ID}`, b);
     expect((await p({
       'again/plants': 1, 'ready/plants': SV, 'end/plants': '{"w":"plants"}',
-      'sync/s1': { tick: 1800, snap: '{"x":1}' }, quit: { by: 'p01' },
+      'sync/s1': { tick: 1800, snap: '{"x":1}' },
     })).status).toBe(200);
     clock.t += 1;
     expect((await p(body)).status).toBe(401);

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { PixelIcon } from '../hud/PixelIcon';
 import { uiSound } from '../uiSound';
-import { ARROW, BACKSPACE, CHECK, CLOUD_OFF, CROSS, DIGITS, HOURGLASS } from './pictures';
+import { ARROW, BACKSPACE, CHECK, CLOUD_OFF, CROSS, DIGITS, HOURGLASS, REPEAT } from './pictures';
 import './players.css';
 import { BackButton } from '../BackButton';
 
@@ -162,6 +162,12 @@ export function PinPad({ length = 3, head, onCode, onBack, lockedUntil, now = ()
               </span>
               <PixelIcon art={CHECK} class="pin-done__tick" />
               <PixelIcon art={ARROW} class="pin-done__arrow" />
+            </div>
+          )}
+          {step === 2 && (
+            <div class="pin-again" data-pin-again>
+              <PixelIcon art={REPEAT} class="pin-again__icon" />
+              <span class="pin-again__word">Again!</span>
             </div>
           )}
           {step !== undefined && <span class="visually-hidden" data-pin-step={String(step)}>{step === 1 ? 'Choose a number' : 'Type it again'}</span>}

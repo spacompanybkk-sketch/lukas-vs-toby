@@ -1,7 +1,7 @@
 /* Versus on two devices: the Play menu's fourth tile, "who is here", the invite card and panel,
- * the grown-up ticks; in battle, getting ready, waiting, the other's pause, the notices, the result. Tokens: ../theme.css. Sizes the tests rely on (faces, buttons) are inline. */
+ * in battle, getting ready, waiting, the other's pause, the notices, the result. Tokens: ../theme.css. Sizes the tests rely on (faces, buttons) are inline. */
 
-.vs-here svg.pixel-icon, .vs-veil svg.pixel-icon, .vs-panel svg.pixel-icon, .vs-ticks svg.pixel-icon,
+.vs-here svg.pixel-icon, .vs-veil svg.pixel-icon, .vs-panel svg.pixel-icon,
 .vs-ready svg.pixel-icon, .vs-stall svg.pixel-icon, .vs-stall-glass svg.pixel-icon, .vs-notice svg.pixel-icon,
 .vs-result svg.pixel-icon, .title__rejoin svg.pixel-icon {
   display: block; width: 100%; height: 100%;
@@ -93,14 +93,6 @@
 .vs-panel__swords { display: block; width: 64px; height: 64px; }
 .vs-panel__head .vs-head__pic { --ico-size: 34px; }
 .vs-panel__head .vs-head__empty { width: 34px; height: 34px; }
-
-/* ---- Grown-up: who may play Versus ---- */
-.vs-ticks__title { display: flex; align-items: center; gap: 10px; }
-.vs-ticks__title-pic { width: 72px; height: 48px; }
-.grown__row.vs-ticks__row { grid-template-columns: auto 1fr auto; }
-.vs-ticks__box { width: 64px; min-width: 64px; height: 64px; padding: 8px; }
-.vs-ticks__box:disabled { filter: grayscale(0.4); cursor: default; }
-.vs-ticks__offline { display: block; width: 72px; height: 72px; padding: 8px; align-self: center; }
 
 /* Rules below that override a theme.css / hud.css rule on the same element carry that rule's class
  * too (.btn., .panel., .inked, .result__panel.), so they win whatever order the bundler loads the

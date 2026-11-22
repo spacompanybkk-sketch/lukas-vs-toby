@@ -7,6 +7,7 @@ import type { HudSignals } from '../../src/app/BattleController';
 import { DEFAULT_SETTINGS } from '../../src/app/settings';
 import type { Faction, UnitKey } from '../../src/sim/types';
 import { SpeedButton } from '../../src/ui/hud/SpeedButton';
+import { setUiSound } from '../../src/ui/uiSound';
 import { BattleScreen } from '../../src/ui/screens/BattleScreen';
 import type { BattleSessionLike, SpeedLike } from '../../src/ui/screens/BattleScreen';
 
@@ -70,7 +71,44 @@ function screen(s: BattleSessionLike): HTMLElement {
   return r;
 }
 
+describe('the 2X button held by a lesson', () => {
+  it('held: greyed (aria-disabled), never lit, a tap buzzes and does not toggle', () => {
+    const sounds: string[] = [];
+    setUiSound((n) => sounds.push(n));
+    try {
+      const r = mountIn();
+      const onToggle = vi.fn();
+      act(() => render(<SpeedButton fast held onToggle={onToggle} />, r));
+      const b = r.querySelector<HTMLButtonElement>('[data-hud="speed"]')!;
+      expect(b.getAttribute('aria-disabled')).toBe('true');
+      expect(b.getAttribute('aria-pressed')).toBe('false');
+      act(() => b.click());
+      expect(onToggle).not.toHaveBeenCalled();
+      expect(sounds).toEqual(['deny']);
+    } finally { setUiSound(null); }
+  });
+});
+
 describe('the 2X button on the battle screen', () => {
+  it('stays put through lesson steps: greyed while one waits (the same button), lit again after; gone at the result', () => {
+    const fast = signal(true);
+    const shown = signal(true);
+    const held = signal(false);
+    const s = fakeSession({ fast, shown, held, toggle: vi.fn() });
+    const r = screen(s);
+    const b = r.querySelector('[data-hud="speed"]')!;
+    expect(b.getAttribute('aria-disabled')).toBeNull();
+    act(() => { shown.value = false; held.value = true; });
+    expect(r.querySelector('[data-hud="speed"]')).toBe(b); // not removed and re-made
+    expect(b.getAttribute('aria-disabled')).toBe('true');
+    act(() => { shown.value = true; held.value = false; });
+    expect(r.querySelector('[data-hud="speed"]')).toBe(b);
+    expect(b.getAttribute('aria-disabled')).toBeNull();
+    expect(b.getAttribute('aria-pressed')).toBe('true');
+    act(() => { s.controller.hud.result.value = { winner: 'plants', playerWon: true }; });
+    expect(r.querySelector('[data-hud="speed"]')).toBeNull();
+  });
+
   it('sits beside Pause, in the top right, and a tap toggles the session speed', () => {
     const fast = signal(false);
     const shown = signal(true);

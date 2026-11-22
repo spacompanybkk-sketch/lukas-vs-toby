@@ -578,9 +578,19 @@ function useVersusRouting(flow: VersusFlow | null, phase: VersusFlow['phase']['v
     } else if (phase.name === 'here' || phase.name === 'card' || phase.name === 'ready') {
       if (here.name !== 'versus') go({ name: 'versus' });
     } else if (phase.name === 'closed' && (here.name === 'versus' || (here.name === 'battle' && here.options.online !== undefined))) {
-      go({ name: came === 'here' || came === 'card' ? 'play' : players.player.peek() !== null ? 'home' : 'title' });
+      go({ name: versusExit(came, players.player.peek() !== null) });
     }
   }, [flow, phase?.name, battle]);
+}
+
+/**
+ * Where the screen goes when the flow closes: the list's and card's back to the Play menu it came
+ * from, but nobody logged in (logged out meanwhile) has no Play menu: the title. A battle's end
+ * goes Home, or to the title without a player.
+ */
+export function versusExit(came: string, loggedIn: boolean): 'play' | 'home' | 'title' {
+  if (!loggedIn) return 'title';
+  return came === 'here' || came === 'card' ? 'play' : 'home';
 }
 
 /** The `versus` screen: "who is here", with the invite card over it, or getting ready. */

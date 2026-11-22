@@ -146,7 +146,7 @@ const M_TEST = `vs/matches/${'f'.repeat(32)}`;
  * the player still exists, so a run that stopped half-way never blocks the next.
  */
 const vsCleanupBody = (slot) => ({
-  [`vs/here/${slot}`]: null, [`vs/lobby/${slot}`]: null, [`vs/allowed/${slot}`]: null, [`proof/${slot}`]: null,
+  [`vs/here/${slot}`]: null, [`vs/lobby/${slot}`]: null, [`proof/${slot}`]: null,
   ...grownUp(),
 });
 /** Pause before a row whose proof must be stale (a different millisecond from the last write). */
@@ -236,15 +236,11 @@ const ROWS = [
   // Versus (spec 7-8): p29 and p30 are not p01/p02, so the grown-up ticks them in. p30 stays off
   // the list at first: he has a valid pin proof, so these rows are refused for the list alone.
   ['Versus: p29 not on the list cannot be here', () => patch({ ...pA(), [`vs/here/${A}`]: here() }), 401],
-  ['Versus: tick p29 in without the grown-up proof', () => put(`${R}/vs/allowed/${A}`, true), 401],
-  ['Versus: tick p29 in with the grown-up proof', () => patch({ [`vs/allowed/${A}`]: true, ...grownUp() }), 200],
   ['Versus: p30 (valid proof, not on the list) cannot be here', () => patch({ ...pB(), [`vs/here/${B}`]: here() }), 401],
   ['Versus: p30 (valid proof, not on the list) cannot invite p29', () => patch({ ...pB(), [`vs/lobby/${A}/in/${B}`]: invite() }), 401],
   ['Versus: p29 cannot invite p30, who is not on the list', () => patch({ ...pA(), [`vs/lobby/${B}/in/${A}`]: invite({ head: null }) }), 401],
   ['Versus: meta seating p30 (not on the list), p29\'s proof', () => patch({ ...pA(), [`${M}/meta`]: meta() }), 401],
   ['Versus: meta seating p30 (not on the list), p30\'s proof', () => patch({ ...pB(), [`${M}/meta`]: meta() }), 401],
-  ['Versus: tick p30 in with the grown-up proof', () => patch({ [`vs/allowed/${B}`]: true, ...grownUp() }), 200],
-  ['Versus: the list is public', () => get(`${R}/vs/allowed`), 200],
   ['Versus: heartbeat with proof', () => patch({ ...pA(), [`vs/here/${A}`]: here() }), 200],
   ['Versus: "who is here" is public', () => get(`${R}/vs/here`), 200],
   ['Versus: heartbeat with a wrong proof hash', () => patch({ ...proof(A, WRONG), [`vs/here/${A}`]: here() }), 401],
@@ -293,7 +289,7 @@ const ROWS = [
   ['Versus: end', () => matchPatch({ 'end/plants': '{"w":"zombies"}', 'end/zombies': '{"w":"zombies"}' }), 200],
   ['Versus: again', () => matchPatch({ 'again/plants': 1, 'again/zombies': 1 }), 200],
   ['Versus: again 2', () => matchPatch({ 'again/plants': 2 }), 401],
-  ['Versus: quit', () => matchPatch({ quit: { by: A } }), 200],
+  ['Versus: quit (no longer granted)', () => matchPatch({ quit: { by: A } }), 401],
   ['Versus: an unknown child of a match', () => matchPatch({ chat: 'hi' }), 401],
   ['Versus: read the match by its id', () => get(`${R}/${M}`), 200],
   ['Versus: read a match by a wrong id (nothing there)', () => get(`${R}/vs/matches/${'0'.repeat(32)}`), 200],

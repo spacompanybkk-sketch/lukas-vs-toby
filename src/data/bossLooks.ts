@@ -199,9 +199,9 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       shards: ['#3FA34D', '#27733A', '#B8ECFF', '#7FD3F5', '#F4FBFF'],
       // The freeze's lanes: deep-water navy blinking inside a frost-white outline. Seen on the real
       // Tundra, any icy blue (the shared pale one, or a strong one) is lost on the icy lanes and makes
-      // a plain lane look like one more sheet of ice; the navy is dark on ice and on snow alike, the
-      // white outline stands on the ice. The blow lands in bright ice.
-      strikeWarnings: { stun: { fill: '#0A2A70', frame: '#F4FBFF', opacity: 0.85, blow: '#39C6FF' } },
+      // a plain lane look like one more sheet of ice; the navy is dark on ice and on snow alike, and so is
+      // the outline, a darker navy (white went faint on the snow lane). The blow lands in bright ice.
+      strikeWarnings: { stun: { fill: '#0A2A70', frame: '#06163F', opacity: 0.85, blow: '#39C6FF' } },
       barrage: 'frozenMelon',
     },
   },

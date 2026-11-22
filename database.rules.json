@@ -119,13 +119,6 @@
         }
       },
       "vs": {
-        "allowed": {
-          ".read": true,
-          "$slot": {
-            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now)",
-            ".validate": "newData.val() === true"
-          }
-        },
         "here": {
           ".read": true,
           "$slot": {
@@ -181,13 +174,16 @@
             },
             "back": {
               "$from": {
-                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) && root.child('v2/players/' + $from).exists() && root.child('v2/vs/lobby/' + $from + '/in/' + $owner).exists() && !newData.parent().parent().parent().parent().parent().child('vs/lobby/' + $from + '/in/' + $owner).exists()) || (!newData.exists() && ((root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2/proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now))))",
+                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) && root.child('v2/players/' + $from).exists() && root.child('v2/vs/lobby/' + $from + '/in/' + $owner).exists() && !newData.parent().parent().parent().parent().parent().child('vs/lobby/' + $from + '/in/' + $owner).exists() && (newData.child('ok').val() === true || newData.child('inAt').val() === root.child('v2/vs/lobby/' + $from + '/in/' + $owner + '/at').val())) || (!newData.exists() && ((root.child('v2/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() === now && root.child('v2/proof/' + $from + '/' + root.child('v2/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2/proof/' + $owner + '/' + root.child('v2/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now))))",
                 ".validate": "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
                 "ok": {
                   ".validate": "newData.isBoolean()"
                 },
                 "pub": {
                   ".validate": "newData.isString() && newData.val().length === 87 && newData.val().matches(/^[A-Za-z0-9_-]+$/)"
+                },
+                "inAt": {
+                  ".validate": "newData.isNumber()"
                 },
                 "build": {
                   ".validate": "newData.isString() && newData.val().length >= 7 && newData.val().length <= 12 && newData.val().matches(/^[0-9a-f]+$/)"
@@ -278,7 +274,7 @@
             },
             "again": {
               "$seat": {
-                ".write": "$seat.matches(/^(plants|zombies)$/) && newData.parent().parent().child('meta').exists() && newData.exists() && (!data.exists() || data.val() === newData.val())",
+                ".write": "$seat.matches(/^(plants|zombies)$/) && newData.parent().parent().child('meta').exists() && newData.exists() && (!data.exists() || data.val() === newData.val() || (data.val() === 1 && newData.val() === 0))",
                 ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 1"
               }
             },
@@ -303,16 +299,6 @@
                 ".validate": false
               }
             },
-            "quit": {
-              ".write": "newData.parent().child('meta').exists() && newData.exists() && (!data.exists() || data.child('by').val() === newData.child('by').val())",
-              ".validate": "newData.hasChildren(['by'])",
-              "by": {
-                ".validate": "newData.isString() && (newData.val() === newData.parent().parent().child('meta/seats/plants').val() || newData.val() === newData.parent().parent().child('meta/seats/zombies').val())"
-              },
-              "$other": {
-                ".validate": false
-              }
-            },
             "sync": {
               "$n": {
                 ".write": "$n.matches(/^s[1-3]$/) && newData.parent().parent().child('meta').exists() && newData.exists() && (!data.exists() || data.child('tick').val() === newData.child('tick').val() && data.child('snap').val() === newData.child('snap').val())",
@@ -327,6 +313,25 @@
                   ".validate": false
                 }
               }
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "results": {
+          "$id": {
+            ".read": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && data.child('at').val() > now - 86400000",
+            ".write": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && ((newData.exists() && (!data.exists() || data.child('winner').val() === newData.child('winner').val()) && (root.child('v2/secrets/' + newData.child('by').val()).isString() && newData.parent().parent().parent().child('proof/' + newData.child('by').val() + '/' + root.child('v2/secrets/' + newData.child('by').val()).val() + '/touch').val() === now && root.child('v2/proof/' + newData.child('by').val() + '/' + root.child('v2/secrets/' + newData.child('by').val()).val() + '/touch').val() !== now) && (root.child('v2/vs/matches/' + $id + '/meta/seats/plants').val() === newData.child('by').val() || root.child('v2/vs/matches/' + $id + '/meta/seats/zombies').val() === newData.child('by').val())) || (!newData.exists() && ((root.child('v2/secrets/' + data.child('by').val()).isString() && newData.parent().parent().parent().child('proof/' + data.child('by').val() + '/' + root.child('v2/secrets/' + data.child('by').val()).val() + '/touch').val() === now && root.child('v2/proof/' + data.child('by').val() + '/' + root.child('v2/secrets/' + data.child('by').val()).val() + '/touch').val() !== now) || (root.child('v2/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() === now && root.child('v2/admin/proof/' + root.child('v2/admin/secret').val() + '/touch').val() !== now))))",
+            ".validate": "newData.hasChildren(['winner', 'by', 'at'])",
+            "winner": {
+              ".validate": "newData.isString() && newData.val().matches(/^(plants|zombies)$/)"
+            },
+            "by": {
+              ".validate": "newData.isString() && newData.val().matches(/^p(0[1-9]|[12][0-9]|30)$/)"
+            },
+            "at": {
+              ".validate": "newData.val() === now"
             },
             "$other": {
               ".validate": false
@@ -460,13 +465,6 @@
         }
       },
       "vs": {
-        "allowed": {
-          ".read": true,
-          "$slot": {
-            ".write": "$slot.matches(/^p(0[1-9]|[12][0-9]|30)$/) && (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now)",
-            ".validate": "newData.val() === true"
-          }
-        },
         "here": {
           ".read": true,
           "$slot": {
@@ -522,13 +520,16 @@
             },
             "back": {
               "$from": {
-                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) && root.child('v2test/players/' + $from).exists() && root.child('v2test/vs/lobby/' + $from + '/in/' + $owner).exists() && !newData.parent().parent().parent().parent().parent().child('vs/lobby/' + $from + '/in/' + $owner).exists()) || (!newData.exists() && ((root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2test/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2test/proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now))))",
+                ".write": "$owner.matches(/^p(0[1-9]|[12][0-9]|30)$/) && $from.matches(/^p(0[1-9]|[12][0-9]|30)$/) && ((newData.exists() && (root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) && root.child('v2test/players/' + $from).exists() && root.child('v2test/vs/lobby/' + $from + '/in/' + $owner).exists() && !newData.parent().parent().parent().parent().parent().child('vs/lobby/' + $from + '/in/' + $owner).exists() && (newData.child('ok').val() === true || newData.child('inAt').val() === root.child('v2test/vs/lobby/' + $from + '/in/' + $owner + '/at').val())) || (!newData.exists() && ((root.child('v2test/secrets/' + $from).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() === now && root.child('v2test/proof/' + $from + '/' + root.child('v2test/secrets/' + $from).val() + '/touch').val() !== now) || (root.child('v2test/secrets/' + $owner).isString() && newData.parent().parent().parent().parent().parent().child('proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() === now && root.child('v2test/proof/' + $owner + '/' + root.child('v2test/secrets/' + $owner).val() + '/touch').val() !== now) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now))))",
                 ".validate": "newData.hasChildren(['ok', 'build', 'at']) && (newData.child('ok').val() === false || newData.hasChild('pub'))",
                 "ok": {
                   ".validate": "newData.isBoolean()"
                 },
                 "pub": {
                   ".validate": "newData.isString() && newData.val().length === 87 && newData.val().matches(/^[A-Za-z0-9_-]+$/)"
+                },
+                "inAt": {
+                  ".validate": "newData.isNumber()"
                 },
                 "build": {
                   ".validate": "newData.isString() && newData.val().length >= 7 && newData.val().length <= 12 && newData.val().matches(/^[0-9a-f]+$/)"
@@ -619,7 +620,7 @@
             },
             "again": {
               "$seat": {
-                ".write": "$seat.matches(/^(plants|zombies)$/) && newData.parent().parent().child('meta').exists() && newData.exists() && (!data.exists() || data.val() === newData.val())",
+                ".write": "$seat.matches(/^(plants|zombies)$/) && newData.parent().parent().child('meta').exists() && newData.exists() && (!data.exists() || data.val() === newData.val() || (data.val() === 1 && newData.val() === 0))",
                 ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 1"
               }
             },
@@ -644,16 +645,6 @@
                 ".validate": false
               }
             },
-            "quit": {
-              ".write": "newData.parent().child('meta').exists() && newData.exists() && (!data.exists() || data.child('by').val() === newData.child('by').val())",
-              ".validate": "newData.hasChildren(['by'])",
-              "by": {
-                ".validate": "newData.isString() && (newData.val() === newData.parent().parent().child('meta/seats/plants').val() || newData.val() === newData.parent().parent().child('meta/seats/zombies').val())"
-              },
-              "$other": {
-                ".validate": false
-              }
-            },
             "sync": {
               "$n": {
                 ".write": "$n.matches(/^s[1-3]$/) && newData.parent().parent().child('meta').exists() && newData.exists() && (!data.exists() || data.child('tick').val() === newData.child('tick').val() && data.child('snap').val() === newData.child('snap').val())",
@@ -668,6 +659,25 @@
                   ".validate": false
                 }
               }
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "results": {
+          "$id": {
+            ".read": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && data.child('at').val() > now - 86400000",
+            ".write": "$id.length === 32 && $id.matches(/^[0-9a-f]+$/) && ((newData.exists() && (!data.exists() || data.child('winner').val() === newData.child('winner').val()) && (root.child('v2test/secrets/' + newData.child('by').val()).isString() && newData.parent().parent().parent().child('proof/' + newData.child('by').val() + '/' + root.child('v2test/secrets/' + newData.child('by').val()).val() + '/touch').val() === now && root.child('v2test/proof/' + newData.child('by').val() + '/' + root.child('v2test/secrets/' + newData.child('by').val()).val() + '/touch').val() !== now) && (root.child('v2test/vs/matches/' + $id + '/meta/seats/plants').val() === newData.child('by').val() || root.child('v2test/vs/matches/' + $id + '/meta/seats/zombies').val() === newData.child('by').val())) || (!newData.exists() && ((root.child('v2test/secrets/' + data.child('by').val()).isString() && newData.parent().parent().parent().child('proof/' + data.child('by').val() + '/' + root.child('v2test/secrets/' + data.child('by').val()).val() + '/touch').val() === now && root.child('v2test/proof/' + data.child('by').val() + '/' + root.child('v2test/secrets/' + data.child('by').val()).val() + '/touch').val() !== now) || (root.child('v2test/admin/secret').isString() && newData.parent().parent().parent().child('admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() === now && root.child('v2test/admin/proof/' + root.child('v2test/admin/secret').val() + '/touch').val() !== now))))",
+            ".validate": "newData.hasChildren(['winner', 'by', 'at'])",
+            "winner": {
+              ".validate": "newData.isString() && newData.val().matches(/^(plants|zombies)$/)"
+            },
+            "by": {
+              ".validate": "newData.isString() && newData.val().matches(/^p(0[1-9]|[12][0-9]|30)$/)"
+            },
+            "at": {
+              ".validate": "newData.val() === now"
             },
             "$other": {
               ".validate": false

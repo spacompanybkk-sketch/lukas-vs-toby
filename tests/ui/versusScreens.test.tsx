@@ -120,6 +120,15 @@ function mountBattle(f: OnlineFake, versus?: Partial<VersusBattleProps>, onQuit 
 }
 
 describe('the battle screen in a two-device Versus match', () => {
+  it('the hourglass sits by the silent boy\'s own bar: Lukas on zombies, Toby (plants) silent: the plants\' bar', () => {
+    const f = onlineSession('zombies');
+    mountBattle(f);
+    act(() => { f.online.stall.value = 'hourglass'; });
+    const glass = need('[data-stall="hourglass"]');
+    expect(glass.getAttribute('data-side')).toBe('plants');
+    expect(glass.classList.contains('vs-stall-glass--plants')).toBe(true);
+  });
+
   it('a stall at the face stage dims the lawn with the other boy\'s sleeping face; the hourglass stage is only the small glass', () => {
     const f = onlineSession();
     mountBattle(f);

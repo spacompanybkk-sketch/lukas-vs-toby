@@ -109,6 +109,25 @@ describe('the invite card', () => {
     expect(cb.onHead).toHaveBeenCalledWith(1);
   });
 
+  it('at a limit the button is greyed and a tap buzzes (no click, no change); inside the limits it clicks', () => {
+    let cb = mount({ ...DRAFT, head: { slot: 'p02', step: 5 } });
+    expect(need('[data-action="head-plus"]').getAttribute('aria-disabled')).toBe('true');
+    expect(need('[data-action="head-minus"]').getAttribute('aria-disabled')).toBeNull();
+    act(() => need('[data-action="head-plus"]').click());
+    expect(sounds).toEqual(['deny']);
+    expect(cb.onHead).not.toHaveBeenCalled();
+    act(() => render(null, root));
+    sounds.length = 0;
+    cb = mount({ ...DRAFT, head: { slot: 'p02', step: 0 } });
+    expect(need('[data-action="head-minus"]').getAttribute('aria-disabled')).toBe('true');
+    expect(need('[data-action="head-plus"]').getAttribute('aria-disabled')).toBeNull();
+    act(() => need('[data-action="head-minus"]').click());
+    expect(sounds).toEqual(['deny']);
+    act(() => need('[data-action="head-plus"]').click());
+    expect(sounds).toEqual(['deny', 'click']);
+    expect(cb.onHead).toHaveBeenCalledOnce();
+  });
+
   it('no head start: no head row', () => {
     mount({ ...DRAFT, head: null });
     expect(q('[data-head]')).toBeNull();

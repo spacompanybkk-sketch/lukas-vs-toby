@@ -176,6 +176,18 @@ describe('PinPad', () => {
     expect(need('.pinpad').classList.contains('pinpad--repeat')).toBe(true);
   });
 
+  it('step 2 says "again" with a picture and a word above the boxes; step 1 has neither', () => {
+    act(() => render(<PinPad step={1} onCode={() => 'ok'} onBack={() => {}} />, root));
+    expect(q('[data-pin-again]')).toBeNull();
+    act(() => render(<PinPad step={2} onCode={() => 'ok'} onBack={() => {}} />, root));
+    const cue = need('[data-pin-again]');
+    expect(cue.querySelector('svg')).not.toBeNull();
+    expect(cue.textContent).toBe('Again!');
+    expect(cue.compareDocumentPosition(need('[data-pin-boxes]')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The first entry stays masked: only coloured empty boxes, no digits.
+    expect(root.querySelector('[data-pin-done]')?.textContent).toBe('');
+  });
+
   it('failed (refused for another reason): the boxes clear and a big cross shows for a moment', async () => {
     act(() => render(<PinPad onCode={() => 'failed'} onBack={() => {}} />, root));
     for (const k of ['1', '2', '3']) press(k);

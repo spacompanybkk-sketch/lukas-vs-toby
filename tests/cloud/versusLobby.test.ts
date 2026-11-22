@@ -236,20 +236,6 @@ describe('who is here', () => {
     expect(await run(p07.setBusy(false))).toBe('refused');
   });
 
-  it('setAllowed: a wrong grown-up code is not sent again; a proof of this very millisecond is', async () => {
-    const lukas = device('p01');
-    let from = db.requests.length;
-    expect(await run(lukas.setAllowed('p05', true, '0'.repeat(64)))).toBe('refused');
-    // The tick, then the code alone (refused: a wrong code), and nothing more.
-    expect(db.requests.slice(from).map((r) => r.status)).toEqual([401, 401]);
-    expect(await run(lukas.setAllowed('p05', true, G))).toBe('ok');
-    from = db.requests.length;
-    // Again at once, in the same server millisecond: refused, the code checks out, sent again a beat later.
-    expect(await run(lukas.setAllowed('p05', false, G))).toBe('ok');
-    expect(db.requests.slice(from).map((r) => r.status)).toEqual([401, 200, 200]);
-    expect(peekAt('vs/allowed/p05')).toBeNull();
-  });
-
   it('logged out (no proof): refused without asking the database', async () => {
     const lukas = device('p01', { proof: () => null });
     const before = db.requests.length;
@@ -324,7 +310,8 @@ describe('invites', () => {
   it("decline writes { ok: false } into Toby's replies and clears Lukas's inbox", async () => {
     await run(toby.invite('p01', tobyKeys, 'zombies', null));
     await settle();
-    expect(await run(lukas.decline('p02'))).toBe('ok');
+    const shown = lukas.inbox.value[0]!;
+    expect(await run(lukas.decline('p02', shown.at))).toBe('ok');
     await settle();
     expect(toby.replies.value).toEqual([{ from: 'p01', ok: false, pub: null, build: BUILD, at: expect.any(Number) }]);
     expect(lukas.inbox.value).toEqual([]);
@@ -432,9 +419,25 @@ describe('invites', () => {
     const first = await accepted(lukas, inv);
     expect(first.answer).toBe('ok');
     const from = db.requests.length;
-    expect(await run(lukas2.decline('p02'))).toBe('ok');
+    expect(await run(lukas2.decline('p02', inv.at))).toBe('ok');
     expect(db.requests.slice(from).filter((r) => r.method === 'PATCH')).toEqual([]);
     expect(peekAt('vs/lobby/p02/back/p01')).toMatchObject({ ok: true, pub: first.keys.pub });
+  });
+
+  it('a "no" for an older invite does not decline a fresh one from the same boy', async () => {
+    const stale = await invited();
+    await run(toby.cancel('p01'));
+    await settle();
+    await pass(50, 10);
+    const fresh = await invited();
+    expect(fresh.at).not.toBe(stale.at);
+    const from = db.requests.length;
+    expect(await run(lukas.decline('p02', stale.at))).toBe('ok'); // quiet: nothing is written
+    expect(db.requests.slice(from).filter((r) => r.method === 'PATCH')).toEqual([]);
+    expect(peekAt('vs/lobby/p01/in/p02')).not.toBeNull();
+    expect(peekAt('vs/lobby/p02/back/p01')).toBeNull();
+    expect(await run(lukas.decline('p02', fresh.at))).toBe('ok');
+    expect(peekAt('vs/lobby/p01/in/p02')).toBeNull();
   });
 
   it('an invite Toby cancelled cannot be accepted', async () => {

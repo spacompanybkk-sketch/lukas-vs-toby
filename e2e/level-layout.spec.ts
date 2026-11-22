@@ -232,3 +232,43 @@ test('the tutorial glove\'s target is on screen and at least 44 pt at every size
     await expect(page.locator(`[data-tutorial] [data-glove][data-glove-step="${step}"]`)).toHaveCount(0);
   }
 });
+
+test('the boss entrance card never covers either base bar, at 1024 wide and the iPad sizes', async ({ page }) => {
+  test.setTimeout(180_000);
+  await setUp(page);
+  await page.evaluate(() => { (window.__lvt as any).holdBossIntro = true; });
+  await level(page, 'p1-8');
+  await expect.poll(async () => {
+    await page.evaluate(() => (window.__lvt as any).fastForward(5));
+    return page.locator('[data-hud="boss-intro"]').count();
+  }, { timeout: 30_000, intervals: [0] }).toBe(1);
+  for (const size of [{ width: 1024, height: 768 }, ...SIZES]) {
+    await page.setViewportSize(size);
+    await frames(page, 1);
+    const seen = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-hud="boss-intro"]')!;
+      const pop = el.getAnimations().find((a) => (a as CSSAnimation).animationName === 'hud-boss-in');
+      const box = (e: Element) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+      const bars = [...document.querySelectorAll('[data-hud^="base-"]')].map((e) => ({ name: (e as HTMLElement).dataset.hud!, ...box(e) }));
+      return { bars, cards: [225, 375].map((t) => { if (pop) { pop.pause(); pop.currentTime = t; } return box(el); }) };
+    });
+    expect(seen.bars.length, 'both base bars are on screen').toBe(2);
+    for (const card of seen.cards) {
+      for (const bar of seen.bars) {
+        const hit = card.x < bar.x + bar.w && bar.x < card.x + card.w && card.y < bar.y + bar.h && bar.y < card.y + card.h;
+        expect(hit, `${size.width}x${size.height}: the entrance card covers ${bar.name}`).toBe(false);
+      }
+    }
+    // The tap reaches at least 64 px square although the drawn card is smaller (a transparent area).
+    const hit = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-hud="boss-intro"]')!;
+      const r = el.getBoundingClientRect();
+      const a = getComputedStyle(el, '::after');
+      const g = (v: string) => parseFloat(v) || 0;
+      return { w: r.width - g(a.left) - g(a.right), h: r.height - g(a.top) - g(a.bottom) };
+    });
+    expect(hit.w, `${size.width}x${size.height}: entrance tap width`).toBeGreaterThanOrEqual(63.5);
+    expect(hit.h, `${size.width}x${size.height}: entrance tap height`).toBeGreaterThanOrEqual(63.5);
+    if (process.env.LVT_SHOT_DIR && size.width === 1024 && size.height === 768) await page.screenshot({ path: `${process.env.LVT_SHOT_DIR}/boss-intro-1024.png` });
+  }
+});

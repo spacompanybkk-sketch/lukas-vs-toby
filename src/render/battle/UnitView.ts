@@ -19,6 +19,11 @@ const BOSS_AFTER_BURST = 0.3;
 /** Art bible section 5, Hit: 60 ms white, then it fades as the recoil returns. */
 const FLASH_HOLD = 0.06;
 const FLASH_FADE = 0.08;
+/** A unit's hit flash starts at most this often: a crowd's bites cannot hold it white. */
+const FLASH_GAP = 0.15;
+/** A boss, bitten by a crowd, flashes less often and only part white, so it keeps its face. */
+const BOSS_FLASH_GAP = 0.6;
+const BOSS_FLASH_PEAK = 0.55;
 /** The thrower lets go of the brain this far into its throw and has a new one this long after. */
 export const RELEASE_SECONDS = 0.12;
 const BRAIN_BACK_SECONDS = 0.4;
@@ -140,6 +145,8 @@ export class UnitView {
    * bar's dark track covers another's fill (see `BattleView`).
    */
   barRow = 0;
+  /** Its bar is left out: it is one of a big clump at a boss (see `BOSS_CLUMP_BARS`). */
+  barHidden = false;
   /** Drawn this far back from where it stands: a biting zombie steps back off its plant. */
   offsetX = 0;
   targetX = 0;
@@ -180,6 +187,8 @@ export class UnitView {
   private mergeFor = -1;
   private mergeTo = 1;
   private flashFor = -1;
+  /** Seconds before the next hit flash may start (see `FLASH_GAP`). */
+  private flashCool = 0;
   /** A merge target being offered: it pulses. */
   pulsing = false;
   private brainOutIn = -1;
@@ -280,14 +289,26 @@ export class UnitView {
   /** Struck: a white flash, the recoil if it is not busy with something else. */
   hurt(): void {
     if (this.dying) return;
-    this.flashFor = 0;
+    this.startFlash(this.boss ? BOSS_FLASH_GAP : FLASH_GAP);
     // A hit does not cut a bite, a shot or a spawn short; it only flashes.
     if (this.model.clip === this.loopName && this.mergeFor < 0) this.model.play('hit');
   }
 
   /** A flash with no recoil: the base's swat, a shield taking the blow. */
   flash(): void {
-    if (!this.dying) this.flashFor = 0;
+    if (this.dying) return;
+    // Held to the plain gap since the last flash, not the boss's longer hit gap: a shield's flash after a hit still shows.
+    const since = (this.boss ? BOSS_FLASH_GAP : FLASH_GAP) - this.flashCool;
+    if (this.flashCool > 0 && since < FLASH_GAP) return;
+    this.flashFor = 0;
+    this.flashCool = this.boss ? BOSS_FLASH_GAP : FLASH_GAP;
+  }
+
+  /** Starts the white flash, unless this unit flashed less than its gap ago. */
+  private startFlash(gap: number): void {
+    if (this.flashCool > 0) return;
+    this.flashFor = 0;
+    this.flashCool = gap;
   }
 
   /** The Brain Eater's throw: the held brain goes with the shot and a new one is in hand later. */
@@ -436,9 +457,11 @@ export class UnitView {
     }
 
     let flash = 0;
+    if (this.flashCool > 0) this.flashCool -= dt;
     if (this.flashFor >= 0) {
       this.flashFor += dt;
       flash = this.flashFor <= FLASH_HOLD ? 1 : Math.max(0, 1 - (this.flashFor - FLASH_HOLD) / FLASH_FADE);
+      if (this.boss) flash *= BOSS_FLASH_PEAK;
       if (flash === 0) this.flashFor = -1;
     }
     if (this.pulsing) flash = Math.max(flash, 0.22 + 0.18 * Math.sin(this.time * 9));

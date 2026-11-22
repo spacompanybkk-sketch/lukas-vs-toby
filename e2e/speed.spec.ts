@@ -170,14 +170,14 @@ test('in a level: the 2X button beside Pause fits at every size, a tap lights it
   expect(await page.evaluate(() => localStorage.getItem('lvt2_speed'))).toBe('2');
 });
 
-test('a lesson that waits for the player has no 2X button and plays at 1x: the fog pan on p2-1, then 2x after the tap', async ({ page }) => {
+test('a lesson that waits for the player has a greyed 2X button and plays at 1x: the fog pan on p2-1, then 2x after the tap', async ({ page }) => {
   test.setTimeout(180_000);
   await setUp(page, ['p2-1.fog']);
   await page.evaluate(() => localStorage.setItem('lvt2_speed', '2'));
   await level(page, 'p2-1');
   const catcher = page.locator('[data-twist="fog"]');
   await expect(catcher).toBeVisible();
-  await expect(page.locator('[data-hud="speed"]')).toHaveCount(0);
+  await expect(page.locator('[data-hud="speed"]')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('[data-hud="pause"]')).toBeVisible();
   expect(await timeScale(page)).toBe(1);
   await tapAt(page, await tilePoint(page, 2, 5));
@@ -186,12 +186,12 @@ test('a lesson that waits for the player has no 2X button and plays at 1x: the f
   await expect.poll(() => timeScale(page)).toBe(2);
 });
 
-test("the first tutorial's glove: no 2X button and 1x while it points", async ({ page }) => {
+test("the first tutorial's glove: a greyed 2X button and 1x while it points", async ({ page }) => {
   test.setTimeout(180_000);
   await setUp(page, ['p1-1.card', 'p1-1.tile']);
   await page.evaluate(() => localStorage.setItem('lvt2_speed', '2'));
   await level(page, 'p1-1');
   await expect(page.locator('[data-tutorial] [data-glove][data-holding="true"]')).toHaveAttribute('data-glove-step', 'p1-1.card');
-  await expect(page.locator('[data-hud="speed"]')).toHaveCount(0);
+  await expect(page.locator('[data-hud="speed"]')).toHaveAttribute('aria-disabled', 'true');
   expect(await timeScale(page)).toBe(1);
 });
