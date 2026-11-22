@@ -114,7 +114,7 @@ All use the existing toolkit (`slam`, `summon`, `barrage`, `shield`, `strike` wi
 |---|---|---|
 | Built from | `bipedModel` as `brainTitan.ts`: a Desert Zombie wrapped in bandages, a gold-and-blue striped headdress, a scarab staff; `phaseParts`: glowing eyes | plant kit at half resolution as `elderOak.ts`: a saguaro with two arms, a flower crown, `pupils` that follow, spines |
 | Size | scale 2.8, half width 0, lane 2, speed 0.1 | scale 4, half width 1, column 0, guardFactor 0.5 |
-| hp | 6500, tune 5500–8000 | 11000, tune 9000–13000 (the Melon shipped at 10500) |
+| hp | 6500, tune 5500–8000 | 11000, tune 9000–13000 (the Melon shipped at 10500); tuned to 6200 (2026-11-23): inside 9000–13000 the fight ran 5.3–5.8 min and the expert fell under 95% |
 | Phase 1 | summon 2 DZ every 9 s; staff slam every 11 s, 1.5 s wind-up, 380/160 | barrage of 3 needles every 9 s, 200, splash 0.75; summon 2 K in columns 1–4 every 12 s (summons skip rocks already) |
 | Shield at 0.5 | 7 s sand swirl, ×0.5 (new `sand` variant) | 8 s spine armour, ×0.5 (the `bark` plates recoloured) |
 | Phase 2 | **sandstorm**: strike 3 tiles with plants, 2 s wind-up, 50, blind 3 s; summon 2 SW at level 2 wrapped as mummies; slam every 7 s | **rockfall**: strike 3 tiles with zombies, 2.5 s wind-up, 220, no status (boulders fall); barrage of 4; summon 2 W in columns 2–5 |

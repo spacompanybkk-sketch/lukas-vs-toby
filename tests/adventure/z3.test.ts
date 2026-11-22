@@ -19,14 +19,14 @@ import { LANES } from '../../src/sim/types';
  */
 const BACK_ROW: [number, number][] = [[0, 1], [1, 0], [2, 1], [3, 0], [4, 1]];
 const TABLE = [
-  { kind: 'battle', rocks: [[0, 1], [0, 3], [4, 1], [4, 3]], cards: 7, unlocks: null },
-  { kind: 'battle', rocks: BACK_ROW, cards: 7, unlocks: null },
-  { kind: 'breakthrough', rocks: [[1, 5], [3, 5], [1, 2], [3, 2]], cards: 7, unlocks: 'necromancer' },
-  { kind: 'battle', rocks: [...BACK_ROW, [2, 6]], cards: 8, unlocks: null },
-  { kind: 'conveyor', rocks: [[0, 1], [1, 3], [2, 0], [3, 3], [4, 1], [2, 5]], cards: 0, unlocks: null },
-  { kind: 'breakthrough', rocks: [[0, 4], [4, 4], [1, 1], [3, 1], [0, 6], [4, 6]], cards: 8, unlocks: 'tridentZombie' },
-  { kind: 'battle', rocks: [...BACK_ROW, [2, 6]], cards: 9, unlocks: null },
-  { kind: 'boss', rocks: [[0, 2], [4, 2], [0, 5], [4, 5]], cards: 9, unlocks: null },
+  { kind: 'battle', rocks: [[0, 1], [0, 3], [4, 1], [4, 3]], cards: 7, seconds: null, unlocks: null },
+  { kind: 'battle', rocks: BACK_ROW, cards: 7, seconds: null, unlocks: null },
+  { kind: 'breakthrough', rocks: [[1, 5], [3, 5], [1, 2], [3, 2]], cards: 7, seconds: 275, unlocks: 'necromancer' },
+  { kind: 'battle', rocks: [...BACK_ROW, [2, 6]], cards: 8, seconds: null, unlocks: null },
+  { kind: 'conveyor', rocks: [[0, 1], [1, 3], [2, 0], [3, 3], [4, 1], [2, 5]], cards: 0, seconds: 270, unlocks: null },
+  { kind: 'breakthrough', rocks: [[0, 4], [4, 4], [1, 1], [3, 1], [0, 6], [4, 6]], cards: 8, seconds: 255, unlocks: 'tridentZombie' },
+  { kind: 'battle', rocks: [...BACK_ROW, [2, 6]], cards: 9, seconds: null, unlocks: null },
+  { kind: 'boss', rocks: [[0, 2], [4, 2], [0, 5], [4, 5]], cards: 9, seconds: null, unlocks: null },
 ] as const;
 
 const tile = (lane: number, col: number) => lane * PLANT_COLS + col;
@@ -53,7 +53,7 @@ describe('the Desert Canyon for the zombies (z3-1 … z3-8)', () => {
       expect(l.unlocks, l.id).toBe(row.unlocks);
       expect(l.spells, l.id).toBe(true);
       expect(l.boss !== null, l.id).toBe(l.kind === 'boss');
-      expect(l.seconds !== null, l.id).toBe(l.kind === 'breakthrough' || l.kind === 'conveyor');
+      expect(l.seconds, l.id).toBe(row.seconds);
     });
   });
 

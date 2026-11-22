@@ -70,7 +70,8 @@ export const Z3: LevelDef[] = [
   },
   {
     // The one idea: a rock where a wall should stand leaves a hole - push the lane with the hole.
-    // Unlocks the Necromancer.
+    // A 275 s clock, not the 240 s of the design's breakthroughs: the stars count the clock left, and at 240 s
+    // the average player three-starred 30-48% (270 s: 56, 300 s: 83). Unlocks the Necromancer.
     ...base('z3-3', 3), side: 'zombies', kind: 'breakthrough', cards: SEVEN,
     seconds: 275, baseHp: { plants: 7500, zombies: 14000 }, twist: { rocks: rocks([[1, 5], [3, 5], [1, 2], [3, 2]]) },
     prepared: [
@@ -98,7 +99,8 @@ export const Z3: LevelDef[] = [
   {
     // The one idea: a Skeleton in front and a Necromancer behind - the pair outlasts a Bunker. An
     // Avocado Bunker with a Peashooter behind it in lanes 1 and 3; mines at [0,5] and [4,5] (the thin
-    // flank is the trap); a Kernel-pult at [2,1]. Unlocks the Trident Zombie.
+    // flank is the trap); a Kernel-pult at [2,1]. A 255 s clock, not 240 s,
+    // for the same reason as z3-3 (at 240 s the average three-starred 46%, at 255 s 59-61%). Unlocks the Trident Zombie.
     ...base('z3-6', 6), side: 'zombies', kind: 'breakthrough', cards: EIGHT,
     seconds: 255, baseHp: { plants: 7200, zombies: 14000 },
     twist: { rocks: rocks([[0, 4], [4, 4], [1, 1], [3, 1], [0, 6], [4, 6]]) },
@@ -111,7 +113,7 @@ export const Z3: LevelDef[] = [
     unlocks: 'tridentZombie',
   },
   {
-    // The one idea: the Trident's throw pierces three plants in a row. Easy x2.2.
+    // The one idea: the Trident's throw pierces three plants in a row. Easy x2.5.
     ...base('z3-7', 7), side: 'zombies', kind: 'battle', cards: NINE,
     baseHp: { plants: 4000, zombies: 4000 }, twist: { rocks: rocks(BACK_ROW_PLUS) },
     opponent: { skill: 'easy', cards: SEVEN_PLANTS, incomeScale: 2.5 },
