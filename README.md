@@ -349,6 +349,115 @@ With the dev server running (`npm run dev`, port 5273):
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.
 
+## Versus on two devices
+
+Two children, two devices, one battle: Lukas on the iPad, Toby on the MacBook (or the other way
+round). It runs on the same Realtime Database REST calls as the saves, no Cloud Functions, no
+Firebase SDK, no sign-in. Spec: `docs/superpowers/specs/2026-11-18-versus-two-devices-design.md`.
+
+### How to play
+
+1. **Play menu, fourth tile** (two tablets and crossed swords). A player who is not allowed Versus
+   sees the padlock and a buzz.
+2. **Who is here**: a row of big faces of the allowed players whose device is on a menu right now.
+   A face in a battle is greyed with a swords badge. Tap a face to open the invite card.
+3. **Invite card**: both faces, each with the sun (plants) or brain (zombies) of the side he plays,
+   a swap button, the head start as 0 to 5 pictures with a minus and a plus, a green swords button
+   to send and a red cross to close. The invited boy gets the same card on any menu screen as a
+   panel from the top, with a green tick and a red cross. No answer for 60 s closes it.
+4. **Getting ready**: both faces and a bar of three blocks (connected, both ready, same game
+   version). Two different builds start no match and both show the update picture, which reloads
+   once.
+5. **Battle**: his side's cards on his tray. A tap sprouts a short puff, then the unit is there on
+   both screens at the same game tick (lockstep with an input delay chosen from the measured round
+   trips, 12 ticks when there are too few samples). A hash is compared every second; a mismatch
+   makes the host write a snapshot and the guest takes it (up to three repairs, then the match is
+   called unfinished). A device that stops answering gets an hourglass after 1 s, a dimmed lawn
+   with a sleeping face after 3 s, and a white flag after 90 s.
+6. **Pause** pauses both screens. The pause menu's door is a white flag (giving up).
+7. **Result**: the winner's face with a crown, the scoreboard strip, rematch (sides swapped, same
+   head start owner) or home. A rematch is a new match number; it needs both boys' ticks.
+
+### Rules and head start
+
+All ten cards of the side at standard strength, no Marketplace upgrades, two spells dealt from the
+match seed, heroes on, no twist, Backyard look, sudden death on, no 2X speed. First base to fall
+loses. No coins. Each device credits only its own logged-in player, once per match
+(`lastBattle` is `vs-<match id>`); a forfeit credits the other player; an unfinished match credits
+nobody.
+
+Toby (`p02`) gets a head start against anyone, nobody else does; either boy can change it on the
+card. One step is +50 starting energy and +0.1 on the trickle multiplier
+(`incomeMultiplier = (10 + step) / 10`). `DEFAULT_HEAD_STEP` (`src/ai/versus.ts`) seeds the card:
+the smallest step at which a random-tapping child stand-in wins at least 40% against the adult
+stand-in, or 5 if none does (`tests/ai/long/versusHeadStart.test.ts`, `LVT_BALANCE=1`, seeds
+1 to 200, child win rate, measured 2026-11-21):
+
+| step | 0 | 1 | 2 | 3 | 4 | 5 | default |
+|------|------|-------|-------|-------|-------|-------|---------|
+| child as plants | 0.5% | 0.0% | 0.5% | 0.0% | 0.0% | 0.0% | 5 (no step reaches 40%) |
+| child as zombies | 7.5% | 15.0% | 28.0% | 42.5% | 58.5% | 74.0% | 3 |
+
+### The grown-up ticks
+
+Lukas (`p01`) and Toby (`p02`) may always play Versus. Any other player needs a tick in the
+grown-up screen's Versus list of faces; it writes `v2/vs/allowed/<slot>: true` behind the grown-up
+code proof. A stranger who makes a player on the public address cannot appear in "who is here",
+invite, be invited or create a match.
+
+### What is stored
+
+Under `v2/vs` (and the same under `v2test/vs`, both made by `tools/build-rules.mjs` from one
+function):
+
+- `allowed/<slot>`: the grown-up ticks.
+- `here/<slot>`: `{at, busy}`, a heartbeat every 15 s while on a menu; a device that stops for 40 s
+  drops off the list.
+- `lobby/<owner>/in/<from>` and `lobby/<owner>/back/<from>`: an invite (public key, side, head
+  start, build) and the reply. The writer is always `<from>`.
+- `matches/<id>`: `meta` (written once at accept: seed, seats, host, head start, turn, delay,
+  build, test), `ready`, `pause`, `turns/<seat>/t<n>` (the commands of one turn, at most 400
+  characters), `sync/s1..s3` (repair snapshots), `end/<seat>`, `quit`, `again/<seat>`. The match id
+  is a hash of the two players' ECDH shared secret, so a third device cannot guess it. A match is
+  deleted when it is over; nothing about it stays in the cloud.
+
+Under `v2/proof/<slot>/<pin hash>/touch`: the per-write proof of who is writing. The pin is never
+stored or logged, only its hash, as for the saves; every Versus write carries a fresh `touch`
+equal to the database clock (`now`).
+
+### Debug parameters (only with `?debug`, only in fake mode)
+
+| Parameter | Effect |
+|-----------|--------|
+| `cloud=fake` | The fake cloud (the default for a plain build). |
+| `fakedb=http://localhost:<port>` | Use the local fake database server below instead of the in-page fake; the `v2test` root is used. Only `http://localhost:<port>` and `http://127.0.0.1:<port>` are accepted. |
+| `vsquick` | Divides every Versus timeout by 30, so waits take a second instead of a minute. |
+| `vstest=<1..500>` | Sets `meta.test`: both bases get that health, so a match ends in seconds. Allowed by the rules only under `v2test`. |
+| `vsbuild=<hex>` | Overrides the build id (7 to 12 hex digits) so two pages can be put on different builds. |
+
+### The fake database server
+
+`npx tsx tools/fake-rtdb-server.ts --port 5316` (default `$LVT_FAKEDB_PORT`, else 5316) is a stand-in
+for the Realtime Database REST API: one `FakeDatabase` that checks every request against
+`database.rules.json`, behind HTTP with server-sent events, so two browser pages share one
+database. There is no Firebase emulator here (no Java). It listens on loopback only, refuses other
+origins, and never touches the real database. `GET /__peek?path=...` shows a stored value;
+`POST /__reset` empties it. `e2e/versus.spec.ts` starts it on its own and plays two pages
+against each other; its screenshot tour goes to `artifacts/shots/`.
+
+### Publish checklist (owner only; no agent runs any of it)
+
+1. Confirm `v2/players` lists `p01` and `p02` (both boys have numbers; otherwise a stranger could claim a Versus slot).
+2. Back up the currently deployed rules (Firebase console → Realtime Database → Rules → copy, or the Firebase MCP `firebase_get_security_rules`) to `artifacts/rules-backup-<date>.json`.
+3. From an up-to-date checkout of the merged branch: `node tools/build-rules.mjs --check`, then `firebase deploy --only database`.
+4. `LVT_TEST_GROWNUP_CODE=<code> node tools/rules-check.mjs --yes-live` against `v2test`: every row passes, the new Versus rows included. Any surprise: deploy the backup at once.
+5. One scripted two-window run on `?debug&cloud=test`: note the measured round trips and the chosen delay; confirm the stream event shapes, `startAt`/`endAt` on streams and `cancel` match the fake. Also confirm (Task 10) that deleting a match reaches a ranged root listener as a `put` of `null` at `/`, not as per-child removals; otherwise `gone` never fires.
+6. Optional, with go-ahead: install Playwright WebKit; run the determinism golden and `e2e/versus.spec.ts` in a WebKit project.
+7. `npm run build:live` then `npm run check:live` (must print `dist/ is live`), then the hosting deploy.
+8. Hands-on with the two iPads (Safari, last year's model) and the MacBook: invite, play, sleep one iPad, rematch.
+
+Status on 2026-11-22: step 6 (WebKit) was skipped by the owner. Step 1 was checked read-only: `v2/players` lists `p01` Lukas and `p02` Toby.
+
 ## Hosting and old builds
 
 `firebase.json` serves `index.html`, the extensionless app addresses and `cloud-mode.txt` with
