@@ -17,7 +17,7 @@ const LONG: SfxName[] = ['megaMower', 'boneStorm', 'thunderbolt', 'meteor'];
 /** Phase 3's boss sounds: checked in bossSounds.test.ts. */
 const BOSS: SfxName[] = [
   'titanRoar', 'titanDefeat', 'oakCreak', 'oakDefeat', 'howlerHowl', 'howlerDefeat', 'melonCrack', 'melonDefeat',
-  'pharaohCall', 'pharaohDefeat',
+  'pharaohCall', 'pharaohDefeat', 'cactusCreak', 'cactusDefeat',
 ];
 /** Any boss's strike: checked in bossLooks.test.ts. */
 const STRIKE: SfxName[] = ['strikeWindup', 'strikeImpact'];

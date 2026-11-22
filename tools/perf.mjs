@@ -30,6 +30,7 @@
 //   --scenes=howler                         the Moon Howler's boss demo in the Meadow (fog, fireflies), opt-in
 //   --scenes=melon                          the Frost Melon's boss demo in the Tundra (ice, snow), opt-in
 //   --scenes=pharaoh                        the Sand Pharaoh's boss demo in the Desert (rocks, dust), opt-in
+//   --scenes=cactus                         the Cactus King's boss demo in the Desert (rocks, dust), opt-in
 //   --scenes=howler-p2-8,meadow-p2-7        the real game: p2-8's Howler fight with a full garden, and
 //                                           p2-7 (a busy Meadow survive level: full garden, its waves
 //                                           and flags walking, nobody dying), opt-in
@@ -74,6 +75,7 @@ const SCENES = [
   { name: 'melon', query: 'scene=boss-demo&boss=frostMelon&seed=1', setup: 'melon', optIn: true },
   // Step 3 Task 2 (opt-in): the Desert Canyon's two boss fights (their boss demos) with the rocks and the dust.
   { name: 'pharaoh', query: 'scene=boss-demo&boss=sandPharaoh&seed=1', setup: 'pharaoh', optIn: true },
+  { name: 'cactus', query: 'scene=boss-demo&boss=cactusKing&seed=1', setup: 'cactus', optIn: true },
   // Step 2 Task 9 (opt-in): the real Meadow levels, the Howler's fight and a busy survive level.
   { name: 'howler-p2-8', query: '', setup: 'howlerLevel', optIn: true },
   { name: 'meadow-p2-7', query: '', setup: 'meadowBusy', optIn: true },
@@ -384,6 +386,15 @@ const GAME_SETUPS = {
       b.advance(33);
       const s = b.match.state;
       return { units: s.units.length, projectiles: s.projectiles.length, pharaoh: s.units.some((u) => u.key === 'sandPharaoh'), rocks: s.config.lawn.rocks.length };
+    });
+  },
+  /** The Cactus King demo moved on to 38 s (its spine plates shut, its rockfall about to wind up, ten zombies walking, boulders about to hang), then left to play live. */
+  async cactus(page) {
+    return page.evaluate(() => {
+      const b = window.__lvt.battle;
+      b.advance(38);
+      const s = b.match.state;
+      return { units: s.units.length, projectiles: s.projectiles.length, cactus: s.units.some((u) => u.key === 'cactusKing'), rocks: s.config.lawn.rocks.length };
     });
   },
   /** The Melon demo moved on to 20 s (its second barrage in the air, ten zombies on the ice, its Peashooters firing), then left to play live. */

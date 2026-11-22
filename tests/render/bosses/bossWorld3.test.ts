@@ -9,6 +9,7 @@ import { BALANCE } from '../../../src/data/balance';
 import { BOSS_LOOK } from '../../../src/data/bossLooks';
 import { BattleView } from '../../../src/render/battle/BattleView';
 import { BOSS_SCALE } from '../../../src/render/battle/BossFx';
+import { cactusKing } from '../../../src/render/models/bosses/cactusKing';
 import { sandPharaoh } from '../../../src/render/models/bosses/sandPharaoh';
 import { BOSS_MODELS, getModelDef } from '../../../src/render/models/registry';
 import { buildParts, modelStats } from '../../../src/render/voxel/build';
@@ -20,9 +21,9 @@ import { FakeAudioContext } from '../../audio/fakeAudioContext';
 import { allocationsIn } from '../allocations';
 import { DT, bossStage, partShown, shown } from './stage';
 
-// Step 3 (Desert Canyon) Task 2: the Sand Pharaoh: its model, its shows on the lawn (the sand swirl,
-// the mummies' wraps, the sandstorm, the phase-2 glow, the shards) and its two sounds; and the four
-// shipped bosses' demo frames, pinned from before.
+// Step 3 (Desert Canyon) Task 2: the Sand Pharaoh and the Cactus King, their models, their shows on
+// the lawn (the sand swirl, the boulders, the mummies' wraps, the spine plates, the phase-2 glow,
+// the shards) and their four sounds; and the four shipped bosses' demo frames, pinned from before.
 
 const BOSS_TRIANGLES = 6000;
 const BOSS_KEYS = Object.keys(BOSS_HALF_WIDTH) as BossKey[];
@@ -107,11 +108,15 @@ describe('BOSS_LOOK and the sounds', () => {
     expect(heard).toEqual([look.call, look.defeat]);
   });
 
-  it('the world-3 rows are their own: not the Titan\'s', () => {
+  it('the world-3 rows are their own: not the Titan\'s or the Oak\'s', () => {
     expect(BOSS_LOOK.sandPharaoh).not.toEqual(BOSS_LOOK.brainTitan);
+    expect(BOSS_LOOK.cactusKing).not.toEqual(BOSS_LOOK.elderOak);
     expect(BOSS_LOOK.sandPharaoh.face).not.toEqual(BOSS_LOOK.brainTitan.face);
+    expect(BOSS_LOOK.cactusKing.face).not.toEqual(BOSS_LOOK.elderOak.face);
     expect(BOSS_LOOK.sandPharaoh).toMatchObject({ scale: 2.8, call: 'pharaohCall', defeat: 'pharaohDefeat' });
     expect(BOSS_LOOK.sandPharaoh.fx).toMatchObject({ shield: 'sand', summonLook: 'mummies', strike: 'shoot', phaseParts: ['glowEyes'], defeat: 'shards' });
+    expect(BOSS_LOOK.cactusKing).toMatchObject({ scale: 4, call: 'cactusCreak', defeat: 'cactusDefeat' });
+    expect(BOSS_LOOK.cactusKing.fx).toMatchObject({ shield: 'bark', strikeBlow: 'boulder', strike: 'cheer', eyes: 'follow', defeat: 'shards' });
     // The Howler is the pups' only owner, and the shipped bosses have no boulder.
     expect(BOSS_LOOK.moonHowler.fx.summonLook).toBe('pups');
     for (const key of SHIPPED) expect(BOSS_LOOK[key].fx.strikeBlow, key).toBeUndefined();
@@ -135,6 +140,23 @@ describe('the Sand Pharaoh\'s model', () => {
     expect(sandPharaoh.parts.some((p) => p.name === 'staff')).toBe(true);
     // A part the view shows from phase 2 is not one a unit's own view drives.
     expect(sandPharaoh.parts.some((p) => p.name === 'glow')).toBe(false);
+  });
+});
+
+describe('the Cactus King\'s model', () => {
+  it(`builds, is the registry's, has one look and costs at most ${BOSS_TRIANGLES} triangles, its hidden plates counted`, () => {
+    expect(() => buildParts(cactusKing, 1)).not.toThrow();
+    expect(BOSS_MODELS.cactusKing).toBe(cactusKing);
+    expect(cactusKing.key).toBe('cactusKing');
+    expect(cactusKing.singleLevel).toBe(true);
+    expect(modelStats(cactusKing, 1).triangles).toBeLessThanOrEqual(BOSS_TRIANGLES);
+  });
+
+  it('has the parts the view drives (pupils that follow, two hidden plates) and the clips its shows play', () => {
+    for (const clip of ['idle', 'shoot', 'cheer', 'ability', 'die', 'hit', 'spawn'] as const) expect(cactusKing.clips[clip], clip).toBeDefined();
+    expect(cactusKing.clips.cheer?.loop).toBe(true); // held through the rockfall's wind-up
+    for (const name of ['barkL', 'barkR']) expect(cactusKing.parts.find((p) => p.name === name)?.hidden, name).toBe(true);
+    expect(cactusKing.parts.some((p) => p.name === 'pupils')).toBe(true);
   });
 });
 
@@ -326,6 +348,216 @@ describe('the Sand Pharaoh on the lawn', () => {
   });
 });
 
+// ---- The Cactus King on the lawn -------------------------------------------------------------------
+
+describe('the Cactus King on the lawn', () => {
+  it('stands at the plant base with the rocks on its flanks (the demo); its demo table is the shipped one with its phase-2 summon brought forward', () => {
+    const c = bossDemoConfig('cactusKing', 1);
+    expect(c.boss).toEqual({ key: 'cactusKing', faction: 'plants', lane: 2 });
+    expect(c.lawn.rocks).toHaveLength(4);
+    const row = demoBalance('cactusKing').bosses.cactusKing;
+    expect(row.hp).toBe(BALANCE.bosses.cactusKing.hp);
+    expect(row.phases?.[0]).toEqual(BALANCE.bosses.cactusKing.phases?.[0]);
+    expect(row).not.toBe(BALANCE.bosses.cactusKing);
+    expect(BALANCE.bosses.cactusKing.phases?.[1]?.some((p) => p.kind === 'summon' && p.everySeconds === 12)).toBe(true);
+    expect(row.phases?.[1]?.map((p) => p.kind)).toEqual(['strike', 'summon', 'barrage']);
+  });
+
+  it('is drawn four times a unit\'s size with its plates hidden as it comes on', () => {
+    const s = bossStage('cactusKing');
+    s.play(1);
+    const id = s.boss().id;
+    expect(s.view.unit(id)?.bulk).toBe(4);
+    expect(partShown(s.view, id, 'barkL')).toBe(false);
+    expect(partShown(s.view, id, 'barkR')).toBe(false);
+    expect(shown(s.scene, 'boss-boulder')).toBe(0);
+  });
+
+  it('its shield is the spine plates (its own green, not walnut bark): shut from the state, hits throw green and cream chips, then gone', () => {
+    const s = bossStage('cactusKing');
+    s.until((e) => e.type === 'bossPhase');
+    s.play(0.1);
+    const id = s.boss().id;
+    expect(s.view.bossFx.shielded).toBe(true);
+    expect(s.view.bossFx.barkShut).toBe(true);
+    expect(partShown(s.view, id, 'barkL')).toBe(true);
+    expect(partShown(s.view, id, 'barkR')).toBe(true);
+    expect(shown(s.scene, 'boss-shield-dome')).toBe(0);
+    expect(shown(s.scene, 'boss-sand-ring')).toBe(0);
+    const burst = vi.spyOn(s.fx, 'burst');
+    s.play(0.4); // the clap
+    const chips = BOSS_LOOK.cactusKing.fx.plateChips!.map((c) => parseInt(c.slice(1), 16));
+    expect(burst.mock.calls.some((c) => c[1] !== undefined && (c[1] as number[]).every((v, i) => v === chips[i]))).toBe(true);
+    s.play(8.2);
+    expect(s.view.bossFx.shielded).toBe(false);
+    expect(partShown(s.view, id, 'barkL')).toBe(false);
+  });
+
+  it('the Oak\'s plates still throw walnut bark', () => {
+    expect(BOSS_LOOK.elderOak.fx.plateChips).toBeUndefined();
+  });
+
+  it('the rockfall: three zombie tiles are warned of in shadow and a boulder hangs over each, coming lower, while its arms go up (`cheer`)', () => {
+    const s = bossStage('cactusKing');
+    const said = s.until((e) => e.type === 'bossStrike' && e.windup) as Extract<SimEvent, { type: 'bossStrike' }> | null;
+    expect(said?.tiles).toHaveLength(3);
+    s.play(0.3); // (a root bitten on the way in plays its one-shot hit first)
+    expect(s.view.bossFx.striking).toBe(true);
+    expect(shown(s.scene, 'boss-strike-tile')).toBe(3);
+    expect(shown(s.scene, 'boss-boulder')).toBe(3);
+    expect(s.view.unit(s.boss().id)?.model.clip).toBe('cheer');
+    const heights = (): number[] => {
+      const out: number[] = [];
+      s.scene.traverse((o) => { if (o.name === 'boss-boulder' && o.visible) out.push(o.position.y); });
+      return out;
+    };
+    const high = Math.max(...heights());
+    expect(high).toBeGreaterThan(2);
+    s.play(1.5);
+    const mid = Math.max(...heights());
+    expect(mid).toBeLessThan(high);
+    expect(mid).toBeGreaterThan(0.5);
+    // Over the tiles it announced.
+    const tiles = said!.tiles.map((t) => `${t.col + 0.5},${t.lane + 0.5}`).sort();
+    const over: string[] = [];
+    s.scene.traverse((o) => { if (o.name === 'boss-boulder' && o.visible) over.push(`${o.position.x},${o.position.z}`); });
+    expect(over.sort()).toEqual(tiles);
+  });
+
+  it('the rockfall\'s warning is a dark shadow in a red outline, and the blow drops each boulder: rock chips and dust, then no boulder', () => {
+    const s = bossStage('cactusKing');
+    s.until((e) => e.type === 'bossStrike' && e.windup);
+    s.play(0.1);
+    let fill: MeshBasicMaterial | null = null;
+    let frame: MeshBasicMaterial | null = null;
+    s.scene.traverse((o) => {
+      if (o.name === 'boss-strike-fill') fill = (o as unknown as { material: MeshBasicMaterial }).material;
+      if (o.name === 'boss-strike-tile') frame = (o as unknown as { material: MeshBasicMaterial }).material;
+    });
+    expect(`#${fill!.color.getHexString().toUpperCase()}`).toBe('#2B1A10');
+    expect(`#${frame!.color.getHexString().toUpperCase()}`).toBe('#FF3B3B');
+    const debris = vi.spyOn(s.fx, 'debris');
+    const ring = vi.spyOn(s.fx, 'ring');
+    s.until((e) => e.type === 'bossStrike' && !e.windup);
+    expect(debris.mock.calls.filter((c) => (c[1] as number[]).includes(0x8e7a5e))).toHaveLength(3);
+    expect(ring.mock.calls.filter((c) => c[1] === 0xc9a66b)).toHaveLength(3);
+    s.play(0.1);
+    expect(shown(s.scene, 'boss-boulder')).toBe(0);
+    expect(shown(s.scene, 'boss-strike-tile')).toBe(0);
+    // The simulation's blow: the zombies there lose health (no status).
+  });
+
+  it('the boulders go when it dies mid wind-up, when the match ends in it, and after a snapshot from before is restored; a new view mid wind-up shows them lowered', () => {
+    const s = bossStage('cactusKing');
+    s.until((e) => e.type === 'bossStrike' && e.windup);
+    s.play(1.2);
+    const mid = s.match.snapshot();
+    expect(shown(s.scene, 'boss-boulder')).toBe(3);
+    // Restored from before the strike into the same view: no boulders, no warning.
+    const before = bossDemoMatch('cactusKing', 1);
+    for (let i = 0; i < 30 * 5; i++) before.step();
+    s.view.applyEvents([], before.state);
+    s.view.frame(before.state, 0.5, DT, 99);
+    expect(shown(s.scene, 'boss-boulder')).toBe(0);
+    expect(shown(s.scene, 'boss-strike-tile')).toBe(0);
+    // A new view joined mid wind-up: warning and boulders from the state, at the height the time left asks for.
+    const restored = Match.restore(mid, s.balance);
+    const lateScene = new Scene();
+    const late = new BattleView(lateScene, s.camera, s.lawn, s.fx, 'zombies', { balance: s.balance });
+    late.applyEvents([], restored.state);
+    late.frame(restored.state, 0.5, DT, 0);
+    late.frame(restored.state, 0.5, DT, 0);
+    expect(shown(lateScene, 'boss-boulder')).toBe(3);
+    lateScene.traverse((o) => { if (o.name === 'boss-boulder') expect(o.position.y, 'lower than the top').toBeLessThan(3.2); });
+    late.dispose();
+    // Dies mid wind-up.
+    const t = bossStage('cactusKing');
+    t.until((e) => e.type === 'bossStrike' && e.windup);
+    t.play(0.5);
+    expect(shown(t.scene, 'boss-boulder')).toBe(3);
+    const boss = t.boss();
+    boss.hp = 0;
+    const events = t.match.step();
+    t.view.applyEvents(events.filter((e) => e.type !== 'matchEnded'), t.match.state);
+    t.frames(10);
+    expect(shown(t.scene, 'boss-boulder')).toBe(0);
+    expect(shown(t.scene, 'boss-strike-tile')).toBe(0);
+    expect(t.view.unit(boss.id)?.model.clip).toBe('die');
+    // The match ends in the wind-up.
+    const u = bossStage('cactusKing');
+    u.until((e) => e.type === 'bossStrike' && e.windup);
+    u.play(0.5);
+    u.view.applyEvents([{ type: 'matchEnded', winner: 'plants' }], u.match.state);
+    u.frames(60);
+    expect(shown(u.scene, 'boss-boulder')).toBe(0);
+    expect(shown(u.scene, 'boss-strike-fill')).toBe(0);
+  });
+
+  it('its pupils follow the nearest zombie across the lanes', () => {
+    const s = bossStage('cactusKing');
+    s.play(1);
+    const view = s.view.unit(s.boss().id)!;
+    const shift = vi.spyOn(view, 'shiftPart');
+    s.play(3);
+    const pupils = shift.mock.calls.filter((c) => c[0] === 'pupils');
+    expect(pupils.length).toBeGreaterThan(0);
+    expect(pupils.some((c) => c[3] !== 0)).toBe(true);
+  });
+
+  it('the units it calls in are plain: no wolf ears, no wraps', () => {
+    const s = bossStage('cactusKing');
+    s.until((e) => e.type === 'bossPattern' && e.kind === 'summon');
+    s.play(0.2);
+    expect(s.match.state.units.some((u) => u.key === 'kernelPult')).toBe(true);
+    expect(shown(s.scene, 'boss-pup-ears')).toBe(0);
+    expect(shown(s.scene, 'boss-mummy-wrap')).toBe(0);
+  });
+
+  it('falls with its crown of flowers dropping: its wilt plays and it breaks into green and pink shards across its three lanes', () => {
+    const s = bossStage('cactusKing');
+    s.play(2);
+    const boss = s.boss();
+    boss.hp = 0;
+    const events = s.match.step();
+    s.view.applyEvents(events.filter((e) => e.type !== 'matchEnded'), s.match.state);
+    s.frames(10);
+    expect(s.view.unit(boss.id)?.model.clip).toBe('die');
+    const lanes: number[] = [];
+    const original = s.fx.debris.bind(s.fx);
+    const debris = vi.spyOn(s.fx, 'debris').mockImplementation((at, colors, count) => {
+      lanes.push(at.z);
+      original(at, colors, count);
+    });
+    s.frames(100);
+    const colors = BOSS_LOOK.cactusKing.fx.shards!.map((c) => parseInt(c.slice(1), 16));
+    expect(debris.mock.calls[0]?.[1]).toEqual(colors);
+    expect(Math.max(...lanes) - Math.min(...lanes)).toBeCloseTo(2, 5);
+  });
+
+  it('draws its rockfall frames without allocating', () => {
+    const s = bossStage('cactusKing');
+    s.until((e) => e.type === 'bossStrike' && e.windup);
+    s.play(0.3);
+    expect(allocationsIn(() => {
+      for (let i = 0; i < 20; i++) s.view.bossFx.update(DT);
+    })).toEqual({});
+  });
+
+  it('dispose takes everything it added out of the scene, boulders and sand included', () => {
+    const s = bossStage('cactusKing');
+    s.until((e) => e.type === 'bossStrike' && e.windup);
+    s.play(0.3);
+    expect(shown(s.scene, 'boss-boulder')).toBe(3);
+    s.view.dispose();
+    expect([...s.scene.children]).toEqual(s.before);
+    const p = bossStage('sandPharaoh');
+    p.until((e) => e.type === 'bossPhase');
+    p.play(0.2);
+    p.view.dispose();
+    expect([...p.scene.children]).toEqual(p.before);
+  });
+});
+
 // ---- Their sounds ----------------------------------------------------------------------------------
 
 function render(name: SfxName, pitch = 1): { length: number; peak: number; sources: number } {
@@ -339,7 +571,7 @@ function render(name: SfxName, pitch = 1): { length: number; peak: number; sourc
 }
 
 describe('the Desert Canyon bosses\' sounds', () => {
-  it.each(['pharaohCall', 'pharaohDefeat'] as const)('%s renders, is audible, under 1.5 s, with headroom, at any pitch', (name) => {
+  it.each(['pharaohCall', 'pharaohDefeat', 'cactusCreak', 'cactusDefeat'] as const)('%s renders, is audible, under 1.5 s, with headroom, at any pitch', (name) => {
     for (const pitch of [0.94, 1, 1.06]) {
       const r = render(name, pitch);
       expect(r.sources).toBeGreaterThanOrEqual(1);
@@ -350,7 +582,7 @@ describe('the Desert Canyon bosses\' sounds', () => {
     }
   });
 
-  it.each([['sandPharaoh', 'pharaohCall', 'pharaohDefeat', 'plants']] as const)(
+  it.each([['sandPharaoh', 'pharaohCall', 'pharaohDefeat', 'plants'], ['cactusKing', 'cactusCreak', 'cactusDefeat', 'zombies']] as const)(
     '%s: its call on each pattern and as its strike winds up, its sting when beaten, none of the other bosses\'',
     (key, call, defeat, player) => {
       const m = bossDemoMatch(key, 1);

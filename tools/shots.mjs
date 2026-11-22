@@ -427,11 +427,15 @@ const SCENARIOS = [
   }),
   // The Desert Canyon's bosses (step 3 Task 2) as models and their moves, then each in the Desert at
   // the iPad's size (1024x650): entrance, wind-ups, strike, shield, phase 2 and defeat.
-  { name: 'gallery-bosses-w3', url: '/?scene=gallery&models=sandPharaoh&t=0.4' },
+  { name: 'gallery-bosses-w3', url: '/?scene=gallery&models=sandPharaoh,cactusKing&t=0.4' },
   moves('sandPharaoh', [
     // (A part shown stays shown for the frames after it: the plain moves first.)
     ['windup', 'ability', 1.3], ['slam', 'ability', 1.62], ['storm', 'shoot', 1.0], ['roar', 'cheer', 0.3], ['topple', 'die', 0.9],
     ['glow', 'idle', 0.4, ['glowEyes']],
+  ]),
+  moves('cactusKing', [
+    ['fling', 'shoot', 0.3], ['shake', 'ability', 0.2], ['rocks', 'cheer', 0.2], ['wilt', 'die', 1.0],
+    ['plates', 'idle', 0.4, ['barkL', 'barkR']],
   ]),
   ...[
     ['boss-pharaoh-enter', 'sandPharaoh', [0.5, 1.0]],
@@ -442,6 +446,13 @@ const SCENARIOS = [
     ['boss-pharaoh-mummies', 'sandPharaoh', [43.3, 44.0]], // two Skeleton Warriors wrapped as mummies at 43.2 s
     ['boss-pharaoh-phase2', 'sandPharaoh', [45]], // its eyes glowing
     ['boss-pharaoh-defeat', 'sandPharaoh', [66.8, 67.6, 68.3]], // falls at 66.5 s; crumbles at 67.6 s
+    ['boss-cactus-enter', 'cactusKing', [0.5, 1.0]],
+    ['boss-cactus-barrage', 'cactusKing', [9.05, 9.3, 9.9]], // the arms whip at 9 s
+    ['boss-cactus-summon', 'cactusKing', [21.05, 21.5]], // two Kernel-pults at 21 s
+    ['boss-cactus-shield', 'cactusKing', [37.0, 37.4]], // the spine plates clap shut at 36.5 s (up for 8 s)
+    ['boss-cactus-strike', 'cactusKing', [40.3, 41.2, 42.3, 42.6, 43.2]], // the rockfall winds up 40-42.5 s: shadows, boulders dropping; then the blow
+    ['boss-cactus-walnuts', 'cactusKing', [45.6, 46.2]], // two Walnuts at 45.5 s
+    ['boss-cactus-defeat', 'cactusKing', [46.9, 47.6, 48.3]], // falls at 46.7 s; its shards at 47.9 s
   ].map(([name, boss, times]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
     return {
@@ -454,6 +465,7 @@ const SCENARIOS = [
   // The Desert Canyon's bosses close up (`&focus=lane,x,half`): the Pharaoh at the zombies' edge, the Cactus King at the plant base.
   ...[
     ['boss-pharaoh-close', 'sandPharaoh', [1.0, 19.3, 33.5, 37.2, 43.6, 45.5, 67.6], '2,6.6,2.4'],
+    ['boss-cactus-close', 'cactusKing', [1.0, 9.2, 37.4, 41.2, 42.6, 47.6], '2,1.2,2.6'],
   ].map(([name, boss, times, focus]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&focus=${focus}&cloud=fake`;
     return {

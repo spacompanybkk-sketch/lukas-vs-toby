@@ -1,5 +1,6 @@
 import { prewarmModel } from '../voxel/build';
 import { brainTitan } from './bosses/brainTitan';
+import { cactusKing } from './bosses/cactusKing';
 import { elderOak } from './bosses/elderOak';
 import { frostMelon } from './bosses/frostMelon';
 import { moonHowler } from './bosses/moonHowler';
@@ -73,8 +74,7 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   moonHowler,
   frostMelon,
   sandPharaoh,
-  // STUB (step-3 plan Task 1): the Oak's model under its own key; the Cactus King's own follows.
-  cactusKing: { ...elderOak, key: 'cactusKing' },
+  cactusKing,
 };
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

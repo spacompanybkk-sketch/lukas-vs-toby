@@ -178,8 +178,45 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       summonLook: 'mummies',
     },
   },
-  // STUB (step-3 plan Task 1): the Oak's look; the Cactus King's own follows.
-  cactusKing: SHIPPED.elderOak,
+  cactusKing: {
+    // The model is at half resolution, like the Oak's (see cactusKing.ts).
+    scale: 4,
+    // A green cactus under a flower crown: pink petals round a yellow heart, a pale face, pink cheeks, a grin.
+    face: [
+      [1, 0, 3, 3, '#FF6FA8'],
+      [4, 0, 4, 3, '#D94A86'],
+      [8, 0, 3, 3, '#FF6FA8'],
+      [5, 1, 2, 2, '#FFD23D'],
+      [1, 3, 10, 9, '#4FA84A'],
+      [1, 3, 1, 9, '#2F7D3A'],
+      [10, 3, 1, 9, '#2F7D3A'],
+      [2, 4, 8, 7, '#A6DB78'],
+      [2, 7, 2, 1, '#FF6FA8'],
+      [8, 7, 2, 1, '#FF6FA8'],
+      [3, 5, 2, 2, 'eye'],
+      [7, 5, 2, 2, 'eye'],
+      [4, 9, 4, 1, '#3B1530'],
+      [3, 8, 1, 1, '#3B1530'],
+      [8, 8, 1, 1, '#3B1530'],
+      [0, 6, 1, 1, '#FFF3C4'],
+      [11, 8, 1, 1, '#FFF3C4'],
+    ],
+    bar: { fill: 'var(--c-leaf)', hi: 'var(--c-leaf-hi)' },
+    call: 'cactusCreak',
+    defeat: 'cactusDefeat',
+    fx: {
+      roar: 'ability', summon: 'sparkles', shield: 'bark', defeat: 'shards', eyes: 'follow',
+      // The rockfall: both arms thrown up, shaking, through the strike's wind-up.
+      strike: 'cheer',
+      // Its spine armour: green and cream chips, not walnut bark.
+      plateChips: ['#4FA84A', '#2F7D3A', '#FFF3C4', '#A6DB78'],
+      // Its flower crown drops: green and pink chips.
+      shards: ['#4FA84A', '#2F7D3A', '#A6DB78', '#FF6FA8', '#FFD23D'],
+      // The rockfall: boulders hang over the warned tiles and drop, in shadow on the sand.
+      strikeBlow: 'boulder',
+      strikeWarnings: { none: { fill: '#2B1A10', frame: '#FF3B3B', opacity: 0.7, blow: '#C9A66B' } },
+    },
+  },
   moonHowler: {
     // The model is a unit's voxels, a little bigger than the Titan.
     scale: 2.6,

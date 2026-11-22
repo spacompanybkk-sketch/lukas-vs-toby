@@ -25,7 +25,7 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   // step 2: the world-2 bosses, two each as above
   | 'howlerHowl' | 'howlerDefeat' | 'melonCrack' | 'melonDefeat'
   // step 3: the Desert Canyon's bosses, two each as above
-  | 'pharaohCall' | 'pharaohDefeat'
+  | 'pharaohCall' | 'pharaohDefeat' | 'cactusCreak' | 'cactusDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
   | 'strikeWindup' | 'strikeImpact'
   // Versus on two devices: an invite arriving
@@ -793,6 +793,43 @@ function pharaohDefeat(v: Voice, t: number, p: number): void {
 }
 
 /**
+ * The Cactus King's creak: a rubbery "boi-oi-oing" (a sine bending up and down in steps, wobbling)
+ * and a dry rattle of spines (a quick run of tiny ticks of bright noise). Springy and silly.
+ */
+function cactusCreak(v: Voice, t: number, p: number): void {
+  const env = envelope(v, t, 0.03, 0.3, 0.3, 0.25);
+  const o = v.ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(180 * p, t);
+  [[0.1, 300], [0.2, 210], [0.32, 380], [0.44, 250], [0.56, 420]].forEach(([off, f]) => {
+    o.frequency.exponentialRampToValueAtTime((f as number) * p, t + (off as number));
+  });
+  const warm = filter(v, 'lowpass', 1400, 1);
+  o.connect(warm);
+  warm.connect(env.gain);
+  env.gain.connect(v.input);
+  v.play(o, t, env.end);
+  vibrato(v, [o.frequency], 11, 9 * p, t, 0.1, env.end);
+  tone(v, { type: 'triangle', freq: 600 * p, to: 420 * p, glide: 0.12, at: t + 0.05, attack: 0.003, peak: 0.07, decay: 0.12 });
+  [0.5, 0.56, 0.61, 0.67, 0.71, 0.78].forEach((off, i) => {
+    noise(v, { at: t + off, attack: 0.001, peak: 0.14 - i * 0.012, decay: 0.03, filter: 'bandpass', freq: 3800 + (i % 3) * 700, q: 4 });
+  });
+}
+
+/**
+ * The Cactus King beaten: a long "pffffft" as it deflates (airy noise falling) over a sliding sine
+ * going flat, then four little wooden plinks tumbling down, like its flowers dropping.
+ */
+function cactusDefeat(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.03, peak: 0.2, hold: 0.25, decay: 0.35, filter: 'bandpass', freq: 3200, to: 700, glide: 0.6, q: 0.9 });
+  tone(v, { type: 'sine', freq: 620 * p, to: 110 * p, glide: 0.6, at: t, attack: 0.02, peak: 0.2, hold: 0.2, decay: 0.3 });
+  [880, 740, 622.25, 523.25].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + 0.7 + i * 0.12, attack: 0.002, peak: 0.2, decay: 0.12 });
+  });
+  tone(v, { type: 'sine', freq: 90 * p, to: 44 * p, glide: 0.15, at: t + 1.2, attack: 0.003, peak: 0.34, decay: 0.2 });
+}
+
+/**
  * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
  * and filtered) and a rising whistle, like something about to fall on the marked tiles.
  */
@@ -818,7 +855,7 @@ export const SFX: Record<SfxName, Recipe> = {
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
-  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, pharaohCall, pharaohDefeat, strikeWindup, strikeImpact,
+  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, pharaohCall, pharaohDefeat, cactusCreak, cactusDefeat, strikeWindup, strikeImpact,
   chime,
 };
 
