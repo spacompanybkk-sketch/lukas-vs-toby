@@ -1,6 +1,6 @@
-import { Mesh, Vector3 } from 'three';
+import { Box3, Color, Mesh, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { GHOST_PUFF, GHOST_SKID, TwistShow } from '../../src/render/world/TwistTiles';
+import { GHOST_PUFF, GHOST_SKID, ICE_LIGHT, TwistShow } from '../../src/render/world/TwistTiles';
 import { allocationsIn } from './allocations';
 import { NO_TWIST } from '../../src/sim/lawn';
 import type { LawnConfig } from '../../src/sim/types';
@@ -201,6 +201,40 @@ describe('TwistShow: the ice reads', () => {
     expect(seen.size).toBeGreaterThanOrEqual(3);
     expect(seen.size).toBeLessThanOrEqual(4);
     expect(Math.max(...seen)).toBeGreaterThanOrEqual(0.4); // bright enough to read on the snow
+    show.dispose();
+  });
+
+  // Task 4 (polish batch 1, A8): the lesson's ice is the ice in play.
+  it('the pulse brightens the ice but keeps it blue: at its brightest the lane is still as blue as the ice in play, never washed pale', () => {
+    const show = new TwistShow('ice', iceLawn([1]), puffs());
+    const glow = named(show, 'ice-pulse')[0]!.material as unknown as { color: Color; opacity: number };
+    const ice = new Color(ICE_LIGHT);
+    const blueness = (c: Color): number => c.b - c.r;
+    let brightest = 0;
+    for (let i = 0; i < 60 * 3; i++) {
+      show.update(1 / 60);
+      const seen = ice.clone().lerp(glow.color, glow.opacity); // the pulse laid over the ice
+      expect(blueness(seen), `at pulse ${glow.opacity}`).toBeGreaterThanOrEqual(blueness(ice) - 0.02);
+      brightest = Math.max(brightest, glow.opacity);
+    }
+    expect(brightest).toBeGreaterThan(0.2); // and it still pulses
+    show.dispose();
+  });
+
+  it('the sliding ghost glides along the ice with its arms up: it does not hop (its cheer jump is held still)', () => {
+    const show = new TwistShow('ice', iceLawn([2]), puffs());
+    const heights = (ghost: { object: { updateWorldMatrix(a: boolean, b: boolean): void } }): [number, number] => {
+      ghost.object.updateWorldMatrix(true, true);
+      const box = new Box3().setFromObject(ghost.object as never);
+      return [box.min.y, box.max.y];
+    };
+    const [lo0, hi0] = heights(show.slider);
+    for (let i = 0; i < 60; i++) {
+      show.update(1 / 60);
+      const [lo, hi] = heights(show.slider);
+      expect(Math.abs(lo - lo0)).toBeLessThan(0.01);
+      expect(Math.abs(hi - hi0)).toBeLessThan(0.01);
+    }
     show.dispose();
   });
 

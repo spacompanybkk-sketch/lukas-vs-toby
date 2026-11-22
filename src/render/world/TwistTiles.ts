@@ -139,7 +139,7 @@ function boulder(batch: BoxBatch, lane: number, col: number, random: () => numbe
 const ICE_Y = 0.006;
 
 /** Deep blues, well apart from the pale snow, so a child sees at once which lanes are ice. */
-const ICE_LIGHT = '#3F92D6';
+export const ICE_LIGHT = '#3F92D6';
 const ICE_DARK = '#3282C8';
 const ICE_EDGE = '#1F5E9E';
 const ICE_CRACK = '#1C4F88';
@@ -392,7 +392,8 @@ const PULSE_STEPS = [0.08, 0.25, 0.42, 0.25];
 /** The ghosts' see-through-ness: clearly the unit, lightly see-through. */
 const GHOST_OPACITY = 0.72;
 
-const GHOST_ICE = '#FFFFFF';
+/** The pulse over an icy lane: a brighter blue of the ice's own, so the lane stays the blue it is in play (white washed it pale). */
+const GHOST_ICE = '#5FC0FF';
 const GHOST_PEA = '#8BE04E';
 const MIST_BANK = '#DCE4F6';
 const PAST_REACH = '#3E4766';
@@ -444,6 +445,8 @@ export class TwistShow {
   /** Geometry this show made (the models' own geometry is shared by every unit and stays). */
   private readonly geometries: BufferGeometry[] = [];
   private readonly models: ModelInstance[] = [];
+  /** Models posed once and never animated again (the sliding ghost). */
+  private readonly held: ModelInstance[] = [];
   private readonly pulses: MeshBasicMaterial[] = [];
   private pea: Mesh | null = null;
   private peaFrom = new Vector3();
@@ -476,8 +479,8 @@ export class TwistShow {
       this.lane = sliderLane;
       this.slideSpeed = GHOST_WALK * (lawn.ice?.speed ?? 1.6);
       this.buildIce(icy);
-      // Arms up all the way down (its `cheer`): it slides, it does not walk.
-      this.slider = { lane: sliderLane, object: this.model('brainEater', GHOST_FROM_X, sliderLane, 'cheer') };
+      // Arms up all the way down (its `cheer`, held at the start of its loop): it slides, it does not hop.
+      this.slider = { lane: sliderLane, object: this.model('brainEater', GHOST_FROM_X, sliderLane, 'cheer', true) };
       this.walker = walkerLane === null ? null : { lane: walkerLane, object: this.model('brainEater', GHOST_FROM_X, walkerLane, 'walk') };
       this.view = { pitchDeg: 46 };
       const raced = walkerLane === null ? [sliderLane] : [sliderLane, walkerLane];
@@ -561,8 +564,8 @@ export class TwistShow {
     for (let i = 0; i < this.pulses.length; i++) (this.pulses[i] as MeshBasicMaterial).opacity = level;
   }
 
-  /** A see-through copy of unit `key`'s real model standing at (x, lane), playing `clip` if it has it. */
-  private model(key: UnitKey, x: number, lane: number, clip?: ClipName): Object3D {
+  /** A see-through copy of unit `key`'s real model standing at (x, lane), playing `clip` if it has it (`still`: posed at the clip's first frame and held there). */
+  private model(key: UnitKey, x: number, lane: number, clip?: ClipName, still = false): Object3D {
     const model = new ModelInstance(getModelDef(key), 1);
     const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true, opacity: GHOST_OPACITY, depthWrite: true });
     this.materials.push(material);
@@ -577,7 +580,10 @@ export class TwistShow {
     model.root.name = `ghost-${key}`;
     model.root.position.set(x, 0, lane + 0.5);
     if (clip !== undefined) model.play(clip);
-    this.models.push(model);
+    if (still) {
+      model.seek(0);
+      this.held.push(model);
+    } else this.models.push(model);
     this.group.add(model.root);
     return model.root;
   }
@@ -662,9 +668,11 @@ export class TwistShow {
     this.disposed = true;
     this.group.removeFromParent();
     for (const m of this.models) m.dispose();
+    for (const m of this.held) m.dispose();
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();
     this.models.length = 0;
+    this.held.length = 0;
     this.geometries.length = 0;
     this.materials.length = 0;
     this.pulses.length = 0;
