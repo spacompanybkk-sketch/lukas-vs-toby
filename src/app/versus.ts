@@ -184,7 +184,6 @@ export class VersusFlow {
 
   private readonly lobbySig = signal<VersusLobby | null>(null);
   private readonly lobbyOn = signal(false);
-  private readonly allowedSet = signal<ReadonlySet<Slot> | null>(null);
   private readonly menuSig = signal(false);
   private readonly facesRev = signal(0);
   private readonly rejoinable = signal(false);
@@ -240,17 +239,13 @@ export class VersusFlow {
 
     const s = this.session;
     this.meSlot = computed(() => s.player.value?.slot ?? null);
-    this.allowed = computed(() => {
-      const me = this.meSlot.value;
-      const set = this.allowedSet.value;
-      return me !== null && set !== null && set.has(me);
-    });
+    // Every player may play Versus (the rules say the same): being logged in is enough.
+    this.allowed = computed(() => this.meSlot.value !== null);
     this.canRejoin = computed(() => this.rejoinable.value && this.meSlot.value !== null);
     this.here = computed(() => {
       if (!this.allowed.value || !this.lobbyOn.value) return [];
       const entries: HereEntry[] = this.lobbySig.value?.here.value ?? [];
-      const ok = this.allowedSet.value;
-      return entries.filter((e) => ok?.has(e.slot) === true).map((e) => ({ ...this.face(e.slot), busy: e.busy }));
+      return entries.map((e) => ({ ...this.face(e.slot), busy: e.busy }));
     });
     // The invite that would show: not one already answered here, and not (crossed invites) the one
     // from the player I have my own invite out to when my slot sorts before his: mine stands.
@@ -300,7 +295,6 @@ export class VersusFlow {
   onMenu(on: boolean): void {
     if (this.menuSig.peek() === on) return;
     this.menuSig.value = on;
-    if (on && this.allowedSet.peek() === null) void this.refreshAllowed(this.epoch);
     this.syncLobby();
   }
 
@@ -541,7 +535,6 @@ export class VersusFlow {
       this.outSig.value = null;
       this.lobbySig.value = null;
       this.lobbyOn.value = false;
-      this.allowedSet.value = null;
       this.dismissed.value = new Set();
       this.rejoinable.value = false;
       this._phase.value = { name: 'closed' };
@@ -564,17 +557,9 @@ export class VersusFlow {
       });
       this.lobby = lobby;
       this.lobbySig.value = lobby;
-      return Promise.all([this.refreshAllowed(ep), this.checkRejoin(ep), this.loadFaces(ep)]).then(() => undefined);
+      this.syncLobby();
+      return Promise.all([this.checkRejoin(ep), this.loadFaces(ep)]).then(() => undefined);
     }, () => undefined);
-  }
-
-  private async refreshAllowed(ep: number): Promise<void> {
-    const lobby = this.lobby;
-    if (lobby === null) return;
-    const set = await lobby.allowed();
-    if (ep !== this.epoch || set === 'offline') return;
-    this.allowedSet.value = set;
-    this.syncLobby();
   }
 
   /** The lobby runs while a player who may play Versus is not in a match: busy (greyed) off a menu. */

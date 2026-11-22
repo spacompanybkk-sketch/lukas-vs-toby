@@ -217,11 +217,10 @@ describe('who is here', () => {
     expect(lukas.here.value).toEqual([{ slot: 'p02', at: expect.any(Number), busy: true }]);
   });
 
-  it('every existing player (p05, no tick) may be here; allowed() lists the players', async () => {
+  it('every existing player (p05, no tick) may be here', async () => {
     const lukas = device('p01');
     lukas.start();
     await settle();
-    expect(await run(lukas.allowed())).toEqual(new Set(['p01', 'p02', 'p05']));
     const p05 = device('p05');
     expect(await run(p05.setBusy(false))).toBe('ok');
     await settle();

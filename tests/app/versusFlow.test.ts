@@ -29,10 +29,11 @@ import { MemoryStorage } from '../progress/memoryStorage';
 
 const BUILD = '2289558';
 const FRAME = 1000 / 30;
-const PINS: Record<string, string> = { p01: '123', p02: '456' };
+const PINS: Record<string, string> = { p01: '123', p02: '456', p03: '789' };
 const PEOPLE: Record<string, { name: string; picture: CardKey }> = {
   p01: { name: 'Lukas', picture: 'peashooter' },
   p02: { name: 'Toby', picture: 'brainEater' },
+  p03: { name: 'Mia', picture: 'sunflower' },
 };
 
 let clock: VirtualClock;
@@ -256,6 +257,20 @@ describe('who is here, the card, the invite panel', () => {
     expect(name(toby)).toBe('here');
     await until(() => lukas.flow.incoming.value === null);
     expect(db.peek(`${root}/vs/lobby/p01/in/p02`)).toBeNull();
+  });
+});
+
+describe('who is here: a player who joins later', () => {
+  it('a player created and logged in after the other device connected still appears in that device\'s list', async () => {
+    const lukas = await device('p01');
+    await until(() => lukas.flow.allowed.value);
+    // Mia's record does not exist yet when Lukas's device connects and starts its lobby.
+    const p = PEOPLE.p03!;
+    expect(await createFakeCloud(db, root).createPlayer(newSave('p03', p.name, p.picture, T0), await pinHash('p03', PINS.p03!))).toBe('ok');
+    const mia = await device('p03');
+    await until(seeing(lukas, 'p03'));
+    expect(lukas.flow.here.value).toEqual([{ slot: 'p03', name: 'Mia', picture: 'sunflower', busy: false }]);
+    expect(mia.flow.allowed.value).toBe(true);
   });
 });
 
