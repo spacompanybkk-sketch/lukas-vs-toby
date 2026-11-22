@@ -109,6 +109,8 @@ export interface SpeedLike {
   fast: ReadonlySignal<boolean>;
   /** The button is there (false in Versus and while a lesson waits for the player). */
   shown: ReadonlySignal<boolean>;
+  /** A lesson waits: the button stays, greyed, and a tap buzzes (absent: it is simply gone while not shown). */
+  held?: ReadonlySignal<boolean>;
   toggle(): void;
 }
 
@@ -406,10 +408,11 @@ function LiveBase({ hud, faction, playerFaction, portrait }: { hud: HudSignals; 
   return <BaseBar faction={faction} vm={hud.base.value[faction]} you={playerFaction === faction} portrait={portrait} />;
 }
 
-/** The 2X button; gone while a lesson waits for the player and once the match is decided. */
+/** The 2X button; greyed (not gone) while a lesson waits for the player, gone once the match is decided. */
 function LiveSpeed({ hud, speed }: { hud: HudSignals; speed: SpeedLike }) {
-  if (hud.result.value !== null || !speed.shown.value) return null;
-  return <SpeedButton fast={speed.fast.value} onToggle={() => speed.toggle()} />;
+  if (hud.result.value !== null) return null;
+  if (!speed.shown.value && speed.held?.value !== true) return null;
+  return <SpeedButton fast={speed.fast.value} held={!speed.shown.value} onToggle={() => speed.toggle()} />;
 }
 
 /** The pause button; gone once the match is decided. */

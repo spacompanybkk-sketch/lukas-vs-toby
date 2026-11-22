@@ -93,15 +93,16 @@
 
 /* The entrance: the boss's face card, bigger than the bar's face, shaking just left of the bar
    with its foot on the bar's foot, so it stays in the top band and never covers the lanes; it
-   pops in and then slides into the bar's face. A tap on it ends it (and the lawn's entrance show). */
+   pops in and then slides into the bar's face. A tap on it ends it (and the lawn's entrance show).
+   It is sized to the gap between the base bars' row above and the lanes below, so it never covers
+   the end of Lukas's (or Toby's) base bar: the bar's own face is 0.62 of the bar row, this is
+   about a third bigger than that. */
 .hud-boss-intro {
   position: absolute;
   right: calc(100% + 10px);
   bottom: 0;
-  width: calc(var(--hud-h) * 1.5);
-  height: calc(var(--hud-h) * 1.5);
-  min-width: 56px;
-  min-height: 56px;
+  width: max(44px, calc(var(--hud-h) * 1.1));
+  height: max(44px, calc(var(--hud-h) * 1.1));
   display: grid;
   place-items: center;
   border: 0;
@@ -122,7 +123,7 @@
 .hud-boss-intro__card .hud-boss__face-art { width: 82%; height: 82%; }
 @keyframes hud-boss-in {
   0% { opacity: 0; transform: scale(0.3); }
-  15% { opacity: 1; transform: scale(1.12); }
+  15% { opacity: 1; transform: scale(1.06); }
   25% { transform: scale(1); }
   85% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: translateX(calc(var(--hud-h) * 1.2)) scale(0.6); }

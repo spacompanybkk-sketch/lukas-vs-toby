@@ -90,7 +90,10 @@ describe('BattleSpeed', () => {
     // A tap that slips through while hidden changes nothing.
     sp.toggle();
     expect(sp.fast.value).toBe(true);
+    // The button itself stays on screen, held (greyed), and comes back lit.
+    expect(sp.held.value).toBe(true);
     lesson.value = false;
+    expect(sp.held.value).toBe(false);
     expect(sp.shown.value).toBe(true);
     expect(sp.factor()).toBe(2);
   });

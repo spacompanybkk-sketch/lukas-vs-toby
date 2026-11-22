@@ -88,6 +88,8 @@ export class BattleSpeed {
   readonly fast: ReadonlySignal<boolean>;
   /** The button is there: offered and no lesson waiting. */
   readonly shown: ReadonlySignal<boolean>;
+  /** Offered but a lesson waits: the button stays on screen, greyed, so it does not come and go between steps. */
+  readonly held: ReadonlySignal<boolean>;
 
   private readonly chosen: ReturnType<typeof signal<Speed>>;
   private readonly storage: Storage | undefined;
@@ -99,6 +101,7 @@ export class BattleSpeed {
     const lesson = opts.lesson ?? signal(false);
     this.fast = computed(() => this.chosen.value === FAST);
     this.shown = computed(() => this.offered && !lesson.value);
+    this.held = computed(() => this.offered && lesson.value);
   }
 
   /** The button: 1x ↔ 2x, remembered on the device. Does nothing while the button is not shown. */

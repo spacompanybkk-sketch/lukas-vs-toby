@@ -45,7 +45,8 @@ export function InviteCard({ draft, state, portraits, onSwap, onHead, onSend, on
   useEffect(() => { if (state === 'refused') uiSound('deny'); }, [state]);
   const press = (fn: () => void) => () => { uiSound('click'); fn(); };
   const stepTo = (to: number): void => {
-    if (head === null || to < 0 || to > HEAD_MAX || to === head.step) return;
+    if (head === null || to === head.step) return;
+    if (to < 0 || to > HEAD_MAX) { uiSound('deny'); return; } // greyed at the limit: a refusal buzzes
     uiSound('click');
     onHead(to);
   };
