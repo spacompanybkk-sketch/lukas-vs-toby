@@ -477,7 +477,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // attack every 9-12 s, phase 2 opens with its strike (the sandstorm / the rockfall) and runs
     // three patterns. Tunable start values: the level tasks tune hp (Pharaoh 5500-8000, Cactus 9000-13000).
     sandPharaoh: {
-      recharge: 0, hp: 6500, armor: 0, speed: 0.1,
+      recharge: 0, hp: 7000, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [

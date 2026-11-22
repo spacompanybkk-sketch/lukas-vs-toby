@@ -34,7 +34,7 @@ describe('world 1 after the move', () => {
   it('is 16 levels of LEVELS beside world 2\'s own (which are only world 2)', () => {
     expect([...P2, ...Z2].every((l) => l.world === 2)).toBe(true);
     expect(LEVELS.filter((l) => l.world === 1)).toHaveLength(16);
-    expect(LEVELS).toHaveLength(16 + P2.length + Z2.length);
+    expect(LEVELS.filter((l) => l.world <= 2)).toHaveLength(16 + P2.length + Z2.length);
   });
 });
 
@@ -189,7 +189,7 @@ describe('the world-2 bosses (rows: Task 4, tests/sim/bossWorld2.test.ts; looks:
   });
 
   it('only the world-2 boss levels use them (p2-8 the Howler, z2-8 the Melon, once each side has its levels)', () => {
-    for (const l of LEVELS.filter((x) => x.boss !== null)) {
+    for (const l of LEVELS.filter((x) => x.boss !== null && x.world <= 2)) {
       const want = l.world === 1 ? (l.side === 'plants' ? 'brainTitan' : 'elderOak') : (l.side === 'plants' ? 'moonHowler' : 'frostMelon');
       expect(l.boss!.key, l.id).toBe(want);
       expect(l.n, l.id).toBe(8);

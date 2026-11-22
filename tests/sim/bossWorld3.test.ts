@@ -20,7 +20,7 @@ const cactus = BALANCE.bosses.cactusKing;
 
 describe('the rows (content design §2)', () => {
   it('the Sand Pharaoh: a 7 s sand swirl (×0.5) at half health; mummy-wrapped sandstorm in phase 2', () => {
-    expect([pharaoh.hp, pharaoh.speed, pharaoh.col, pharaoh.guardFactor]).toEqual([6500, 0.1, undefined, undefined]);
+    expect([pharaoh.hp, pharaoh.speed, pharaoh.col, pharaoh.guardFactor]).toEqual([7000, 0.1, undefined, undefined]);
     expect(pharaoh.patterns.filter((p) => p.kind === 'shield')).toEqual([
       { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 0.5, bouncesStraight: false },
     ]);

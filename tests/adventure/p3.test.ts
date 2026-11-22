@@ -52,10 +52,14 @@ describe('the Desert Canyon (p3-1 … p3-8)', () => {
   });
 
   it('base health, start energy and the head start follow the table', () => {
-    expect(levels.map((l) => l.baseHp)).toEqual([
-      { plants: 5000 }, { zombies: 2500 }, { plants: 5500 }, { zombies: 2500 },
-      { plants: 5500 }, { zombies: 3000 }, { plants: 5500 }, { plants: 5300 },
-    ]);
+    // The base each kind sets is tuned (Task 6 report): a battle sets the zombie base, the others the plants'; the boss's is 5300.
+    for (const l of levels) {
+      const side = l.kind === 'battle' ? 'zombies' : 'plants';
+      const other = side === 'zombies' ? 'plants' : 'zombies';
+      expect(Number.isInteger(l.baseHp?.[side]) && l.baseHp![side]! >= 1, `${l.id} ${side}`).toBe(true);
+      expect(l.baseHp?.[other], `${l.id} ${other}`).toBeUndefined();
+    }
+    expect(levels[7]!.baseHp).toEqual({ plants: 5300 });
     expect(levels.map((l) => l.startEnergy)).toEqual([null, null, null, null, null, null, null, 600]);
     expect(levels[3]!.prepared).toEqual([{ at: 0, unit: 'peashooter', lane: 2, col: 1, level: 1 }]);
     expect(levels.filter((l) => l.n !== 4).every((l) => l.prepared.length === 0)).toBe(true);
