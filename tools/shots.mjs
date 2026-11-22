@@ -442,7 +442,7 @@ const SCENARIOS = [
     ['boss-pharaoh-summon', 'sandPharaoh', [9.05, 9.6]], // two Desert Zombies at 9 s
     ['boss-pharaoh-windup', 'sandPharaoh', [19.2, 19.9]], // the staff slam winds up 18.5-20 s
     ['boss-pharaoh-shield', 'sandPharaoh', [33, 35]], // the sand swirl from 32.3 s (up for 7 s)
-    ['boss-pharaoh-strike', 'sandPharaoh', [36.5, 37.2, 38.0, 38.35]], // the sandstorm winds up 36.2-38.2 s on three plants, then lands
+    ['boss-pharaoh-strike', 'sandPharaoh', [38.3, 39.0, 39.8, 40.2]], // the sandstorm winds up 38.1-40.1 s on three plants, then lands
     ['boss-pharaoh-mummies', 'sandPharaoh', [43.3, 44.0]], // two Skeleton Warriors wrapped as mummies at 43.2 s
     ['boss-pharaoh-phase2', 'sandPharaoh', [45]], // its eyes glowing
     ['boss-pharaoh-defeat', 'sandPharaoh', [66.8, 67.6, 68.3]], // falls at 66.5 s; crumbles at 67.6 s
@@ -450,7 +450,7 @@ const SCENARIOS = [
     ['boss-cactus-barrage', 'cactusKing', [9.05, 9.3, 9.9]], // the arms whip at 9 s
     ['boss-cactus-summon', 'cactusKing', [21.05, 21.5]], // two Kernel-pults at 21 s
     ['boss-cactus-shield', 'cactusKing', [37.0, 37.4]], // the spine plates clap shut at 36.5 s (up for 8 s)
-    ['boss-cactus-strike', 'cactusKing', [40.3, 41.2, 42.3, 42.6, 43.2]], // the rockfall winds up 40-42.5 s: shadows, boulders dropping; then the blow
+    ['boss-cactus-strike', 'cactusKing', [36.3, 37.2, 38.2, 38.7, 39.3]], // the rockfall winds up 36.1-38.6 s: rings, boulders dropping; then the blow
     ['boss-cactus-walnuts', 'cactusKing', [45.6, 46.2]], // two Walnuts at 45.5 s
     ['boss-cactus-defeat', 'cactusKing', [46.9, 47.6, 48.3]], // falls at 46.7 s; its shards at 47.9 s
   ].map(([name, boss, times]) => {
@@ -465,7 +465,7 @@ const SCENARIOS = [
   // The Desert Canyon's bosses close up (`&focus=lane,x,half`): the Pharaoh at the zombies' edge, the Cactus King at the plant base.
   ...[
     ['boss-pharaoh-close', 'sandPharaoh', [1.0, 19.3, 33.5, 37.2, 43.6, 45.5, 67.6], '2,6.6,2.4'],
-    ['boss-cactus-close', 'cactusKing', [1.0, 9.2, 37.4, 41.2, 42.6, 47.6], '2,1.2,2.6'],
+    ['boss-cactus-close', 'cactusKing', [1.0, 9.2, 37.4, 38.2, 38.7, 47.6], '2,1.2,2.6'],
   ].map(([name, boss, times, focus]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&focus=${focus}&cloud=fake`;
     return {
