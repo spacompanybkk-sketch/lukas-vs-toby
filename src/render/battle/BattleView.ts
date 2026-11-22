@@ -99,8 +99,10 @@ const ZOMBIE_BAR_FLOOR = 1.1;
 const BAR_ROWS = 6;
 /** A zombie keeps a raised bar row while a neighbour stays this much nearer than the overlap distance, so a pair at it does not flicker. */
 const BAR_HOLD = 0.1;
-/** With a boss up, a clump of zombies at it (they bite it all at once) shows this many bars; the rest of the clump's are left out. */
+/** With a plant boss up, a clump of zombies at it (they bite it all at once) shows this many bars; the rest of the clump's are left out. */
 const BOSS_CLUMP_BARS = 3;
+/** "At it": a zombie this near (tiles, along the lane) a plant boss is part of the clump biting it. */
+const BOSS_CLUMP_REACH = 2.5;
 
 /**
  * The lowest row a zombie's bar may take: rows of `BAR_LIFT` over `ZOMBIE_BAR_FLOOR`, the first
@@ -468,7 +470,11 @@ export class BattleView {
       const h = state.hazards[i];
       if (h && !this.puddles.has(h.id)) this.puddles.add(h.id, h.lane, h.x, h.radius, h.ticksLeft / TICKS_PER_SECOND);
     }
-    const bossUp = this.list.some((v) => v.boss && !v.dying);
+    let bossX = -1; // the plant boss's place, if one is up (a zombie boss's zombies are its own side)
+    for (let i = 0; i < units.length; i++) {
+      const b = units[i];
+      if (b && b.faction === 'plants' && b.hp > 0 && isBossKey(b.key)) bossX = b.x;
+    }
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
       if (!u || u.faction !== 'zombies') continue;
@@ -510,7 +516,7 @@ export class BattleView {
       const last = view.barRow;
       if (near && last > row && last <= top && (taken & (1 << last)) === 0) row = last;
       view.barRow = row;
-      view.barHidden = bossUp && row - base >= BOSS_CLUMP_BARS;
+      view.barHidden = bossX >= 0 && Math.abs(u.x - bossX) < BOSS_CLUMP_REACH && row - base >= BOSS_CLUMP_BARS;
     }
     const stamp = ++this.stamp;
     for (let i = 0; i < state.projectiles.length; i++) {

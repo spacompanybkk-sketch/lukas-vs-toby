@@ -75,6 +75,21 @@ describe('the hit flash under a crowd (A3)', () => {
   });
 });
 
+describe('a boss\'s shield flash (A3)', () => {
+  it('still shows right after a hit flash, 150 ms on', () => {
+    const ctx = setUp();
+    const events: SimEvent[] = [];
+    const u = spawnAtLevel(ctx.match.state, BALANCE, 'frostMelon', 2, 0.6, 1, events);
+    ctx.view.applyEvents(events, ctx.match.state);
+    ctx.run(0.5);
+    const unit = ctx.view.unit(u.id) as unknown as { hurt: () => void; flash: () => void; flashFor: number };
+    unit.hurt();
+    ctx.run(0.2);
+    unit.flash();
+    expect(unit.flashFor).toBe(0);
+  });
+});
+
 describe('the Melon\'s frozen barrage comes from the projectile\'s source (A3)', () => {
   it('flies frozen melons even when the boss\'s view is not there to ask', () => {
     const ctx = setUp();
@@ -99,12 +114,12 @@ describe('the Melon\'s frozen barrage comes from the projectile\'s source (A3)',
 });
 
 describe('the health bars at the Melon (A4)', () => {
-  function bars(withBoss: boolean): number {
+  function bars(withBoss: boolean, clumpX = 1.8): number {
     const ctx = setUp();
     const events: SimEvent[] = [];
     if (withBoss) spawnAtLevel(ctx.match.state, BALANCE, 'frostMelon', 2, 0.6, 1, events);
     for (let i = 0; i < 9; i++) {
-      const z = spawnAtLevel(ctx.match.state, BALANCE, 'skeletonWarrior', 2, 1.8, 1, events);
+      const z = spawnAtLevel(ctx.match.state, BALANCE, 'skeletonWarrior', 2, clumpX, 1, events);
       z.hp = Math.round(z.maxHp * 0.85);
     }
     ctx.view.applyEvents(events, ctx.match.state);
@@ -120,5 +135,9 @@ describe('the health bars at the Melon (A4)', () => {
 
   it('leaves a clump away from any boss as it was: every bar', () => {
     expect(bars(false)).toBe(9);
+  });
+
+  it('leaves a clump far from the Melon alone too: every bar, the rule is for the clump biting it', () => {
+    expect(bars(true, 8.5)).toBe(9);
   });
 });

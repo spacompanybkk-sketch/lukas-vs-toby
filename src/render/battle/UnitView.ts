@@ -289,21 +289,26 @@ export class UnitView {
   /** Struck: a white flash, the recoil if it is not busy with something else. */
   hurt(): void {
     if (this.dying) return;
-    this.startFlash();
+    this.startFlash(this.boss ? BOSS_FLASH_GAP : FLASH_GAP);
     // A hit does not cut a bite, a shot or a spawn short; it only flashes.
     if (this.model.clip === this.loopName && this.mergeFor < 0) this.model.play('hit');
   }
 
   /** A flash with no recoil: the base's swat, a shield taking the blow. */
   flash(): void {
-    if (!this.dying) this.startFlash();
+    if (this.dying) return;
+    // Held to the plain gap since the last flash, not the boss's longer hit gap: a shield's flash after a hit still shows.
+    const since = (this.boss ? BOSS_FLASH_GAP : FLASH_GAP) - this.flashCool;
+    if (this.flashCool > 0 && since < FLASH_GAP) return;
+    this.flashFor = 0;
+    this.flashCool = this.boss ? BOSS_FLASH_GAP : FLASH_GAP;
   }
 
   /** Starts the white flash, unless this unit flashed less than its gap ago. */
-  private startFlash(): void {
+  private startFlash(gap: number): void {
     if (this.flashCool > 0) return;
     this.flashFor = 0;
-    this.flashCool = this.boss ? BOSS_FLASH_GAP : FLASH_GAP;
+    this.flashCool = gap;
   }
 
   /** The Brain Eater's throw: the held brain goes with the shot and a new one is in hand later. */
