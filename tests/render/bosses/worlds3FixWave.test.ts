@@ -153,6 +153,32 @@ describe('nothing is made in the middle of the fight', () => {
     expect(fx.dressed.some((d) => d.owner !== null)).toBe(true);
   });
 
+  it('the Pharaoh\'s dither geometries are made when it comes on, not at its first sandstorm', () => {
+    const s = bossStage('sandPharaoh');
+    s.play(0.5);
+    const fx = s.view.bossFx as unknown as { ditherA: unknown; ditherB: unknown };
+    expect(fx.ditherA).not.toBeNull();
+    expect(fx.ditherB).not.toBeNull();
+    const a = fx.ditherA;
+    s.until((e) => e.type === 'bossStrike' && e.windup);
+    expect(fx.ditherA).toBe(a);
+  });
+
+  it('each boss draws its pieces at no size for a few frames as it comes on (to upload them), then they go', () => {
+    for (const key of ['sandPharaoh', 'cactusKing'] as const) {
+      const s = bossStage(key);
+      s.play(1 / 30); // one step, two frames: it has come on, one warm frame is left
+      const warm: Mesh[] = [];
+      s.scene.traverse((o) => { if (o.name === 'boss-warm') warm.push(o as Mesh); });
+      expect(warm.length, key).toBeGreaterThan(3);
+      for (const m of warm) expect(m.scale.x, key).toBe(0);
+      s.view.bossFx.update(DT);
+      let left = 0;
+      s.scene.traverse((o) => { if (o.name === 'boss-warm') left++; });
+      expect(left, key).toBe(0);
+    }
+  });
+
   it('a boulder fight draws without allocating', () => {
     const s = bossStage('cactusKing');
     s.until((e) => e.type === 'bossStrike' && e.windup);

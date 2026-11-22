@@ -1,4 +1,4 @@
-import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
+import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Material, type Object3D } from 'three';
 import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
 import { BOSS_LOOK } from '../../data/bossLooks';
 import type { BossLook, StrikeWarning } from '../../data/bossLooks';
@@ -101,6 +101,8 @@ const BOULDER_ROCK = [hex('#B5482A'), hex('#D9662F'), hex('#8A2F1A'), hex('#F2A0
 /** The warning ring under each boulder (hot orange, apart from the red tile frames) and the boulders and rings made when the fight starts. */
 const BOULDER_RING = '#FF8A1F';
 const BOULDER_POOL = 4;
+/** How many frames the fight's pieces are drawn at no size as it comes on (so each is uploaded before it is needed). */
+const WARM_FRAMES = 3;
 /** The shield plates each plate show slides in: bark (`barkL`, `barkR`) or ice (`iceL`, `iceR`). */
 const PLATES = { bark: ['barkL', 'barkR'], ice: ['iceL', 'iceR'] } as const;
 /**
@@ -194,6 +196,9 @@ export class BossFx {
   private boulderGeometry: ReturnType<BoxBatch['build']> | null = null;
   private boulderMaterial: MeshStandardMaterial | null = null;
   private readonly boulders: Mesh[] = [];
+  /** The pieces drawn at no size while the fight starts (see `warmUp`), and the frames they still have. */
+  private readonly warm: Mesh[] = [];
+  private warmFrames = 0;
   private boulderRingGeometry: ReturnType<BoxBatch['build']> | null = null;
   private boulderRingMaterial: MeshBasicMaterial | null = null;
   private readonly boulderRings: Mesh[] = [];
@@ -329,22 +334,60 @@ export class BossFx {
   private prebuild(look: BossLook): void {
     if (look.fx.strikeBlow === 'boulder') this.growBoulders(BOULDER_POOL);
     const dress = look.fx.summonLook;
-    if (dress === undefined) return;
-    while (this.dressed.filter((d) => d.look === dress).length < DRESS_POOL / 2 && this.dressed.length < DRESS_POOL) {
-      const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-      if (dress === 'pups') {
-        this.earGeometry ??= wolfEars();
-        const mesh = new Mesh(this.earGeometry, material);
-        mesh.name = 'boss-pup-ears';
-        this.dressed.push({ look: dress, meshes: [mesh], parts: ['head'], material, owner: null, root: null, source: null });
-      } else {
-        this.wrapGeometry ??= mummyWrap();
-        const head = new Mesh(this.wrapGeometry, material);
-        const torso = new Mesh(this.wrapGeometry, material);
-        head.name = torso.name = 'boss-mummy-wrap';
-        this.dressed.push({ look: dress, meshes: [head, torso], parts: ['head', 'torso'], material, owner: null, root: null, source: null });
-      }
+    if (dress !== undefined) {
+      let have = 0;
+      for (let i = 0; i < this.dressed.length; i++) if ((this.dressed[i] as SummonDress).look === dress) have++;
+      for (; have < DRESS_POOL / 2 && this.dressed.length < DRESS_POOL; have++) this.dressed.push(this.makeDress(dress));
     }
+    // A warning drawn as a dither (the Pharaoh's smoke) swaps two checker geometries: made now, not at its first strike.
+    if (Object.values(look.fx.strikeWarnings ?? {}).some((w) => w.dither === true) && this.ditherA === null) {
+      this.ditherA = ditherFill(0);
+      this.ditherB = ditherFill(1);
+    }
+    this.warmUp();
+  }
+
+  /** A fresh dress slot (no owner yet): wolf ears on a head, or wraps on a head and a torso. */
+  private makeDress(look: 'pups' | 'mummies'): SummonDress {
+    const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+    if (look === 'pups') {
+      this.earGeometry ??= wolfEars();
+      const mesh = new Mesh(this.earGeometry, material);
+      mesh.name = 'boss-pup-ears';
+      return { look, meshes: [mesh], parts: ['head'], material, owner: null, root: null, source: null };
+    }
+    this.wrapGeometry ??= mummyWrap();
+    const head = new Mesh(this.wrapGeometry, material);
+    const torso = new Mesh(this.wrapGeometry, material);
+    head.name = torso.name = 'boss-mummy-wrap';
+    return { look, meshes: [head, torso], parts: ['head', 'torso'], material, owner: null, root: null, source: null };
+  }
+
+  /**
+   * The fight's own geometry and materials are drawn once, at no size, for a few frames as it comes
+   * on: three.js compiles a program and uploads a buffer at its first draw, which would otherwise
+   * land as a hitch on the first warning, shield or summon. Nothing shows (every piece is scaled to nothing).
+   */
+  private warmUp(): void {
+    const pairs: [ReturnType<BoxBatch['build']>, Material][] = [
+      [this.frameGeometry, this.strikeFrameMaterial],
+      [this.fillGeometry, this.strikeFillMaterial],
+    ];
+    if (this.ditherA !== null) pairs.push([this.ditherA, this.strikeFillMaterial], [this.ditherB as ReturnType<BoxBatch['build']>, this.strikeFillMaterial]);
+    if (this.boulderGeometry !== null) pairs.push([this.boulderGeometry, this.boulderMaterial as Material], [this.boulderRingGeometry as ReturnType<BoxBatch['build']>, this.boulderRingMaterial as Material]);
+    if (this.wrapGeometry !== null) pairs.push([this.wrapGeometry, (this.dressed[0] as SummonDress).material]);
+    if (this.earGeometry !== null) pairs.push([this.earGeometry, (this.dressed[0] as SummonDress).material]);
+    if (this.sandMaterial !== null) for (const g of this.sandGeometries) pairs.push([g, this.sandMaterial]);
+    for (const [geometry, material] of pairs) {
+      const mesh = new Mesh(geometry, material);
+      mesh.name = 'boss-warm';
+      mesh.scale.setScalar(0);
+      mesh.position.set(5, 0.5, 2.5);
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.warm.push(mesh);
+    }
+    this.warmFrames = WARM_FRAMES;
   }
 
   /** Ends the entrance at once (a tap). */
@@ -500,19 +543,7 @@ export class BossFx {
     }
     if (slot === undefined) {
       if (this.dressed.length >= DRESS_POOL) return;
-      const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-      if (look === 'pups') {
-        this.earGeometry ??= wolfEars();
-        const mesh = new Mesh(this.earGeometry, material);
-        mesh.name = 'boss-pup-ears';
-        slot = { look, meshes: [mesh], parts: ['head'], material, owner: null, root: null, source: null };
-      } else {
-        this.wrapGeometry ??= mummyWrap();
-        const head = new Mesh(this.wrapGeometry, material);
-        const torso = new Mesh(this.wrapGeometry, material);
-        head.name = torso.name = 'boss-mummy-wrap';
-        slot = { look, meshes: [head, torso], parts: ['head', 'torso'], material, owner: null, root: null, source: null };
-      }
+      slot = this.makeDress(look);
       this.dressed.push(slot);
     }
     slot.owner = view;
@@ -725,6 +756,10 @@ export class BossFx {
   /** Moves the shows on by `dt`. Allocates nothing. */
   update(dt: number): void {
     this.time += dt;
+    if (this.warmFrames > 0 && --this.warmFrames === 0) {
+      for (let i = 0; i < this.warm.length; i++) (this.warm[i] as Mesh).removeFromParent();
+      this.warm.length = 0;
+    }
     const boss = this.boss;
     if (this.entranceLeft > 0) {
       this.entranceLeft -= dt;
