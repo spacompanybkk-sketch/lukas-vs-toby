@@ -86,9 +86,9 @@ describe('the Backyard (Task 8 data)', () => {
     expect([z5.mode, z5.invulnerableBase, z5.goalTicks]).toEqual(['conveyor', null, seconds(150)]);
   });
 
-  it('the clocks follow the table: p1-3 90 s, p1-6 150 s, z1-3 120 s, z1-6 150 s', () => {
+  it('the clocks follow the table: p1-3 90 s, p1-6 150 s, z1-3 150 s, z1-6 180 s', () => {
     const secs = (id: string): number | null => BACKYARD.find((l) => l.id === id)!.seconds;
-    expect(['p1-3', 'p1-6', 'z1-3', 'z1-6'].map(secs)).toEqual([90, 150, 120, 150]);
+    expect(['p1-3', 'p1-6', 'z1-3', 'z1-6'].map(secs)).toEqual([90, 150, 150, 180]);
   });
 
   it('a level\'s own base health is a whole number from 1 and reaches the match (the other side keeps the balance\'s)', () => {

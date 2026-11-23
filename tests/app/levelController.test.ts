@@ -27,7 +27,7 @@ describe('a level\'s HUD info', () => {
     expect(info.lastWave).toBeCloseTo(122);
   });
   it('breakthrough: the stars are on the clock', () => {
-    expect(level('z1-3').level).toMatchObject({ mode: 'breakthrough', goalSeconds: 120, clockStars: true, enemy: 'plants' });
+    expect(level('z1-3').level).toMatchObject({ mode: 'breakthrough', goalSeconds: 150, clockStars: true, enemy: 'plants' });
   });
   it('conveyor: the belt is the player\'s', () => {
     expect(level('p1-5').level).toMatchObject({ mode: 'conveyor', belt: true, noEnergy: true });
