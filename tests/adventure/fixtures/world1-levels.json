@@ -1075,7 +1075,7 @@
     "level": 1
    }
   ],
-  "seconds": 120,
+  "seconds": 150,
   "belt": null,
   "boss": null,
   "startEnergy": null,
@@ -1347,7 +1347,7 @@
     "level": 1
    }
   ],
-  "seconds": 150,
+  "seconds": 180,
   "belt": null,
   "boss": null,
   "startEnergy": null,

@@ -105,9 +105,9 @@ const ZOMBIES: LevelDef[] = [
   },
   {
     // Teaches: a Skeleton Warrior walks in front and takes the peas. Crack a small garden (lanes
-    // 1 and 3) in two minutes. Unlocks the Desert Zombie.
+    // 1 and 3) in 150 s. Unlocks the Desert Zombie.
     ...base('z1-3', 3), side: 'zombies', kind: 'breakthrough', cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior'],
-    seconds: 120, baseHp: { plants: 1000 },
+    seconds: 150, baseHp: { plants: 1000 },
     prepared: garden('peashooter', [[1, 2], [1, 3], [3, 2], [3, 3]]).concat(garden('walnutBomb', [[1, 5], [3, 5]])),
     unlocks: 'desertZombie',
   },
@@ -131,10 +131,10 @@ const ZOMBIES: LevelDef[] = [
     spells: true,
   },
   {
-    // Tests: break through a wall of Walnut Bombs (their blasts!) in 150 s. Unlocks the Skeleton Archer.
+    // Tests: break through a wall of Walnut Bombs (their blasts!) in 180 s. Unlocks the Skeleton Archer.
     ...base('z1-6', 6), side: 'zombies', kind: 'breakthrough',
     cards: ['brainEater', 'veryFastWalker', 'skeletonWarrior', 'desertZombie'],
-    seconds: 150, baseHp: { plants: 600 },
+    seconds: 180, baseHp: { plants: 600 },
     prepared: garden('walnutBomb', [[0, 5], [1, 5], [2, 5], [3, 5], [4, 5]]).concat(garden('peashooter', [[0, 2], [2, 2], [4, 2]])),
     spells: true, unlocks: 'skeletonArcher',
   },
