@@ -979,6 +979,7 @@ test('walk: a five-year-old by taps only through z3-1, z3-2, z3-3 and the Cactus
         const energy = await page.evaluate(() => (window.__lvt as any).session.controller.match.state.players.zombies.energy as number);
         if (!(price <= energy)) continue;
         const dBefore = await denied(page);
+        // A tap on the card already in hand keeps it in hand (zombie side), so this re-tap never costs a send; any refusal counted below is a real one.
         await press(el); taps += 1;
         await tapAt(page, await tilePoint(page, lane % 5, 9)); taps += 1;
         await frames(page, 2);

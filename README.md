@@ -163,6 +163,8 @@ thin pixel corner brackets (zombies: the spawn end of each lane), worked out by 
 check; under the glove only the lesson's tile lights. A rock tile never lights. A lava tile may
 be planted on, so it lights, but with thick orange brackets inked black: you can, but it burns.
 
+A second tap on the card already in hand puts a plant card down, but on the zombie side it does nothing: Toby's card stays in hand for the next send.
+
 **The bosses.** Level 8 of each side. Lukas meets the **Brain Titan**, who walks the middle lane,
 slams the plants in front of him and puts up a shield that peas bounce off (lobbed shots still
 hurt). Toby meets the **Elder Oak**, who guards the plant base across the middle lanes, lobs

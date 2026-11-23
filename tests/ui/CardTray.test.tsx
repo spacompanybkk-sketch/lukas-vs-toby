@@ -97,6 +97,15 @@ describe('CardTray', () => {
     expect(onDeselect).toHaveBeenCalledTimes(1);
   });
 
+  it('zombie side: tapping the selected card again keeps it in hand (no deselect, no select call)', () => {
+    const onDeselect = vi.fn();
+    const props = mount({ side: 'zombies', selected: 'sunflower', onDeselect });
+    act(() => card('sunflower').click());
+    expect(onDeselect).not.toHaveBeenCalled();
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(card('sunflower').classList.contains('is-selected')).toBe(true);
+  });
+
   it('pointer down on a card selects it at once, and the click that follows does not deselect', () => {
     const onDeselect = vi.fn();
     const props = mount({ onDeselect });

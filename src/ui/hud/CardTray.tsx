@@ -17,7 +17,7 @@ export interface CardTrayProps {
   denied: number;
   /** Called with the card's unit on every tap, including a tap on the selected card. */
   onSelect(unit: UnitKey): void;
-  /** Called after `onSelect` when the tapped card was already selected (a second tap deselects). */
+  /** Called after `onSelect` when the tapped card was already selected (a second tap deselects; on the zombie side it does nothing). */
   onDeselect?(): void;
   /** Plants only: whether the shovel is on, and its toggle. No `onShovel`, no shovel button. */
   shovel?: boolean;
@@ -77,6 +77,8 @@ export function CardTray(props: CardTrayProps) {
         pressSelected = null;
         const p = latest.current;
         const was = p.selected === unit;
+        // Zombie side: the card in hand stays in hand (Toby re-taps it before every send); a no-op, no deselect.
+        if (was && p.side === 'zombies') return;
         p.onSelect(unit);
         if (was) p.onDeselect?.();
       },
