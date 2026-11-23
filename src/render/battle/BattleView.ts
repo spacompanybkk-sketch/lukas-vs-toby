@@ -296,6 +296,9 @@ export class BattleView {
   /** Cactus needles (the Cactus King's barrage) waiting to be used again. */
   private readonly spareNeedle: Object3D[] = [];
   private stamp = 0;
+  /** The shot geometries drawn at no size while the view comes on (see `warmShots`), and the frames they still have. */
+  private readonly warmGroup = new Group();
+  private warmFrames = 0;
   /** What the units' statuses look like (stars, sand, rope, bubbles, flames), and Brain Rot's puddles. */
   readonly marks = new StatusMarks();
   readonly puddles = new Hazards();
@@ -370,6 +373,25 @@ export class BattleView {
     }
     for (let i = 0; i < 6; i++) this.blasts.push({ at: new Vector3(), radius: 1, delay: 0, active: false, feel: BLAST_DEFAULT });
     this.pending = new PendingMarks(scene, (unit) => this.pendingGhost(unit));
+    this.warmShots();
+  }
+
+  /**
+   * Every shot's geometry (each kind, and the burning pea) is drawn once, at no size, for a few frames as the
+   * view comes on. three.js uploads a buffer at its first draw, so a shot that only some volleys carry (the
+   * Kernel-pult's butter is a 30% roll) would otherwise reach the GPU on whichever visit first shows it.
+   */
+  private warmShots(): void {
+    const made = [...Object.keys(this.spare).map((kind) => makeProjectile(kind as ProjectileKind)), makeProjectile('pea', true)];
+    for (const object of made) {
+      object.name = 'projectile-warm';
+      object.scale.setScalar(0);
+      object.position.set(5, 0.5, 2.5);
+      object.frustumCulled = false;
+      this.warmGroup.add(object);
+    }
+    this.scene.add(this.warmGroup);
+    this.warmFrames = 3;
   }
 
   /** Units on the lawn, those still falling apart included. */
@@ -581,6 +603,7 @@ export class BattleView {
     const a = Math.min(1, Math.max(0, alpha));
     this.time = timeSeconds;
     this.pending.frame(realSeconds);
+    if (this.warmFrames > 0 && --this.warmFrames === 0) this.warmGroup.removeFromParent();
 
     // Units: move, animate, and take away the ones that have finished dying.
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -899,6 +922,7 @@ export class BattleView {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.warmGroup.removeFromParent();
     for (const marker of this.markers) marker.removeFromParent();
     this.markersShown = 0;
     for (const view of this.list) view.dispose();
