@@ -61,7 +61,7 @@ async function quit(page: Page): Promise<void> {
   await press(page.locator('[data-screen="play"] [data-action="back"]'));
 }
 
-/** Picks `card` from the tray by a tap (unless it is already picked: a tap on the picked card puts it down). */
+/** Picks `card` from the tray by a tap (unless it is already picked: on the plant side a tap on the picked card puts it down). */
 async function pick(page: Page, card: string): Promise<void> {
   const picked = await page.evaluate(() => (window.__lvt as any).session.controller.hud.selected.value as string | null);
   if (picked !== card) await press(page.locator(`[data-hud="tray"] [data-card="${card}"]`));

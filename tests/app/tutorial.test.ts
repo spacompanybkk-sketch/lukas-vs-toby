@@ -238,6 +238,21 @@ describe('p1-1 by the glove', () => {
     expect(c.tutorial!.taught.peek()).toEqual(['p1-3.card', 'p1-3.tile', 'p1-3.merge-card', 'p1-3.merge']);
   });
 
+  it('z1-3: the Brain Eater card is still selected after the send, and tapping it again (the zombie tray re-selects, never deselects) ends merge-card', () => {
+    const c = taught('z1-3');
+    run(c, 2);
+    c.select('brainEater');
+    expect(c.click({ lane: 2, col: 9 }, null)).toBeNull();
+    c.step();
+    run(c, seconds(25));
+    expect(c.hud.selected.peek()).toBe('brainEater');
+    expect(c.tutorial!.current?.id).toBe('z1-3.merge-card');
+    c.select('brainEater'); // the tray's click on the already-picked card
+    c.step();
+    expect(c.hud.selected.peek()).toBe('brainEater');
+    expect(c.tutorial!.current?.id).toBe('z1-3.merge');
+  });
+
   it('the held merge: a pointer on the plant\'s head or arrow over a free tile behind merges, and the preview shows the plant\'s tile', () => {
     const c = taught('p1-3');
     run(c, 2);

@@ -18,12 +18,14 @@ describe('sending the same card twice by taps', () => {
     c.match.state.players[side].energy = 900;
     return c;
   };
-  /** The tray's own handling of a tap on `unit` (CardTray `click`): select it; a tap on the picked card deselects on the plant side only. */
+  /**
+   * Mirrors the tray's handling of a tap on `unit` (CardTray `click`): select it; a tap on the picked card deselects on the
+   * plant side only. This re-implements the tray, so the real behaviour is pinned by tests/ui/CardTray.test.tsx.
+   */
   const tapCard = (c: BattleController, side: Faction, unit: 'veryFastWalker' | 'peashooter'): void => {
     const was = c.hud.selected.peek() === unit;
-    if (was && side === 'zombies') return;
     c.select(unit);
-    if (was) c.select(null);
+    if (was && side === 'plants') c.select(null);
   };
 
   it('zombies: card tap, lane tap, same card tap, lane tap sends twice; nothing is denied and energy is spent twice', () => {

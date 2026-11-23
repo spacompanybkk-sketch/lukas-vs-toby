@@ -10,7 +10,7 @@ import {
 // the test hooks (`__lvt.fastForward`, `__lvt.damageBase`) used only to save time or end a match.
 // Every test also fails on any console error or uncaught exception (see fixtures.ts).
 
-/** Selects a card unless it is selected already (a second click on a selected card would deselect it). */
+/** Selects a card unless it is selected already (a second click on a selected plant card would deselect it). */
 async function selectCard(page: Page, key: string): Promise<void> {
   const card = page.locator(`[data-card="${key}"]`);
   if ((await card.getAttribute('aria-pressed')) !== 'true') await card.click();

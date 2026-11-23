@@ -134,8 +134,8 @@ test('Toby merges by touch: a tap on the walking zombie, and a drag of its card 
   await page.touchscreen.tap(head.x, head.y);
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: zombie.id, level: 2 });
   await waitCardReady(page, 'brainEater');
-  await card.tap(); // deselect: the drag starts from a card not yet selected
-  await expect(card).toHaveAttribute('aria-pressed', 'false');
+  await card.tap(); // zombie side: a tap on the picked card keeps it in hand (the drag starts from it)
+  await expect(card).toHaveAttribute('aria-pressed', 'true');
   await dragTouch(page, await cardMiddle(page, 'brainEater'), () => unitPoint(page, zombie.id, 0.5));
   await expect.poll(() => mergedEvents(page)).toContainEqual({ unitId: zombie.id, level: 3 });
   const zombies = (await snapshot(page)).units.filter((u) => u.faction === 'zombies' && u.key === 'brainEater');
