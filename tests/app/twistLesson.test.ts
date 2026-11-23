@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { LEVELS, levelById } from '../../src/adventure/levels';
 import { TEACHES } from '../../src/adventure/levels/teaches';
 import { BattleController } from '../../src/app/BattleController';
-import { TWIST_HINT_SECONDS, stepsToTeach } from '../../src/app/tutorial';
+import { TWIST_HINT_SECONDS, stepsToTeach, twistShown } from '../../src/app/tutorial';
+import { NO_TWIST } from '../../src/sim/lawn';
 import { seconds } from '../../src/data/balance';
 import { hashState } from '../../src/sim/hash';
 import { W2, lessonController, w2Save } from './world2Lessons';
+import { W3, w3Controller, w3Save } from './world3Lessons';
 
 // Step 2, Task 3: the twist lesson (`show: 'twist'`) and the four new-card glove lessons.
 
@@ -197,4 +199,142 @@ describe('the new-card glove lessons (card, then tile, as p1-2)', () => {
     expect(c.tutorial).not.toBeNull();
     expect(c.tutorial!.current).toBeNull();
   });
+});
+
+// Worlds step 3, Task 3: the rocks pan (plan Rulings 7-8) and the world-3 lessons.
+describe('twistShown with rocks (Ruling 7)', () => {
+  const rocky = { ...NO_TWIST, rocks: [12, 21] };
+  it('a lawn whose only twist is rocks shows rocks, whatever the step is called', () => {
+    expect(twistShown(rocky, 'p3-1.rocks')).toBe('rocks');
+    expect(twistShown(rocky, 'p3-1.twist')).toBe('rocks');
+  });
+  it('fog and ice keep their precedence; the id picks among several; no twist at all shows nothing', () => {
+    expect(twistShown({ ...rocky, fog: 5 }, 'x.twist')).toBe('fog');
+    expect(twistShown({ ...rocky, ice: { lanes: [1], speed: 1.6 } }, 'x.twist')).toBe('ice');
+    expect(twistShown({ ...rocky, fog: 5 }, 'x.rocks')).toBe('rocks');
+    expect(twistShown({ ...rocky, fog: 5 }, 'x.fog')).toBe('fog');
+    expect(twistShown(NO_TWIST, 'x.rocks')).toBeNull();
+    expect(twistShown({ ...NO_TWIST, fog: 7 }, 'p2-1.fog')).toBe('fog');
+    expect(twistShown({ ...NO_TWIST, ice: { lanes: [2], speed: 1.6 } }, 'z2-1.ice')).toBe('ice');
+  });
+});
+
+describe('the world-3 lessons in TEACHES (content design §3)', () => {
+  it('the rocks pans, and each new card points at its card, then its tile', () => {
+    expect(TEACHES['p3-1']).toEqual([{ id: 'p3-1.rocks', show: 'twist', until: 'tapped' }]);
+    expect(TEACHES['z3-1']).toEqual([{ id: 'z3-1.rocks', show: 'twist', until: 'tapped' }]);
+    const lesson = (id: string) => TEACHES[id]!.map((s) => (s.show === 'tile' ? `${s.show} ${s.card} ${s.lane},${s.col}${s.after ? ` after ${s.after}` : ''}` : s.show === 'card' ? `card ${s.card}` : s.show));
+    expect(lesson('p3-4')).toEqual(['card torchwood', 'tile torchwood 2,2']);
+    expect(lesson('p3-7')).toEqual(['card cherryBomber', 'tile cherryBomber 2,4 after foe']);
+    expect(lesson('z3-4')).toEqual(['card necromancer', 'tile necromancer 2,9']);
+    expect(lesson('z3-7')).toEqual(['card tridentZombie', 'tile tridentZombie 1,9']);
+    expect(TEACHES['p3-4']!.map((s) => s.id)).toEqual(['p3-4.torch-card', 'p3-4.torch-tile']);
+    expect(TEACHES['p3-7']!.map((s) => s.id)).toEqual(['p3-7.cherry-card', 'p3-7.cherry-tile']);
+    expect(TEACHES['z3-4']!.map((s) => s.id)).toEqual(['z3-4.necro-card', 'z3-4.necro-lane']);
+    expect(TEACHES['z3-7']!.map((s) => s.id)).toEqual(['z3-7.trident-card', 'z3-7.trident-lane']);
+    // The unlock levels teach nothing (the result's turntable shows the new unit).
+    for (const id of ['p3-3', 'p3-6', 'z3-3', 'z3-6']) expect(TEACHES[id], id).toBeUndefined();
+  });
+
+  it('no glove tile is a rock (the stand-ins\' rocks, checked with match.check)', () => {
+    for (const id of ['p3-4', 'p3-7', 'z3-4', 'z3-7']) {
+      const def = W3[id]!;
+      const c = w3Controller(def);
+      const tile = def.teaches!.find((s) => s.show === 'tile');
+      if (tile?.show !== 'tile') throw new Error('a tile step');
+      const side = def.side;
+      expect(c.match.check({ type: 'place', faction: side, unit: tile.card, lane: tile.lane, col: tile.col }), id).toBeNull();
+    }
+  });
+});
+
+describe.each([['p3-1', 'plants'], ['z3-1', 'zombies']] as const)('%s: the rocks pan', (id, side) => {
+  const def = W3[id]!;
+
+  it('holds the match from its first tick with no glove; the twist shows (rocks); 3 s on the glove says "tap"; Pause waits', () => {
+    const c = w3Controller(def);
+    const t = c.tutorial!;
+    expect(t.current?.id).toBe(`${id}.rocks`);
+    c.step();
+    run(c, 2);
+    expect(t.holding).toBe(true);
+    expect(t.twist.peek()).toEqual({ step: `${id}.rocks`, kind: 'rocks', holding: true });
+    expect(t.glove.peek()).toBeNull();
+    run(c, seconds(TWIST_HINT_SECONDS) - 5);
+    expect(t.glove.peek()).toBeNull();
+    run(c, 5);
+    expect(t.glove.peek()).toEqual({ aim: { kind: 'tap' }, holding: true, step: `${id}.rocks` });
+    run(c, seconds(30));
+    expect(tick(c)).toBe(1);
+    c.setPaused(true);
+    run(c, seconds(5));
+    c.tapTwist(); // a tap on the menu is no tap on the pan
+    expect(t.current?.id).toBe(`${id}.rocks`);
+    c.setPaused(false);
+    expect(t.holding).toBe(true);
+  });
+
+  it('any tap ends it - the tap itself does nothing else; the match runs on', () => {
+    const taps: ((c: BattleController) => void)[] = [
+      (c) => { c.click({ lane: 0, col: 3 }, null); }, // on a rock
+      (c) => { c.click({ lane: 2, col: side === 'plants' ? 1 : 9 }, null); },
+      (c) => { c.click(null, null); },
+      (c) => c.select(side === 'plants' ? 'peashooter' : 'brainEater'),
+      (c) => c.tapTwist(),
+    ];
+    for (const tap of taps) {
+      const c = w3Controller(def);
+      run(c, 4);
+      tap(c);
+      expect(c.tutorial!.current).toBeNull();
+      expect(c.tutorial!.taught.peek()).toEqual([`${id}.rocks`]);
+      expect(c.tutorial!.twist.peek()).toBeNull();
+      expect(c.hud.denied.peek()).toBe(0);
+      run(c, 30);
+      expect(c.match.state.units.filter((u) => u.faction === side)).toHaveLength(0);
+      expect(tick(c)).toBe(31);
+    }
+  });
+
+  it('afterwards a tap on a rock buzzes, shakes and places nothing', () => {
+    const c = w3Controller(def);
+    run(c, 4);
+    c.tapTwist();
+    const card = side === 'plants' ? 'peashooter' : 'brainEater';
+    c.select(card);
+    if (side === 'zombies') return; // zombies choose a lane, not a tile: nothing of theirs sits on a rock
+    expect(c.click({ lane: 0, col: 3 }, null)).toBe('rock');
+    expect(c.hud.denied.peek()).toBe(1);
+    run(c, 3);
+    expect(c.match.state.units.filter((u) => u.faction === 'plants')).toHaveLength(0);
+  });
+
+  it('shows once per player; HELP (replay) shows it again', () => {
+    const save = { ...w3Save(side), teached: [`${id}.rocks`] };
+    expect(w3Controller(def, 3, save).tutorial).toBeNull();
+    const again = w3Controller(def, 3, save, true);
+    run(again, 3);
+    expect(again.tutorial!.twist.peek()?.kind).toBe('rocks');
+  });
+});
+
+describe('the world-3 glove lessons (card, then tile, as p1-2)', () => {
+  for (const id of ['p3-4', 'z3-4', 'z3-7']) {
+    it(`${id}: the card, then its tile; the new unit stands there`, () => {
+      const def = W3[id]!;
+      const c = w3Controller(def);
+      const [cardStep, tileStep] = def.teaches!;
+      if (cardStep?.show !== 'card' || tileStep?.show !== 'tile') throw new Error('card then tile');
+      for (let i = 0; i < seconds(60) && !c.tutorial!.holding; i++) c.step();
+      expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: cardStep.card }, holding: true, step: cardStep.id });
+      c.select(cardStep.card);
+      const aim = c.tutorial!.glove.peek()!.aim;
+      if (aim.kind !== 'tile') throw new Error('tile');
+      expect(aim.lane).toBe(tileStep.lane);
+      expect(c.click({ lane: aim.lane, col: aim.col }, null)).toBeNull();
+      c.step();
+      expect(c.match.state.units.some((u) => u.key === cardStep.card && u.lane === tileStep.lane)).toBe(true);
+      expect(c.tutorial!.taught.peek()).toEqual([cardStep.id, tileStep.id]);
+    });
+  }
 });

@@ -29,9 +29,13 @@ export interface BossShows {
   summon: 'ring' | 'sparkles';
   /**
    * Its shield: a glass dome round it (shots ping off), the same dome glowing in moonlight
-   * (`moon`), bark plates clapping shut (the model's `barkL`/`barkR`), or ice plates (`iceL`/`iceR`).
+   * (`moon`), bark plates clapping shut (the model's `barkL`/`barkR`, which may be any material:
+   * the Cactus King's are green spines, see `plateChips`), ice plates (`iceL`/`iceR`), or a
+   * swirling ring of sand pixels round it (`sand`).
    */
-  shield: 'dome' | 'moon' | 'bark' | 'ice';
+  shield: 'dome' | 'moon' | 'bark' | 'ice' | 'sand';
+  /** The chips that fly off its shut `bark` plates, and the ring thrown as they go up (hex): left out, walnut bark. */
+  plateChips?: readonly string[];
   /**
    * Beaten: it bursts into brain blocks, drops its leaves and its acorns roll away, or breaks into
    * chips of `shards`' colours (across the lanes it stands in, or along its fallen length).
@@ -39,6 +43,11 @@ export interface BossShows {
   defeat: 'brains' | 'leaves' | 'shards';
   /** Its pupils follow the nearest enemy across the lanes (the model needs a `pupils` part). */
   eyes: 'still' | 'follow';
+  /**
+   * How a strike's blow lands: a boulder drops on each warned tile (the warning tiles show it
+   * hanging over them, coming lower as the blow nears). Left out: rings and sparkles only.
+   */
+  strikeBlow?: 'boulder';
   /**
    * The move it makes through a strike's wind-up, drawn out to end with the blow (a one-shot clip
    * slowed to fit, a looping one held). Left out: no move (the Titan's test-only strike).
@@ -56,10 +65,13 @@ export interface BossShows {
    * `fill` at `opacity`, the outline stays in `frame`, and the blow flies in `frame`.
    */
   strikeWarnings?: Partial<Record<StatusKind | 'none', StrikeWarning>>;
-  /** The units it summons come on as its pups, with wolf ears (the Howler's); views only. */
-  pups?: boolean;
-  /** What its barrage throws: acorns (left out), or frozen melons that tumble and trail ice. */
-  barrage?: 'acorn' | 'frozenMelon';
+  /**
+   * How the units it summons are dressed (views only: nothing in the simulation knows): as its
+   * pups, with wolf ears (the Howler's), or wrapped in bandages as mummies (the Pharaoh's).
+   */
+  summonLook?: 'pups' | 'mummies';
+  /** What its barrage throws: acorns (left out), frozen melons that tumble and trail ice, or cactus needles that fly point first. */
+  barrage?: 'acorn' | 'frozenMelon' | 'needle';
   /**
    * Seconds its slam clip (`ability`) takes to raise the arm; the clip is sped up or slowed so the
    * rise fills each slam's own wind-up. Left out: the clip is timed to the wind-up as it is.
@@ -128,6 +140,85 @@ const SHIPPED = {
 
 export const BOSS_LOOK: Record<BossKey, BossLook> = {
   ...SHIPPED,
+  sandPharaoh: {
+    // The model is a unit's voxels, a good deal bigger than the Titan.
+    scale: 2.8,
+    // The gold headdress striped in blue over a green face in bandages, a blue beard, a gold collar.
+    face: [
+      [1, 0, 10, 3, '#FFC83D'],
+      [3, 0, 1, 3, '#2F6FD6'],
+      [6, 0, 1, 3, '#2F6FD6'],
+      [9, 1, 1, 2, '#2F6FD6'],
+      [0, 3, 3, 8, '#FFC83D'],
+      [9, 3, 3, 8, '#F0A21E'],
+      [0, 5, 3, 1, '#2F6FD6'],
+      [9, 5, 3, 1, '#1E4BA0'],
+      [3, 3, 6, 6, '#9ACD8A'],
+      [3, 8, 6, 1, '#E6D7AE'],
+      [3, 4, 2, 3, 'eye'],
+      [7, 5, 2, 2, 'eye'],
+      [3, 3, 6, 1, '#E6D7AE'],
+      [5, 9, 2, 2, '#2F6FD6'],
+      [1, 10, 10, 2, '#FFC83D'],
+      [5, 10, 2, 1, '#2F6FD6'],
+    ],
+    bar: { fill: '#E2B23A', hi: '#FFD86B' },
+    call: 'pharaohCall',
+    defeat: 'pharaohDefeat',
+    fx: {
+      roar: 'cheer', summon: 'ring', shield: 'sand', defeat: 'shards', eyes: 'still',
+      // The sandstorm: both arms and the staff thrown up through the strike's wind-up.
+      strike: 'shoot',
+      // Phase 2: its eyes glow.
+      phaseParts: ['glowEyes'],
+      shards: ['#E2C68A', '#BC9C5E', '#E6D7AE', '#FFC83D', '#2F6FD6'],
+      slamRise: 1.5,
+      // The sandstorm's plants: a whirl of dark brown dust inside a cream outline (the shared grey is lost on the sand).
+      strikeWarnings: { blind: { fill: '#3A2410', frame: '#FFF1C9', opacity: 0.85, dither: true, blow: '#E2C68A' } },
+      summonLook: 'mummies',
+    },
+  },
+  cactusKing: {
+    // The model is at half resolution, like the Oak's (see cactusKing.ts).
+    scale: 4,
+    // A green cactus under a flower crown: pink petals round a yellow heart, a pale face, pink cheeks, a grin.
+    face: [
+      [1, 0, 3, 3, '#FF6FA8'],
+      [4, 0, 4, 3, '#D94A86'],
+      [8, 0, 3, 3, '#FF6FA8'],
+      [5, 1, 2, 2, '#FFD23D'],
+      [1, 3, 10, 9, '#4FA84A'],
+      [1, 3, 1, 9, '#2F7D3A'],
+      [10, 3, 1, 9, '#2F7D3A'],
+      [2, 4, 8, 7, '#A6DB78'],
+      [2, 7, 2, 1, '#FF6FA8'],
+      [8, 7, 2, 1, '#FF6FA8'],
+      [3, 5, 2, 2, 'eye'],
+      [7, 5, 2, 2, 'eye'],
+      [4, 9, 4, 1, '#3B1530'],
+      [3, 8, 1, 1, '#3B1530'],
+      [8, 8, 1, 1, '#3B1530'],
+      [0, 6, 1, 1, '#FFF3C4'],
+      [11, 8, 1, 1, '#FFF3C4'],
+    ],
+    bar: { fill: 'var(--c-leaf)', hi: 'var(--c-leaf-hi)' },
+    call: 'cactusCreak',
+    defeat: 'cactusDefeat',
+    fx: {
+      roar: 'ability', summon: 'sparkles', shield: 'bark', defeat: 'shards', eyes: 'follow',
+      // The rockfall: both arms thrown up, shaking, through the strike's wind-up.
+      strike: 'cheer',
+      // Its spine armour: green and cream chips, not walnut bark.
+      plateChips: ['#4FA84A', '#2F7D3A', '#FFF3C4', '#A6DB78'],
+      // Its flower crown drops: green and pink chips.
+      shards: ['#4FA84A', '#2F7D3A', '#A6DB78', '#FF6FA8', '#FFD23D'],
+      // The rockfall: boulders hang over the warned tiles and drop, in shadow on the sand.
+      strikeBlow: 'boulder',
+      // Its barrage throws needles (thin green spikes), not acorns.
+      barrage: 'needle',
+      strikeWarnings: { none: { fill: '#2B1A10', frame: '#FF3B3B', opacity: 0.7, blow: '#F2A04A' } },
+    },
+  },
   moonHowler: {
     // The model is a unit's voxels, a little bigger than the Titan.
     scale: 2.6,
@@ -162,7 +253,7 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       // The blinding howl's lane: dark purple smoke, a crawling pixel dither, inside a light outline, which reads on the night lawn
       // (the shared grey came out near-white there).
       strikeWarnings: { blind: { fill: '#1C1430', frame: '#E6E0F5', opacity: 0.88, dither: true } },
-      pups: true,
+      summonLook: 'pups',
     },
   },
   frostMelon: {

@@ -9,10 +9,15 @@ import type { LawnConfig } from '../../src/sim/types';
 // fog reach; icy lanes that pulse and a ghost zombie sliding down one.
 
 const fogLawn = (reach: number): LawnConfig => ({ ...NO_TWIST, fog: reach });
+const rocksLawn = (tiles: [number, number][]): LawnConfig => ({ ...NO_TWIST, rocks: tiles.map(([lane, col]) => lane * 8 + col) });
 const iceLawn = (lanes: number[], speed = 1.6): LawnConfig => ({ ...NO_TWIST, ice: { lanes, speed } });
 
-function puffs(): { at: Vector3[]; colors: number[]; puff(at: Vector3, color: number): void } {
-  const rec = { at: [] as Vector3[], colors: [] as number[], puff(at: Vector3, color: number) { rec.at.push(at.clone()); rec.colors.push(color); } };
+function puffs(): { at: Vector3[]; colors: number[]; buzzes: number; puff(at: Vector3, color: number): void; buzz(): void } {
+  const rec = {
+    at: [] as Vector3[], colors: [] as number[], buzzes: 0,
+    puff(at: Vector3, color: number) { rec.at.push(at.clone()); rec.colors.push(color); },
+    buzz() { rec.buzzes += 1; },
+  };
   return rec;
 }
 
@@ -322,5 +327,209 @@ describe('TwistShow: disposal', () => {
       show.update(1 / 60); // harmless afterwards
       show.dispose();
     }
+  });
+});
+
+// Worlds step 3, Task 3: the rocks show (plan Rulings 7-8).
+const ROCKS: [number, number][] = [[0, 3], [1, 5], [2, 2], [3, 6], [4, 4]];
+
+describe('TwistShow: rocks', () => {
+  it('a see-through Peashooter drops onto a boulder of the middle lane, is refused with the buzz and a red mark, hops to the free tile beside it and shoots', () => {
+    const fx = puffs();
+    const show = new TwistShow('rocks', rocksLawn(ROCKS), fx);
+    expect(show.rock).toEqual({ lane: 2, col: 2 });
+    expect(show.hop).toEqual({ lane: 2, col: 3 });
+    expect(show.shooter?.object.name).toBe('ghost-peashooter');
+    const mark = show.group.getObjectByName('rock-refused')!;
+    const pea = show.group.getObjectByName('ghost-pea')!;
+    expect(mark.visible).toBe(false);
+    expect(mark.position.x).toBeCloseTo(2.5, 5);
+    expect(mark.position.z).toBeCloseTo(2.5, 5);
+    const rx = show.rock.col + 0.5;
+    const hx = show.hop.col + 0.5;
+    const seen = { overRock: false, highest: 0, markWhenBuzzed: false, onHop: false, peaFlew: false, buzzAtRock: false };
+    let buzzes = 0;
+    for (let i = 0; i < 60 * 12 && show.loops === 0; i++) {
+      show.update(1 / 60);
+      const o = show.shooter!.object;
+      if (o.visible && Math.abs(o.position.x - rx) < 0.01 && o.position.y < 0.4) seen.overRock = true;
+      if (o.visible) seen.highest = Math.max(seen.highest, o.position.y);
+      if (fx.buzzes > buzzes) {
+        buzzes = fx.buzzes;
+        seen.markWhenBuzzed = mark.visible;
+        seen.buzzAtRock = Math.abs(o.position.x - rx) < 0.1 && o.position.y < 0.6;
+      }
+      if (o.visible && Math.abs(o.position.x - hx) < 0.01 && o.position.y === 0) seen.onHop = true;
+      if (pea.visible && pea.position.x > hx) seen.peaFlew = true;
+    }
+    expect(seen.overRock).toBe(true);
+    expect(seen.highest).toBeGreaterThan(1.5); // dropped from above
+    expect(seen.buzzAtRock).toBe(true); // it bounces the moment it lands on the boulder
+    expect(seen.markWhenBuzzed).toBe(true);
+    expect(seen.onHop).toBe(true);
+    expect(seen.peaFlew).toBe(true);
+    expect(buzzes).toBe(1);
+    expect(mark.visible).toBe(false); // the mark does not stay
+    play(show, 12);
+    expect(show.loops).toBeGreaterThanOrEqual(2);
+    expect(fx.buzzes).toBeGreaterThanOrEqual(show.loops); // one buzz a loop
+    expect(fx.buzzes).toBeLessThanOrEqual(show.loops + 1);
+    show.dispose();
+  });
+
+  it('a see-through Brain Eater then walks along the lane right over the boulder, and rises onto it', () => {
+    const show = new TwistShow('rocks', rocksLawn(ROCKS), puffs());
+    expect(show.walker?.object.name).toBe('ghost-brainEater');
+    expect(show.walker?.lane).toBe(show.rock.lane);
+    const rx = show.rock.col + 0.5;
+    let highestOnBoulder = 0;
+    let crossedAt = -1;
+    let shooterVisibleWhileWalking = false;
+    let lastX = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 60 * 12 && crossedAt < 0; i++) {
+      show.update(1 / 60);
+      const w = show.walker!.object;
+      if (w.visible) {
+        expect(w.position.x).toBeLessThan(lastX);
+        lastX = w.position.x;
+        if (show.shooter!.object.visible) shooterVisibleWhileWalking = true;
+        if (Math.abs(w.position.x - rx) < 0.1) highestOnBoulder = Math.max(highestOnBoulder, w.position.y);
+        if (w.position.x < rx - 0.5) crossedAt = i;
+      }
+    }
+    expect(crossedAt).toBeGreaterThan(0);
+    expect(highestOnBoulder).toBeGreaterThan(0.3);
+    expect(shooterVisibleWhileWalking).toBe(false);
+    show.dispose();
+  });
+
+  it('on the zombies\' side the order is reversed: the Brain Eater crosses first, then the Peashooter is refused', () => {
+    const fx = puffs();
+    const show = new TwistShow('rocks', rocksLawn(ROCKS), fx, 'zombies');
+    expect(show.zombieFirst).toBe(true);
+    let walkerSeen = -1;
+    let buzzAt = -1;
+    for (let i = 0; i < 60 * 12 && show.loops === 0; i++) {
+      show.update(1 / 60);
+      if (walkerSeen < 0 && show.walker!.object.visible) walkerSeen = i;
+      if (buzzAt < 0 && fx.buzzes > 0) buzzAt = i;
+    }
+    expect(walkerSeen).toBeGreaterThanOrEqual(0);
+    expect(buzzAt).toBeGreaterThan(walkerSeen);
+    const plain = new TwistShow('rocks', rocksLawn(ROCKS), puffs());
+    expect(plain.zombieFirst).toBe(false);
+    show.dispose();
+    plain.dispose();
+  });
+
+  it('the hop tile is free: in front of the boulder, or behind it when a rock is in front; never a rock', () => {
+    const crowded = new TwistShow('rocks', rocksLawn([[2, 2], [2, 3], [0, 0]]), puffs());
+    expect(crowded.rock).toEqual({ lane: 2, col: 3 }); // the one with a free tile beside it ranks first... here col 3 (front free)
+    expect(crowded.hop).toEqual({ lane: 2, col: 4 });
+    crowded.dispose();
+    const walled = new TwistShow('rocks', rocksLawn([[2, 7], [0, 1]]), puffs());
+    expect(walled.rock).toEqual({ lane: 2, col: 7 });
+    expect(walled.hop).toEqual({ lane: 2, col: 6 }); // the last column: behind it
+    walled.dispose();
+    for (const tiles of [ROCKS, [[2, 3]] as [number, number][], [[0, 0], [4, 7], [1, 1], [1, 2]] as [number, number][]]) {
+      const show = new TwistShow('rocks', rocksLawn(tiles), puffs());
+      expect(tiles.some(([l, c]) => l === show.hop.lane && c === show.hop.col)).toBe(false);
+      expect(tiles.some(([l, c]) => l === show.rock.lane && c === show.rock.col)).toBe(true);
+      expect(Math.abs(show.hop.col - show.rock.col)).toBe(1);
+      show.dispose();
+    }
+  });
+
+  it('the camera pans along the boulders: one shot a boulder (at most three on the way), then the boulder the ghosts act on, all inside the lawn', () => {
+    const show = new TwistShow('rocks', rocksLawn(ROCKS), puffs());
+    expect(show.pan.length).toBeGreaterThanOrEqual(2);
+    expect(show.pan.length).toBeLessThanOrEqual(4);
+    expect(show.pan[show.pan.length - 1]).toBe(show.box);
+    const centres = show.pan.map((b) => (b.x[0] + b.x[1]) / 2);
+    expect(new Set(centres.map((c) => c.toFixed(2))).size).toBeGreaterThan(1); // it moves
+    for (const b of show.pan) {
+      expect(b.x[0]).toBeGreaterThanOrEqual(-1);
+      expect(b.x[1]).toBeLessThanOrEqual(11);
+      expect(b.z[0]).toBeGreaterThanOrEqual(-1);
+      expect(b.z[1]).toBeLessThanOrEqual(7);
+    }
+    // The acted-on boulder's shot holds the hop tile and the pea's flight.
+    expect(show.box.x[0]).toBeLessThanOrEqual(show.rock.col);
+    expect(show.box.x[1]).toBeGreaterThanOrEqual(show.hop.col + 3);
+    // `stop` walks through the shots in order as it plays, and starts again each loop.
+    const stops = new Set<number>();
+    expect(show.stop).toBe(0);
+    for (let i = 0; i < 60 * 5; i++) { show.update(1 / 60); stops.add(show.stop); }
+    expect([...stops].sort()).toEqual(show.pan.map((_, i) => i));
+    const box = show.box;
+    play(show, 20);
+    expect(show.box).toBe(box);
+    expect(show.loops).toBeGreaterThanOrEqual(1);
+    show.dispose();
+  });
+
+  it('a lawn with a single rock still shows (no pan, one shot)', () => {
+    const show = new TwistShow('rocks', rocksLawn([[2, 3]]), puffs());
+    expect(show.pan).toEqual([show.box]);
+    play(show, 8);
+    expect(show.loops).toBeGreaterThanOrEqual(1);
+    show.dispose();
+  });
+
+  it('both ghosts are the real models, lightly see-through', () => {
+    const show = new TwistShow('rocks', rocksLawn(ROCKS), puffs());
+    for (const [ghost, name] of [[show.shooter!, 'ghost-peashooter'], [show.walker!, 'ghost-brainEater']] as const) {
+      expect(ghost.object.name).toBe(name);
+      let meshes = 0;
+      ghost.object.traverse((o) => {
+        if (!(o instanceof Mesh)) return;
+        meshes += 1;
+        const m = o.material as { opacity: number; transparent: boolean };
+        expect(m.transparent).toBe(true);
+        expect(m.opacity).toBeGreaterThanOrEqual(0.6);
+      });
+      expect(meshes).toBeGreaterThan(0);
+    }
+    show.dispose();
+  });
+
+  it('plays without allocating, buzz and puff included', () => {
+    for (const side of ['plants', 'zombies'] as const) {
+      const show = new TwistShow('rocks', rocksLawn(ROCKS), { puff() {}, buzz() {} }, side);
+      play(show, 1);
+      expect(allocationsIn(() => {
+        for (let i = 0; i < 60 * 14; i++) show.update(1 / 60);
+      }), side).toEqual({});
+      expect(show.loops).toBeGreaterThanOrEqual(1);
+      show.dispose();
+    }
+  });
+
+  it('frees every geometry and material it made (the red mark and the pea too), and leaves the models\' shared geometry alone', () => {
+    const show = new TwistShow('rocks', rocksLawn(ROCKS), puffs());
+    const own: Mesh[] = [];
+    const shared: Mesh[] = [];
+    const models = [show.shooter!.object, show.walker!.object];
+    show.group.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      let p: typeof o.parent = o;
+      let inModel = false;
+      while (p !== null) { if (models.includes(p)) inModel = true; p = p.parent; }
+      (inModel ? shared : own).push(o);
+    });
+    expect(own.map((m) => m.name).sort()).toEqual(['ghost-pea', 'rock-refused']);
+    const freedGeometry = new Set<unknown>();
+    const freedMaterial = new Set<unknown>();
+    for (const m of [...own, ...shared]) {
+      m.geometry.addEventListener('dispose', () => { freedGeometry.add(m.geometry); });
+      (m.material as Mesh['material'] & { addEventListener: Function }).addEventListener('dispose', () => { freedMaterial.add(m.material); });
+    }
+    show.dispose();
+    for (const m of own) expect(freedGeometry.has(m.geometry), m.name).toBe(true);
+    for (const m of shared) expect(freedGeometry.has(m.geometry)).toBe(false);
+    for (const m of [...own, ...shared]) expect(freedMaterial.has(m.material), m.name).toBe(true);
+    expect(show.disposed).toBe(true);
+    show.update(1 / 60);
+    show.dispose();
   });
 });

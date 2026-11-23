@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { levelsFor } from '../../../src/adventure/levels';
 import type { LevelDef } from '../../../src/adventure/types';
 import {
-  BOSS_THREE_STARS, EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, campaignIndex, playFreePlay, playIdle,
-  playLevelSeries, summariseFreePlay, summariseLevel, worldTwoGate,
+  EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, bossStarBand, campaignIndex, levelGate, playFreePlay, playIdle,
+  playLevelSeries, summariseFreePlay, summariseLevel,
 } from '../../../src/ai/levelChecks';
 import type { FreePlayStats, LevelStats } from '../../../src/ai/levelChecks';
 import { LEVEL_STAND_INS } from '../../../src/ai/levelStandIns';
@@ -77,13 +77,29 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z2-3 median length, expert': 'about 1.11 min on every block (average 1.7, beginner 2.15): he stacks the iced lane at once; a base big enough to hold him 1.5 min (9000: 1.42) takes the average player to 2.8 min with 4% three stars',
   'z2-5 median length, average': `about 1.36 / 1.32 / 1.35 min: ${TUNDRA_BELT}`,
   'z2-5 median length, expert': `about 1.12 min on every block: ${TUNDRA_BELT}`,
-  // Free Play: a graduate now holds the Meadow's two unlocks (7 plant cards; the waves and gardens
-  // carry what he met). Re-measured in step-2 Task 9 on blocks 1 / 1001 / 2001 (200 seeds each).
-  // Survive is bimodal: the average player either falls near wave 10 or his Avocado Bunker line
-  // holds for good (p90 73-87 waves); the expert's median went from 27-33 waves to 72-74 (24-25 min).
-  // A flat `endless.budgetStep` does not mend it (90: average over 20 min 1% but median 8, under its
-  // band, expert median 11; 120: average median 7) - see the Task 9 report for the proposed fix.
-  'free play survive: the average player rarely plays over 20 minutes': '18 / 14 / 15.5% of runs over 20 min (band 0-5; median wave 11 / 10 / 10, p90 87 / 73 / 82) with the Mango-pult and the Avocado Bunker in his hand; a fix is proposed in the step-2 Task 9 report, not applied',
+  // The Desert Canyon (step-3 plan Task 8; numbers: blocks 1 / 1001 / 2001, 200 seeds each; the full
+  // table is in the Task 8 report). Misses by level are as the Tasks 6-7 tuning found them. Entries
+  // that miss on the default block (1) only, or on two blocks, say so: with LVT_BLOCKS=3 an entry
+  // flips (fails) on a block that meets the band.
+  'p3-2 average win': '85 / 83 / 82.5 (band 65.1-83.1; trend 74.1): misses on block 1 only, the other blocks sit on the top of the band; beginner 6 / 7.5 / 6.5 (plants have no beginner floor here)',
+  'p3-3 average win': '89 / 89 / 90 (trend 72.5, top 81.5): the Cactus-lane garden is a clean level for the sensible player, 57.5 / 58 / 52.5% three stars; expert 96-96.5',
+  'p3-6 average win': '77 / 76 / 71 (trend 67.9, top 76.9): misses on block 1 only, by a seed; 3 stars 2 / 2.5 / 1.5%',
+  // p3-7 average win passes on block 1 (71) but misses on blocks 2 and 3 (79.5 / 82.5): left unrecorded on purpose.
+  'p3-7 median length, beginner': 'about 1.23 min on every block (1.5 minimum): the beginner has lost the 7-garden breakthrough in a minute, at 0% wins',
+  'plants world 3: no level harder for the average player than the level two after it': 'p3-1 v p3-3: 79.5 v 88, 74 v 88, 72.5 v 89 (the opening level is the hardest of the three: 72.5-79.5% against 89-90); on blocks 2 and 3 p3-5 v p3-7 (76 v 79.5, 78 v 82.5) misses too',
+  'z3-3 median length, expert': 'about 1.42 min on every block (1.5 minimum; average 2.11-2.16, beginner 3.25-3.32 min): he stacks the lane at once',
+  'z3-5 the expert three-stars at least 10 points more often than the average player': 'expert 56.5 / 56.5 / 58 v average 56 / 57.5 / 56.5: lead +0.5 / -1 / +1.5 (need +10 within 1): the expert and the average player crack the belt the same way; z3-5 length: average 1.80-1.85 min, expert 1.67-1.68 min (inside the 1.5-4 gate)',
+  'z3-6 median length, expert': 'about 1.16 / 1.13 / 1.16 min (1.5 minimum; average 1.98-1.99): he breaks the garden in about a minute',
+  'zombies world 3: no level harder for the average player than the level two after it': 'z3-4 v z3-6: 98.5 v 100 and 98.5 v 100 on blocks 1 and 2 (a seed or two: the 1-point slack leaves 99); block 3 is 99 v 100 and holds',
+  // Free Play: a graduate now holds nine cards a side (step-3 Task 8, blocks 1 / 1001 / 2001, 200 seeds
+  // each). Survive is bimodal as in step 2: the average player's median is wave 12 / 12 / 11.5 (band
+  // 10-20: holds), but 29 / 24.5 / 24.5% of his runs pass 20 minutes (was 18 / 14 / 15.5); the expert's
+  // median is 87 / 89 / 85.5 waves (29 min). Not fixed here (content design section 7, risk 6).
+  'free play survive: the average player rarely plays over 20 minutes': '29 / 24.5 / 24.5% of runs over 20 min (band 0-5; median wave 12 / 12 / 11.5; was 18 / 14 / 15.5% at 7 cards a side); the endless budget fix proposed in the step-2 Task 9 report is still not applied',
+  // The zombie side of Free Play (Toby's, meant to forgive): the beginner now breaks a median 14 gardens
+  // on 100% of seeds (band 5-9), the average 13 / 14 / 14 and the expert 24 (was 7 / 10 / 17-18).
+  'free play breakthrough beginner': 'median 14 / 14 / 14 gardens (band 5-9; at least one on 100%, band 70-100) at about 11 min: nine cards a side let him build what the average player builds',
+  'free play breakthrough: the average player breaks more gardens than the beginner': 'average 13 / 14 / 14 v beginner 14 / 14 / 14 gardens (not more): the beginner now plays with the same nine cards and no longer trails him',
 };
 
 /** One test, or `it.fails` when the band is a known miss. */
@@ -106,7 +122,6 @@ export function worldBandTests(world: 1 | 2 | 3 | 4 | 5): void {
   }
   for (const first of blocks()) {
     if (world === 1) backyardBandTests(first);
-    else if (world === 2) worldTwoBandTests(sides, first);
     else curveBandTests(world, sides, first);
   }
 }
@@ -125,57 +140,32 @@ function levelStats(first: number): (def: LevelDef, who: LevelStandIn) => Promis
   };
 }
 
-/**
- * Worlds 2–5 (ruling 11): the expert wins at least 95%; the average player sits in the curve's band
- * for the level's campaign index (a boss 5 lower); the beginner on Easy wins at least 70% through
- * world 2; every seed ends; median lengths 1.5–4 minutes (a boss up to 5).
- */
-function curveBandTests(world: number, sides: readonly Faction[], first: number): void {
-  const stats = levelStats(first);
-  for (const side of sides) {
-    describe(`world ${world} as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
-      for (const def of levelsFor(side, world)) {
-        const boss = def.kind === 'boss';
-        const i = campaignIndex(def);
-        const avg = averageWinBand(i, boss);
-        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
-        band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
-        const floor = beginnerWinMin(i);
-        if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
-        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
-          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
-        });
-        for (const who of LEVEL_STAND_INS) {
-          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
-        }
-      }
-    });
-  }
-}
-
 /** Seeds the idle-player check plays per level (as `backyard.test.ts`). */
 export const IDLE_SEEDS = 20;
 
 /**
- * World 2 (step-2 plan rulings 5-6, `worldTwoGate`): the expert wins at least 95% and the beginner
- * on Easy at least 70% everywhere; the average player is held to the win band (plants p2-1..8,
- * zombies z2-1..4), the star band (z2-5..7: his 3-star share in `averageStarBand`, the expert at
- * least 10 points above it, and he still wins 85%), or world 1's boss band (z2-8: 3 stars 35-60%);
- * no level is harder for him (a lower win rate) than the level two after it; an idle player loses
- * every level; every seed ends; median lengths 1.5-4 minutes (a boss up to 5). Win %, 2★+, 3★ and
- * length of every level and stand-in are printed either way (`record`).
+ * Worlds 2-5 (ruling 11; step-2 plan rulings 5-6 and step-3 rulings 1-4, `levelGate`): the expert
+ * wins at least 95% everywhere and the beginner on Easy at least `beginnerWinMin` (70% through
+ * world 2; Toby's 60 / 50% on z3 / z4-z5; none for the plants later); the average player is held to
+ * the win band (the plants on every level, z2-1..4), the star band (the other zombie levels: his
+ * 3-star share in `averageStarBand`, the expert at least 10 points above it, and he still wins
+ * 85%), or the world's boss band (a zombie boss: 3 stars in `bossStarBand`); no level is harder for
+ * him (a lower win rate) than the level two after it; an idle player loses every level; every seed
+ * ends; median lengths 1.5-4 minutes (a boss up to 5; Toby's "2-3 min" on z3 is a tuning target,
+ * recorded, not a gate). Win %, 2*+, 3* and length of every level and stand-in are printed either
+ * way (`record`).
  */
-function worldTwoBandTests(sides: readonly Faction[], first: number): void {
+function curveBandTests(world: 2 | 3 | 4 | 5, sides: readonly Faction[], first: number): void {
   const stats = levelStats(first);
   for (const side of sides) {
-    const levels = levelsFor(side, 2);
-    describe(`world 2 as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
+    const levels = levelsFor(side, world);
+    describe(`world ${world} as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
       for (const def of levels) {
         const boss = def.kind === 'boss';
         const i = campaignIndex(def);
-        const gate = worldTwoGate(def);
+        const gate = levelGate(def);
         band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
-        const floor = beginnerWinMin(i);
+        const floor = beginnerWinMin(i, side);
         if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
         if (gate === 'win') {
           const avg = averageWinBand(i, boss);
@@ -189,7 +179,8 @@ function worldTwoBandTests(sides: readonly Faction[], first: number): void {
             expect(lead, def.id).toBeGreaterThanOrEqual(STAR_LEVEL.expertLead - SLACK);
           });
         } else {
-          band(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, BOSS_THREE_STARS.lo, BOSS_THREE_STARS.hi, def.id));
+          const boss3 = bossStarBand(world);
+          band(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, boss3.lo, boss3.hi, def.id));
         }
         band(`${def.id} an idle player loses (${IDLE_SEEDS} seeds)`, async () => {
           const won = Array.from({ length: IDLE_SEEDS }, (_, k) => playIdle(def, first + k)).filter((r) => r.won).length;
@@ -202,13 +193,13 @@ function worldTwoBandTests(sides: readonly Faction[], first: number): void {
           band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
         }
       }
-      band(`${side} world 2: no level harder for the average player than the level two after it`, async () => {
+      band(`${side} world ${world}: no level harder for the average player than the level two after it`, async () => {
         const w = await Promise.all(levels.map(async (d) => (await stats(d, 'average')).win));
         for (let n = 0; n + 2 < w.length; n++) expect(w[n]!, `${levels[n]!.id} v ${levels[n + 2]!.id}`).toBeGreaterThanOrEqual(w[n + 2]! - SLACK);
       });
-      it(`${side} world 2: the record (win %, 2★+, 3★, median minutes)`, async () => {
+      it(`${side} world ${world}: the record (win %, 2★+, 3★, median minutes)`, async () => {
         // stdout, not console: the test config keeps console quiet, and this table is wanted either way.
-        process.stdout.write(`${await record(levels, stats, `world 2 as the ${side}, seeds ${first}..${first + SEEDS - 1}`)}\n`);
+        process.stdout.write(`${await record(levels, stats, `world ${world} as the ${side}, seeds ${first}..${first + SEEDS - 1}`)}\n`);
       }, LONG_MS);
     });
   }

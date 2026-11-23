@@ -362,6 +362,30 @@ function frozenMelonGeometry(): BufferGeometry {
   return blob(FROZEN_MELON_SIZE / n, n, n, n, round, (i, j) => (j >= n - 2 ? frost : j === 0 ? under : i % 3 === 0 ? stripe : body));
 }
 
+/** The Cactus King's needle: longest edge (tiles) and the pale green of the short trail it leaves. */
+export const NEEDLE_SIZE = 0.56;
+export const NEEDLE_TRAIL = 0xa6db78;
+const NEEDLE = { shaft: '#4FA84A', shaftLight: '#7CCB5E', tip: '#FFF3C4', tipDark: '#D9C98A', base: '#2F7D3A' } as const;
+
+/**
+ * The Cactus King's barrage (the simulation's `acorn`, drawn as its boss's look asks): a long thin
+ * green spike, a stepped cream tip at the front (-X, like the arrow) and a dark green base, so it
+ * stands off the Desert's sand as it flies. Built like the arrow: boxes, not a blob.
+ */
+function needleGeometry(): BufferGeometry {
+  const batch = new BoxBatch();
+  const L = NEEDLE_SIZE;
+  const x0 = -L / 2;
+  const t = 0.07;
+  // The shaft, a thicker dark base at the back (+X), then three steps narrowing to a cream point at the front.
+  batch.box(x0 + 0.14, -t / 2, -t / 2, L - 0.14, t, t, NEEDLE.base, NEEDLE.shaftLight);
+  batch.box(x0 + 0.14, -t / 2, -t / 2, L - 0.3, t, t, NEEDLE.shaft, NEEDLE.shaftLight);
+  batch.box(L / 2 - 0.08, -0.05, -0.05, 0.08, 0.1, 0.1, NEEDLE.base);
+  batch.box(x0 + 0.07, -0.03, -0.03, 0.07, 0.06, 0.06, NEEDLE.tipDark, NEEDLE.tip);
+  batch.box(x0, -0.015, -0.015, 0.07, 0.03, 0.03, NEEDLE.tipDark, NEEDLE.tip);
+  return batch.build();
+}
+
 /** The pea once it has passed through a Torchwood: the same pea, burning. */
 function burningPeaGeometry(): BufferGeometry {
   const n = 5;
@@ -465,6 +489,14 @@ export function makeProjectile(kind: ProjectileKind, burning = false): Object3D 
     ? new Mesh(shared('pea-burning', burningPeaGeometry), glowingProp())
     : new Mesh(shared(kind, SHOT_GEOMETRY[kind]), plasticMaterial());
   mesh.name = fire ? 'projectile-pea-burning' : `projectile-${kind}`;
+  mesh.castShadow = true;
+  return mesh;
+}
+
+/** A cactus needle, centred on its own origin, NEEDLE_SIZE long and pointing along -X (the Cactus King's barrage). */
+export function makeNeedle(): Object3D {
+  const mesh = new Mesh(shared('needle', needleGeometry), plasticMaterial());
+  mesh.name = 'projectile-needle';
   mesh.castShadow = true;
   return mesh;
 }

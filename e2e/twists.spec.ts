@@ -29,7 +29,7 @@ async function tapAt(page: Page, at: { x: number; y: number }): Promise<void> {
  * worlds on the map (only where a world has no real levels); the side's map (it opens on the next
  * level's world), that level started by taps. World 2 is real on both sides (the Moonlit Meadow,
  * the Frozen Tundra), with the cards a player who got there by playing holds (the Mango-pult after
- * p2-3, the Avocado Bunker after p2-6; Hot Topic after z2-3, the Cowboy Zombie after z2-6). With `lessons`, the world-2 lessons are not yet learnt (the stand-ins carry theirs)
+ * p2-3, the Avocado Bunker after p2-6; Hot Topic after z2-3, the Cowboy Zombie after z2-6). With `lessons`, the world-2 and world-3 lessons are not yet learnt (the stand-ins carry theirs)
  * and every card is unlocked.
  */
 async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 | 4 | 5, lessons = false, n = 1): Promise<void> {
@@ -44,13 +44,15 @@ async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 
     for (let k = 1; k < w; k++) for (let m = 1; m <= 8; m++) stars[`${l}${k}-${m}`] = 2;
     for (let m = 1; m < upTo; m++) stars[`${l}${w}-${m}`] = 2;
     const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((d) => (d.teaches ?? []).map((t) => t.id))
-      .filter((id) => !withLessons || !/^[pz]2-/.test(id));
+      .filter((id) => !withLessons || !/^[pz][23]-/.test(id));
     const second = w >= 2;
     const earned = s === 'plants'
       ? ['potatoMine', 'kernelPult', ...(second && (w > 2 || upTo > 3) ? ['mangoPult'] : []), ...(second && (w > 2 || upTo > 6) ? ['avocadoBunker'] : [])]
       : ['desertZombie', 'skeletonArcher', ...(second && (w > 2 || upTo > 3) ? ['hotTopic'] : []), ...(second && (w > 2 || upTo > 6) ? ['cowboyZombie'] : [])];
     const unlocked = withLessons
-      ? (s === 'plants' ? ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker'] : ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie'])
+      ? (s === 'plants'
+        ? ['potatoMine', 'kernelPult', 'mangoPult', 'avocadoBunker', 'torchwood', 'cherryBomber']
+        : ['desertZombie', 'skeletonArcher', 'hotTopic', 'cowboyZombie', 'necromancer', 'tridentZombie'])
       : earned;
     lvt.players.update((p: any) => ({ ...p, teached: ids, [s]: { ...p[s], stars, unlocked } }));
   }, [side, world, lessons, n] as const);
@@ -105,23 +107,24 @@ test('rocks: a rock tile is not lit for a picked card and refuses a plant tapped
   test.setTimeout(120_000);
   await playStandIn(page, 'plants', 3);
   await expect.poll(() => lawnWorld(page)).toBe('desert');
-  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.rocks)).toEqual([13, 21]);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.rocks)).toEqual([12, 21, 27]);
   await pick(page, 'peashooter');
-  // Rocks 13 and 21 are (1,5) and (2,5): unlit; the plant columns around them are lit.
-  await expect.poll(async () => (await lit(page)).length).toBe(38);
+  // The real p3-1's rocks 12, 21 and 27 are (1,4), (2,5) and (3,3): unlit; the plant columns around them are lit.
+  await expect.poll(async () => (await lit(page)).length).toBe(37);
   const shown = await lit(page);
-  expect(shown).not.toContain(15);
+  expect(shown).not.toContain(14);
   expect(shown).not.toContain(25);
-  expect(shown).toContain(14);
-  expect(shown).toContain(16);
+  expect(shown).not.toContain(33);
+  expect(shown).toContain(15);
+  expect(shown).toContain(24);
   const denied = (): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
   const before = await denied();
-  await tapAt(page, await tilePoint(page, 1, 5));
+  await tapAt(page, await tilePoint(page, 2, 5));
   await frames(page, 3);
-  expect(await plantOn(page, 1, 5)).toBeUndefined();
+  expect(await plantOn(page, 2, 5)).toBeUndefined();
   await expect.poll(denied).toBe(before + 1);
-  await place(page, 'peashooter', 1, 4);
-  await expect.poll(async () => (await plantOn(page, 1, 4))?.key).toBe('peashooter');
+  await place(page, 'peashooter', 2, 4);
+  await expect.poll(async () => (await plantOn(page, 2, 4))?.key).toBe('peashooter');
   expect(await glContexts(page)).toBe(1);
 });
 
@@ -346,6 +349,117 @@ for (const [id, n, card, step, lane, col] of [
     expect(await glContexts(page)).toBe(1);
   });
 }
+
+// ---- Worlds step 3, Task 3: the rocks pan and the Cherry Bomber's wait for a foe ----------------
+// The Desert is not a real world yet: its levels are the stand-ins (copies of world 1 with the
+// real p3-1 now: rocks (1,4), (2,5), (3,3)).
+
+const stop = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session?.twistShow?.stop ?? -1);
+const denied = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
+const focusing = (page: Page): Promise<boolean> => page.evaluate(() => (window.__lvt as any).stage.rig.focusing as boolean);
+
+test('rocks pan (p3-1): holds, the camera moves along the boulders, the glove taps after 3 s, a tap ends it, the level plays, and a tap on a rock buzzes and places nothing', async ({ page }) => {
+  test.setTimeout(150_000);
+  const dir = process.env.LVT_SHOTS_DIR;
+  const shot = (name: string) => dir === undefined ? Promise.resolve() : page.screenshot({ path: `${dir}/${name}.png` }).then(() => undefined);
+  await playStandIn(page, 'plants', 3, true);
+  await expect.poll(() => lawnWorld(page)).toBe('desert');
+  const catcher = page.locator('[data-twist="rocks"]');
+  await expect(catcher).toBeVisible();
+  await expect.poll(() => showing(page)).toBe('rocks');
+  const held = await tick(page);
+  expect(held).toBeLessThanOrEqual(2);
+  await shot('rocks-pan-start');
+  // The camera moves on from the first boulder to the one the ghosts act on.
+  await expect.poll(() => stop(page), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => {
+    const m = (window.__lvt as any).session.twistShow.group.getObjectByName('rock-refused');
+    return m?.visible === true;
+  }), { intervals: [16], timeout: 15_000 }).toBe(true);
+  await shot('rocks-pan-refused');
+  // Pause works over the pan.
+  await press(page.locator('[data-hud="pause"]'));
+  await expect(page.locator('[data-screen="pause"]')).toBeVisible();
+  await press(page.locator('[data-screen="pause"] [data-action="resume"]'));
+  await expect(catcher).toBeVisible();
+  await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
+  await shot('rocks-pan-tap-hint');
+  expect(await tick(page)).toBe(held);
+  // A tap on a rock ends the pan: no buzz, nothing placed.
+  await tapAt(page, await tilePoint(page, 1, 4));
+  await expect(catcher).toHaveCount(0);
+  await expect.poll(() => showing(page)).toBeNull();
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
+  expect(await denied(page)).toBe(0);
+  expect((await units(page)).filter((u) => u.faction === 'plants')).toHaveLength(0);
+  expect(await page.evaluate(() => (window.__lvt as any).players.player.value.teached as string[])).toContain('p3-1.rocks');
+  // The camera is back on the lawn: now a tap on the rock buzzes and places nothing; the tile beside it takes a plant.
+  await expect.poll(() => focusing(page), { timeout: 10_000 }).toBe(false);
+  await pick(page, 'peashooter');
+  const before = await denied(page);
+  await tapAt(page, await tilePoint(page, 2, 5));
+  await frames(page, 3);
+  await expect.poll(() => denied(page)).toBe(before + 1);
+  expect(await plantOn(page, 2, 5)).toBeUndefined();
+  await place(page, 'peashooter', 2, 4);
+  await expect.poll(async () => (await plantOn(page, 2, 4))?.key).toBe('peashooter');
+  expect(await glContexts(page)).toBe(1);
+});
+
+test('rocks pan (z3-1, the zombies\' side): the Brain Eater goes first; any tap ends it and the level plays', async ({ page }) => {
+  test.setTimeout(120_000);
+  await playStandIn(page, 'zombies', 3, true);
+  await expect.poll(() => lawnWorld(page)).toBe('desert');
+  await expect(page.locator('[data-twist="rocks"]')).toBeVisible();
+  await expect.poll(() => showing(page)).toBe('rocks');
+  expect(await page.evaluate(() => (window.__lvt as any).session.twistShow.zombieFirst)).toBe(true);
+  const held = await tick(page);
+  const size = page.viewportSize()!;
+  await tapAt(page, { x: size.width / 2, y: Math.round(size.height * 0.2) });
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
+  await place(page, 'brainEater', 1, 9);
+  await expect.poll(async () => (await units(page)).filter((u) => u.faction === 'zombies').length).toBe(1);
+  expect(await glContexts(page)).toBe(1);
+});
+
+test('foe wait (p3-7): the Cherry Bomber card is pointed at first; its tile shows (and holds) only when a foe is in front of it; then a tap on the tile plants it', async ({ page }) => {
+  test.setTimeout(150_000);
+  await playStandIn(page, 'plants', 3, true, 7);
+  await page.evaluate(() => { (window.__lvt as any).session.controller.match.state.players.plants.energy = 500; });
+  const glove = page.locator('[data-tutorial] [data-glove]');
+  await expect(glove).toHaveAttribute('data-glove-step', 'p3-7.cherry-card');
+  await press(page.locator('[data-hud="tray"] [data-card="cherryBomber"]'));
+  // The tile step waits: no glove, the match runs.
+  await frames(page, 10);
+  await expect(page.locator('[data-tutorial] [data-glove]')).toHaveCount(0);
+  const waited = await tick(page);
+  await frames(page, 30);
+  expect(await tick(page)).toBeGreaterThan(waited);
+  // On until a foe stands in lane 2 within two tiles in front of the tile (the base is kept up).
+  let armed = false;
+  for (let i = 0; i < 400 && !armed; i++) {
+    await page.evaluate(() => {
+      const ctl = (window.__lvt as any).session.controller;
+      ctl.match.state.baseHp.plants = ctl.match.state.baseMaxHp.plants;
+      ctl.match.state.players.plants.energy = 500;
+      (window.__lvt as any).fastForward(30);
+    });
+    armed = (await page.locator('[data-tutorial] [data-glove]').count()) > 0;
+  }
+  expect(armed, 'the glove came').toBe(true);
+  await expect(glove).toHaveAttribute('data-glove-step', 'p3-7.cherry-tile');
+  await expect(glove).toHaveAttribute('data-glove', 'tile');
+  const foe = (await units(page)).filter((u) => u.faction === 'zombies' && u.lane === 2 && u.x - 4.5 >= 0 && u.x - 4.5 <= 2);
+  expect(foe.length).toBeGreaterThan(0);
+  const held = await tick(page);
+  await frames(page, 20);
+  expect(await tick(page)).toBe(held);
+  await tapAt(page, await tilePoint(page, 2, 4));
+  await expect.poll(async () => (await plantOn(page, 2, 4))?.key).toBe('cherryBomber');
+  await expect(page.locator('[data-tutorial]')).toHaveCount(0);
+  expect(await glContexts(page)).toBe(1);
+});
 
 // Screenshots for the report at the small iPad size (only when LVT_SHOTS_DIR is set; iPad project).
 test('shots: the fog pan mid-flight and its puff, the tap hint, the ice pan, a new-card glove', async ({ page }) => {

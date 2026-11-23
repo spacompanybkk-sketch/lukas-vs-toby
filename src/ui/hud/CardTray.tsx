@@ -17,7 +17,7 @@ export interface CardTrayProps {
   denied: number;
   /** Called with the card's unit on every tap, including a tap on the selected card. */
   onSelect(unit: UnitKey): void;
-  /** Called after `onSelect` when the tapped card was already selected (a second tap deselects). */
+  /** Called after `onSelect` when the tapped card was already selected (a second tap deselects; on the zombie side it does nothing). */
   onDeselect?(): void;
   /** Plants only: whether the shovel is on, and its toggle. No `onShovel`, no shovel button. */
   shovel?: boolean;
@@ -45,7 +45,7 @@ export function rechargeStep(fraction: number): number {
 
 /**
  * The hand of cards at the bottom of the battle. Touch-first: pointer down on a card selects it
- * at once (so a drag onto the lawn can start from it); a plain tap on the selected card deselects.
+ * at once (so a drag onto the lawn can start from it); a plain tap on the selected card deselects (plants only; on the zombie side it stays selected).
  */
 export function CardTray(props: CardTrayProps) {
   const { cards, selected, portraits, side, denied, shovel = false, onShovel } = props;
@@ -78,7 +78,9 @@ export function CardTray(props: CardTrayProps) {
         const p = latest.current;
         const was = p.selected === unit;
         p.onSelect(unit);
-        if (was) p.onDeselect?.();
+        // Zombie side: the card in hand stays in hand (Toby re-taps it before every send): no deselect, no buzz.
+        // `onSelect` of the same card is idempotent and still ends a lesson step that waits on that card (z1-3).
+        if (was && p.side !== 'zombies') p.onDeselect?.();
       },
     };
   }, []);

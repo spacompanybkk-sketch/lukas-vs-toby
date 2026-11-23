@@ -5,9 +5,10 @@ import type { ClipName } from '../voxel/types';
 import type { FrameBox, FrameView } from '../CameraRig';
 import { DISPLAY_TO_SCENE_GLSL, MATTE_PLASTIC } from '../look';
 import { BoxBatch, seededRandom, shade } from './boxes';
+import { TileMark } from './TileMark';
 import type { WorldKey } from '../../data/worlds';
 import { COLS, PLANT_COLS } from '../../sim/types';
-import type { LawnConfig, UnitKey } from '../../sim/types';
+import type { Faction, LawnConfig, UnitKey } from '../../sim/types';
 import { NO_TWIST } from '../../sim/lawn';
 
 // The lawn twists as the player sees them: boulders on rock tiles, mist over a foggy lawn,
@@ -363,15 +364,21 @@ export class TwistTiles {
 // and vanishes in a white pixel puff at the level's reach, the lane past it drawn darker; on ice the
 // icy lanes pulse and a see-through Brain Eater slides down one with its arms up, past one walking a
 // plain lane, and skids to a stop at the far end in a puff of snow while the walker is still on its
-// way. The ghosts are pictures only: they are no units, the simulation never hears of them.
+// way; among rocks the camera eases along the boulders to one, a see-through Peashooter drops onto
+// it, is refused with the real buzz and the red mark, hops to the free tile beside it and shoots,
+// and a see-through Brain Eater walks right over it (on the zombies' side that one goes first).
+// The ghosts are pictures only: they are no units, the simulation never hears of them.
 
 /** The ghost pea's puff: the pale mist blue of a real shot fading in the fog (BattleView's fade puff). */
 export const GHOST_PUFF = 0xdde6ff;
 /** The sliding ghost's skid at the end of its icy lane: a puff of icy snow. */
 export const GHOST_SKID = 0x8fdcff;
 
-/** What the show needs from the effects: a puff of mist. */
-export interface PuffHost { puff(at: Vector3, color: number): void }
+/** What the show needs from the battle: a puff of mist, and (the rocks show) the refusal's buzz. */
+export interface PuffHost { puff(at: Vector3, color: number): void; buzz?(): void }
+
+/** The twists a lesson's show can act out. */
+export type ShowKind = 'fog' | 'ice' | 'rocks';
 
 /** The fog show's lane, and the plant column its Peashooter stands on (where the lessons put the first one). */
 const FOG_LANE = 2;
@@ -398,8 +405,53 @@ const GHOST_PEA = '#8BE04E';
 const MIST_BANK = '#DCE4F6';
 const PAST_REACH = '#3E4766';
 
+// The rocks show's beats (seconds): the camera holds each boulder it passes `ROCK_HOLD` long; then
+// the Peashooter falls onto the boulder `DROP`, bounces off `BOUNCE` after the buzz, shoots from the
+// free tile, and rests; the Brain Eater walks over the boulder at `GHOST_WALK` and rests.
+const ROCK_HOLD = 1.1;
+const DROP = 0.5;
+const BOUNCE = 0.5;
+const SHOOT_AT = DROP + BOUNCE + 0.2;
+const MARK_SECONDS = 0.8;
+const PLANT_ACT = SHOOT_AT + 1.4;
+const WALK_REST = 0.5;
+/** A boulder's top: where the ghost lands on it, and the rise of a ghost walking over it. */
+const BOULDER_TOP = 0.36;
+const DROP_FROM_Y = 2.6;
+const BOUNCE_HEIGHT = 1;
+/** The boulders the camera passes before it settles on the one the ghosts act on. */
+const MAX_PAN_STOPS = 3;
+/** The ghost pea flies this many tiles from the hop tile and puffs out. */
+const ROCK_PEA_REACH = 2.5;
+
 /** A ghost on a lane, for tests: which lane, and its object. */
 export interface Ghost { lane: number; object: Object3D }
+
+type RockTile = { lane: number; col: number };
+
+/**
+ * The boulder the rocks show acts on, and the free tile the Peashooter hops to: the boulder nearest
+ * the middle lane (then the third column) that has a free tile in front of it or else behind it.
+ */
+function pickRock(rocks: readonly number[]): { rock: RockTile; hop: RockTile } {
+  const tiles = rocks.map(rockTile);
+  const taken = (lane: number, col: number): boolean => tiles.some((t) => t.lane === lane && t.col === col);
+  const free = (lane: number, col: number): boolean => col >= 0 && col < PLANT_COLS && !taken(lane, col);
+  const hopOf = (r: RockTile): RockTile | null =>
+    free(r.lane, r.col + 1) ? { lane: r.lane, col: r.col + 1 } : free(r.lane, r.col - 1) ? { lane: r.lane, col: r.col - 1 } : null;
+  const ranked = tiles
+    .filter((r) => hopOf(r) !== null)
+    .sort((a, b) => Math.abs(a.lane - FOG_LANE) - Math.abs(b.lane - FOG_LANE) || Math.abs(a.col - 3) - Math.abs(b.col - 3) || a.col - b.col);
+  const rock = ranked[0] ?? tiles[0] ?? { lane: FOG_LANE, col: 3 };
+  return { rock, hop: hopOf(rock) ?? { lane: rock.lane, col: Math.min(PLANT_COLS - 1, rock.col + 1) } };
+}
+
+/** The other boulders the camera passes on its way to `target` (at most `MAX_PAN_STOPS`, spread along the lawn). */
+function panStops(rocks: readonly number[], target: RockTile): RockTile[] {
+  const others = rocks.map(rockTile).filter((t) => t.lane !== target.lane || t.col !== target.col).sort((a, b) => a.col - b.col || a.lane - b.lane);
+  if (others.length <= MAX_PAN_STOPS) return others;
+  return Array.from({ length: MAX_PAN_STOPS }, (_, i) => others[Math.round((i * (others.length - 1)) / (MAX_PAN_STOPS - 1))] as RockTile);
+}
 
 /** The bank of blocky mist past the reach: pixel blocks over the whole lawn, thin at the reach and thick beyond. */
 function mistBank(fromX: number, random: () => number): BoxBatch {
@@ -433,10 +485,22 @@ export class TwistShow {
   readonly shooter: Ghost | null = null;
   readonly slider: Ghost = { lane: 0, object: new Group() };
   readonly walker: Ghost | null = null;
-  /** What the camera frames for the whole show (the shooter to past the puff; the racing lanes), and how. */
+  /**
+   * What the camera frames for the whole show (the shooter to past the puff; the racing lanes; among
+   * rocks the boulder the ghosts act on), and how. Rocks also pan: `pan` lists the shots in order
+   * (the boulders on the way, the last is `box`), `stop` is the one the camera is on now.
+   */
   readonly box: FrameBox;
-  /** How the camera looks at `box`. */
+  readonly pan: readonly FrameBox[];
+  /** How the camera looks at `box` (and each `pan` shot). */
   readonly view: FrameView;
+  /** Rocks: the boulder the Peashooter drops on, and the free tile it hops to. */
+  readonly rock: { lane: number; col: number } = { lane: FOG_LANE, col: 3 };
+  readonly hop: { lane: number; col: number } = { lane: FOG_LANE, col: 4 };
+  /** Rocks: the Brain Eater goes first (the zombies' side), then the Peashooter. */
+  readonly zombieFirst: boolean;
+  /** The pan shot the camera should be on now (0 until the first boulder has been held). */
+  stop = 0;
   /** Times the show has played through. */
   loops = 0;
   disposed = false;
@@ -449,6 +513,7 @@ export class TwistShow {
   private readonly held: ModelInstance[] = [];
   private readonly pulses: MeshBasicMaterial[] = [];
   private pea: Mesh | null = null;
+  private puffed = false;
   private peaFrom = new Vector3();
   private strip: MeshBasicMaterial | null = null;
   private mist: MeshBasicMaterial | null = null;
@@ -456,19 +521,44 @@ export class TwistShow {
   private puffMaterial: MeshBasicMaterial | null = null;
   private puffClock = PUFF_SECONDS;
   private readonly slideSpeed: number = GHOST_WALK;
+  private mark: TileMark | null = null;
+  private peaDX = 0;
+  private peaDY = 0;
+  private buzzed = false;
+  private shot = false;
+  private readonly walkFrom: number = GHOST_FROM_X;
+  private readonly walkTo: number = GHOST_TO_X;
   private clock = 0;
   private flying = true;
   private readonly puffAt = new Vector3();
 
-  constructor(readonly kind: 'fog' | 'ice', lawn: LawnConfig, private readonly fx: PuffHost) {
+  constructor(readonly kind: ShowKind, lawn: LawnConfig, private readonly fx: PuffHost, side: Faction = 'plants') {
     this.group.name = 'twist-show';
-    if (kind === 'fog') {
+    this.zombieFirst = side === 'zombies';
+    if (kind === 'rocks') {
+      const at = pickRock(lawn.rocks);
+      this.rock = at.rock;
+      this.hop = at.hop;
+      this.lane = at.rock.lane;
+      const rx = at.rock.col + 0.5;
+      this.walkFrom = Math.min(GHOST_FROM_X, rx + 3);
+      this.walkTo = Math.max(-0.5, rx - 1.6);
+      this.shooter = { lane: this.lane, object: this.model('peashooter', rx, this.lane) };
+      this.walker = { lane: this.lane, object: this.model('brainEater', this.walkFrom, this.lane, 'walk') };
+      this.buildRocks();
+      this.view = { pitchDeg: 46 };
+      const shot = (cx0: number, cx1: number, lane: number): FrameBox => ({ x: [Math.max(-0.8, cx0), Math.min(11, cx1)], y: [0, 1.5], z: [lane - 0.8, lane + 1.8] });
+      this.box = shot(rx - 2, rx + 4.5, this.lane);
+      const stops = panStops(lawn.rocks, at.rock);
+      this.pan = [...stops.map((r) => shot(r.col + 0.5 - 2.4, r.col + 0.5 + 2.4, r.lane)), this.box];
+    } else if (kind === 'fog') {
       const reach = lawn.fog ?? 5;
       this.fadeX = this.startX + reach;
       this.shooter = { lane: this.lane, object: this.model('peashooter', this.startX, this.lane) };
       this.buildFog(reach);
       this.view = { pitchDeg: 44 };
       this.box = { x: [this.startX - 1.2, Math.min(10.6, this.fadeX + 2)], y: [0, 1.2], z: [this.lane - 0.6, this.lane + 1.6] };
+      this.pan = [this.box];
     } else {
       const icy = [...(lawn.ice?.lanes ?? [FOG_LANE])];
       const near = (lanes: number[], to: number): number | null =>
@@ -485,6 +575,7 @@ export class TwistShow {
       this.view = { pitchDeg: 46 };
       const raced = walkerLane === null ? [sliderLane] : [sliderLane, walkerLane];
       this.box = { x: [-0.3, 10.6], y: [0, 1.4], z: [Math.min(...raced) - 0.4, Math.max(...raced) + 1.4] };
+      this.pan = [this.box];
     }
     this.update(0);
   }
@@ -496,7 +587,83 @@ export class TwistShow {
     this.clock += step;
     for (let i = 0; i < this.models.length; i++) (this.models[i] as ModelInstance).update(step);
     if (this.kind === 'fog') this.updateFog(step);
-    else this.updateIce();
+    else if (this.kind === 'ice') this.updateIce();
+    else this.updateRocks();
+  }
+
+  /** The rocks show's length: the pan, then both ghosts' turns. */
+  private get rockLoop(): number {
+    return this.panEnd + PLANT_ACT + this.zombieAct;
+  }
+
+  private get panEnd(): number {
+    return (this.pan.length - 1) * ROCK_HOLD;
+  }
+
+  private get zombieAct(): number {
+    return (this.walkFrom - this.walkTo) / GHOST_WALK + WALK_REST;
+  }
+
+  private updateRocks(): void {
+    if (this.clock >= this.rockLoop) {
+      this.clock = 0;
+      this.loops += 1;
+    }
+    this.stop = Math.min(this.pan.length - 1, Math.floor(this.clock / ROCK_HOLD));
+    const act = this.clock - this.panEnd;
+    const plantAt = this.zombieFirst ? this.zombieAct : 0;
+    const zombieAt = this.zombieFirst ? 0 : PLANT_ACT;
+    const shooter = this.shooter!.object;
+    const walker = this.walker!.object;
+    const mark = this.mark!;
+    const pea = this.pea!;
+    // The Peashooter's turn: it drops onto the boulder, is refused, hops off and shoots.
+    const t = act - plantAt;
+    const rx = this.rock.col + 0.5;
+    const hx = this.hop.col + 0.5;
+    shooter.visible = t >= 0 && t < PLANT_ACT;
+    pea.visible = false;
+    if (shooter.visible) {
+      if (t < DROP) {
+        const u = t / DROP;
+        shooter.position.set(rx, DROP_FROM_Y + (BOULDER_TOP - DROP_FROM_Y) * u * u, this.rock.lane + 0.5);
+        this.buzzed = false;
+        this.shot = false;
+      } else if (t < DROP + BOUNCE) {
+        const u = (t - DROP) / BOUNCE;
+        shooter.position.set(rx + (hx - rx) * u, BOULDER_TOP * (1 - u) + BOUNCE_HEIGHT * Math.sin(Math.PI * u), this.rock.lane + 0.5);
+      } else {
+        shooter.position.set(hx, 0, this.rock.lane + 0.5);
+      }
+      if (t >= DROP && !this.buzzed) {
+        // Refused: the real buzz and the red mark on the boulder's tile.
+        this.buzzed = true;
+        this.fx.buzz?.();
+      }
+      if (t >= SHOOT_AT) {
+        if (!this.shot) {
+          this.shot = true;
+          this.models[0]?.play('shoot');
+        }
+        const flown = Math.min(ROCK_PEA_REACH, (t - SHOOT_AT) * PEA_SPEED);
+        pea.position.set(hx + this.peaDX + flown, this.peaDY, this.rock.lane + 0.5);
+        pea.visible = flown < ROCK_PEA_REACH;
+        if (!pea.visible && !this.puffed) {
+          this.puffed = true;
+          this.puffAt.set(hx + this.peaDX + ROCK_PEA_REACH, this.peaDY, this.rock.lane + 0.5);
+          this.fx.puff(this.puffAt, GHOST_PUFF);
+        }
+      } else this.puffed = false;
+    }
+    mark.mesh.visible = t >= DROP && t < DROP + MARK_SECONDS;
+    // The Brain Eater's turn: it walks along the lane, over the boulder.
+    const z = act - zombieAt;
+    walker.visible = z >= 0 && z < this.zombieAct - WALK_REST;
+    if (walker.visible) {
+      const x = this.walkFrom - GHOST_WALK * z;
+      const over = Math.max(0, Math.min(1, 1 - (Math.abs(x - rx) - 0.3) / 0.3));
+      walker.position.set(x, BOULDER_TOP * over, this.rock.lane + 0.5);
+    }
   }
 
   private updateFog(step: number): void {
@@ -647,6 +814,31 @@ export class TwistShow {
     this.group.add(strip, past, bank, pea, puff);
   }
 
+  private buildRocks(): void {
+    const z = this.rock.lane + 0.5;
+    const hx = this.hop.col + 0.5;
+    // The pea leaves the Peashooter's mouth, wherever it stands on the hop tile.
+    const shooter = this.models[0]!;
+    shooter.root.position.set(hx, 0, z);
+    this.group.updateWorldMatrix(true, true);
+    shooter.muzzleWorld(this.peaFrom);
+    this.peaDX = this.peaFrom.x - hx;
+    this.peaDY = this.peaFrom.y;
+    const peaMaterial = new MeshBasicMaterial({ color: GHOST_PEA, transparent: true, opacity: 0.95 });
+    const pea = new Mesh(this.own(new BoxGeometry(0.2, 0.2, 0.2)), peaMaterial);
+    pea.name = 'ghost-pea';
+    pea.renderOrder = 12;
+    pea.visible = false;
+    this.pea = pea;
+    this.materials.push(peaMaterial);
+    // The refusal's red mark, laid on the boulder's tile (drawn over the boulder, as a refused tap's).
+    const mark = new TileMark('rock-refused', 1, 1);
+    mark.show(this.rock.col + 0.5, z, 'bad', 'plants', true);
+    mark.mesh.visible = false;
+    this.mark = mark;
+    this.group.add(pea, mark.mesh);
+  }
+
   private buildIce(lanes: readonly number[]): void {
     for (const lane of lanes) {
       const material = new MeshBasicMaterial({ color: GHOST_ICE, transparent: true, opacity: PULSE_STEPS[0], depthWrite: false });
@@ -667,6 +859,8 @@ export class TwistShow {
     if (this.disposed) return;
     this.disposed = true;
     this.group.removeFromParent();
+    this.mark?.dispose();
+    this.mark = null;
     for (const m of this.models) m.dispose();
     for (const m of this.held) m.dispose();
     for (const g of this.geometries) g.dispose();

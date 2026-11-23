@@ -5,7 +5,7 @@ import { priceOf } from '../data/units';
 import { MAX_TEACHED } from '../progress/save';
 import type { Save } from '../progress/save';
 import type { Match } from '../sim/match';
-import { isStanding } from '../sim/lookup';
+import { inLane, isStanding } from '../sim/lookup';
 import { spellArea } from '../sim/spells';
 import { COLS, LANES, MAX_LEVEL, PLANT_COLS, TICKS_PER_SECOND } from '../sim/types';
 import type { CardKey, Command, Faction, LawnConfig, SimEvent, SpellKey, Unit } from '../sim/types';
@@ -25,6 +25,11 @@ import type { CardKey, Command, Faction, LawnConfig, SimEvent, SpellKey, Unit } 
  * `MISSING_HOLD_SECONDS`, then the step lets go (putting down a power picked for it) and waits to
  * arm again.
  *
+ * A step with `after: 'foe'` also waits for an enemy to stand in front of its tile (`foeNear`):
+ * until one does it is not started, so no glove, no hold, the match runs. A foe that leaves or dies
+ * before the step arms sends it back to waiting; once armed it stays armed. No clock skips it, and
+ * once the match is decided it never starts.
+ *
  * Time here is counted in the controller's step calls (`TICKS_PER_SECOND` a second), held or not:
  * the session calls `step()` at that rate once the battle has begun, and never while paused.
  */
@@ -35,20 +40,26 @@ export const MISSING_HOLD_SECONDS = 6;
 /** A twist pan nobody has tapped for this long brings the glove, tapping the lawn: "tap". */
 export const TWIST_HINT_SECONDS = 3;
 
+/** An `after: 'foe'` step starts while an enemy is this many tiles (at most) in front of its tile. */
+export const FOE_WINDOW = 2;
+
 /** The twists a `twist` step can show. */
-export type TwistShowKind = 'fog' | 'ice';
+export type TwistShowKind = 'fog' | 'ice' | 'rocks';
 
 /**
  * The twist a `twist` step shows on this lawn, or null when the lawn has none it can show (the
- * step is then left out). The step's id ending `.fog` or `.ice` picks between the two when the
- * lawn has both.
+ * step is then left out). The step's id ending `.fog`, `.ice` or `.rocks` picks between them when
+ * the lawn has several; with none picked, fog and ice come before rocks (a lawn whose only twist
+ * is rocks shows rocks).
  */
 export function twistShown(lawn: LawnConfig, id: string): TwistShowKind | null {
   const fog = lawn.fog !== null;
   const ice = lawn.ice !== null && lawn.ice.lanes.length > 0;
+  const rocks = lawn.rocks.length > 0;
   if (id.endsWith('.ice') && ice) return 'ice';
   if (id.endsWith('.fog') && fog) return 'fog';
-  return fog ? 'fog' : ice ? 'ice' : null;
+  if (id.endsWith('.rocks') && rocks) return 'rocks';
+  return fog ? 'fog' : ice ? 'ice' : rocks ? 'rocks' : null;
 }
 
 /** What the glove points at. */
@@ -392,6 +403,14 @@ export class Tutorial {
     const s = this.host.match.state;
     const side = this.host.playerFaction;
     const me = s.players[side];
+    // The foe wait: started only while a foe stands in the window, and only until it arms.
+    if (step.after === 'foe' && !this.armed) {
+      this.started = s.winner === null && this.foeNear(step);
+      if (!this.started) {
+        this.publish();
+        return;
+      }
+    }
     if (!this.started) {
       if (step.after === 'hero') this.started = s.config.heroes[side] && me.heroTimer === 0;
       else if (step.after === 'spell') this.started = me.spells[step.show === 'spell' ? step.index : 0]?.timer === 0;
@@ -519,6 +538,22 @@ export class Tutorial {
       }
     }
     return null;
+  }
+
+  /**
+   * An enemy stands in `step`'s lane within 2 tiles in front of its tile (plants: `0 ≤ x − (col + 0.5) ≤ 2`;
+   * zombies, mirrored): standing (not down), no rock, a boss too (a wide one counts in each lane it stands in).
+   */
+  private foeNear(step: TutorialStep): boolean {
+    if (step.show !== 'tile') return false;
+    const enemy: Faction = this.host.playerFaction === 'plants' ? 'zombies' : 'plants';
+    const from = step.col + 0.5;
+    for (const u of this.host.match.state.units) {
+      if (u.faction !== enemy || u.key === 'rock' || !isStanding(u) || !inLane(u, step.lane)) continue;
+      const ahead = enemy === 'zombies' ? u.x - from : from - u.x;
+      if (ahead >= 0 && ahead <= FOE_WINDOW) return true;
+    }
+    return false;
   }
 
   /** The player's first standing unit (lowest id) of type `card` below the top level, or null. */

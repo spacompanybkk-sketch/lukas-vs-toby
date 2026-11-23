@@ -130,6 +130,8 @@ export class BattleSession implements Director, InputTarget {
   private readonly soundGate = new SoundGate();
   /** The twist lesson's ghosts while its step holds the match (the camera pans over them). */
   private twist: TwistShow | null = null;
+  /** The twist show's pan shot the camera was last sent to. */
+  private shotShown = 0;
 
   constructor(stage: StageLike, audio: AudioEngine, opts: BattleOptions, options: BattleSessionOptions = {}) {
     this.stage = stage;
@@ -436,12 +438,22 @@ export class BattleSession implements Director, InputTarget {
     }
     if (this.twist === null || this.twist.kind !== vm.kind) {
       this.endTwist();
-      this.twist = new TwistShow(vm.kind, this.controller.match.state.config.lawn, this.stage.fx);
+      const fx = this.stage.fx;
+      this.twist = new TwistShow(vm.kind, this.controller.match.state.config.lawn, {
+        puff: (at, color) => fx.puff(at, color),
+        buzz: () => { if (!this.disposed) this.audio.play('deny'); },
+      }, this.controller.playerFaction);
       this.stage.scene.add(this.twist.group);
-      // Once: the rig eases in on its own and keeps the shot through resizes.
-      this.stage.rig.focus(this.twist.box, this.twist.view);
+      // The rig eases in on its own and keeps the shot through resizes; a pan moves it on to the
+      // next shot (`stop`) as the show comes to it.
+      this.shotShown = this.twist.stop;
+      this.stage.rig.focus(this.twist.pan[this.shotShown] ?? this.twist.box, this.twist.view);
     }
     if (!this.stage.paused) this.twist.update(realDt);
+    if (this.twist.stop !== this.shotShown) {
+      this.shotShown = this.twist.stop;
+      this.stage.rig.focus(this.twist.pan[this.shotShown] ?? this.twist.box, this.twist.view);
+    }
   }
 
   /** The twist show goes (ghosts freed) and the camera eases back to the lawn. */

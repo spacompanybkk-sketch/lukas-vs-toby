@@ -27,7 +27,7 @@ async function press(page: Page, target: Locator | { x: number; y: number }): Pr
   else await target.click();
 }
 
-/** Selects a card by tap; a card already selected (the first, at the start) is left so, as a second tap would drop it. */
+/** Selects a card by tap; a card already selected (the first, at the start) is left so, as a second tap would drop it (plants; zombies keep it). */
 async function pick(page: Page, key: string): Promise<void> {
   const card = page.locator(`[data-card="${key}"]`);
   if ((await card.getAttribute('aria-pressed')) !== 'true') await press(page, card);

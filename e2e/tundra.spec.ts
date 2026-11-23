@@ -486,24 +486,26 @@ test('z2-8: the Frost Melon - entrance card, boss bar with its face, a barrage o
   await expect(page.locator(`.lresult__stars[data-lit="${stars}"]`)).toBeVisible();
   await expect(page.locator(`[data-coins-earned="${30 * stars}"]`)).toBeVisible();
   expect((await progress(page)).coins).toBe(coins + 30 * stars);
-  // The Tundra's last level: the zombies' world 3 has no levels yet, so no next level.
-  await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
+  // The Tundra's last level: the Desert Canyon (world 3) is open now, so the next level is z3-1.
+  await expect(page.locator('[data-action="next-level"][data-next="z3-1"]')).toHaveCount(1);
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  // The map opens on the Desert now; the arrow back shows the Tundra's boss stone with its stars.
+  await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-world', '3');
+  await press(page.locator('[data-action="world-prev"]'));
   await expect(page.locator('[data-stone="z2-8"]')).toHaveAttribute('data-stars', String(stars));
   // No dead end for the Tundra's graduate: the map stays on the Tundra, every stone won and none
-  // waiting; the island after it (the zombies' world 3) is there behind its padlock, grey, with no
-  // stones, and refuses a tap; the way back leads to the Tundra, where a won level opens again.
+  // waiting; the arrow leads on to the Desert Canyon (the zombies' world 3, open now, z3-1 next);
+  // the way back leads to the Tundra, where a won level opens again.
   const map = page.locator('[data-screen="map"]');
   await expect(map).toHaveAttribute('data-world', '2');
   await expect(page.locator('[data-stone][data-state="done"]')).toHaveCount(8);
-  await expect(page.locator('[data-action="world-next"]')).toHaveAttribute('data-locked', '');
+  await expect(page.locator('[data-action="world-next"]')).not.toHaveAttribute('data-locked', '');
   await press(page.locator('[data-action="world-next"]'));
   await expect(map).toHaveAttribute('data-world', '3');
-  await expect(map).toHaveAttribute('data-locked', '');
-  await expect(page.locator('[data-stone]')).toHaveCount(0);
-  await press(page.locator('[data-action="island-locked"]'));
-  await expect(page.locator('[data-action="island-locked"]')).toHaveClass(/is-deny-a/);
-  await expect(page.locator('[data-screen="level-card"]')).toHaveCount(0);
+  await expect(map).toHaveAttribute('data-arena', 'desert');
+  await expect(map).not.toHaveAttribute('data-locked', '');
+  await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
+  await expect(page.locator('[data-stone="z3-1"]')).toHaveAttribute('data-state', 'next');
   await press(page.locator('[data-action="world-prev"]'));
   await expect(map).toHaveAttribute('data-arena', 'tundra');
   await expect(map).not.toHaveAttribute('data-locked', '');
@@ -521,7 +523,15 @@ test('ten Tundra level ↔ map round trips: one WebGL context, the GPU\'s geomet
   const geometries = (): Promise<number> => page.evaluate(() => (window.__lvt as any).renderer.webgl.info.memory.geometries as number);
   const counts: number[] = [];
   await toMap(page);
+  // The map opens on the Desert now that world 2 is won: the arrow back is a tap each round.
+  const toWorld2 = async (): Promise<void> => {
+    if (await page.locator('[data-screen="map"]').getAttribute('data-world') === '3') {
+      await press(page.locator('[data-action="world-prev"]'));
+      await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
+    }
+  };
   for (let round = 0; round < 10; round++) {
+    await toWorld2();
     await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('tundra');
     await frames(page, 3);
     counts.push(await geometries());
@@ -546,7 +556,7 @@ test('ten Tundra level ↔ map round trips: one WebGL context, the GPU\'s geomet
 // Screenshots for review, only when asked (iPad project): LVT_TUNDRA_SHOTS=<folder> npx playwright
 // test e2e/tundra.spec.ts --project ipad -g shots. Every Tundra level a little way in, the ice
 // lesson, the Melon's moments (its freeze warning on ice and on snow), the results won and lost, and
-// the zombie map with world 2 open and world 3 shut, at the three iPad sizes.
+// the zombie map with world 2 open and world 3 (the Desert) behind it, at the three iPad sizes.
 test('shots', async ({ page }) => {
   const dir = process.env.LVT_TUNDRA_SHOTS;
   test.skip(dir === undefined || test.info().project.name !== 'ipad', 'screenshots only on request, on the iPad project');
@@ -709,7 +719,7 @@ test('shots', async ({ page }) => {
   await page.evaluate(() => (window.__lvt as any).fastForward(20));
   await frames(page, 20);
   await shoot('melon-defeat-after');
-  // z2-8's result (won), the map it leads back to, and the island after the Tundra, still shut.
+  // z2-8's result (won), the map it leads back to, and the Desert Canyon after the Tundra, open.
   await expect(page.locator('[data-level-result="z2-8"]')).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(3000);
   await shoot('result-z2-8-won');
@@ -718,9 +728,9 @@ test('shots', async ({ page }) => {
   await frames(page, 20);
   await shoot('map-tundra-all-won');
   await press(page.locator('[data-action="world-next"]'));
-  await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-locked', '');
+  await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-arena', 'desert');
   await frames(page, 20);
-  await shoot('map-zombies-world3-locked');
+  await shoot('map-zombies-world3-open');
   // A plain level won and lost (z2-2), and the Melon's level lost.
   for (const [id, loser] of [['z2-2', 'plants'], ['z2-2', 'zombies'], ['z2-8', 'zombies']] as const) {
     await go({ name: 'map', side: 'zombies', world: 2, card: id });

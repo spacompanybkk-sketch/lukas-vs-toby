@@ -12,7 +12,7 @@ import { InstanceBatch } from '../fx/InstanceBatch';
 import { MATTE_PLASTIC } from '../look';
 import { BaseView } from '../models/bases';
 import {
-  BURNING_TRAIL, FROZEN_MELON_TRAIL, FROZEN_MELON_TUMBLE, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeFrozenMelon, makeGravestone, makeMergeMarker, makeProjectile, makeRock, makeToken, spinToken,
+  BURNING_TRAIL, FROZEN_MELON_TRAIL, FROZEN_MELON_TUMBLE, NEEDLE_TRAIL, PROJECTILE_TRAIL, PROJECTILE_TUMBLE, lobHeight, makeFrozenMelon, makeGravestone, makeMergeMarker, makeNeedle, makeProjectile, makeRock, makeToken, spinToken,
   type TokenKind,
 } from '../models/props';
 import { getModelDef, modelKeys, prewarmModels } from '../models/registry';
@@ -22,7 +22,7 @@ import { ModelInstance } from '../voxel/rig';
 import { PLANT_BASE_X, ZOMBIE_BASE_X, worldToClient } from '../coords';
 import { BoxBatch } from '../world/boxes';
 import type { Lawn } from '../world/Lawn';
-import { BossFx, isBossKey, throwsFrozenMelons } from './BossFx';
+import { BossFx, isBossKey, throwsFrozenMelons, throwsNeedles } from './BossFx';
 import { Hazards } from './Hazards';
 import { PendingMarks } from './PendingMarks';
 import type { PendingMark } from '../../app/BattleController';
@@ -183,6 +183,8 @@ interface ProjectileView {
   burning: boolean;
   /** A boss's barrage drawn as a frozen melon (its look's `fx.barrage`), not the acorn of its kind. */
   frozen: boolean;
+  /** A boss's barrage drawn as a cactus needle (its look's `fx.barrage`), not the acorn of its kind. */
+  needle: boolean;
   /** A lobbed shot's landing x, which follows its target (from the state each step). */
   targetX: number | null;
   /** The step the state last listed it in: one missing from the state has gone. */
@@ -291,7 +293,12 @@ export class BattleView {
   private readonly spareBurning: Object3D[] = [];
   /** Frozen melons (the Frost Melon's barrage) waiting to be used again. */
   private readonly spareFrozen: Object3D[] = [];
+  /** Cactus needles (the Cactus King's barrage) waiting to be used again. */
+  private readonly spareNeedle: Object3D[] = [];
   private stamp = 0;
+  /** The shot geometries drawn at no size while the view comes on (see `warmShots`), and the frames they still have. */
+  private readonly warmGroup = new Group();
+  private warmFrames = 0;
   /** What the units' statuses look like (stars, sand, rope, bubbles, flames), and Brain Rot's puddles. */
   readonly marks = new StatusMarks();
   readonly puddles = new Hazards();
@@ -366,6 +373,25 @@ export class BattleView {
     }
     for (let i = 0; i < 6; i++) this.blasts.push({ at: new Vector3(), radius: 1, delay: 0, active: false, feel: BLAST_DEFAULT });
     this.pending = new PendingMarks(scene, (unit) => this.pendingGhost(unit));
+    this.warmShots();
+  }
+
+  /**
+   * Every shot's geometry (each kind, and the burning pea) is drawn once, at no size, for a few frames as the
+   * view comes on. three.js uploads a buffer at its first draw, so a shot that only some volleys carry (the
+   * Kernel-pult's butter is a 30% roll) would otherwise reach the GPU on whichever visit first shows it.
+   */
+  private warmShots(): void {
+    const made = [...Object.keys(this.spare).map((kind) => makeProjectile(kind as ProjectileKind)), makeProjectile('pea', true)];
+    for (const object of made) {
+      object.name = 'projectile-warm';
+      object.scale.setScalar(0);
+      object.position.set(5, 0.5, 2.5);
+      object.frustumCulled = false;
+      this.warmGroup.add(object);
+    }
+    this.scene.add(this.warmGroup);
+    this.warmFrames = 3;
   }
 
   /** Units on the lawn, those still falling apart included. */
@@ -577,6 +603,7 @@ export class BattleView {
     const a = Math.min(1, Math.max(0, alpha));
     this.time = timeSeconds;
     this.pending.frame(realSeconds);
+    if (this.warmFrames > 0 && --this.warmFrames === 0) this.warmGroup.removeFromParent();
 
     // Units: move, animate, and take away the ones that have finished dying.
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -895,6 +922,7 @@ export class BattleView {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.warmGroup.removeFromParent();
     for (const marker of this.markers) marker.removeFromParent();
     this.markersShown = 0;
     for (const view of this.list) view.dispose();
@@ -1513,13 +1541,17 @@ export class BattleView {
     // What fired it is the projectile's own `sourceKey`; the boss's view may be gone by now.
     const shooter = sourceKey ?? owner?.key;
     const frozen = kind === 'acorn' && shooter !== undefined && throwsFrozenMelons(shooter);
-    const object = frozen ? this.spareFrozen.pop() ?? makeFrozenMelon() : this.spare[kind].pop() ?? makeProjectile(kind);
+    const needle = kind === 'acorn' && shooter !== undefined && throwsNeedles(shooter);
+    const object = frozen ? this.spareFrozen.pop() ?? makeFrozenMelon()
+      : needle ? this.spareNeedle.pop() ?? makeNeedle()
+      : this.spare[kind].pop() ?? makeProjectile(kind);
     object.visible = false;
     object.scale.setScalar(PROJECTILE_SCALE[kind]);
-    object.rotation.set(0, 0, 0);
+    // A needle is built pointing along -X, like the zombies' arrow; the plants throw towards +X.
+    object.rotation.set(0, needle ? Math.PI : 0, 0);
     this.scene.add(object);
     const view: ProjectileView = {
-      id, kind, faction, flight, burning: false, frozen, targetX, stamp: this.stamp,
+      id, kind, faction, flight, burning: false, frozen, needle, targetX, stamp: this.stamp,
       lane, object, prevX: x, currX: x, age: 0,
       // Leaves at the snap of the shot, if the shooter has one to show.
       revealAt: !late && owner && owner.has('shoot') ? RELEASE_SECONDS : 0,
@@ -1542,6 +1574,7 @@ export class BattleView {
     view.object.removeFromParent();
     if (view.burning) this.spareBurning.push(view.object);
     else if (view.frozen) this.spareFrozen.push(view.object);
+    else if (view.needle) this.spareNeedle.push(view.object);
     else this.spare[view.kind].push(view.object);
   }
 
@@ -1679,7 +1712,7 @@ export class BattleView {
       if (tumble > 0) p.object.rotation.set(this.time * tumble * TURN, this.time * tumble * TURN * 0.6, 0);
       p.object.position.set(drawnX, y, p.lane + 0.5 + p.fromZ * settle);
       p.object.updateMatrixWorld();
-      this.fx.trail(p.object, p.burning ? BURNING_TRAIL : p.frozen ? FROZEN_MELON_TRAIL : PROJECTILE_TRAIL[p.kind]);
+      this.fx.trail(p.object, p.burning ? BURNING_TRAIL : p.frozen ? FROZEN_MELON_TRAIL : p.needle ? NEEDLE_TRAIL : PROJECTILE_TRAIL[p.kind]);
     }
   }
 

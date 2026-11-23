@@ -1,5 +1,6 @@
 import { BALANCE, seconds } from '../data/balance';
 import type { Balance, BossPattern } from '../data/balance';
+import { rocks } from '../adventure/levels/helpers';
 import { ALL_CARDS } from '../data/units';
 import { Match, defaultConfig } from '../sim/match';
 import { NO_TWIST } from '../sim/lawn';
@@ -20,15 +21,23 @@ import type { BossConfig, BossKey, LawnConfig, MatchConfig, PreparedUnit, Script
 //   frostMelon  the zombies' world-2 boss, on the Tundra's ice (lanes 0, 1, 3, 4, as at z2-8):
 //               the Oak's waves of zombies.
 //
+//   sandPharaoh the plants' world-3 boss, in the Desert's rocks (as at p3-8): the Titan's garden (Peashooters,
+//               a Walnut wall on column 7), Desert Zombies down the outer lanes.
+//   cactusKing  the zombies' world-3 boss, with the rocks thinning its flanks (as at z3-8): the Oak's waves.
+//
 // The world-2 bosses fight with a demo table of their own (`demoBalance`): two phases and a strike
 // (the Howler's blinding howl, the Melon's freeze) on a quick clock, so every show of theirs can be
-// seen in a minute whatever `Balance.bosses` holds.
+// seen in a minute whatever `Balance.bosses` holds. The world-3 bosses fight their shipped numbers
+// (every show of the Pharaoh is up by 62 s, the Cactus King's by 47 s), except that the Cactus King's
+// phase 2 is reordered so its Walnuts show before it falls.
 
 export const BOSS_DEMO: Record<BossKey, BossConfig> = {
   brainTitan: { key: 'brainTitan', faction: 'zombies', lane: 2 },
   elderOak: { key: 'elderOak', faction: 'plants', lane: 2 },
   moonHowler: { key: 'moonHowler', faction: 'zombies', lane: 2 },
   frostMelon: { key: 'frostMelon', faction: 'plants', lane: 2 },
+  sandPharaoh: { key: 'sandPharaoh', faction: 'zombies', lane: 2 },
+  cactusKing: { key: 'cactusKing', faction: 'plants', lane: 2 },
 };
 
 const plant = (unit: PreparedUnit['unit'], lane: number, col: number, level = 1): PreparedUnit =>
@@ -89,6 +98,9 @@ const DEMO_LAWN: Record<BossKey, LawnConfig> = {
   elderOak: NO_TWIST,
   moonHowler: { ...NO_TWIST, fog: 5 },
   frostMelon: { ...NO_TWIST, ice: { lanes: [0, 1, 3, 4], speed: 1.6 } },
+  // The rocks of p3-8 (two in its own lane, four round the garden) and of z3-8 (on its flanks).
+  sandPharaoh: { ...NO_TWIST, rocks: rocks([[2, 2], [2, 4], [0, 1], [4, 1], [1, 5], [3, 5]]) },
+  cactusKing: { ...NO_TWIST, rocks: rocks([[0, 2], [4, 2], [0, 5], [4, 5]]) },
 };
 
 /** The demo's setup: mode 'boss' with `boss`, the plain opponent above, no energy to spend, sudden death off. */
@@ -164,9 +176,24 @@ const DEMO_BOSSES: Partial<Record<BossKey, Balance['bosses'][BossKey]>> = {
   },
 };
 
+/**
+ * The Cactus King's shipped row with its phase 2 reordered so the Walnuts show before it falls at 47 s:
+ * the rockfall, then its summon 3 s after the blow, then the barrage (each pattern waits its own
+ * `everySeconds` after the one before).
+ */
+function cactusDemoRow(): Balance['bosses'][BossKey] {
+  const row = structuredClone(BALANCE.bosses.cactusKing) as Balance['bosses'][BossKey];
+  const phase2 = row.phases?.[1];
+  if (row.phases !== undefined && phase2 !== undefined) {
+    const sooner = phase2.map((p) => (p.kind === 'summon' ? { ...p, everySeconds: 3 } : p));
+    row.phases = [row.phases[0] as readonly BossPattern[], [...sooner.filter((p) => p.kind !== 'barrage'), ...sooner.filter((p) => p.kind === 'barrage')]];
+  }
+  return row;
+}
+
 /** The table the demo of `boss` fights with: the shipped one, with a world-2 boss's demo row in it. */
 export function demoBalance(boss: BossKey): Balance {
-  const row = DEMO_BOSSES[boss];
+  const row = boss === 'cactusKing' ? cactusDemoRow() : DEMO_BOSSES[boss];
   if (row === undefined) return BALANCE as Balance;
   const b = structuredClone(BALANCE) as Balance;
   b.bosses[boss] = structuredClone(row);

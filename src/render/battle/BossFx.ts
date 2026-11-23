@@ -1,4 +1,4 @@
-import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Object3D } from 'three';
+import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Material, type Object3D } from 'three';
 import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
 import { BOSS_LOOK } from '../../data/bossLooks';
 import type { BossLook, StrikeWarning } from '../../data/bossLooks';
@@ -13,8 +13,9 @@ import type { Feel } from './types';
 import type { UnitView } from './UnitView';
 
 // The bosses' shows (phase 3 Task 3), for `BattleView`: the entrance, the slam's wind-up tiles and
-// its blow, a strike's warning tiles, its move and its blow, the shield (a dome, a moon dome, bark or
-// ice plates), the summons, the eyes that follow the enemies, the parts that light up from phase 2,
+// its blow, a strike's warning tiles, its move and its blow (a boulder dropping on each tile), the
+// shield (a dome, a moon dome, bark or ice plates, or a swirl of sand), the summons (wolf ears,
+// mummy wraps), the eyes that follow the enemies, the parts that light up from phase 2,
 // and the defeat (brain blocks; leaves and rolling acorns; shards). Which show a boss gets is its row
 // in `BOSS_LOOK` (data/bossLooks.ts); nothing here names a boss. Everything is made once and pooled
 // (a strike's tiles on its first strike): nothing here allocates per frame. Read from events and the
@@ -31,6 +32,11 @@ const lookOf = (key: UnitKey): BossLook => BOSS_LOOK[key as BossKey];
 /** Whether the barrage of the boss `key` flies as frozen melons (`fx.barrage`), not acorns. */
 export function throwsFrozenMelons(key: UnitKey): boolean {
   return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'frozenMelon';
+}
+
+/** Whether the barrage of the boss `key` flies as cactus needles (`fx.barrage`), not acorns. */
+export function throwsNeedles(key: UnitKey): boolean {
+  return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'needle';
 }
 
 /** Whether a unit key is a boss's. */
@@ -84,6 +90,21 @@ const BARK = [hex(PALETTE.walnut), hex(PALETTE.walnutDark), hex(PALETTE.walnutLi
 /** The ice plates' chips (`shield: 'ice'`): frost white and two blues. */
 const ICE = [hex('#E8FAFF'), hex('#7FD3F5'), hex('#B8ECFF')];
 const MOON_SPARK = hex(MOON_COLOR);
+/** The sand shield (`shield: 'sand'`): its pixels' colours, how big each is (tiles), how many to a layer. */
+const SAND = [hex(PALETTE.sand), hex(PALETTE.sandDark), hex('#F4E1A8')];
+const SAND_PIXEL = 0.2;
+const SAND_PER_LAYER = 10;
+/** The three sand layers' resting heights (hoisted: swirl runs every frame). */
+const SAND_LAYER_Y: readonly number[] = [0.3, 1.3, 2.3];
+/** The boulders of a `strikeBlow: 'boulder'` hang this high over their tiles at the start of the wind-up (tiles). */
+const BOULDER_HEIGHT = 3.2;
+/** A falling boulder is rust red and orange, not the grey of the Desert's rock tiles, so a child can tell "it lands here" from "a rock stands here". */
+const BOULDER_ROCK = [hex('#B5482A'), hex('#D9662F'), hex('#8A2F1A'), hex('#F2A04A')];
+/** The warning ring under each boulder (hot orange, apart from the red tile frames) and the boulders and rings made when the fight starts. */
+const BOULDER_RING = '#FF8A1F';
+const BOULDER_POOL = 4;
+/** How many frames the fight's pieces are drawn at no size as it comes on (so each is uploaded before it is needed). */
+const WARM_FRAMES = 3;
 /** The shield plates each plate show slides in: bark (`barkL`, `barkR`) or ice (`iceL`, `iceR`). */
 const PLATES = { bark: ['barkL', 'barkR'], ice: ['iceL', 'iceR'] } as const;
 /**
@@ -98,8 +119,21 @@ export const STRIKE_TINT: Readonly<Record<StatusKind | 'none', string>> = {
 const STRIKE_TILES = LANES * COLS;
 const STRIKE_FILL_OPACITY = 0.38;
 
-/** A pair of pup's ears: who wears them, the model they were put on (a level swap makes a new one), the head mesh whose flash they copy. */
-interface PupEars { mesh: Mesh; material: MeshStandardMaterial; owner: UnitView | null; root: Object3D | null; source: Mesh | null }
+/**
+ * What a summoned unit wears (views only): a pair of wolf ears on its head, or mummy wraps on its
+ * head and torso. Who wears it, the model it was put on (a level swap makes a new one), the head
+ * mesh whose flash it copies.
+ */
+interface SummonDress {
+  look: 'pups' | 'mummies';
+  /** The pieces, each on the part named in `parts` (the same index). */
+  meshes: Mesh[];
+  parts: readonly string[];
+  material: MeshStandardMaterial;
+  owner: UnitView | null;
+  root: Object3D | null;
+  source: Mesh | null;
+}
 interface Roller { object: Object3D; age: number; active: boolean; from: Vector3; dx: number; dz: number }
 /** An acorn's landing mark: which acorn (−1: free), how far it had to fly, how far it has come (0..1). */
 interface AcornMark { mesh: Mesh; id: number; from: number; progress: number }
@@ -158,7 +192,23 @@ export class BossFx {
   private strikeLeft = -1;
   /** The tint of the strike being wound up (its blow is drawn in it too). */
   private strikeTint = 0xffffff;
+  /** The strike's whole wind-up in seconds, and whether a boulder hangs over each tile (`fx.strikeBlow`). */
+  private strikeTotal = 0.01;
+  private strikeBoulders = false;
+  private boulderGeometry: ReturnType<BoxBatch['build']> | null = null;
+  private boulderMaterial: MeshStandardMaterial | null = null;
+  private readonly boulders: Mesh[] = [];
+  /** The pieces drawn at no size while the fight starts (see `warmUp`), and the frames they still have. */
+  private readonly warm: Mesh[] = [];
+  private warmFrames = 0;
+  private boulderRingGeometry: ReturnType<BoxBatch['build']> | null = null;
+  private boulderRingMaterial: MeshBasicMaterial | null = null;
+  private readonly boulderRings: Mesh[] = [];
   private domeOn = false;
+  /** The sand shield's swirl (made once, when a boss with `shield: 'sand'` comes on): three layers of pixels. */
+  private sandRing: Group | null = null;
+  private sandGeometries: ReturnType<BoxBatch['build']>[] = [];
+  private sandMaterial: MeshStandardMaterial | null = null;
   /** Shield plates shut (bark or ice), and seconds since they began to close (−1: still). */
   private barkOn = false;
   private barkFor = -1;
@@ -175,12 +225,13 @@ export class BossFx {
   private phaseShown = false;
   /** A `shards` defeat's colours (`fx.shards`). */
   private readonly shardColors: number[] = [];
-  /** Wolf ears for the units a boss with `fx.pups` summons (made on its first summon), and who wears each. */
+  /** What the units a boss with `fx.summonLook` summons wear (made on its first summon), and who wears each. */
   private earGeometry: ReturnType<BoxBatch['build']> | null = null;
-  private readonly ears: PupEars[] = [];
-  /** How many units of `pupKey` spawned this step still get ears (set by a summon, cleared by the boss's `sync`). */
-  private pupsDue = 0;
-  private pupKey: UnitKey | null = null;
+  private wrapGeometry: ReturnType<BoxBatch['build']> | null = null;
+  private readonly dressed: SummonDress[] = [];
+  /** How many units of `summonKey` spawned this step still get dressed (set by a summon, cleared by the boss's `sync`). */
+  private summonsDue = 0;
+  private summonKey: UnitKey | null = null;
   /** The boss's view (one boss a match), while it stands. */
   private boss: UnitView | null = null;
   private entranceLeft = -1;
@@ -269,12 +320,76 @@ export class BossFx {
     const look = lookOf(view.key);
     view.setBulk(look.scale);
     this.dress(view, look);
+    this.prebuild(look);
     view.wrapper.add(this.dome);
     if (late) return;
     this.entranceLeft = ENTRANCE_SECONDS;
     this.roared = false;
     this.onFeel({ punch: 0.1, punchSeconds: ENTRANCE_SECONDS, focusZ: view.lane + 0.5 });
     this.ground(view.currX, view.lane, 1.2);
+  }
+
+  /**
+   * Everything the fight will need from the boss's look, made now so nothing is allocated while it
+   * runs: the boulders and their warning rings, and the summons' dress (wolf ears, mummy wraps).
+   */
+  private prebuild(look: BossLook): void {
+    if (look.fx.strikeBlow === 'boulder') this.growBoulders(BOULDER_POOL);
+    const dress = look.fx.summonLook;
+    if (dress !== undefined) {
+      let have = 0;
+      for (let i = 0; i < this.dressed.length; i++) if ((this.dressed[i] as SummonDress).look === dress) have++;
+      for (; have < DRESS_POOL / 2 && this.dressed.length < DRESS_POOL; have++) this.dressed.push(this.makeDress(dress));
+    }
+    // A warning drawn as a dither (the Pharaoh's smoke) swaps two checker geometries: made now, not at its first strike.
+    if (Object.values(look.fx.strikeWarnings ?? {}).some((w) => w.dither === true) && this.ditherA === null) {
+      this.ditherA = ditherFill(0);
+      this.ditherB = ditherFill(1);
+    }
+    this.warmUp();
+  }
+
+  /** A fresh dress slot (no owner yet): wolf ears on a head, or wraps on a head and a torso. */
+  private makeDress(look: 'pups' | 'mummies'): SummonDress {
+    const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+    if (look === 'pups') {
+      this.earGeometry ??= wolfEars();
+      const mesh = new Mesh(this.earGeometry, material);
+      mesh.name = 'boss-pup-ears';
+      return { look, meshes: [mesh], parts: ['head'], material, owner: null, root: null, source: null };
+    }
+    this.wrapGeometry ??= mummyWrap();
+    const head = new Mesh(this.wrapGeometry, material);
+    const torso = new Mesh(this.wrapGeometry, material);
+    head.name = torso.name = 'boss-mummy-wrap';
+    return { look, meshes: [head, torso], parts: ['head', 'torso'], material, owner: null, root: null, source: null };
+  }
+
+  /**
+   * The fight's own geometry and materials are drawn once, at no size, for a few frames as it comes
+   * on: three.js compiles a program and uploads a buffer at its first draw, which would otherwise
+   * land as a hitch on the first warning, shield or summon. Nothing shows (every piece is scaled to nothing).
+   */
+  private warmUp(): void {
+    const pairs: [ReturnType<BoxBatch['build']>, Material][] = [
+      [this.frameGeometry, this.strikeFrameMaterial],
+      [this.fillGeometry, this.strikeFillMaterial],
+    ];
+    if (this.ditherA !== null) pairs.push([this.ditherA, this.strikeFillMaterial], [this.ditherB as ReturnType<BoxBatch['build']>, this.strikeFillMaterial]);
+    if (this.boulderGeometry !== null) pairs.push([this.boulderGeometry, this.boulderMaterial as Material], [this.boulderRingGeometry as ReturnType<BoxBatch['build']>, this.boulderRingMaterial as Material]);
+    if (this.wrapGeometry !== null) pairs.push([this.wrapGeometry, (this.dressed[0] as SummonDress).material]);
+    if (this.earGeometry !== null) pairs.push([this.earGeometry, (this.dressed[0] as SummonDress).material]);
+    if (this.sandMaterial !== null) for (const g of this.sandGeometries) pairs.push([g, this.sandMaterial]);
+    for (const [geometry, material] of pairs) {
+      const mesh = new Mesh(geometry, material);
+      mesh.name = 'boss-warm';
+      mesh.scale.setScalar(0);
+      mesh.position.set(5, 0.5, 2.5);
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.warm.push(mesh);
+    }
+    this.warmFrames = WARM_FRAMES;
   }
 
   /** Ends the entrance at once (a tap). */
@@ -286,11 +401,11 @@ export class BossFx {
 
   /** The step's state for the boss: shield, wind-up tiles for a view that joined late, the eyes. */
   sync(view: UnitView, u: Unit, state: SimState): void {
-    this.pupsDue = 0; // the summon's units came on in the step's events, before this
+    this.summonsDue = 0; // the summon's units came on in the step's events, before this
     if (view.dying || this.ended) return;
     const shows = lookOf(view.key).fx;
     const shield = u.shieldLeft > 0;
-    if (shows.shield === 'dome' || shows.shield === 'moon') {
+    if (shows.shield === 'dome' || shows.shield === 'moon' || shows.shield === 'sand') {
       if (shield !== this.domeOn) this.setDome(view, shield);
     } else if (shield !== this.barkOn) {
       this.setBark(view, shield);
@@ -332,7 +447,7 @@ export class BossFx {
       const p = patternsOf(this.balance.bosses[u.key as BossKey], u.phase)[u.pattern];
       const strike = p !== undefined && p.kind === 'strike' ? p : null;
       const windup = strike === null ? 0 : strike.windupSeconds;
-      this.showStrike(e.tiles, warningOf(u.key as BossKey, strike?.status?.kind ?? 'none'), windup);
+      this.showStrike(e.tiles, warningOf(u.key as BossKey, strike?.status?.kind ?? 'none'), windup, windup, lookOf(u.key).fx.strikeBlow === 'boulder');
       const boss = this.boss;
       if (boss !== null && boss.id === e.unitId) this.strikeMove(boss, windup);
       return;
@@ -344,14 +459,23 @@ export class BossFx {
     }
     this.hideStrike();
     const tint = this.strikeTint;
+    const boulders = u !== undefined && Object.hasOwn(BOSS_HALF_WIDTH, u.key) ? lookOf(u.key).fx.strikeBlow === 'boulder' : this.strikeBoulders;
     for (let i = 0; i < e.tiles.length; i++) {
       const t = e.tiles[i] as { lane: number; col: number };
       v1.set(t.col + 0.5, 0, t.lane + 0.5);
       this.fx.ring(v1, tint, 0.6, true);
-      // A lane-wide blow throws sparkles on every other tile only: the rings carry it.
-      if (e.tiles.length <= 8 || i % 2 === 0) this.fx.burst(v1, [tint, tint, 0xffffff], 6, 1.8);
+      if (boulders) {
+        // A boulder has come down on the tile: it breaks into rock chips and dust.
+        this.fx.dirt(v1);
+        this.fx.debris(v1, BOULDER_ROCK, 4);
+        v1.y = 0.3;
+        this.fx.burst(v1, BOULDER_ROCK, 10, 2.2);
+      } else if (e.tiles.length <= 8 || i % 2 === 0) {
+        // A lane-wide blow throws sparkles on every other tile only: the rings carry it.
+        this.fx.burst(v1, [tint, tint, 0xffffff], 6, 1.8);
+      }
     }
-    this.onFeel({ shake: 0.6, hitStop: 0.05 });
+    this.onFeel(boulders ? { shake: 0.8, hitStop: 0.07 } : { shake: 0.6, hitStop: 0.05 });
   }
 
   /** A boss's pattern event (`state`: the state after its step, for the slam's own wind-up). */
@@ -372,7 +496,7 @@ export class BossFx {
         }
         break;
       case 'summon':
-        if (lookOf(view.key).fx.pups === true) this.duePups(view.key as BossKey, e.unitId, state);
+        if (lookOf(view.key).fx.summonLook !== undefined) this.dueSummons(view.key as BossKey, e.unitId, state);
         if (lookOf(view.key).fx.summon === 'ring') {
           view.playFor('cheer', 0.9);
           v1.set(view.currX, 0, view.lane + 0.5);
@@ -402,37 +526,39 @@ export class BossFx {
   }
 
   /**
-   * A unit came on (not a boss). Straight after a summon by a boss with `fx.pups` (the Howler), its
-   * side's newcomers are its pups and get a pair of wolf ears on their heads. Views only: nothing in
-   * the simulation knows, so a view that joins later shows them without.
+   * A unit came on (not a boss). Straight after a summon by a boss with `fx.summonLook` (the
+   * Howler's pups, the Pharaoh's mummies), its side's newcomers of the summoned kind are dressed
+   * for it: wolf ears, or bandage wraps. Views only: nothing in the simulation knows, so a view
+   * that joins later shows them without.
    */
   spawned(view: UnitView): void {
     const boss = this.boss;
-    if (this.pupsDue <= 0 || boss === null || view.faction !== boss.faction || view.boss || view.key !== this.pupKey) return;
-    this.pupsDue--;
-    // A slot whose pup is gone from the lawn (not merely dying: its ears ride its fall).
-    let slot: PupEars | undefined;
-    for (let i = 0; i < this.ears.length && slot === undefined; i++) if ((this.ears[i] as PupEars).owner === null) slot = this.ears[i];
+    if (this.summonsDue <= 0 || boss === null || view.faction !== boss.faction || view.boss || view.key !== this.summonKey) return;
+    const look = lookOf(boss.key).fx.summonLook;
+    if (look === undefined) return;
+    this.summonsDue--;
+    // A slot whose unit is gone from the lawn (not merely dying: its dress rides its fall).
+    let slot: SummonDress | undefined;
+    for (let i = 0; i < this.dressed.length && slot === undefined; i++) {
+      const d = this.dressed[i] as SummonDress;
+      if (d.owner === null && d.look === look) slot = d;
+    }
     if (slot === undefined) {
-      if (this.ears.length >= PUPS_POOL) return;
-      this.earGeometry ??= wolfEars();
-      const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
-      const mesh = new Mesh(this.earGeometry, material);
-      mesh.name = 'boss-pup-ears';
-      slot = { mesh, material, owner: null, root: null, source: null };
-      this.ears.push(slot);
+      if (this.dressed.length >= DRESS_POOL) return;
+      slot = this.makeDress(look);
+      this.dressed.push(slot);
     }
     slot.owner = view;
-    this.wearEars(slot);
+    this.wear(slot);
   }
 
   /**
    * The summon of the boss `id` (from its state after the step): which of its patterns it was (the
-   * timed one before its next) and so how many of which unit came on as its pups.
+   * timed one before its next) and so how many of which unit came on in its dress.
    */
-  private duePups(key: BossKey, id: number, state: SimState | undefined): void {
-    this.pupsDue = 0;
-    this.pupKey = null;
+  private dueSummons(key: BossKey, id: number, state: SimState | undefined): void {
+    this.summonsDue = 0;
+    this.summonKey = null;
     const u = state?.units.find((v) => v.id === id);
     if (u === undefined) return;
     const list = patternsOf(this.balance.bosses[key], u.phase);
@@ -442,45 +568,59 @@ export class BossFx {
       if (p !== undefined && p.kind === 'summon') summon = p as Extract<BossPattern, { kind: 'summon' }>;
     }
     if (summon === null) return;
-    this.pupsDue = summon.count;
-    this.pupKey = summon.unit;
+    // A Desert Zombie is wrapped in bandages already: the Pharaoh's mummies are the Skeleton Warriors it calls in phase 2.
+    if (lookOf(key).fx.summonLook === 'mummies' && summon.unit === 'desertZombie') return;
+    this.summonsDue = summon.count;
+    this.summonKey = summon.unit;
   }
 
-  /** Puts a slot's ears on its pup's head (again after a level swap rebuilt the model). */
-  private wearEars(slot: PupEars): void {
+  /** Puts a slot's dress on its unit (again after a level swap rebuilt the model). */
+  private wear(slot: SummonDress): void {
     const owner = slot.owner as UnitView;
     slot.root = owner.model.root;
     slot.source = null;
-    const head = owner.model.root.getObjectByName('head');
-    if (!head) return;
-    // On top of its head, as modelled: the head's own boxes (the parts on it left out).
-    const top = PUP_BOX.makeEmpty();
-    for (const child of head.children) {
-      const mesh = child as Mesh;
-      if (!mesh.isMesh || !mesh.geometry) continue;
-      if (mesh.geometry.boundingBox === null) mesh.geometry.computeBoundingBox();
-      top.union(mesh.geometry.boundingBox as Box3);
-      slot.source ??= mesh; // its flash is copied from here
+    for (let n = 0; n < slot.meshes.length; n++) {
+      const mesh = slot.meshes[n] as Mesh;
+      const part = owner.model.root.getObjectByName(slot.parts[n] as string);
+      if (!part) continue;
+      // Round its part as modelled: the part's own boxes (the parts on it left out).
+      const box = PUP_BOX.makeEmpty();
+      let first: Mesh | null = null;
+      for (const child of part.children) {
+        const m = child as Mesh;
+        if (!m.isMesh || !m.geometry) continue;
+        if (m.geometry.boundingBox === null) m.geometry.computeBoundingBox();
+        box.union(m.geometry.boundingBox as Box3);
+        first ??= m; // its flash is copied from here
+      }
+      if (box.isEmpty()) continue;
+      if (n === 0) slot.source = first;
+      if (slot.look === 'pups') {
+        // On top of its head.
+        mesh.position.set((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2);
+        mesh.scale.setScalar(PUP_EAR_SCALE);
+      } else {
+        // Wrapped round it, a little larger than the part itself.
+        mesh.position.set((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, (box.min.z + box.max.z) / 2);
+        mesh.scale.set((box.max.x - box.min.x) * WRAP_GROW, (box.max.y - box.min.y) * WRAP_GROW, (box.max.z - box.min.z) * WRAP_GROW);
+      }
+      part.add(mesh);
     }
-    if (top.isEmpty()) return;
-    slot.mesh.position.set((top.min.x + top.max.x) / 2, top.max.y, (top.min.z + top.max.z) / 2);
-    slot.mesh.scale.setScalar(PUP_EAR_SCALE);
-    head.add(slot.mesh);
   }
 
-  /** Each pup's ears: freed once it has left the lawn, put back after a level swap, flashing with its hits. */
-  private updateEars(): void {
-    for (let i = 0; i < this.ears.length; i++) {
-      const slot = this.ears[i] as PupEars;
+  /** Each summon's dress: freed once its unit has left the lawn, put back after a level swap, flashing with its hits. */
+  private updateDressed(): void {
+    for (let i = 0; i < this.dressed.length; i++) {
+      const slot = this.dressed[i] as SummonDress;
       const owner = slot.owner;
       if (owner === null) continue;
       if (owner.wrapper.parent === null) {
         slot.owner = null;
         slot.root = slot.source = null;
-        slot.mesh.removeFromParent();
+        for (const mesh of slot.meshes) mesh.removeFromParent();
         continue;
       }
-      if (owner.model.root !== slot.root) this.wearEars(slot);
+      if (owner.model.root !== slot.root) this.wear(slot);
       const from = slot.source?.material as MeshStandardMaterial | undefined;
       if (from !== undefined) {
         slot.material.emissive.copy(from.emissive);
@@ -618,6 +758,10 @@ export class BossFx {
   /** Moves the shows on by `dt`. Allocates nothing. */
   update(dt: number): void {
     this.time += dt;
+    if (this.warmFrames > 0 && --this.warmFrames === 0) {
+      for (let i = 0; i < this.warm.length; i++) (this.warm[i] as Mesh).removeFromParent();
+      this.warm.length = 0;
+    }
     const boss = this.boss;
     if (this.entranceLeft > 0) {
       this.entranceLeft -= dt;
@@ -658,9 +802,20 @@ export class BossFx {
       }
       // Its tell blinks with them (the Melon's icicle crown).
       for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = on;
+      // A boulder hangs over each tile and comes lower in hard steps (two voxels at a time) as the blow nears.
+      if (this.strikeBoulders) {
+        const high = Math.round((BOULDER_HEIGHT * Math.min(1, this.strikeLeft / this.strikeTotal)) / (2 * VOXEL)) * 2 * VOXEL;
+        for (let i = 0; i < this.boulders.length; i++) {
+          const boulder = this.boulders[i] as Mesh;
+          if (boulder.visible) boulder.position.y = 0.02 + high;
+        }
+        // The rings pulse in two hard steps (a size, a size bigger), faster in the last half second.
+        const big = Math.floor(this.time * (this.strikeLeft < 0.5 ? BLINK_FAST : BLINK_PER_SECOND) * 2) % 2 === 0;
+        for (let i = 0; i < this.boulderRings.length; i++) (this.boulderRings[i] as Mesh).scale.setScalar(big ? 1.18 : 0.92);
+      }
     }
     if (this.barkSparkIn > 0) this.barkSparkIn -= dt;
-    if (this.ears.length > 0) this.updateEars();
+    if (this.dressed.length > 0) this.updateDressed();
     for (let i = 0; i < this.marks.length; i++) {
       const m = this.marks[i] as AcornMark;
       if (m.id === -1) continue;
@@ -672,6 +827,7 @@ export class BossFx {
     if (this.domeOn) {
       const step = Math.floor(this.time * 4) % 2 === 0 ? 1 : 1.04;
       this.dome.scale.setScalar(step);
+      if (this.sandRing !== null && this.sandRing.visible) this.swirl();
     }
     if (boss && this.barkFor >= 0) {
       // The two halves slide in from the sides, faster and faster, and clap shut.
@@ -732,11 +888,19 @@ export class BossFx {
     this.strikeFillMaterial.dispose();
     this.ditherA?.dispose();
     this.ditherB?.dispose();
-    for (const e of this.ears) {
-      e.mesh.removeFromParent();
-      e.material.dispose();
+    for (const d of this.dressed) {
+      for (const mesh of d.meshes) mesh.removeFromParent();
+      d.material.dispose();
     }
     this.earGeometry?.dispose();
+    this.wrapGeometry?.dispose();
+    this.sandRing?.removeFromParent();
+    for (const g of this.sandGeometries) g.dispose();
+    this.sandMaterial?.dispose();
+    this.boulderGeometry?.dispose();
+    this.boulderMaterial?.dispose();
+    this.boulderRingGeometry?.dispose();
+    this.boulderRingMaterial?.dispose();
     this.boss = null;
   }
 
@@ -768,7 +932,14 @@ export class BossFx {
     this.domeSpark = moon ? MOON_SPARK : DOME_SPARK;
     const ice = shows.shield === 'ice';
     [this.plateL, this.plateR] = ice ? PLATES.ice : PLATES.bark;
-    this.plateChips = ice ? ICE : BARK;
+    this.plateChips = ice ? ICE : shows.plateChips !== undefined ? shows.plateChips.map(hex) : BARK;
+    if (shows.shield === 'sand') {
+      this.domeSpark = SAND[0] as number;
+      if (this.sandRing === null) this.makeSandRing();
+      const ring = this.sandRing as Group;
+      ring.visible = false;
+      view.wrapper.add(ring);
+    }
     this.strikeParts.length = 0;
     this.phaseParts.length = 0;
     this.phaseShown = false;
@@ -793,8 +964,9 @@ export class BossFx {
 
   /** The ring thrown out as its shield goes up, in the shield's colour. */
   private shieldRing(shield: BossLook['fx']['shield']): number {
-    if (shield === 'bark') return BARK[1] as number;
+    if (shield === 'bark') return this.plateChips[1] ?? (BARK[1] as number);
     if (shield === 'ice') return ICE[1] as number;
+    if (shield === 'sand') return SAND[1] as number;
     return shield === 'moon' ? MOON_SPARK : DOME_SPARK;
   }
 
@@ -898,14 +1070,17 @@ export class BossFx {
       // Joined during the wind-up (or restored into one): the warning and the move, timed to the blow.
       const tiles: { lane: number; col: number }[] = [];
       for (const t of u.strikeTiles) tiles.push({ lane: Math.floor(t / COLS), col: t % COLS });
-      this.showStrike(tiles, warningOf(view.key as BossKey, p.status?.kind ?? 'none'), left);
+      this.showStrike(tiles, warningOf(view.key as BossKey, p.status?.kind ?? 'none'), left, p.windupSeconds, lookOf(view.key).fx.strikeBlow === 'boulder');
       this.strikeMove(view, left);
     }
     this.strikeLeft = left;
   }
 
-  /** Puts the warning on `tiles` in its colours for `seconds` (the frames steady, the fills blinking). */
-  private showStrike(tiles: readonly { lane: number; col: number }[], warning: StrikeWarning, seconds: number): void {
+  /**
+   * Puts the warning on `tiles` in its colours for `seconds` of the wind-up's `total` (the frames
+   * steady, the fills blinking); with `boulders`, a boulder hangs over each, lower the nearer the blow.
+   */
+  private showStrike(tiles: readonly { lane: number; col: number }[], warning: StrikeWarning, seconds: number, total: number, boulders: boolean): void {
     while (this.strikeTiles.length < Math.min(tiles.length, STRIKE_TILES)) {
       const frame = new Mesh(this.frameGeometry, this.strikeFrameMaterial);
       const fill = new Mesh(this.fillGeometry, this.strikeFillMaterial);
@@ -940,6 +1115,45 @@ export class BossFx {
     }
     this.strikeUsed = n;
     this.strikeLeft = seconds > 0 ? seconds : 0.01;
+    this.strikeTotal = Math.max(total, this.strikeLeft);
+    this.strikeBoulders = boulders;
+    if (boulders) this.hangBoulders(tiles, n);
+  }
+
+  /** Boulders (each with its warning ring) up to `n`, made once and kept. */
+  private growBoulders(n: number): void {
+    this.boulderGeometry ??= boulder();
+    this.boulderMaterial ??= new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+    this.boulderRingGeometry ??= boulderRing();
+    this.boulderRingMaterial ??= new MeshBasicMaterial({ color: BOULDER_RING, transparent: true, opacity: 0.9, depthWrite: false });
+    while (this.boulders.length < n) {
+      const mesh = new Mesh(this.boulderGeometry, this.boulderMaterial);
+      mesh.name = 'boss-boulder';
+      mesh.renderOrder = 10;
+      mesh.visible = false;
+      const ring = new Mesh(this.boulderRingGeometry, this.boulderRingMaterial);
+      ring.name = 'boss-boulder-ring';
+      ring.renderOrder = 10;
+      ring.visible = false;
+      this.group.add(mesh, ring);
+      this.boulders.push(mesh);
+      this.boulderRings.push(ring);
+    }
+  }
+
+  /** A boulder over each of the first `n` of `tiles`, and its pulsing ring on the tile under it. */
+  private hangBoulders(tiles: readonly { lane: number; col: number }[], n: number): void {
+    this.growBoulders(n);
+    for (let i = 0; i < this.boulders.length; i++) {
+      const mesh = this.boulders[i] as Mesh;
+      const ring = this.boulderRings[i] as Mesh;
+      const t = tiles[i];
+      mesh.visible = ring.visible = i < n && t !== undefined;
+      if (mesh.visible && t !== undefined) {
+        mesh.position.set(t.col + 0.5, 0.02 + BOULDER_HEIGHT, t.lane + 0.5);
+        ring.position.set(t.col + 0.5, 0.035, t.lane + 0.5);
+      }
+    }
   }
 
   private hideStrike(): void {
@@ -950,6 +1164,7 @@ export class BossFx {
       s.frame.visible = s.fill.visible = false;
     }
     for (let i = 0; i < this.strikeParts.length; i++) (this.strikeParts[i] as Object3D).visible = false;
+    for (let i = 0; i < this.boulders.length; i++) (this.boulders[i] as Mesh).visible = (this.boulderRings[i] as Mesh).visible = false;
   }
 
   /** The blow lands: soil and a ring on each of the three tiles, the camera shakes hard. */
@@ -964,10 +1179,55 @@ export class BossFx {
     this.onFeel({ shake: 1, hitStop: 0.09, punch: 0.06 });
   }
 
+  /** Its glass dome or its swirl of sand (by its look) goes up, or goes. */
   private setDome(view: UnitView, on: boolean): void {
     this.domeOn = on;
-    this.dome.visible = on;
-    if (on && this.dome.parent !== view.wrapper) view.wrapper.add(this.dome);
+    const sand = this.sandRing !== null && lookOf(view.key).fx.shield === 'sand';
+    this.dome.visible = on && !sand;
+    if (this.sandRing !== null) this.sandRing.visible = on && sand;
+    const shown = sand ? this.sandRing : this.dome;
+    if (on && shown !== null && shown.parent !== view.wrapper) view.wrapper.add(shown);
+  }
+
+  /**
+   * The sand shield: three layers of sand pixels (a spiral of nine, each layer a little different
+   * in height and reach) round the boss's feet, drawn once; `swirl` turns them in hard steps.
+   */
+  private makeSandRing(): void {
+    const ring = new Group();
+    ring.name = 'boss-sand-ring';
+    this.sandMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: SAND[2] as number, emissiveIntensity: 0.25 });
+    const layers = [{ y: 0.3, r: 1.05 }, { y: 1.3, r: 0.9 }, { y: 2.3, r: 0.75 }];
+    for (let l = 0; l < layers.length; l++) {
+      const { y, r } = layers[l] as { y: number; r: number };
+      const b = new BoxBatch();
+      for (let i = 0; i < SAND_PER_LAYER; i++) {
+        const a = (i / SAND_PER_LAYER) * Math.PI * 2;
+        const rr = r * (0.88 + 0.12 * (i % 3));
+        const color = '#' + (SAND[(i + l) % SAND.length] as number).toString(16).padStart(6, '0');
+        b.box(Math.cos(a) * rr - SAND_PIXEL / 2, (i % 3) * SAND_PIXEL * 1.4, Math.sin(a) * rr - SAND_PIXEL / 2, SAND_PIXEL, SAND_PIXEL, SAND_PIXEL, color);
+      }
+      const geometry = b.build();
+      this.sandGeometries.push(geometry);
+      const layer = new Mesh(geometry, this.sandMaterial);
+      layer.name = 'boss-sand-layer';
+      layer.position.y = y;
+      ring.add(layer);
+    }
+    ring.visible = false;
+    ring.renderOrder = 8;
+    this.sandRing = ring;
+  }
+
+  /** Turns the sand layers in hard steps (each its own way and speed) and bobs them a voxel at a time. */
+  private swirl(): void {
+    const ring = this.sandRing as Group;
+    for (let l = 0; l < ring.children.length; l++) {
+      const layer = ring.children[l] as Mesh;
+      const dir = l % 2 === 0 ? 1 : -1;
+      layer.rotation.y = dir * Math.floor(this.time * (5 + l)) * ((Math.PI * 2) / SAND_PER_LAYER / 2);
+      layer.position.y = SAND_LAYER_Y[l] as number + (Math.floor(this.time * (3 + l)) % 2 === 0 ? 0 : VOXEL);
+    }
   }
 
   /** Its plates (bark or ice) show and start to slide shut, or go. */
@@ -1026,11 +1286,13 @@ function firstStrikeStatus(list: readonly BossPattern[]): StatusKind | 'none' {
   return 'none';
 }
 
-/** Pairs of ears in all (a pup's are reused once it has left the lawn). */
-const PUPS_POOL = 12;
+/** Dressed units in all (a slot is reused once its unit has left the lawn). */
+const DRESS_POOL = 12;
 const PUP_BOX = new Box3();
 /** Ears a little bigger than the Howler's voxels, so they read on a small zombie from the lawn camera. */
 const PUP_EAR_SCALE = 1.4;
+/** A mummy's wraps stand this much (a fifth) bigger than the part they go round, so they show over its armour. */
+const WRAP_GROW = 1.2;
 
 /**
  * A pup's wolf ears, in tiles about the top middle of its head: two stepped grey-violet points with
@@ -1046,6 +1308,44 @@ function wolfEars(): ReturnType<BoxBatch['build']> {
     b.box(-0.5 * v, 3 * v, z + 0.75 * v, 1 * v, 1 * v, 1 * v, '#CFCBE2');
     b.box(-2 * v, 0.5 * v, z + 0.5 * v, 0.5 * v, 2 * v, 1.5 * v, '#F2A0BE');
   }
+  return b.build();
+}
+
+/**
+ * A mummy's wraps, as a unit cube (scaled to the part they go round): three stripes of bandage
+ * round it, standing a little proud, and a loose end hanging off one side.
+ */
+function mummyWrap(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const grow = 0.52;
+  const bands: [number, string][] = [[-0.42, '#E6D7AE'], [-0.1, '#BFA977'], [0.22, '#E6D7AE']];
+  for (const [y, color] of bands) b.box(-grow, y, -grow, 2 * grow, 0.2, 2 * grow, color);
+  b.box(grow - 0.02, -0.5, 0.1, 0.1, 0.4, 0.22, '#BFA977');
+  return b.build();
+}
+
+/** A hanging boulder, in tiles about the middle of its underside: stepped rock, darker below, lighter on top. */
+function boulder(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const v = VOXEL;
+  b.box(-0.24, 0, -0.24, 0.48, 3 * v, 0.48, '#8A2F1A');
+  b.box(-0.3, 3 * v, -0.3, 0.6, 4 * v, 0.6, '#B5482A');
+  b.box(-0.22, 7 * v, -0.22, 0.44, 3 * v, 0.44, '#D9662F');
+  b.box(-0.12, 10 * v, -0.12, 0.24, 1.5 * v, 0.24, '#F2A04A');
+  return b.build();
+}
+
+/** A boulder's warning ring: a stepped orange square ring with a dot in the middle, flat on the tile (the shadow it will land in). */
+function boulderRing(): ReturnType<BoxBatch['build']> {
+  const b = new BoxBatch();
+  const r = 0.4;
+  const t = 0.1;
+  const h = 0.03;
+  b.box(-r, 0, -r, 2 * r, h, t, BOULDER_RING);
+  b.box(-r, 0, r - t, 2 * r, h, t, BOULDER_RING);
+  b.box(-r, 0, -r + t, t, h, 2 * r - 2 * t, BOULDER_RING);
+  b.box(r - t, 0, -r + t, t, h, 2 * r - 2 * t, BOULDER_RING);
+  b.box(-0.14, 0, -0.14, 0.28, h, 0.28, BOULDER_RING);
   return b.build();
 }
 

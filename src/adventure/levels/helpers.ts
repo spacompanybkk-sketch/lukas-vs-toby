@@ -1,3 +1,4 @@
+import { PLANT_COLS } from '../../sim/types';
 import type { Spawn } from '../types';
 
 // The level files' shorthands for scripted arrivals and standing gardens (moved out of
@@ -20,3 +21,6 @@ export const garden = (unit: Spawn['unit'], tiles: [number, number][], level = 1
 /** Plants arriving later on their tiles (a garden that regrows): `[at, lane, col]`. */
 export const regrow = (unit: Spawn['unit'], at: [number, number, number][]): Spawn[] =>
   at.map(([t, lane, col]) => ({ at: t, unit, lane, col }));
+
+/** Rocks on the plant tiles `[lane, col]`, as `LevelTwist.rocks` indexes them (`lane * PLANT_COLS + col`). */
+export const rocks = (tiles: [number, number][]): number[] => tiles.map(([lane, col]) => lane * PLANT_COLS + col);

@@ -473,6 +473,46 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         ],
       ],
     },
+    // The world-3 bosses (step-3 plan Task 4, content design §2), the world-2 cadence: phase 1 one
+    // attack every 9-12 s, phase 2 opens with its strike (the sandstorm / the rockfall) and runs
+    // three patterns. Tunable start values: the level tasks tune hp (Pharaoh 5500-8000, Cactus 9000-13000 planned; 6200 shipped for the Cactus King, see the level ruling).
+    sandPharaoh: {
+      recharge: 0, hp: 7000, armor: 0, speed: 0.1,
+      melee: { damage: 40, interval: 1.5, reach: 0.6 },
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
+      patterns: [
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 7, damageFactor: 0.5, bouncesStraight: false }, // the sand swirl
+      ],
+      phases: [
+        [
+          { kind: 'summon', everySeconds: 9, unit: 'desertZombie', count: 2, level: 1 },
+          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
+        ],
+        [
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2, target: 'tiles', count: 3, damage: 50, status: { kind: 'blind', seconds: 3 } }, // the sandstorm: three plants, wind-up 2 s
+          { kind: 'summon', everySeconds: 5, unit: 'skeletonWarrior', count: 2, level: 2 }, // wrapped as mummies
+          { kind: 'slam', everySeconds: 7, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
+        ],
+      ],
+    },
+    cactusKing: {
+      recharge: 0, hp: 6200, armor: 0, speed: 0,
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
+      patterns: [
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false }, // the spine armour
+      ],
+      phases: [
+        [
+          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'kernelPult', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        ],
+        [
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'tiles', count: 3, damage: 220 }, // the rockfall: boulders on three zombie tiles
+          { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+        ],
+      ],
+    },
   },
   endless: {
     // Task 8, measured (tools/levels.ts --free, 200 seeds, four blocks): survive, the wave reached

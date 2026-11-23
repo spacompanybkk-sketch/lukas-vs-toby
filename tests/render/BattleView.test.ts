@@ -64,6 +64,22 @@ function countShown(scene: Scene, prefix: string): number {
 }
 
 describe('BattleView', () => {
+  it('draws every shot geometry once at no size as it comes on, so a butter or a fireball mid-match builds nothing', () => {
+    const { scene, view, run } = setUp();
+    const warm: Object3D[] = [];
+    scene.traverse((o) => { if (o.name === 'projectile-warm') warm.push(o); });
+    // Every projectile kind, plus the burning pea; each hidden by its size, never culled.
+    expect(warm).toHaveLength(12);
+    expect(new Set(warm.map((o) => (o as unknown as { geometry: object }).geometry)).size).toBe(12);
+    for (const o of warm) {
+      expect(o.scale.x).toBe(0);
+      expect(o.frustumCulled).toBe(false);
+    }
+    run(0.2);
+    expect(countNamed(scene, 'projectile-warm')).toBe(0);
+    view.dispose();
+  });
+
   it('adds a unit-<id> object when a unit spawns', () => {
     const { scene, view, match } = setUp();
     const events: SimEvent[] = [];
