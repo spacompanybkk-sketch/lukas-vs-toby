@@ -107,23 +107,24 @@ test('rocks: a rock tile is not lit for a picked card and refuses a plant tapped
   test.setTimeout(120_000);
   await playStandIn(page, 'plants', 3);
   await expect.poll(() => lawnWorld(page)).toBe('desert');
-  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.rocks)).toEqual([13, 21]);
+  expect(await page.evaluate(() => (window.__lvt as any).session.controller.match.state.config.lawn.rocks)).toEqual([12, 21, 27]);
   await pick(page, 'peashooter');
-  // Rocks 13 and 21 are (1,5) and (2,5): unlit; the plant columns around them are lit.
-  await expect.poll(async () => (await lit(page)).length).toBe(38);
+  // The real p3-1's rocks 12, 21 and 27 are (1,4), (2,5) and (3,3): unlit; the plant columns around them are lit.
+  await expect.poll(async () => (await lit(page)).length).toBe(37);
   const shown = await lit(page);
-  expect(shown).not.toContain(15);
+  expect(shown).not.toContain(14);
   expect(shown).not.toContain(25);
-  expect(shown).toContain(14);
-  expect(shown).toContain(16);
+  expect(shown).not.toContain(33);
+  expect(shown).toContain(15);
+  expect(shown).toContain(24);
   const denied = (): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
   const before = await denied();
-  await tapAt(page, await tilePoint(page, 1, 5));
+  await tapAt(page, await tilePoint(page, 2, 5));
   await frames(page, 3);
-  expect(await plantOn(page, 1, 5)).toBeUndefined();
+  expect(await plantOn(page, 2, 5)).toBeUndefined();
   await expect.poll(denied).toBe(before + 1);
-  await place(page, 'peashooter', 1, 4);
-  await expect.poll(async () => (await plantOn(page, 1, 4))?.key).toBe('peashooter');
+  await place(page, 'peashooter', 2, 4);
+  await expect.poll(async () => (await plantOn(page, 2, 4))?.key).toBe('peashooter');
   expect(await glContexts(page)).toBe(1);
 });
 
@@ -351,7 +352,7 @@ for (const [id, n, card, step, lane, col] of [
 
 // ---- Worlds step 3, Task 3: the rocks pan and the Cherry Bomber's wait for a foe ----------------
 // The Desert is not a real world yet: its levels are the stand-ins (copies of world 1 with the
-// sample rocks 13 and 21 = (1,5), (2,5) and the lesson written for their id).
+// real p3-1 now: rocks (1,4), (2,5), (3,3)).
 
 const stop = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session?.twistShow?.stop ?? -1);
 const denied = (page: Page): Promise<number> => page.evaluate(() => (window.__lvt as any).session.controller.hud.denied.value as number);
@@ -385,7 +386,7 @@ test('rocks pan (p3-1): holds, the camera moves along the boulders, the glove ta
   await shot('rocks-pan-tap-hint');
   expect(await tick(page)).toBe(held);
   // A tap on a rock ends the pan: no buzz, nothing placed.
-  await tapAt(page, await tilePoint(page, 1, 5));
+  await tapAt(page, await tilePoint(page, 1, 4));
   await expect(catcher).toHaveCount(0);
   await expect.poll(() => showing(page)).toBeNull();
   await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
@@ -396,12 +397,12 @@ test('rocks pan (p3-1): holds, the camera moves along the boulders, the glove ta
   await expect.poll(() => focusing(page), { timeout: 10_000 }).toBe(false);
   await pick(page, 'peashooter');
   const before = await denied(page);
-  await tapAt(page, await tilePoint(page, 1, 5));
+  await tapAt(page, await tilePoint(page, 2, 5));
   await frames(page, 3);
   await expect.poll(() => denied(page)).toBe(before + 1);
-  expect(await plantOn(page, 1, 5)).toBeUndefined();
-  await place(page, 'peashooter', 1, 4);
-  await expect.poll(async () => (await plantOn(page, 1, 4))?.key).toBe('peashooter');
+  expect(await plantOn(page, 2, 5)).toBeUndefined();
+  await place(page, 'peashooter', 2, 4);
+  await expect.poll(async () => (await plantOn(page, 2, 4))?.key).toBe('peashooter');
   expect(await glContexts(page)).toBe(1);
 });
 

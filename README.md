@@ -40,7 +40,7 @@ as well. Among them: `__lvt.setWorld('desert')` dresses the stage as a world (wi
 twist, or the lawn config given) until the next screen change, and
 `__lvt.previewWorlds(true, [2, 3, 4, 5])` puts stand-in worlds on the Adventure map (copies of
 world 1 carrying each arena's twist) on every world that has no real levels yet; a world with
-real levels (the Moonlit Meadow, the Frozen Tundra) is never copied over. The twist and map e2e
+real levels (the Moonlit Meadow, the Frozen Tundra, the Desert Canyon) is never copied over. The twist and map e2e
 play the stand-ins.
 
 ### Checking speed on the iPad (`?fps`)
@@ -139,7 +139,9 @@ reload on the result screen.
 Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: Desert Zombie,
 Skeleton Archer), level 3 and level 6 of the Moonlit Meadow the next two plants (Mango-pult,
 Avocado Bunker), and level 3 and level 6 of the Frozen Tundra the next two zombies (Hot Topic,
-Cowboy Zombie), shown turning on a turntable on the result screen. A level deals only the
+Cowboy Zombie). The Desert Canyon brings one more of each at level 3 and level 6: the plants the
+Torchwood and the Cherry Bomber, the zombies the Necromancer and the Trident Zombie. Each is shown
+turning on a turntable on the result screen. A level deals only the
 cards it lists that the player has. Quick Battle always has all ten.
 
 **Difficulty.** One, two or three skulls on the level card (EASY, NORMAL, HARD; kept per player
@@ -172,10 +174,10 @@ bar (a tap skips it).
 
 The Adventure travels five worlds. Lukas's plants go **Backyard → Meadow → Desert → Tundra →
 Citadel**; Toby's zombies come the other way, so his world 1 is the Citadel (`arenaOf` in
-`src/data/worlds.ts`). Each side has two worlds of levels so far: the plants the Backyard and the
-Moonlit Meadow, the zombies the Citadel and the Frozen Tundra (both below); world 3 on is a
-padlocked island. The level ids keep each side's own order (`p2-…` is the Meadow, `z2-…` the
-Tundra).
+`src/data/worlds.ts`). Each side has three worlds of levels so far: the plants the Backyard, the
+Moonlit Meadow and the Desert Canyon, the zombies the Citadel, the Frozen Tundra and the Desert
+Canyon (all below); world 4 on is a padlocked island. The level ids keep each side's own order
+(`p2-…` is the Meadow, `z2-…` the Tundra, `p3-…` and `z3-…` the Desert on either side).
 
 | World | Look | Weather | Twist | Music |
 |--|--|--|--|--|
@@ -289,6 +291,67 @@ announces it. Numbers: `Balance.bosses.frostMelon`; looks:
 - The Frost Melon: 10500 health (design 5000–7500) and its phase-2 Walnut Bombs every 12 s
   (design 6 s), so walls do not stall a beginner's fight.
 
+### Desert Canyon (both sides, world 3)
+
+The third world, `p3-1` … `p3-8` for Lukas (`src/adventure/levels/p3.ts`) and `z3-1` … `z3-8` for
+Toby (`z3.ts`), opens when the side has won p2-8 / z2-8 (the result's next-level button leads
+straight on; before that the island is grey with a padlock). Orange mesas, cacti, drifting dust and
+a Phrygian tune.
+
+**Rocks.** Some tiles of each level are boulders (`twist: { rocks: [...] }`): a plant cannot stand
+on a rock (the tile never lights for a picked card; a tap on it buzzes and plants nothing; the belt,
+the Rock Wall and a plant boss's summons keep off it too). Zombies and shots pass over a rock, the
+shots of its own lane included, so a Torchwood behind a rock still lights the peas that fly over
+it. On a zombie level the rocks stand in the computer's garden, so they help Toby: the rocky lanes
+hold fewer plants ("go where the rocks are"). The level card shows a small boulder.
+
+**The rocks lesson.** p3-1 and z3-1 open without a word: the match holds and the camera moves along
+the boulders. On the plants' side a see-through Peashooter is refused on one (a buzz) and hops
+beside it; on the zombies' side a see-through Brain Eater goes first and walks straight over a
+rock. Any tap ends it (it is remembered; the glove on the level card shows it again). If nobody
+taps, a glove taps the lawn after 3 seconds; Pause still works. p3-4 / z3-4 and p3-7 / z3-7 teach
+their new card by the glove: the card, then the tile (a lane for the zombies). The Cherry Bomber's
+tile step waits: its glove, and the pause behind it, come only when the 40 s clump walking lane 2
+is in front of the tile, so the blast lands on the clump and not on empty sand.
+
+| Level | Plants (Lukas): kind | What it is about | Zombies (Toby): kind | What it is about |
+|--|--|--|--|--|
+| 1 | Survive 150 s | The rocks lesson; three middle rocks | Battle | The rocks lesson; the flanks (lanes 0 and 4) are thin, no computer |
+| 2 | Battle | The back row is rocky: Sunflowers go where the ground is free | Battle | The plants' back row is rocky, so few Sunflowers (Easy computer) |
+| 3 | Conveyor | Belt walls fill the gaps the rocks leave; **unlocks the Torchwood** | Breakthrough 275 s | A rock where a wall should stand leaves a hole; **unlocks the Necromancer** |
+| 4 | Battle | A Torchwood in front of a Peashooter makes fire peas (card lesson) | Battle | The Necromancer mends from behind its Bone Minions (card lesson) |
+| 5 | Survive 160 s | Fire peas beat shields; a Torchwood behind a rock still lights peas | Conveyor 270 s | The belt, and a garden that cannot grow on rocks |
+| 6 | Battle | One fire lane per pair of lanes; **unlocks the Cherry Bomber** | Breakthrough 255 s | A Skeleton in front and a Necromancer behind outlast a Bunker; **unlocks the Trident Zombie** |
+| 7 | Survive 170 s | A Cherry Bomber on a clump (card lesson, waits for the foe) | Battle | The Trident's throw pierces three plants in a row (card lesson) |
+| 8 | Boss | The Sand Pharaoh | Boss | The Cactus King |
+
+**The Sand Pharaoh** (p3-8) walks the middle lane: a gold-and-blue headdress over a green face in
+bandages, a staff in his hand. In his first phase he slams the plants in front of him with the
+staff (red warning tiles first) and calls two Desert Zombies. At half health a **swirl of sand**
+goes up round his feet for seven seconds and every hit counts half (it is sand, not glass: a
+different picture from the Howler's dome). His second phase lights his eyes: he raises a
+**sandstorm** over three plants (a whirl of dark brown dust in cream frames for two seconds, then
+those plants are blinded for three), and calls Skeleton Warriors wrapped as **mummies**. Numbers:
+`Balance.bosses.sandPharaoh`; looks: `src/render/models/bosses/sandPharaoh.ts` and
+`BOSS_LOOK.sandPharaoh`.
+
+**The Cactus King** (z3-8) stands across lanes 1 to 3 in front of the plant base under a crown of
+pink flowers, no rock under him (the rocks stand in lanes 0 and 4). In his first phase his arms
+throw **needles** (long green spikes, each with a red landing mark first) and he grows
+Kernel-pults. At half health his **spine plates** clap shut for eight seconds and every hit counts
+half. His second phase is the **rockfall**: three zombie tiles blink red in orange rings while red-
+orange boulders hang over them, then drop. He keeps throwing needles and grows Walnut Bombs. The
+boulders are warm red-orange so that no one takes them for a rock tile. Numbers:
+`Balance.bosses.cactusKing`; looks: `src/render/models/bosses/cactusKing.ts` and
+`BOSS_LOOK.cactusKing`.
+
+**Where the levels depart from the content design's starting numbers** (measured with
+`tools/levels.ts --world 3`): the zombie breakthroughs run 275 s and 255 s (design 240 s: the
+average player three-starred 30-48% at 240 s); the bases are tuned per level in `p3.ts` and
+`z3.ts`, each with its reason in a comment. What the three-block measurement still misses is
+recorded in `KNOWN_MISSES` (`tests/ai/long/levelBands.ts`); `npm run test:balance` expects those
+misses.
+
 **The four twists.** A level names its twist tiles (`LevelDef.twist`); how strong each one is
 lives in `Balance.twists`. Both sides are affected the same way.
 
@@ -305,7 +368,7 @@ plain tile is free.
 
 **Bosses** may change their attacks at each shield mark (phases) and can use a generic strike:
 it announces tiles or lanes with blinking warning tiles, then hits them (Titan and Oak fight as
-before; the Moon Howler and the Frost Melon use both). A boss that falls mid wind-up takes its
+before; the Moon Howler, the Frost Melon, the Sand Pharaoh and the Cactus King use both). A boss that falls mid wind-up takes its
 warning with it.
 
 **The map.** One island per world, in the side's own order, with wooden arrow pictures to step
@@ -344,7 +407,7 @@ With the dev server running (`npm run dev`, port 5273):
 | `/?scene=fx-gallery` | The effects, statuses and projectiles |
 | `/?scene=hud-gallery` | The HUD in every state |
 | `/?scene=stress&units=150` | The phase-1 crowd for the perf tool; `&mix` for the mixed roster |
-| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow, `frostMelon` for the Melon on the Tundra's ice; `&table=shipped` plays the shipped numbers) |
+| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow, `frostMelon` for the Melon on the Tundra's ice, `sandPharaoh` and `cactusKing` in the Desert's rocks and dust; `&table=shipped` plays the shipped numbers) |
 
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.

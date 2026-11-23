@@ -401,9 +401,12 @@ test('p2-8: the Moon Howler - entrance card, boss bar with its face, slam, pups,
   await expect(page.locator(`.lresult__stars[data-lit="${stars}"]`)).toBeVisible();
   await expect(page.locator(`[data-coins-earned="${30 * stars}"]`)).toBeVisible();
   expect((await progress(page)).coins).toBe(coins + 30 * stars);
-  // The Meadow's last level: the plants' world 3 has no levels yet, so no next level.
-  await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
+  // The Meadow's last level: the Desert Canyon (world 3) is open now, so the next level is p3-1.
+  await expect(page.locator('[data-action="next-level"][data-next="p3-1"]')).toHaveCount(1);
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  // The map opens on the Desert now; the arrow back shows the Meadow's boss stone with its stars.
+  await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-world', '3');
+  await press(page.locator('[data-action="world-prev"]'));
   await expect(page.locator('[data-stone="p2-8"]')).toHaveAttribute('data-stars', String(stars));
   expect(await glContexts(page)).toBe(1);
   await keep(page);
@@ -415,7 +418,15 @@ test('ten Meadow level ↔ map round trips: one WebGL context, the GPU\'s geomet
   const geometries = (): Promise<number> => page.evaluate(() => (window.__lvt as any).renderer.webgl.info.memory.geometries as number);
   const counts: number[] = [];
   await toMap(page);
+  // The map opens on the Desert now that world 2 is won: the arrow back is a tap each round.
+  const toWorld2 = async (): Promise<void> => {
+    if (await page.locator('[data-screen="map"]').getAttribute('data-world') === '3') {
+      await press(page.locator('[data-action="world-prev"]'));
+      await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
+    }
+  };
   for (let round = 0; round < 10; round++) {
+    await toWorld2();
     await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('meadow');
     await frames(page, 3);
     counts.push(await geometries());
