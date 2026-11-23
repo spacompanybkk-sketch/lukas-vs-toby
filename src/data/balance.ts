@@ -475,7 +475,7 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     },
     // The world-3 bosses (step-3 plan Task 4, content design §2), the world-2 cadence: phase 1 one
     // attack every 9-12 s, phase 2 opens with its strike (the sandstorm / the rockfall) and runs
-    // three patterns. Tunable start values: the level tasks tune hp (Pharaoh 5500-8000, Cactus 9000-13000).
+    // three patterns. Tunable start values: the level tasks tune hp (Pharaoh 5500-8000, Cactus 9000-13000 planned; 6200 shipped for the Cactus King, see the level ruling).
     sandPharaoh: {
       recharge: 0, hp: 7000, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },

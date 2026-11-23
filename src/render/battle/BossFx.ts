@@ -94,6 +94,8 @@ const MOON_SPARK = hex(MOON_COLOR);
 const SAND = [hex(PALETTE.sand), hex(PALETTE.sandDark), hex('#F4E1A8')];
 const SAND_PIXEL = 0.2;
 const SAND_PER_LAYER = 10;
+/** The three sand layers' resting heights (hoisted: swirl runs every frame). */
+const SAND_LAYER_Y: readonly number[] = [0.3, 1.3, 2.3];
 /** The boulders of a `strikeBlow: 'boulder'` hang this high over their tiles at the start of the wind-up (tiles). */
 const BOULDER_HEIGHT = 3.2;
 /** A falling boulder is rust red and orange, not the grey of the Desert's rock tiles, so a child can tell "it lands here" from "a rock stands here". */
@@ -1224,7 +1226,7 @@ export class BossFx {
       const layer = ring.children[l] as Mesh;
       const dir = l % 2 === 0 ? 1 : -1;
       layer.rotation.y = dir * Math.floor(this.time * (5 + l)) * ((Math.PI * 2) / SAND_PER_LAYER / 2);
-      layer.position.y = [0.3, 1.3, 2.3][l] as number + (Math.floor(this.time * (3 + l)) % 2 === 0 ? 0 : VOXEL);
+      layer.position.y = SAND_LAYER_Y[l] as number + (Math.floor(this.time * (3 + l)) % 2 === 0 ? 0 : VOXEL);
     }
   }
 

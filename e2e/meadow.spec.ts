@@ -430,7 +430,10 @@ test('ten Meadow level ↔ map round trips: one WebGL context, the GPU\'s geomet
     await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('meadow');
     await frames(page, 3);
     counts.push(await geometries());
-    const id = round % 2 === 0 ? 'p2-5' : 'p2-2';
+    // Two levels with scripted waves and no computer (p2-2's Easy computer is seeded with Date.now(),
+    // so a shared model's geometry reaches the GPU on whichever visit it first appears: 193 vs 192
+    // measured once). Same pattern as e2e/tundra.spec.ts.
+    const id = round % 2 === 0 ? 'p2-5' : 'p2-3';
     await startFromMap(page, id);
     expect(await fog(page)).toBe(REACH[id]);
     await page.evaluate(() => (window.__lvt as any).fastForward(60));
@@ -441,7 +444,7 @@ test('ten Meadow level ↔ map round trips: one WebGL context, the GPU\'s geomet
     expect(await glContexts(page), `round ${round + 1}`).toBe(1);
   }
   // From the third look on (caches warm), the same number of geometries on the GPU every time.
-  for (const n of counts.slice(2)) expect(n).toBe(counts[2]);
+  for (const n of counts.slice(2)) expect(n, `geometries on the map: ${counts.join(', ')}`).toBe(counts[2]);
 });
 
 // Screenshots for review, only when asked (iPad project): LVT_MEADOW_SHOTS=<folder> npx playwright
