@@ -513,6 +513,47 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         ],
       ],
     },
+    // The world-4 bosses: STUB rows (worlds-4 plan Task 1), phase-1 numbers from content design §2, so
+    // the tables are complete. Task 4 writes the real rows (strikes, summons, cadences).
+    yeti: {
+      recharge: 0, hp: 7500, armor: 0, speed: 0.1,
+      melee: { damage: 40, interval: 1.5, reach: 0.6 },
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
+      patterns: [
+        { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 0.5, bouncesStraight: false },
+      ],
+      phases: [
+        [
+          { kind: 'summon', everySeconds: 9, unit: 'veryFastWalker', count: 2, level: 1 },
+          { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
+        ],
+        [
+          { kind: 'summon', everySeconds: 5, unit: 'brainEater', count: 2, level: 2 },
+          { kind: 'slam', everySeconds: 7, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
+        ],
+        [
+          { kind: 'summon', everySeconds: 5, unit: 'brainEater', count: 2, level: 2 },
+          { kind: 'slam', everySeconds: 6, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
+        ],
+      ],
+    },
+    glowcap: {
+      recharge: 0, hp: 12000, armor: 0, speed: 0,
+      maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
+      patterns: [
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
+      ],
+      phases: [
+        [
+          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
+        ],
+        [
+          { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'summon', everySeconds: 12, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+        ],
+      ],
+    },
   },
   endless: {
     // Task 8, measured (tools/levels.ts --free, 200 seeds, four blocks): survive, the wave reached

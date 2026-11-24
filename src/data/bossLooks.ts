@@ -138,8 +138,10 @@ const SHIPPED = {
   },
 } satisfies Record<'brainTitan' | 'elderOak', BossLook>;
 
-export const BOSS_LOOK: Record<BossKey, BossLook> = {
+const LOOKS = {
   ...SHIPPED,
+  // STUBS (worlds-4 plan Task 1): the Yeti and the Glowcap borrow the Titan's and the Melon's looks until Task 2 draws their own.
+  yeti: SHIPPED.brainTitan,
   sandPharaoh: {
     // The model is a unit's voxels, a good deal bigger than the Titan.
     scale: 2.8,
@@ -296,4 +298,10 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       barrage: 'frozenMelon',
     },
   },
+} satisfies Record<Exclude<BossKey, 'glowcap'>, BossLook>;
+
+export const BOSS_LOOK: Record<BossKey, BossLook> = {
+  ...LOOKS,
+  // STUB (worlds-4 plan Task 1): the Glowcap borrows the Frost Melon's look until Task 2.
+  glowcap: LOOKS.frostMelon,
 };

@@ -38,6 +38,9 @@ export const BOSS_DEMO: Record<BossKey, BossConfig> = {
   frostMelon: { key: 'frostMelon', faction: 'plants', lane: 2 },
   sandPharaoh: { key: 'sandPharaoh', faction: 'zombies', lane: 2 },
   cactusKing: { key: 'cactusKing', faction: 'plants', lane: 2 },
+  // STUBS (worlds-4 plan Task 1); Task 2 writes their demos.
+  yeti: { key: 'yeti', faction: 'zombies', lane: 2 },
+  glowcap: { key: 'glowcap', faction: 'plants', lane: 2 },
 };
 
 const plant = (unit: PreparedUnit['unit'], lane: number, col: number, level = 1): PreparedUnit =>
@@ -101,6 +104,8 @@ const DEMO_LAWN: Record<BossKey, LawnConfig> = {
   // The rocks of p3-8 (two in its own lane, four round the garden) and of z3-8 (on its flanks).
   sandPharaoh: { ...NO_TWIST, rocks: rocks([[2, 2], [2, 4], [0, 1], [4, 1], [1, 5], [3, 5]]) },
   cactusKing: { ...NO_TWIST, rocks: rocks([[0, 2], [4, 2], [0, 5], [4, 5]]) },
+  yeti: NO_TWIST,
+  glowcap: NO_TWIST,
 };
 
 /** The demo's setup: mode 'boss' with `boss`, the plain opponent above, no energy to spend, sudden death off. */

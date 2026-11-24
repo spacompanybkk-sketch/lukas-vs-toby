@@ -3,13 +3,15 @@ import type { LevelDef } from '../types';
 import { BACKYARD } from './backyard';
 import { P2 } from './p2';
 import { P3 } from './p3';
+import { P4 } from './p4';
 import { Z2 } from './z2';
 import { Z3 } from './z3';
+import { Z4 } from './z4';
 
 import { TEACHES } from './teaches';
 
-/** The per-world level files, joined (worlds 4–5 join with their content plans). */
-const ALL: readonly LevelDef[] = [...BACKYARD, ...P2, ...Z2, ...P3, ...Z3];
+/** The per-world level files, joined (world 5 joins with its content plan). */
+const ALL: readonly LevelDef[] = [...BACKYARD, ...P2, ...Z2, ...P3, ...Z3, ...P4, ...Z4];
 
 /** Every Adventure level there is, each with its tutorial from `TEACHES` (a level's own `teaches` when the map has none). */
 export const LEVELS: readonly LevelDef[] = ALL.map((def) => {

@@ -75,6 +75,9 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   frostMelon,
   sandPharaoh,
   cactusKing,
+  // STUBS (worlds-4 plan Task 1): the Titan's and the Melon's models under their own keys until Task 2.
+  yeti: { ...brainTitan, key: 'yeti' },
+  glowcap: { ...frostMelon, key: 'glowcap' },
 };
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

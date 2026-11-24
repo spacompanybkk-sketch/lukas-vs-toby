@@ -48,7 +48,7 @@ import { BALANCE, type Balance } from '../data/balance';
 
 const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
 /** Where each boss fights: the world it ends. */
-const DEMO_WORLD: Record<BossKey, WorldKey> = { brainTitan: 'backyard', elderOak: 'backyard', moonHowler: 'meadow', frostMelon: 'tundra', sandPharaoh: 'desert', cactusKing: 'desert' };
+const DEMO_WORLD: Record<BossKey, WorldKey> = { brainTitan: 'backyard', elderOak: 'backyard', moonHowler: 'meadow', frostMelon: 'tundra', sandPharaoh: 'desert', cactusKing: 'desert', yeti: 'tundra', glowcap: 'meadow' };
 const WARM_UP_FRAMES = 6;
 const STEP_SECONDS = 1 / STEPS_PER_SECOND;
 const FRAMES_PER_STEP = 2;
