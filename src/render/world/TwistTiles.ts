@@ -111,7 +111,7 @@ const MIST_FRAGMENT = /* glsl */ `
 /** The mist sheet's height above the lawn and its strongest opacity: light, so the checker and the zombies show through. */
 const MIST_Y = 0.12;
 const MIST_OPACITY = 0.16;
-const MIST_COLOR = '#C8D4F2';
+export const MIST_COLOR = '#C8D4F2';
 
 // ---- Rocks: a boulder on each rock tile ---------------------------------------------
 
@@ -141,7 +141,7 @@ const ICE_Y = 0.006;
 
 /** Deep blues, well apart from the pale snow, so a child sees at once which lanes are ice. */
 export const ICE_LIGHT = '#3F92D6';
-const ICE_DARK = '#3282C8';
+export const ICE_DARK = '#3282C8';
 const ICE_EDGE = '#1F5E9E';
 const ICE_CRACK = '#1C4F88';
 const ICE_GLINT = '#F2FAFF';

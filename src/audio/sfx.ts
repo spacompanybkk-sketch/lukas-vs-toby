@@ -26,6 +26,8 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   | 'howlerHowl' | 'howlerDefeat' | 'melonCrack' | 'melonDefeat'
   // step 3: the Desert Canyon's bosses, two each as above
   | 'pharaohCall' | 'pharaohDefeat' | 'cactusCreak' | 'cactusDefeat'
+  // step 4: the Tundra's last boss, two as above
+  | 'yetiRoar' | 'yetiDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
   | 'strikeWindup' | 'strikeImpact'
   // Versus on two devices: an invite arriving
@@ -830,6 +832,53 @@ function cactusDefeat(v: Voice, t: number, p: number): void {
 }
 
 /**
+ * The Yeti's roar: a huge woolly "rooooar" (two detuned saws sliding down through a slow, wide vowel
+ * filter, wobbling), a thump on its chest and a gust of icy wind. Big and goofy, not scary.
+ */
+function yetiRoar(v: Voice, t: number, p: number): void {
+  const vowel = filter(v, 'bandpass', 420, 2.5);
+  vowel.frequency.setValueAtTime(420, t);
+  vowel.frequency.linearRampToValueAtTime(820, t + 0.3);
+  vowel.frequency.linearRampToValueAtTime(380, t + 0.85);
+  const env = envelope(v, t, 0.07, 0.34, 0.5, 0.35);
+  const saws = [1, 1.015].map((detune) => {
+    const o = v.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(150 * p * detune, t);
+    o.frequency.exponentialRampToValueAtTime(70 * p * detune, t + 0.9);
+    o.connect(vowel);
+    v.play(o, t, env.end);
+    return o;
+  });
+  vibrato(v, saws.map((o) => o.frequency), 5, 6 * p, t, 0.1, env.end);
+  vowel.connect(env.gain);
+  env.gain.connect(v.input);
+  [0.18, 0.3].forEach((off) => {
+    tone(v, { type: 'sine', freq: 95 * p, to: 50 * p, glide: 0.08, at: t + off, attack: 0.003, peak: 0.34, decay: 0.12 });
+  });
+  noise(v, { at: t + 0.35, attack: 0.15, peak: 0.12, hold: 0.3, decay: 0.3, filter: 'highpass', freq: 2400, to: 1200, glide: 0.7 });
+}
+
+/**
+ * The Yeti beaten: a sad "oh-oh-ooh" sliding down in three sighs, then a heap of snow coming down on
+ * it ("fwump": a soft low thud under a long falling hiss) and two little chimes of ice.
+ */
+function yetiDefeat(v: Voice, t: number, p: number): void {
+  [220, 185, 146.83].forEach((f, i) => {
+    const last = i === 2;
+    tone(v, {
+      type: 'sawtooth', freq: f * p, to: f * 0.8 * p, glide: 0.2, at: t + i * 0.24, attack: 0.03, peak: 0.16,
+      hold: last ? 0.25 : 0.08, decay: last ? 0.3 : 0.1, lowpass: 700,
+    });
+  });
+  tone(v, { type: 'sine', freq: 110 * p, to: 40 * p, glide: 0.25, at: t + 0.85, attack: 0.004, peak: 0.42, decay: 0.3 });
+  noise(v, { at: t + 0.85, attack: 0.02, peak: 0.22, hold: 0.15, decay: 0.45, filter: 'highpass', freq: 3200, to: 900, glide: 0.6 });
+  [2349, 1760].forEach((f, i) => {
+    tone(v, { type: 'sine', freq: f * p, at: t + 1.15 + i * 0.12, attack: 0.003, peak: 0.07, decay: 0.2 });
+  });
+}
+
+/**
  * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
  * and filtered) and a rising whistle, like something about to fall on the marked tiles.
  */
@@ -855,7 +904,8 @@ export const SFX: Record<SfxName, Recipe> = {
   kernel, butter, mango, sand, arrow, bullet, trident, rot, stun, blind, lasso, poison, burn, heal, raise,
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
-  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, pharaohCall, pharaohDefeat, cactusCreak, cactusDefeat, strikeWindup, strikeImpact,
+  titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, pharaohCall, pharaohDefeat, cactusCreak, cactusDefeat,
+  yetiRoar, yetiDefeat, strikeWindup, strikeImpact,
   chime,
 };
 

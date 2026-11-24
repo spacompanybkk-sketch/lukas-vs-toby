@@ -53,7 +53,7 @@ const NEW_GESTURE_MS = 50;
 const IN_TUNE: ReadonlySet<SfxName> = new Set<SfxName>(['win', 'lose', 'suddenDeath']);
 
 /** When the voices are all taken, a new effect may only push out one of equal or lower rank. */
-const PRIORITY: Record<SfxName, number> = {
+export const PRIORITY: Record<SfxName, number> = {
   place: 1, spawnZombie: 1, pea: 1, brainThrow: 1, hit: 1, chomp: 1, block: 1, sun: 1, bounty: 1, baseStrike: 1,
   explode: 2, merge: 2, baseHit: 2, click: 2, deny: 2,
   suddenDeath: 3, win: 3, lose: 3, collapse: 3,
@@ -65,6 +65,7 @@ const PRIORITY: Record<SfxName, number> = {
   titanRoar: 3, titanDefeat: 3, oakCreak: 3, oakDefeat: 3, strikeWindup: 3, strikeImpact: 3,
   howlerHowl: 3, howlerDefeat: 3, melonCrack: 3, melonDefeat: 3,
   pharaohCall: 3, pharaohDefeat: 3, cactusCreak: 3, cactusDefeat: 3,
+  yetiRoar: 3, yetiDefeat: 3,
   chime: 2,
 };
 

@@ -1,4 +1,4 @@
-import { DynamicDrawUsage, InstancedMesh, type BufferGeometry, type Material, type Object3D } from 'three';
+import { DynamicDrawUsage, InstancedMesh, Matrix4, type BufferGeometry, type Material, type Object3D } from 'three';
 
 /** What a batch's copies do with the sun's shadow (default: neither cast nor receive). */
 export interface BatchShadows { cast?: boolean; receive?: boolean }
@@ -13,9 +13,14 @@ export interface BatchShadows { cast?: boolean; receive?: boolean }
  * copies). Never frustum-culled: its pieces are spread over the whole lawn, and one bounding
  * sphere for them all would be stale as soon as they move.
  */
+/** A copy scaled to nothing, for the warm-up. */
+const NOTHING = new Matrix4().makeScale(0, 0, 0);
+
 export class InstanceBatch {
   readonly mesh: InstancedMesh;
   private n = 0;
+  /** How many more frames the batch draws one copy at no size while it has none (see `warm`). */
+  private warming = 0;
 
   constructor(geometry: BufferGeometry, material: Material, readonly capacity: number, name: string, shadows: BatchShadows = {}) {
     this.mesh = new InstancedMesh(geometry, material, capacity);
@@ -43,7 +48,24 @@ export class InstanceBatch {
     this.mesh.setMatrixAt(this.n++, piece.matrixWorld);
   }
 
+  /**
+   * Draws one copy at no size for the next `frames` frames in which the batch has none: three.js compiles a program and
+   * uploads a buffer at a shape's first draw (a hitch of a few hundred milliseconds for a glowing instanced shape, the first
+   * time a unit is stunned), so the owner calls this as its view comes on, not at that first use.
+   */
+  warm(frames = 3): void {
+    this.warming = frames;
+  }
+
   end(): void {
+    if (this.n === 0 && this.warming > 0) {
+      this.warming--;
+      this.mesh.setMatrixAt(0, NOTHING);
+      this.mesh.count = 1;
+      this.mesh.visible = true;
+      this.mesh.instanceMatrix.needsUpdate = true;
+      return;
+    }
     this.mesh.count = this.n;
     this.mesh.visible = this.n > 0;
     if (this.n > 0) this.mesh.instanceMatrix.needsUpdate = true;

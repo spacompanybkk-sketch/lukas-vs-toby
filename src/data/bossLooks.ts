@@ -31,9 +31,10 @@ export interface BossShows {
    * Its shield: a glass dome round it (shots ping off), the same dome glowing in moonlight
    * (`moon`), bark plates clapping shut (the model's `barkL`/`barkR`, which may be any material:
    * the Cactus King's are green spines, see `plateChips`), ice plates (`iceL`/`iceR`), or a
-   * swirling ring of sand pixels round it (`sand`).
+   * swirling ring of sand pixels round it (`sand`), or the same dome tinted snow white and ice blue
+   * (`snow`: the Yeti's fort).
    */
-  shield: 'dome' | 'moon' | 'bark' | 'ice' | 'sand';
+  shield: 'dome' | 'moon' | 'bark' | 'ice' | 'sand' | 'snow';
   /** The chips that fly off its shut `bark` plates, and the ring thrown as they go up (hex): left out, walnut bark. */
   plateChips?: readonly string[];
   /**
@@ -140,8 +141,6 @@ const SHIPPED = {
 
 const LOOKS = {
   ...SHIPPED,
-  // STUBS (worlds-4 plan Task 1): the Yeti and the Glowcap borrow the Titan's and the Melon's looks until Task 2 draws their own.
-  yeti: SHIPPED.brainTitan,
   sandPharaoh: {
     // The model is a unit's voxels, a good deal bigger than the Titan.
     scale: 2.8,
@@ -298,10 +297,47 @@ const LOOKS = {
       barrage: 'frozenMelon',
     },
   },
+  // Worlds-4 plan Task 2: the Tundra's last boss.
+  yeti: {
+    // The model is a unit's voxels, bulkier than the Titan and the Pharaoh.
+    scale: 3,
+    // A white shaggy head: two cream horns, a heavy brow, a blue face with a dark nose and two fangs.
+    face: [
+      [1, 0, 2, 4, '#EADFC0'],
+      [9, 0, 2, 4, '#EADFC0'],
+      [0, 3, 12, 9, '#F2F8FC'],
+      [0, 3, 1, 9, '#B7CEDE'],
+      [11, 3, 1, 9, '#B7CEDE'],
+      [1, 3, 10, 2, '#B7CEDE'],
+      [2, 5, 8, 6, '#5CB4E8'],
+      [2, 9, 8, 2, '#2F82BD'],
+      [3, 5, 2, 3, 'eye'],
+      [7, 6, 2, 2, 'eye'],
+      [5, 8, 2, 2, '#1B4F7C'],
+      [3, 10, 6, 1, '#101C2A'],
+      [4, 9, 1, 1, '#F4EBDD'],
+      [7, 9, 1, 1, '#F4EBDD'],
+    ],
+    bar: { fill: '#8FDCFF', hi: '#D4F4FF' },
+    call: 'yetiRoar',
+    defeat: 'yetiDefeat',
+    fx: {
+      roar: 'cheer', summon: 'ring', shield: 'snow', defeat: 'shards', eyes: 'still',
+      // The avalanche: both arms and the club thrown up, shaking, through the strike's wind-up.
+      strike: 'shoot',
+      // From its first shield mark: icy breath in front of its mouth.
+      phaseParts: ['frostBreath'],
+      shards: ['#F2F8FC', '#B7CEDE', '#8FDCFF', '#D4F4FF', '#EADFC0'],
+      slamRise: 1.5,
+      // The avalanche's lanes: the Frost Melon's navy blinking inside a dark navy outline (any icy blue is lost on the
+      // Tundra's snow and ice), and the blow lands in white snow.
+      strikeWarnings: { stun: { fill: '#0A2A70', frame: '#06163F', opacity: 0.85, blow: '#FFFFFF' } },
+    },
+  },
 } satisfies Record<Exclude<BossKey, 'glowcap'>, BossLook>;
 
 export const BOSS_LOOK: Record<BossKey, BossLook> = {
   ...LOOKS,
-  // STUB (worlds-4 plan Task 1): the Glowcap borrows the Frost Melon's look until Task 2.
+  // STUB (worlds-4 plan Task 1): the Glowcap borrows the Frost Melon's look until its own commit.
   glowcap: LOOKS.frostMelon,
 };

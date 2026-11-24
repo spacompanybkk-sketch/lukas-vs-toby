@@ -374,6 +374,9 @@ export class BattleView {
     for (let i = 0; i < 6; i++) this.blasts.push({ at: new Vector3(), radius: 1, delay: 0, active: false, feel: BLAST_DEFAULT });
     this.pending = new PendingMarks(scene, (unit) => this.pendingGhost(unit));
     this.warmShots();
+    // The statuses' and the puddles' instanced shapes (glowing stars and bubbles compile a program of their own the first time).
+    this.marks.warm();
+    this.puddles.warm();
   }
 
   /**
@@ -382,7 +385,12 @@ export class BattleView {
    * Kernel-pult's butter is a 30% roll) would otherwise reach the GPU on whichever visit first shows it.
    */
   private warmShots(): void {
-    const made = [...Object.keys(this.spare).map((kind) => makeProjectile(kind as ProjectileKind)), makeProjectile('pea', true)];
+    // Every kind, the burning pea, and the barrages a boss throws instead of its kind's acorn (the Frost Melon's frozen
+    // melon, the Cactus King's needle): none of them is a card's shot, so none came with a kind.
+    const made = [
+      ...Object.keys(this.spare).map((kind) => makeProjectile(kind as ProjectileKind)), makeProjectile('pea', true),
+      makeFrozenMelon(), makeNeedle(),
+    ];
     for (const object of made) {
       object.name = 'projectile-warm';
       object.scale.setScalar(0);

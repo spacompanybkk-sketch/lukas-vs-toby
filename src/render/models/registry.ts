@@ -5,6 +5,7 @@ import { elderOak } from './bosses/elderOak';
 import { frostMelon } from './bosses/frostMelon';
 import { moonHowler } from './bosses/moonHowler';
 import { sandPharaoh } from './bosses/sandPharaoh';
+import { yeti } from './bosses/yeti';
 import type { BossKey } from '../../sim/types';
 import type { ModelDef } from '../voxel/types';
 import { avocadoBunker } from './plants/avocadoBunker';
@@ -75,8 +76,8 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   frostMelon,
   sandPharaoh,
   cactusKing,
-  // STUBS (worlds-4 plan Task 1): the Titan's and the Melon's models under their own keys until Task 2.
-  yeti: { ...brainTitan, key: 'yeti' },
+  yeti,
+  // STUB (worlds-4 plan Task 1): the Melon's model under its own key until the Glowcap's commit.
   glowcap: { ...frostMelon, key: 'glowcap' },
 };
 

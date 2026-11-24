@@ -25,6 +25,9 @@ import type { BossConfig, BossKey, LawnConfig, MatchConfig, PreparedUnit, Script
 //               a Walnut wall on column 7), Desert Zombies down the outer lanes.
 //   cactusKing  the zombies' world-3 boss, with the rocks thinning its flanks (as at z3-8): the Oak's waves.
 //
+//   yeti        the plants' world-4 boss, on the Tundra's ice (lanes 0, 2, 4, as at p4-8): the Titan's garden
+//               (Peashooters, a Walnut wall on column 7), Brain Eaters down the outer lanes.
+//
 // The world-2 bosses fight with a demo table of their own (`demoBalance`): two phases and a strike
 // (the Howler's blinding howl, the Melon's freeze) on a quick clock, so every show of theirs can be
 // seen in a minute whatever `Balance.bosses` holds. The world-3 bosses fight their shipped numbers
@@ -38,8 +41,8 @@ export const BOSS_DEMO: Record<BossKey, BossConfig> = {
   frostMelon: { key: 'frostMelon', faction: 'plants', lane: 2 },
   sandPharaoh: { key: 'sandPharaoh', faction: 'zombies', lane: 2 },
   cactusKing: { key: 'cactusKing', faction: 'plants', lane: 2 },
-  // STUBS (worlds-4 plan Task 1); Task 2 writes their demos.
   yeti: { key: 'yeti', faction: 'zombies', lane: 2 },
+  // STUB (worlds-4 plan Task 1); the Glowcap's demo comes with its own commit.
   glowcap: { key: 'glowcap', faction: 'plants', lane: 2 },
 };
 
@@ -104,7 +107,8 @@ const DEMO_LAWN: Record<BossKey, LawnConfig> = {
   // The rocks of p3-8 (two in its own lane, four round the garden) and of z3-8 (on its flanks).
   sandPharaoh: { ...NO_TWIST, rocks: rocks([[2, 2], [2, 4], [0, 1], [4, 1], [1, 5], [3, 5]]) },
   cactusKing: { ...NO_TWIST, rocks: rocks([[0, 2], [4, 2], [0, 5], [4, 5]]) },
-  yeti: NO_TWIST,
+  // The Tundra's ice on the Yeti's own lane and the two outer ones (as p4-8).
+  yeti: { ...NO_TWIST, ice: { lanes: [0, 2, 4], speed: 1.6 } },
   glowcap: NO_TWIST,
 };
 
@@ -180,6 +184,14 @@ const DEMO_BOSSES: Partial<Record<BossKey, Balance['bosses'][BossKey]>> = {
     ],
   },
 };
+
+/**
+ * The Yeti's demo row: the shipped patterns with the hp pinned here, so the demo's times (and the shots and tests keyed to
+ * them) hold whatever the level tasks tune `Balance.bosses` to. Lower than shipped, so both its shield marks and its
+ * phase 3 show against the Titan's garden.
+ */
+const DEMO_YETI_HP = 4500;
+DEMO_BOSSES.yeti = { ...(BALANCE.bosses.yeti as Balance['bosses'][BossKey]), hp: DEMO_YETI_HP };
 
 /**
  * The Cactus King's shipped row with its phase 2 reordered so the Walnuts show before it falls at 47 s:

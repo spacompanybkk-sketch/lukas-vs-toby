@@ -1,4 +1,4 @@
-import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Material, type Object3D } from 'three';
+import { Box3, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3, type BufferGeometry, type Material, type Object3D } from 'three';
 import type { Balance, BossPattern, DeepReadonly } from '../../data/balance';
 import { BOSS_LOOK } from '../../data/bossLooks';
 import type { BossLook, StrikeWarning } from '../../data/bossLooks';
@@ -66,6 +66,10 @@ const DOME_OPACITY = 0.14;
 const MOON_COLOR = '#FFF2A8';
 const MOON_GLOW = 0.6;
 const MOON_EDGE_GLOW = 1.4;
+/** The snow fort (`shield: 'snow'`): the same glass in snow white and ice blue, thicker so it shows on the snow, its edges ice blue. */
+const SNOW_COLOR = '#E6F6FF';
+const SNOW_EDGE = '#4DAEE6';
+const SNOW_OPACITY = 0.26;
 /** The Oak's bark clapping shut: the halves start this far apart (tiles) and meet in this long. */
 const BARK_APART = 0.7;
 const BARK_SECONDS = 0.22;
@@ -371,15 +375,26 @@ export class BossFx {
    * land as a hitch on the first warning, shield or summon. Nothing shows (every piece is scaled to nothing).
    */
   private warmUp(): void {
-    const pairs: [ReturnType<BoxBatch['build']>, Material][] = [
+    // A second `enter` (a boss that comes on again) draws the pieces afresh: the last ones go first.
+    this.removeWarm();
+    const pairs: [BufferGeometry, Material][] = [
       [this.frameGeometry, this.strikeFrameMaterial],
       [this.fillGeometry, this.strikeFillMaterial],
+      // The slam's tiles and arrows and the acorns' landing marks: each first shows at its first slam or barrage.
+      [this.frameGeometry, this.tileMaterial],
+      [this.fillGeometry, this.fillMaterial],
+      [this.arrowGeometry, this.arrowMaterial],
+      [this.markGeometry, this.markMaterial],
     ];
     if (this.ditherA !== null) pairs.push([this.ditherA, this.strikeFillMaterial], [this.ditherB as ReturnType<BoxBatch['build']>, this.strikeFillMaterial]);
     if (this.boulderGeometry !== null) pairs.push([this.boulderGeometry, this.boulderMaterial as Material], [this.boulderRingGeometry as ReturnType<BoxBatch['build']>, this.boulderRingMaterial as Material]);
     if (this.wrapGeometry !== null) pairs.push([this.wrapGeometry, (this.dressed[0] as SummonDress).material]);
     if (this.earGeometry !== null) pairs.push([this.earGeometry, (this.dressed[0] as SummonDress).material]);
     if (this.sandMaterial !== null) for (const g of this.sandGeometries) pairs.push([g, this.sandMaterial]);
+    // The snow fort's glass and its edges, and the pieces of the model that first show mid-fight (its shield's
+    // plates, its strike's and its phase's parts: the Yeti's breath).
+    if (this.boss !== null && lookOf(this.boss.key).fx.shield === 'snow') pairs.push([this.domeGeometry, this.domeMaterial], [this.edgeGeometry, this.edgeMaterial]);
+    if (this.boss !== null) this.hiddenPieces(this.boss, pairs);
     for (const [geometry, material] of pairs) {
       const mesh = new Mesh(geometry, material);
       mesh.name = 'boss-warm';
@@ -390,6 +405,29 @@ export class BossFx {
       this.warm.push(mesh);
     }
     this.warmFrames = WARM_FRAMES;
+  }
+
+  /** Takes the warm-up's meshes out of the scene (`warmUp` makes them again, `dispose` and the last warm frame drop them). */
+  private removeWarm(): void {
+    for (let i = 0; i < this.warm.length; i++) (this.warm[i] as Mesh).removeFromParent();
+    this.warm.length = 0;
+    this.warmFrames = 0;
+  }
+
+  /**
+   * The meshes of the boss's parts that are built hidden and shown mid-fight, as geometry-and-material pairs
+   * (`fx.strikeParts`, `fx.phaseParts`), for the warm-up: their glow materials
+   * and buffers would otherwise reach the GPU on the first shield, strike or phase.
+   */
+  private hiddenPieces(view: UnitView, pairs: [BufferGeometry, Material][]): void {
+    const shows = lookOf(view.key).fx;
+    const names: string[] = [...(shows.strikeParts ?? []), ...(shows.phaseParts ?? [])];
+    for (const name of names) {
+      view.model.root.getObjectByName(name)?.traverse((o) => {
+        const m = o as Mesh;
+        if (m.isMesh && m.geometry) pairs.push([m.geometry, m.material as Material]);
+      });
+    }
   }
 
   /** Ends the entrance at once (a tap). */
@@ -405,7 +443,7 @@ export class BossFx {
     if (view.dying || this.ended) return;
     const shows = lookOf(view.key).fx;
     const shield = u.shieldLeft > 0;
-    if (shows.shield === 'dome' || shows.shield === 'moon' || shows.shield === 'sand') {
+    if (shows.shield === 'dome' || shows.shield === 'moon' || shows.shield === 'snow' || shows.shield === 'sand') {
       if (shield !== this.domeOn) this.setDome(view, shield);
     } else if (shield !== this.barkOn) {
       this.setBark(view, shield);
@@ -758,10 +796,7 @@ export class BossFx {
   /** Moves the shows on by `dt`. Allocates nothing. */
   update(dt: number): void {
     this.time += dt;
-    if (this.warmFrames > 0 && --this.warmFrames === 0) {
-      for (let i = 0; i < this.warm.length; i++) (this.warm[i] as Mesh).removeFromParent();
-      this.warm.length = 0;
-    }
+    if (this.warmFrames > 0 && --this.warmFrames === 0) this.removeWarm();
     const boss = this.boss;
     if (this.entranceLeft > 0) {
       this.entranceLeft -= dt;
@@ -870,6 +905,7 @@ export class BossFx {
   }
 
   dispose(): void {
+    this.removeWarm();
     this.group.removeFromParent();
     this.dome.removeFromParent();
     this.frameGeometry.dispose();
@@ -923,13 +959,15 @@ export class BossFx {
   private dress(view: UnitView, look: BossLook): void {
     const shows = look.fx;
     const moon = shows.shield === 'moon';
-    const glass = moon ? MOON_COLOR : DOME_COLOR;
+    const snow = shows.shield === 'snow';
+    const glass = moon ? MOON_COLOR : snow ? SNOW_COLOR : DOME_COLOR;
     this.domeMaterial.color.set(glass);
     this.domeMaterial.emissive.set(glass);
     this.domeMaterial.emissiveIntensity = moon ? MOON_GLOW : 0.15;
-    this.edgeMaterial.color.set(glass);
+    this.domeMaterial.opacity = snow ? SNOW_OPACITY : DOME_OPACITY;
+    this.edgeMaterial.color.set(snow ? SNOW_EDGE : glass);
     if (moon) this.edgeMaterial.color.multiplyScalar(MOON_EDGE_GLOW);
-    this.domeSpark = moon ? MOON_SPARK : DOME_SPARK;
+    this.domeSpark = moon ? MOON_SPARK : snow ? hex(SNOW_COLOR) : DOME_SPARK;
     const ice = shows.shield === 'ice';
     [this.plateL, this.plateR] = ice ? PLATES.ice : PLATES.bark;
     this.plateChips = ice ? ICE : shows.plateChips !== undefined ? shows.plateChips.map(hex) : BARK;
@@ -966,6 +1004,7 @@ export class BossFx {
   private shieldRing(shield: BossLook['fx']['shield']): number {
     if (shield === 'bark') return this.plateChips[1] ?? (BARK[1] as number);
     if (shield === 'ice') return ICE[1] as number;
+    if (shield === 'snow') return hex(SNOW_EDGE);
     if (shield === 'sand') return SAND[1] as number;
     return shield === 'moon' ? MOON_SPARK : DOME_SPARK;
   }
