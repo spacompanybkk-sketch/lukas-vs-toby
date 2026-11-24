@@ -604,7 +604,7 @@ test('ten Meadow level <-> map round trips (zombies): one WebGL context, the GPU
 // card it can afford and then a lane the way a small child does (jumpy, favouring none), and records what
 // it saw. The findings go to the console and, with LVT_W4_SHOTS, the pictures to that folder. A signal,
 // not a balance gate. Run on request: LVT_W4_WALK=1 npx playwright test e2e/meadow-zombies.spec.ts
-// --project ipad -g walk (LVT_W4_WALK=late: only z4-3 and the Glowcap).
+// --project ipad -g walk (LVT_W4_WALK=late: only z4-3 and the Glowcap; mid: z4-2 and z4-3 only).
 test('walk: a five-year-old by taps only through z4-1, z4-2, z4-3 and the Glowcap', async ({ page }) => {
   test.skip(process.env.LVT_W4_WALK === undefined || test.info().project.name !== 'ipad', 'on request, on the iPad project');
   test.setTimeout(2_400_000);
@@ -687,19 +687,23 @@ test('walk: a five-year-old by taps only through z4-1, z4-2, z4-3 and the Glowca
       const winner = await page.evaluate(() => (window.__lvt as any).session.controller.match.state.winner as string | null);
       say(`${id} try ${attempt}: winner ${winner}, ${stars} stars; picture buttons on the result: next ${await page.locator('[data-action="next-level"]').count()}, replay ${await page.locator('[data-screen="result"] [data-action="replay"]').count()}, map ${await page.locator('[data-screen="result"] [data-action="map"]').count()}`);
       if (Number(stars) >= 1) return;
+      if (attempt === 3) return; // the third defeat stays on screen: the walk goes on from the result
       await press(page.locator('[data-screen="result"] [data-action="replay"]'));
       await waitLive(page);
     }
   };
-  const late = process.env.LVT_W4_WALK === 'late';
+  const late = process.env.LVT_W4_WALK === 'late' || process.env.LVT_W4_WALK === 'mid';
+  const mid = process.env.LVT_W4_WALK === 'mid'; // z4-2 and z4-3 only (z4-1 given a star; no Glowcap)
   if (late) {
-    await page.evaluate(() => (window.__lvt as any).players.update((p: any) => ({ ...p, zombies: { ...p.zombies, stars: { ...p.zombies.stars, 'z4-1': 2, 'z4-2': 2 } }, teached: [...p.teached, 'z4-1.fog'] })));
+    await page.evaluate((m) => (window.__lvt as any).players.update((p: any) => ({ ...p, zombies: { ...p.zombies, stars: { ...p.zombies.stars, 'z4-1': m ? 1 : 2, ...(m ? {} : { 'z4-2': 2 }) } }, teached: [...p.teached, 'z4-1.fog'] })), mid);
     await page.evaluate(() => (window.__lvt as any).go({ name: 'map', side: 'zombies', world: 4 }));
     await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
   }
-  for (const id of late ? ['z4-3'] : ['z4-1', 'z4-2', 'z4-3']) {
-    if (id === 'z4-1' || late) await startFromMap(page, id);
-    say(`${id}: ${id === 'z4-1' || late ? 'started from the map by two taps (stone, START)' : 'started by the result\'s next-level picture button'}`);
+  const walked = mid ? ['z4-2', 'z4-3'] : late ? ['z4-3'] : ['z4-1', 'z4-2', 'z4-3'];
+  for (const id of walked) {
+    const first = id === walked[0];
+    if (first) await startFromMap(page, id);
+    say(`${id}: ${first ? 'started from the map by two taps (stone, START)' : 'started by the result\'s next-level picture button'}`);
     await snap(page, `walk-${id}-start`);
     await tryUntilWon(id, 420);
     if (await page.locator(`[data-level-result="${id}"]`).count() === 0) break;
@@ -719,6 +723,7 @@ test('walk: a five-year-old by taps only through z4-1, z4-2, z4-3 and the Glowca
       await startFromMap(page, nextId);
     }
   }
+  if (mid) { test.info().annotations.push({ type: 'walk', description: log.join(' | ') }); return; }
   // The Glowcap: the rest of the walk goes straight to its level (z4-4..z4-7 are covered above).
   await page.evaluate(() => {
     const lvt = window.__lvt as any;
