@@ -475,13 +475,17 @@ const SCENARIOS = [
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),
-  // The Tundra's last boss (step 4 Task 2) as a model and its moves, then in its own world at the
-  // iPad's size (1024x650): entrance, each wind-up, strike, each shield, phase 2 and 3, defeat.
-  { name: 'gallery-bosses-w4', url: '/?scene=gallery&models=yeti&t=0.4&cloud=fake' },
+  // The Tundra's and the Meadow's last bosses (step 4 Task 2) as models and their moves, then each in its own world at the
+  // iPad's size (1024x650): entrance, each wind-up, strike, each shield, phase 2 and 3 for the Yeti, defeat.
+  { name: 'gallery-bosses-w4', url: '/?scene=gallery&models=yeti,glowcap&t=0.4&cloud=fake' },
   moves('yeti', [
     // (A part shown stays shown for the frames after it: the plain moves first.)
     ['windup', 'ability', 1.3], ['slam', 'ability', 1.62], ['avalanche', 'shoot', 1.0], ['roar', 'cheer', 0.3], ['topple', 'die', 0.9],
     ['breath', 'idle', 0.4, ['frostBreath']],
+  ]),
+  moves('glowcap', [
+    ['squirt', 'shoot', 0.3], ['shake', 'ability', 0.2], ['swell', 'cheer', 0.2], ['deflate', 'die', 1.0],
+    ['shells', 'idle', 0.4, ['capL', 'capR']], ['spots', 'idle', 0.4, ['spotsLit']],
   ]),
   ...[
     // The Yeti on the Tundra's ice lanes 0, 2, 4 under the snow, its shipped patterns with the demo's own hp (4500): it falls at 73.2 s.
@@ -495,6 +499,14 @@ const SCENARIOS = [
     ['boss-yeti-strike2', 'yeti', [42.4, 43.5, 44.3]], // the two-lane avalanche winds up 42.2-44.2 s
     ['boss-yeti-phase3', 'yeti', [47, 55.5]], // phase 3: Skeleton Warriors, a slam every 6 s
     ['boss-yeti-defeat', 'yeti', [73.4, 74.0, 74.7, 75.5]], // falls at 73.2 s; its chips at 74.3 s
+    // The Glowcap in the Meadow's fog (reach 5), its shipped numbers: it falls at 47.3 s.
+    ['boss-glowcap-enter', 'glowcap', [0.5, 1.0]],
+    ['boss-glowcap-barrage', 'glowcap', [9.05, 9.3, 9.9]], // the cap squirts at 9 s: three spore bombs
+    ['boss-glowcap-summon', 'glowcap', [21.05, 21.5]], // two Peashooters at 21 s
+    ['boss-glowcap-barrage2', 'glowcap', [30.2, 30.6]],
+    ['boss-glowcap-shield', 'glowcap', [37.2, 37.8]], // the cap shells clap shut at 36.9 s (up for 8 s)
+    ['boss-glowcap-strike', 'glowcap', [40.6, 41.5, 42.4, 43.0, 43.8]], // the spore cloud winds up 40.4-42.9 s on four tiles, the spots blinking lit; then lands, poisoning
+    ['boss-glowcap-defeat', 'glowcap', [47.5, 48.0, 48.8]], // falls at 47.3 s; its chips at 48.5 s
   ].map(([name, boss, times]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&cloud=fake`;
     return {
@@ -504,9 +516,10 @@ const SCENARIOS = [
       frames: times.map((t, i) => ({ suffix: `t${t}`, run: (page) => (i === 0 ? Promise.resolve() : open(page, url(t))) })),
     };
   }),
-  // The Yeti close up (`&focus=lane,x,half`), at the zombies' edge.
+  // The two close up (`&focus=lane,x,half`): the Yeti at the zombies' edge, the Glowcap at the plant base.
   ...[
     ['boss-yeti-close', 'yeti', [1.0, 18.4, 20, 23.6, 74.0], '2,6.6,2.4'],
+    ['boss-glowcap-close', 'glowcap', [1.0, 9.2, 37.4, 41.5, 48.0], '2,1.2,2.6'],
   ].map(([name, boss, times, focus]) => {
     const url = (t) => `/?scene=boss-demo&boss=${boss}&seed=1&t=${t}&focus=${focus}&cloud=fake`;
     return {

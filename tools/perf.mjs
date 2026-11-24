@@ -32,6 +32,7 @@
 //   --scenes=pharaoh                        the Sand Pharaoh's boss demo in the Desert (rocks, dust), opt-in
 //   --scenes=cactus                         the Cactus King's boss demo in the Desert (rocks, dust), opt-in
 //   --scenes=yeti                           the Yeti's boss demo on the Tundra's ice lanes under the snow, opt-in
+//   --scenes=glowcap                        the Glowcap's boss demo in the Meadow's fog with fireflies, opt-in
 //   --scenes=howler-p2-8,meadow-p2-7        the real game: p2-8's Howler fight with a full garden, and
 //                                           p2-7 (a busy Meadow survive level: full garden, its waves
 //                                           and flags walking, nobody dying), opt-in
@@ -77,8 +78,10 @@ const SCENES = [
   // Step 3 Task 2 (opt-in): the Desert Canyon's two boss fights (their boss demos) with the rocks and the dust.
   { name: 'pharaoh', query: 'scene=boss-demo&boss=sandPharaoh&seed=1', setup: 'pharaoh', optIn: true },
   { name: 'cactus', query: 'scene=boss-demo&boss=cactusKing&seed=1', setup: 'cactus', optIn: true },
-  // Step 4 Task 2 (opt-in): the Tundra's last boss fight (its boss demo), the Yeti on the ice lanes under the snow.
+  // Step 4 Task 2 (opt-in): the Tundra's and the Meadow's last two boss fights (their boss demos), the Yeti on the ice
+  // lanes under the snow, the Glowcap in the fog with fireflies.
   { name: 'yeti', query: 'scene=boss-demo&boss=yeti&seed=1', setup: 'yeti', optIn: true },
+  { name: 'glowcap', query: 'scene=boss-demo&boss=glowcap&seed=1', setup: 'glowcap', optIn: true },
   // Step 2 Task 9 (opt-in): the real Meadow levels, the Howler's fight and a busy survive level.
   { name: 'howler-p2-8', query: '', setup: 'howlerLevel', optIn: true },
   { name: 'meadow-p2-7', query: '', setup: 'meadowBusy', optIn: true },
@@ -410,6 +413,18 @@ const GAME_SETUPS = {
       b.advance(14);
       const s = b.match.state;
       return { units: s.units.length, projectiles: s.projectiles.length, yeti: s.units.some((u) => u.key === 'yeti'), ice: s.config.lawn.ice?.lanes ?? null };
+    });
+  },
+  /**
+   * The Glowcap demo moved on to 33 s, so what is measured (from about 36 s) holds its first uses: the cap shells at 36.9 s,
+   * the first spore cloud winding up at 40.4 s and landing at 42.9 s, its spore bombs, and the fall at 47.3 s.
+   */
+  async glowcap(page) {
+    return page.evaluate(() => {
+      const b = window.__lvt.battle;
+      b.advance(33);
+      const s = b.match.state;
+      return { units: s.units.length, projectiles: s.projectiles.length, glowcap: s.units.some((u) => u.key === 'glowcap'), fog: s.config.lawn.fog };
     });
   },
   /** The Melon demo moved on to 20 s (its second barrage in the air, ten zombies on the ice, its Peashooters firing), then left to play live. */

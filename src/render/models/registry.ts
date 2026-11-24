@@ -3,6 +3,7 @@ import { brainTitan } from './bosses/brainTitan';
 import { cactusKing } from './bosses/cactusKing';
 import { elderOak } from './bosses/elderOak';
 import { frostMelon } from './bosses/frostMelon';
+import { glowcap } from './bosses/glowcap';
 import { moonHowler } from './bosses/moonHowler';
 import { sandPharaoh } from './bosses/sandPharaoh';
 import { yeti } from './bosses/yeti';
@@ -77,8 +78,7 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   sandPharaoh,
   cactusKing,
   yeti,
-  // STUB (worlds-4 plan Task 1): the Melon's model under its own key until the Glowcap's commit.
-  glowcap: { ...frostMelon, key: 'glowcap' },
+  glowcap,
 };
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

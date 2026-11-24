@@ -26,8 +26,8 @@ export type SfxName = 'place' | 'spawnZombie' | 'pea' | 'brainThrow' | 'hit' | '
   | 'howlerHowl' | 'howlerDefeat' | 'melonCrack' | 'melonDefeat'
   // step 3: the Desert Canyon's bosses, two each as above
   | 'pharaohCall' | 'pharaohDefeat' | 'cactusCreak' | 'cactusDefeat'
-  // step 4: the Tundra's last boss, two as above
-  | 'yetiRoar' | 'yetiDefeat'
+  // step 4: the Tundra's and the Meadow's last bosses, two each as above
+  | 'yetiRoar' | 'yetiDefeat' | 'glowcapPuff' | 'glowcapDefeat'
   // worlds machinery: any boss's strike (its warning, its blow)
   | 'strikeWindup' | 'strikeImpact'
   // Versus on two devices: an invite arriving
@@ -879,6 +879,34 @@ function yetiDefeat(v: Voice, t: number, p: number): void {
 }
 
 /**
+ * The Glowcap's puff: a squishy "pfff" of spores (a soft burst of bandpassed noise) and four wet
+ * bloops stepping up like bubbles in a swamp, then a twinkle of tiny glowing chimes. Squelchy and
+ * silly, not scary.
+ */
+function glowcapPuff(v: Voice, t: number, p: number): void {
+  noise(v, { at: t, attack: 0.02, peak: 0.2, hold: 0.06, decay: 0.2, filter: 'bandpass', freq: 1400 * p, to: 500 * p, glide: 0.25, q: 0.9 });
+  [260, 340, 300, 420].forEach((f, i) => {
+    tone(v, { type: 'sine', freq: f * p, to: f * 1.6 * p, glide: 0.07, at: t + 0.1 + i * 0.12, attack: 0.004, peak: 0.3, decay: 0.1 });
+  });
+  [1568, 2093, 2637].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + 0.62 + i * 0.07, attack: 0.003, peak: 0.07, decay: 0.16 });
+  });
+}
+
+/**
+ * The Glowcap beaten: a long wet "pwwwhh" as it deflates (a sine sliding down under falling airy noise),
+ * then its glow going out in five soft chimes tumbling down and a last small plop.
+ */
+function glowcapDefeat(v: Voice, t: number, p: number): void {
+  tone(v, { type: 'sine', freq: 520 * p, to: 90 * p, glide: 0.7, at: t, attack: 0.02, peak: 0.22, hold: 0.25, decay: 0.3 });
+  noise(v, { at: t, attack: 0.03, peak: 0.16, hold: 0.25, decay: 0.4, filter: 'bandpass', freq: 2600, to: 600, glide: 0.65, q: 0.8 });
+  [2093, 1760, 1568, 1319, 1047].forEach((f, i) => {
+    tone(v, { type: 'triangle', freq: f * p, at: t + 0.7 + i * 0.1, attack: 0.002, peak: 0.14 - i * 0.015, decay: 0.16 });
+  });
+  tone(v, { type: 'sine', freq: 180 * p, to: 70 * p, glide: 0.1, at: t + 1.2, attack: 0.003, peak: 0.32, decay: 0.14 });
+}
+
+/**
  * A boss's strike is coming: a warning "woo-woo" (a square wave stepping up and down twice, soft
  * and filtered) and a rising whistle, like something about to fall on the marked tiles.
  */
@@ -905,7 +933,7 @@ export const SFX: Record<SfxName, Recipe> = {
   mineArm, mineBoom, fuse, cherryBoom, squash, grow, miss, heroReady, megaMower, boneStorm, spellReady,
   thunderbolt, vines, sunShower, healingRain, rockWall, meteor, fog, brainFeast, frenzy, graveRise,
   titanRoar, titanDefeat, oakCreak, oakDefeat, howlerHowl, howlerDefeat, melonCrack, melonDefeat, pharaohCall, pharaohDefeat, cactusCreak, cactusDefeat,
-  yetiRoar, yetiDefeat, strikeWindup, strikeImpact,
+  yetiRoar, yetiDefeat, glowcapPuff, glowcapDefeat, strikeWindup, strikeImpact,
   chime,
 };
 

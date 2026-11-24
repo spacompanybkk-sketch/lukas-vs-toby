@@ -68,10 +68,10 @@ describe('BattleView', () => {
     const { scene, view, run } = setUp();
     const warm: Object3D[] = [];
     scene.traverse((o) => { if (o.name === 'projectile-warm') warm.push(o); });
-    // Every projectile kind, the burning pea, and the barrages a boss throws instead of its acorn (frozen melon,
-    // needle); each hidden by its size, never culled.
-    expect(warm).toHaveLength(14);
-    expect(new Set(warm.map((o) => (o as unknown as { geometry: object }).geometry)).size).toBe(14);
+    // Every projectile kind, the burning pea, and the three barrages a boss throws instead of its acorn (frozen melon,
+    // needle, spore bomb); each hidden by its size, never culled.
+    expect(warm).toHaveLength(15);
+    expect(new Set(warm.map((o) => (o as unknown as { geometry: object }).geometry)).size).toBe(15);
     for (const o of warm) {
       expect(o.scale.x).toBe(0);
       expect(o.frustumCulled).toBe(false);

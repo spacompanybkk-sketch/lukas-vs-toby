@@ -65,7 +65,7 @@ export const PRIORITY: Record<SfxName, number> = {
   titanRoar: 3, titanDefeat: 3, oakCreak: 3, oakDefeat: 3, strikeWindup: 3, strikeImpact: 3,
   howlerHowl: 3, howlerDefeat: 3, melonCrack: 3, melonDefeat: 3,
   pharaohCall: 3, pharaohDefeat: 3, cactusCreak: 3, cactusDefeat: 3,
-  yetiRoar: 3, yetiDefeat: 3,
+  yetiRoar: 3, yetiDefeat: 3, glowcapPuff: 3, glowcapDefeat: 3,
   chime: 2,
 };
 

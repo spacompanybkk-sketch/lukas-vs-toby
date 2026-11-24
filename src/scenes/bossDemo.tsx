@@ -30,7 +30,7 @@ import { BALANCE, type Balance } from '../data/balance';
 // the real lawn, with the clock and the boss bar over it (no tray, no sound). For judging the
 // bosses by eye and for the screenshot tool.
 //
-//   ?scene=boss-demo&boss=brainTitan|elderOak|moonHowler|frostMelon|sandPharaoh|cactusKing|yeti
+//   ?scene=boss-demo&boss=brainTitan|elderOak|moonHowler|frostMelon|sandPharaoh|cactusKing|yeti|glowcap
 //                                               which boss (default the Brain Titan); the world-2,
 //                                               world-3 and world-4 bosses fight in their own world (the
 //                                               Meadow's fog, the Tundra's ice and snow, the Desert's

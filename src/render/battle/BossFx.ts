@@ -34,6 +34,11 @@ export function throwsFrozenMelons(key: UnitKey): boolean {
   return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'frozenMelon';
 }
 
+/** Whether the barrage of the boss `key` flies as glowing spore bombs (`fx.barrage`), not acorns. */
+export function throwsSporeBombs(key: UnitKey): boolean {
+  return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'sporeBomb';
+}
+
 /** Whether the barrage of the boss `key` flies as cactus needles (`fx.barrage`), not acorns. */
 export function throwsNeedles(key: UnitKey): boolean {
   return isBossKey(key) && BOSS_LOOK[key].fx.barrage === 'needle';
@@ -110,7 +115,7 @@ const BOULDER_POOL = 4;
 /** How many frames the fight's pieces are drawn at no size as it comes on (so each is uploaded before it is needed). */
 const WARM_FRAMES = 3;
 /** The shield plates each plate show slides in: bark (`barkL`, `barkR`) or ice (`iceL`, `iceR`). */
-const PLATES = { bark: ['barkL', 'barkR'], ice: ['iceL', 'iceR'] } as const;
+const PLATES = { bark: ['barkL', 'barkR'], ice: ['iceL', 'iceR'], cap: ['capL', 'capR'] } as const;
 /**
  * A strike's warning tiles and its blow are tinted by what it leaves: icy blue for a stun, grey for
  * blindness, orange for a burn, white for none (the others in their own shot colours).
@@ -392,7 +397,7 @@ export class BossFx {
     if (this.earGeometry !== null) pairs.push([this.earGeometry, (this.dressed[0] as SummonDress).material]);
     if (this.sandMaterial !== null) for (const g of this.sandGeometries) pairs.push([g, this.sandMaterial]);
     // The snow fort's glass and its edges, and the pieces of the model that first show mid-fight (its shield's
-    // plates, its strike's and its phase's parts: the Yeti's breath).
+    // plates, its strike's and its phase's parts: the Glowcap's shells and lit spots, the Yeti's breath).
     if (this.boss !== null && lookOf(this.boss.key).fx.shield === 'snow') pairs.push([this.domeGeometry, this.domeMaterial], [this.edgeGeometry, this.edgeMaterial]);
     if (this.boss !== null) this.hiddenPieces(this.boss, pairs);
     for (const [geometry, material] of pairs) {
@@ -416,12 +421,13 @@ export class BossFx {
 
   /**
    * The meshes of the boss's parts that are built hidden and shown mid-fight, as geometry-and-material pairs
-   * (`fx.strikeParts`, `fx.phaseParts`), for the warm-up: their glow materials
+   * (its shield plates other than a dome, `fx.strikeParts`, `fx.phaseParts`), for the warm-up: their glow materials
    * and buffers would otherwise reach the GPU on the first shield, strike or phase.
    */
   private hiddenPieces(view: UnitView, pairs: [BufferGeometry, Material][]): void {
     const shows = lookOf(view.key).fx;
     const names: string[] = [...(shows.strikeParts ?? []), ...(shows.phaseParts ?? [])];
+    if (shows.shield === 'cap') names.push(...PLATES.cap);
     for (const name of names) {
       view.model.root.getObjectByName(name)?.traverse((o) => {
         const m = o as Mesh;
@@ -725,6 +731,8 @@ export class BossFx {
     this.hideTiles();
     this.hideStrike();
     this.setDome(view, false);
+    // Beaten under the Glowcap's cap: the shells open as it falls, not stay shut over the wreck (the other bosses' plates stay as they were).
+    if (this.barkOn && lookOf(view.key).fx.shield === 'cap') this.setBark(view, false);
     this.barkOn = false;
     const defeat = lookOf(view.key).fx.defeat;
     if (defeat === 'leaves') {
@@ -969,7 +977,8 @@ export class BossFx {
     if (moon) this.edgeMaterial.color.multiplyScalar(MOON_EDGE_GLOW);
     this.domeSpark = moon ? MOON_SPARK : snow ? hex(SNOW_COLOR) : DOME_SPARK;
     const ice = shows.shield === 'ice';
-    [this.plateL, this.plateR] = ice ? PLATES.ice : PLATES.bark;
+    const cap = shows.shield === 'cap';
+    [this.plateL, this.plateR] = ice ? PLATES.ice : cap ? PLATES.cap : PLATES.bark;
     this.plateChips = ice ? ICE : shows.plateChips !== undefined ? shows.plateChips.map(hex) : BARK;
     if (shows.shield === 'sand') {
       this.domeSpark = SAND[0] as number;
@@ -1002,7 +1011,7 @@ export class BossFx {
 
   /** The ring thrown out as its shield goes up, in the shield's colour. */
   private shieldRing(shield: BossLook['fx']['shield']): number {
-    if (shield === 'bark') return this.plateChips[1] ?? (BARK[1] as number);
+    if (shield === 'bark' || shield === 'cap') return this.plateChips[1] ?? (BARK[1] as number);
     if (shield === 'ice') return ICE[1] as number;
     if (shield === 'snow') return hex(SNOW_EDGE);
     if (shield === 'sand') return SAND[1] as number;
