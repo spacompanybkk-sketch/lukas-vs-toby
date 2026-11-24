@@ -24,3 +24,20 @@ export const regrow = (unit: Spawn['unit'], at: [number, number, number][]): Spa
 
 /** Rocks on the plant tiles `[lane, col]`, as `LevelTwist.rocks` indexes them (`lane * PLANT_COLS + col`). */
 export const rocks = (tiles: [number, number][]): number[] => tiles.map(([lane, col]) => lane * PLANT_COLS + col);
+
+/**
+ * A garden that grows: `unit` arrives on the next free tile, the first at `first` s and one more
+ * every `every` s, `count` of them. Free tiles are taken lane by lane in `lanes` order and, within a
+ * lane, in `cols` order, skipping every tile in `taken` (rocks and the starting garden as `[lane, col]`).
+ */
+export function growing(
+  unit: Spawn['unit'], taken: [number, number][], lanes: number[], cols: number[],
+  { first = 20, every = 12, count = 20 }: { first?: number; every?: number; count?: number } = {},
+): Spawn[] {
+  const used = new Set(taken.map(([lane, col]) => lane * PLANT_COLS + col));
+  const free: [number, number][] = [];
+  for (const lane of lanes) {
+    for (const col of cols) if (!used.has(lane * PLANT_COLS + col)) free.push([lane, col]);
+  }
+  return regrow(unit, free.slice(0, count).map(([lane, col], i): [number, number, number] => [first + i * every, lane, col]));
+}
