@@ -7,6 +7,7 @@ import type { LevelDef } from '../../src/adventure/types';
 import type { Save } from '../../src/progress/save';
 import { W2, lessonController, w2Save } from './world2Lessons';
 import { W3, w3Controller, w3Save } from './world3Lessons';
+import { W4, w4Controller, w4Save } from './world4Lessons';
 import { seconds } from '../../src/data/balance';
 import { newSave } from '../../src/progress/save';
 import { SPELLS } from '../../src/sim/spells';
@@ -176,6 +177,16 @@ describe('the tutorial never freezes the match without an action to take', () =>
     }, 120_000);
   }
 
+  // Worlds step 4: the ice and fog pans, Brain Rot's glove and the Squash's foe wait, on stand-in levels.
+  for (const id of Object.keys(W4)) {
+    it(`${id}: following the glove ends every step, on 50 seeds`, () => {
+      for (const seed of SEEDS) follow(w4Controller(W4[id]!, seed), 150);
+    }, 120_000);
+    it(`${id}: a child who never taps is held only with a valid action, on 50 seeds`, () => {
+      for (const seed of SEEDS) idle(w4Controller(W4[id]!, seed), 60);
+    }, 120_000);
+  }
+
   for (const side of ['plants', 'zombies'] as const) {
     for (const key of SPELLS[side]) {
       it(`${side === 'plants' ? 'p1-4' : 'z1-4'} with ${key} dealt first: the spell lesson ends, on 10 seeds`, () => {
@@ -284,6 +295,37 @@ describe('a child doing anything during the world-2 lessons never leaves the mat
     c.hotkey('1');
     expect(c.tutorial!.current).toBeNull();
     expect(c.tutorial!.glove.peek()).toBeNull();
+  });
+});
+
+describe('a child doing anything during the world-4 lessons never leaves the match held with no way on', () => {
+  for (const id of Object.keys(W4)) {
+    it(`${id}: random taps, drags, pauses, restarts and reloads, on 40 seeds`, () => {
+      for (const seed of SEEDS.slice(0, 40)) chaos(W4[id]!, seed, w4Save, w4Controller);
+    }, 120_000);
+  }
+  it('the ice and fog pans\' hint glove: any tap ends it, Pause and Resume do not', () => {
+    for (const id of ['p4-1', 'z4-1']) {
+      const c = w4Controller(W4[id]!, 5);
+      for (let i = 0; i < seconds(4); i++) c.step();
+      expect(c.tutorial!.glove.peek()?.aim).toEqual({ kind: 'tap' });
+      c.setPaused(true);
+      c.setPaused(false);
+      expect(c.tutorial!.twistHolding).toBe(true);
+      c.hotkey('1');
+      expect(c.tutorial!.current).toBeNull();
+    }
+  });
+  it('the Squash lesson: the foe killed before it arms, then the match ending, never hold the match', () => {
+    const c = w4Controller(W4['p4-4']!, 7);
+    for (let i = 0; i < seconds(60) && !c.tutorial!.holding; i++) c.step();
+    c.select('pumpkinSquash');
+    for (let i = 0; i < seconds(60); i++) {
+      c.match.state.units = c.match.state.units.filter((u) => u.faction !== 'zombies' || u.x > 10.5);
+      c.step();
+      expect(c.tutorial!.holding).toBe(false);
+    }
+    expect(c.tutorial!.current?.id).toBe('p4-4.squash-tile');
   });
 });
 

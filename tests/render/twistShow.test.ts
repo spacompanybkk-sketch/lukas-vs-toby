@@ -1,6 +1,7 @@
 import { Box3, Color, Mesh, Vector3 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GHOST_PUFF, GHOST_SKID, ICE_LIGHT, TwistShow } from '../../src/render/world/TwistTiles';
+import { ModelInstance } from '../../src/render/voxel/rig';
 import { allocationsIn } from './allocations';
 import { NO_TWIST } from '../../src/sim/lawn';
 import type { LawnConfig } from '../../src/sim/types';
@@ -531,5 +532,133 @@ describe('TwistShow: rocks', () => {
     expect(show.disposed).toBe(true);
     show.update(1 / 60);
     show.dispose();
+  });
+});
+
+// Worlds step 4, Task 3 (Ruling 11): the plant side's fog pan is frame-for-frame what shipped with
+// step 2. These samples (every quarter second for 8 s: the pea's progress from its mouth to the
+// puff point, whether it shows, the mist's and the reach strip's opacity, the puff's visibility and
+// first pixel, the loop count) and the puff calls were recorded from the code before the zombies'
+// ghost walker was added. (The model's muzzle is fixed for the recording.)
+const PLANT_FOG_FRAMES: Record<number, { frames: string[]; puffs: string }> = {
+  7: {
+    frames: ["0.0100,1,0.62,0.12,0,-,0", "0.1592,1,0.62,0.12,0,-,0", "0.3085,1,0.62,0.2,0,-,0", "0.4577,1,0.54,0.12,0,-,0", "0.6070,1,0.54,0.2,0,-,0", "0.7562,1,0.54,0.2,0,-,0", "0.9055,1,0.62,0.12,0,-,0", "1.0000,0,0.62,0.12,1,0.0800,0", "1.0000,0,0.62,0.2,1,0.3200,0", "1.0000,0,0.62,0.2,0,-,0", "1.0000,0,0.54,0.12,0,-,0", "0.1095,1,0.62,0.12,0,-,1", "0.2587,1,0.62,0.2,0,-,1", "0.4080,1,0.54,0.12,0,-,1", "0.5572,1,0.54,0.12,0,-,1", "0.7065,1,0.54,0.2,0,-,1", "0.8557,1,0.62,0.12,0,-,1", "1.0000,0,0.62,0.12,1,0.0800,1", "1.0000,0,0.62,0.12,1,0.2400,1", "1.0000,0,0.62,0.2,0,-,1", "1.0000,0,0.54,0.12,0,-,1", "0.0597,1,0.62,0.12,0,-,2", "0.2090,1,0.62,0.2,0,-,2", "0.3582,1,0.62,0.2,0,-,2", "0.5075,1,0.54,0.12,0,-,2", "0.6567,1,0.54,0.2,0,-,2", "0.8060,1,0.62,0.12,0,-,2", "0.9552,1,0.62,0.12,0,-,2", "1.0000,0,0.62,0.12,1,0.1600,2", "1.0000,0,0.62,0.2,1,0.3200,2", "1.0000,0,0.54,0.12,0,-,2", "0.0100,1,0.62,0.12,0,-,3"],
+    puffs: 'P8.500 P8.500 P8.500',
+  },
+  5: {
+    frames: ["0.0142,1,0.62,0.12,0,-,0", "0.2270,1,0.62,0.12,0,-,0", "0.4397,1,0.62,0.2,0,-,0", "0.6525,1,0.54,0.12,0,-,0", "0.8652,1,0.54,0.2,0,-,0", "1.0000,0,0.62,0.12,1,0.0800,0", "1.0000,0,0.62,0.2,1,0.3200,0", "1.0000,0,0.62,0.2,0,-,0", "1.0000,0,0.54,0.12,0,-,0", "0.1560,1,0.62,0.12,0,-,1", "0.3688,1,0.62,0.2,0,-,1", "0.5816,1,0.54,0.12,0,-,1", "0.7943,1,0.54,0.12,0,-,1", "1.0000,0,0.62,0.12,1,0.0800,1", "1.0000,0,0.62,0.12,1,0.2400,1", "1.0000,0,0.62,0.2,0,-,1", "1.0000,0,0.54,0.12,0,-,1", "0.0851,1,0.62,0.12,0,-,2", "0.2979,1,0.62,0.2,0,-,2", "0.5106,1,0.62,0.2,0,-,2", "0.7234,1,0.54,0.12,0,-,2", "0.9362,1,0.54,0.2,0,-,2", "1.0000,0,0.62,0.12,1,0.1600,2", "1.0000,0,0.62,0.2,1,0.3200,2", "1.0000,0,0.54,0.12,0,-,2", "0.0142,1,0.62,0.12,0,-,3", "0.2270,1,0.62,0.12,0,-,3", "0.4397,1,0.62,0.2,0,-,3", "0.6525,1,0.54,0.12,0,-,3", "0.8652,1,0.54,0.2,0,-,3", "1.0000,0,0.62,0.12,1,0.0800,3", "1.0000,0,0.62,0.2,1,0.3200,3"],
+    puffs: 'P6.500 P6.500 P6.500 P6.500',
+  },
+};
+
+/** The fog show's samples, as `PLANT_FOG_FRAMES` records them. */
+function fogFrames(reach: number, side?: 'plants' | 'zombies'): { frames: string[]; puffs: string } {
+  // The model's idle pose moves its muzzle a little from instance to instance: pin it.
+  const muzzle = vi.spyOn(ModelInstance.prototype, 'muzzleWorld').mockImplementation((out: Vector3) => out.set(1.8, 0.8, 2.5));
+  const at: string[] = [];
+  const show = new TwistShow('fog', fogLawn(reach), { puff(p) { at.push(`P${p.x.toFixed(3)}`); } }, side);
+  const frames: string[] = [];
+  const pea = named(show, 'ghost-pea')[0]!;
+  const from = pea.position.x;
+  const bank = named(show, 'fog-bank')[0]!.material as { opacity: number };
+  const strip = named(show, 'fog-reach')[0]!.material as { opacity: number };
+  const puff = show.group.getObjectByName('fog-puff')!;
+  for (let t = 0; t < 8 * 60; t++) {
+    show.update(1 / 60);
+    if (t % 15 === 0) {
+      frames.push([((pea.position.x - from) / (show.fadeX - from)).toFixed(4), pea.visible ? 1 : 0, bank.opacity, strip.opacity, puff.visible ? 1 : 0, puff.visible ? puff.children[0]!.position.x.toFixed(4) : '-', show.loops].join(','));
+    }
+  }
+  show.dispose();
+  muzzle.mockRestore();
+  return { frames, puffs: at.join(' ') };
+}
+
+describe('TwistShow: fog on the plants\' side is unchanged (Ruling 11)', () => {
+  for (const reach of [7, 5]) {
+    it(`reach ${reach}: no ghost zombie, and every frame is what step 2 shipped (default side and 'plants')`, () => {
+      expect(fogFrames(reach)).toEqual(PLANT_FOG_FRAMES[reach]);
+      expect(fogFrames(reach, 'plants')).toEqual(PLANT_FOG_FRAMES[reach]);
+      const show = new TwistShow('fog', fogLawn(reach), puffs(), 'plants');
+      expect(show.walker).toBeNull();
+      expect(named(show, 'ghost-pea')).toHaveLength(1);
+      expect(show.group.getObjectByName('ghost-brainEater')).toBeUndefined();
+      show.dispose();
+    });
+  }
+});
+
+describe('TwistShow: fog on the zombies\' side', () => {
+  for (const reach of [7, 6, 5]) {
+    it(`reach ${reach}: a ghost Brain Eater walks in from the right, is at the puff point as the pea puffs, and walks on to the Peashooter`, () => {
+      const seen: { x: number; visible: boolean }[] = [];
+      let show!: TwistShow;
+      const fx = { puff: (_at: Vector3) => { seen.push({ x: show.walker!.object.position.x, visible: show.walker!.object.visible }); } };
+      show = new TwistShow('fog', fogLawn(reach), fx, 'zombies');
+      expect(show.walker?.object.name).toBe('ghost-brainEater');
+      expect(show.walker!.lane).toBe(show.lane);
+      expect(show.shooter?.object.name).toBe('ghost-peashooter');
+      const walker = show.walker!.object;
+      const xs: number[] = [];
+      let enteredFrom = Number.NaN;
+      for (let t = 0; t < 40 * 60; t++) {
+        show.update(1 / 60);
+        if (walker.visible) {
+          if (Number.isNaN(enteredFrom)) enteredFrom = walker.position.x;
+          xs.push(walker.position.x);
+        }
+      }
+      // It walks in from the right (never pops in mid-lawn) and the whole way down.
+      expect(enteredFrom).toBeGreaterThan(9.8);
+      expect(enteredFrom).toBeLessThanOrEqual(10.3);
+      expect(Math.min(...xs)).toBeLessThan(show.startX + 1.2);
+      expect(Math.min(...xs)).toBeGreaterThan(show.startX); // it stops short of the Peashooter's tile centre: no overlap
+      // Each puff finds it at the puff point, in view.
+      expect(seen.length).toBeGreaterThanOrEqual(3);
+      for (const s of seen) { expect(s.visible).toBe(true); expect(Math.abs(s.x - show.fadeX)).toBeLessThan(0.12); }
+      expect(show.loops).toBeGreaterThanOrEqual(3);
+      // Only ever one way: from the right to the left within a loop.
+      show.dispose();
+    });
+  }
+
+  it('the Peashooter and the pea are where the plants\' side has them; the ghost pea still puffs at the reach in the same colour', () => {
+    const muzzle = vi.spyOn(ModelInstance.prototype, 'muzzleWorld').mockImplementation((out: Vector3) => out.set(1.8, 0.8, 2.5));
+    const fx = puffs();
+    const z = new TwistShow('fog', fogLawn(6), fx, 'zombies');
+    const p = new TwistShow('fog', fogLawn(6), puffs(), 'plants');
+    muzzle.mockRestore();
+    const pos = (s: TwistShow, name: string): number[] => named(s, name)[0]!.position.toArray();
+    expect(z.shooter!.object.position.toArray()).toEqual(p.shooter!.object.position.toArray());
+    expect(pos(z, 'ghost-pea')).toEqual(pos(p, 'ghost-pea'));
+    expect(z.box).toEqual(p.box);
+    expect(z.fadeX).toBe(p.fadeX);
+    play(z, 20);
+    expect(fx.colors.length).toBeGreaterThanOrEqual(2);
+    expect(fx.colors.every((c) => c === GHOST_PUFF)).toBe(true);
+    for (const at of fx.at) expect(at.x).toBeCloseTo(z.fadeX, 1);
+    z.dispose();
+    p.dispose();
+  });
+
+  it('the walker is inside the camera box while it is at the puff point', () => {
+    for (const reach of [7, 5]) {
+      const show = new TwistShow('fog', fogLawn(reach), puffs(), 'zombies');
+      expect(show.fadeX).toBeLessThanOrEqual(show.box.x[1]);
+      expect(show.box.x[0]).toBeLessThanOrEqual(show.startX);
+      show.dispose();
+    }
+  });
+
+  it('dispose frees the walker too, and is safe twice', () => {
+    const show = new TwistShow('fog', fogLawn(6), puffs(), 'zombies');
+    play(show, 3);
+    const geometries: number[] = [];
+    show.group.traverse((o) => { if (o instanceof Mesh) o.geometry.addEventListener('dispose', () => geometries.push(1)); });
+    show.dispose();
+    show.dispose();
+    expect(show.disposed).toBe(true);
+    expect(show.group.children).toHaveLength(0);
+    expect(show.group.parent).toBeNull();
   });
 });

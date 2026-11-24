@@ -401,6 +401,8 @@ const GHOST_OPACITY = 0.72;
 
 /** The pulse over an icy lane: a brighter blue of the ice's own, so the lane stays the blue it is in play (white washed it pale). */
 const GHOST_ICE = '#5FC0FF';
+/** The zombies' fog show: the ghost Brain Eater stops this far in front of the Peashooter's tile centre (it never touches it). */
+const FOG_WALK_STOP = 0.9;
 const GHOST_PEA = '#8BE04E';
 const MIST_BANK = '#DCE4F6';
 const PAST_REACH = '#3E4766';
@@ -481,7 +483,10 @@ export class TwistShow {
   readonly startX: number = FOG_FROM_COL + 0.5;
   readonly fadeX: number = Number.NaN;
   readonly lane: number = FOG_LANE;
-  /** Fog: the see-through Peashooter. Ice: the ghost sliding down an icy lane, and the one walking a plain lane beside it (null: none plain). */
+  /**
+   * Fog: the see-through Peashooter. Ice: the ghost sliding down an icy lane, and the one walking a plain lane beside it (null: none plain).
+   * Fog on the zombies' side: `walker` is a ghost Brain Eater walking in from the right to the puff point as the pea puffs, and on to the Peashooter.
+   */
   readonly shooter: Ghost | null = null;
   readonly slider: Ghost = { lane: 0, object: new Group() };
   readonly walker: Ghost | null = null;
@@ -531,6 +536,13 @@ export class TwistShow {
   private clock = 0;
   private flying = true;
   private readonly puffAt = new Vector3();
+  /** Fog, zombies' side: seconds the pea waits at the start of each loop (so the walker is at the puff point as it puffs), and the loop's rest after the puff. */
+  private readonly lead: number = 0;
+  private readonly rest: number = SHOW_REST;
+  /** Fog, zombies' side: when the pea of this loop has left (the plants' side fires at the loop's start). */
+  private fired = true;
+  /** Fog, zombies' side: where the walker stops. */
+  private readonly walkStop: number = Number.NaN;
 
   constructor(readonly kind: ShowKind, lawn: LawnConfig, private readonly fx: PuffHost, side: Faction = 'plants') {
     this.group.name = 'twist-show';
@@ -555,7 +567,17 @@ export class TwistShow {
       const reach = lawn.fog ?? 5;
       this.fadeX = this.startX + reach;
       this.shooter = { lane: this.lane, object: this.model('peashooter', this.startX, this.lane) };
+      if (side === 'zombies') this.walker = { lane: this.lane, object: this.model('brainEater', GHOST_FROM_X, this.lane, 'walk') };
       this.buildFog(reach);
+      if (this.walker !== null) {
+        // The walker reaches the puff point as the pea puffs: when it would start beyond the lawn's
+        // edge it walks in from there; when the pea would need to leave first it waits `lead`.
+        const flight = (this.fadeX - this.peaFrom.x) / PEA_SPEED;
+        this.walkStop = this.startX + FOG_WALK_STOP;
+        this.lead = Math.max(0, (GHOST_FROM_X - this.fadeX) / GHOST_WALK - flight);
+        this.rest = (this.fadeX - this.walkStop) / GHOST_WALK + SHOW_REST;
+        this.fired = this.lead === 0;
+      }
       this.view = { pitchDeg: 44 };
       this.box = { x: [this.startX - 1.2, Math.min(10.6, this.fadeX + 2)], y: [0, 1.2], z: [this.lane - 0.6, this.lane + 1.6] };
       this.pan = [this.box];
@@ -671,9 +693,15 @@ export class TwistShow {
     const from = this.peaFrom.x;
     const flight = (this.fadeX - from) / PEA_SPEED;
     if (this.flying) {
-      const u = Math.min(1, this.clock / flight);
+      // `lead` is 0 on the plants' side: the pea flies from the loop's first frame.
+      const flown = this.clock - this.lead;
+      const u = Math.min(1, Math.max(0, flown / flight));
       pea.position.x = from + (this.fadeX - from) * u;
-      pea.visible = true;
+      pea.visible = flown >= 0;
+      if (!this.fired && flown >= 0) {
+        this.fired = true;
+        this.models[0]?.play('shoot');
+      }
       if (u >= 1) {
         // Out of reach: it vanishes into the mist in a white pixel puff, where a real pea would.
         this.puffAt.set(this.fadeX, this.peaFrom.y, this.lane + 0.5);
@@ -683,12 +711,24 @@ export class TwistShow {
         this.flying = false;
         this.clock = 0;
       }
-    } else if (this.clock >= SHOW_REST) {
+    } else if (this.clock >= this.rest) {
       this.flying = true;
       this.clock = 0;
       this.loops += 1;
       pea.position.x = from;
-      this.models[0]?.play('shoot');
+      if (this.lead === 0) this.models[0]?.play('shoot');
+      else {
+        this.fired = false;
+        pea.visible = false;
+      }
+    }
+    if (this.walker !== null) {
+      // Zombies' side: it reaches the puff point as the pea puffs (at `lead + flight`), walks on to the Peashooter, then is gone.
+      const walker = this.walker.object;
+      const t = this.flying ? this.clock : this.lead + flight + this.clock;
+      const x = this.fadeX + GHOST_WALK * (this.lead + flight - t);
+      walker.visible = x <= GHOST_FROM_X && x >= this.walkStop;
+      walker.position.x = x;
     }
     // The white puff: its pixels fly out a little and fade, in steps.
     this.puffClock += step;

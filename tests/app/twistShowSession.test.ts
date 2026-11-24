@@ -19,6 +19,7 @@ import { hashState } from '../../src/sim/hash';
 import type { LawnConfig } from '../../src/sim/types';
 import { W2, w2Save } from './world2Lessons';
 import { W3, w3Save } from './world3Lessons';
+import { W4, w4Save } from './world4Lessons';
 import { LEVELS } from '../../src/adventure/levels';
 import { TEACHES } from '../../src/adventure/levels/teaches';
 
@@ -71,7 +72,7 @@ function start(stage: StageLike, def: LevelDef, teached: string[] = []): BattleS
   lastAudio = audio;
   vi.spyOn(audio, 'play').mockImplementation(() => undefined);
   vi.spyOn(audio, 'startMusic').mockImplementation(() => undefined);
-  const save = { ...(def.world === 3 ? w3Save(def.side) : w2Save(def.side)), teached };
+  const save = { ...(def.world >= 4 ? w4Save(def.side) : def.world === 3 ? w3Save(def.side) : w2Save(def.side)), teached };
   const play = { ...prepareLevel(def, save, 5), teach: stepsToTeach(def.teaches, save) };
   const session = new BattleSession(stage, audio, levelOptions(play), { introSeconds: 0, input: { isOverLawn: () => true } });
   sessions.push(session);
@@ -315,6 +316,93 @@ describe('the rocks pan on the stage (worlds step 3, Task 3)', () => {
       expect(inScene(stage, 'twist-show')).toHaveLength(0);
       expect(inScene(stage, 'rock-refused')).toHaveLength(0);
       expect(inScene(stage, 'boulders')).toHaveLength(1); // the lawn's own boulders stay
+    });
+  }
+});
+
+describe('the world-4 pans on the stage (worlds step 4, Task 3)', () => {
+  it('p4-1 (plants, ice): the icy lanes pulse and a ghost zombie slides, the camera pans, a tap frees it all', () => {
+    const stage = fakeStage();
+    const session = start(stage, W4['p4-1']!);
+    expect(session.world).toBe('tundra');
+    session.begin();
+    run(stage, 1);
+    const show = session.twistShow!;
+    expect(show.kind).toBe('ice');
+    expect(inScene(stage, 'ice-pulse')).toHaveLength(2);
+    expect(inScene(stage, 'ghost-brainEater').length).toBeGreaterThan(0);
+    expect(stage.rig.focusing).toBe(true);
+    expect(session.controller.match.state.tick).toBe(1);
+    session.controller.tapTwist();
+    run(stage, 0.1);
+    expect(session.twistShow).toBeNull();
+    expect(show.disposed).toBe(true);
+    expect(inScene(stage, 'twist-show')).toHaveLength(0);
+  });
+
+  it('z4-1 (zombies, fog): the ghost Peashooter, its pea and a ghost Brain Eater walking to the puff point; the puff is where the level reaches', () => {
+    const stage = fakeStage();
+    const puff = vi.spyOn(stage.fx, 'puff');
+    const session = start(stage, W4['z4-1']!);
+    expect(session.world).toBe('meadow');
+    session.begin();
+    run(stage, 6);
+    const show = session.twistShow!;
+    expect(show.kind).toBe('fog');
+    expect(show.walker).not.toBeNull();
+    expect(inScene(stage, 'ghost-peashooter')).toHaveLength(1);
+    expect(inScene(stage, 'ghost-brainEater')).toHaveLength(1);
+    expect(inScene(stage, 'ghost-pea')).toHaveLength(1);
+    const puffs = puff.mock.calls.filter(([, c]) => c === GHOST_PUFF).map(([at]) => at.x);
+    expect(puffs.length).toBeGreaterThan(0);
+    for (const x of puffs) expect(x).toBeCloseTo(1.5 + 6, 1);
+    expect(session.controller.match.state.tick).toBe(1);
+  });
+
+  for (const id of ['p4-1', 'z4-1']) {
+    it(`${id}: paused, the pan waits under the menu (ghosts and the hint clock), and goes on after`, () => {
+      const stage = fakeStage();
+      const session = start(stage, W4[id]!);
+      session.begin();
+      run(stage, 0.5);
+      const show = session.twistShow!;
+      const ghost = (show.walker ?? show.slider).object;
+      session.controller.setPaused(true);
+      run(stage, 0.05);
+      const x = ghost.position.x;
+      const loops = show.loops;
+      run(stage, 6);
+      expect(ghost.position.x).toBe(x);
+      expect(show.loops).toBe(loops);
+      expect(session.controller.tutorial!.glove.peek()).toBeNull();
+      session.controller.setPaused(false);
+      expect(session.controller.tutorial!.twistHolding).toBe(true);
+      run(stage, 0.5);
+      expect(ghost.position.x).not.toBe(x);
+    });
+
+    it(`${id}: a tap frees the ghosts' geometry, and leaving the level mid-pan does too`, () => {
+      const stage = fakeStage();
+      const session = start(stage, W4[id]!);
+      session.begin();
+      run(stage, 2);
+      const show = session.twistShow!;
+      let freed = 0;
+      show.group.traverse((o) => { if (o instanceof Mesh) o.geometry.addEventListener('dispose', () => { freed += 1; }); });
+      session.controller.click({ lane: 2, col: 3 }, null);
+      run(stage, 0.1);
+      expect(show.disposed).toBe(true);
+      expect(freed).toBeGreaterThan(0);
+      expect(inScene(stage, 'twist-show')).toHaveLength(0);
+      expect(inScene(stage, 'ghost-brainEater')).toHaveLength(0);
+      expect(inScene(stage, 'ghost-peashooter')).toHaveLength(0);
+      const again = start(stage, W4[id]!);
+      again.begin();
+      run(stage, 1);
+      const second = again.twistShow!;
+      again.dispose();
+      expect(second.disposed).toBe(true);
+      expect(inScene(stage, 'twist-show')).toHaveLength(0);
     });
   }
 });

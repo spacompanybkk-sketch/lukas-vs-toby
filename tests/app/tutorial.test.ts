@@ -8,6 +8,7 @@ import { seconds } from '../../src/data/balance';
 import { MAX_TEACHED, newSave } from '../../src/progress/save';
 import { W2 } from './world2Lessons';
 import { CLUMP, W3, w3Controller, w3Save } from './world3Lessons';
+import { W4, w4Controller } from './world4Lessons';
 import { spawnUnit } from '../../src/sim/spawn';
 import type { Save } from '../../src/progress/save';
 import type { Faction } from '../../src/sim/types';
@@ -52,7 +53,7 @@ describe('the lessons', () => {
     const ids = new Set<string>();
     for (const [id, steps] of Object.entries(TEACHES)) {
       // A world-2 or world-3 lesson written ahead of its level file is checked against its stand-in.
-      const def = levelById(id) ?? W2[id] ?? W3[id]!;
+      const def = levelById(id) ?? W2[id] ?? W3[id] ?? W4[id]!;
       expect(def, id).toBeDefined();
       for (const s of steps) {
         expect(ids.has(s.id), s.id).toBe(false);
@@ -620,5 +621,96 @@ describe('the foe wait (p3-7: the Cherry Bomber lands on the clump)', () => {
     again.select('cherryBomber');
     run(again, 5);
     expect(again.tutorial!.holding).toBe(false); // waiting for a foe again
+  });
+});
+
+// Worlds step 4, Task 3 (plan Ruling 12): p4-4's Squash tile [1,3] waits for a foe in the window x in [3.5, 5.5].
+describe('the foe wait (p4-4: the Pumpkin Squash lands on a zombie, on an iced lane)', () => {
+  const bare = { ...W4['p4-4']!, waves: [] };
+  const TILE = { lane: 1, col: 3 };
+
+  /** The Squash card picked, the tile step waiting; nothing on the lawn but what a test puts there. */
+  function waiting(def = bare, seed = 3): BattleController {
+    const c = w4Controller(def, seed);
+    for (let i = 0; i < seconds(60) && !c.tutorial!.holding; i++) c.step();
+    c.match.state.players.plants.energy = 500;
+    c.select('pumpkinSquash');
+    expect(c.tutorial!.current?.id).toBe('p4-4.squash-tile');
+    return c;
+  }
+  const foe = (c: BattleController, lane: number, x: number, key: 'brainEater' | 'veryFastWalker' = 'brainEater') =>
+    spawnUnit(c.match.state, c.match.balance, key, lane, x);
+
+  it('never holds without a foe: no glove, nothing held, the match runs on', () => {
+    const c = waiting();
+    const at = tick(c);
+    run(c, seconds(30));
+    expect(tick(c)).toBe(at + seconds(30));
+    expect(c.tutorial!.holding).toBe(false);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+  });
+
+  it('a foe in another lane or behind the tile does not arm it', () => {
+    const c = waiting();
+    foe(c, 2, 4.5);
+    foe(c, 1, 3.2);
+    run(c, 2);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
+  });
+
+  it('a fast foe crossing the window in under a second (it runs the iced lane) still arms it, and the match is held for good', () => {
+    const c = waiting();
+    const f = foe(c, 1, 8, 'veryFastWalker');
+    let armedAt = -1;
+    const startX = f.x;
+    for (let i = 0; i < seconds(10) && armedAt < 0; i++) {
+      c.step();
+      if (c.tutorial!.glove.peek() !== null) armedAt = i;
+    }
+    expect(armedAt, 'armed while it crossed the window').toBeGreaterThanOrEqual(0);
+    expect(f.x).toBeLessThan(startX);
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', ...TILE }, holding: true, step: 'p4-4.squash-tile' });
+    // The foe is gone past the window by now, as far as it matters: the step stays armed and held.
+    const at = tick(c);
+    run(c, seconds(5));
+    expect(tick(c)).toBe(at);
+    expect(c.click(TILE, null)).toBeNull();
+    c.step();
+    expect(c.match.state.units.some((u) => u.key === 'pumpkinSquash' && u.lane === 1)).toBe(true);
+    expect(c.tutorial!.current).toBeNull();
+  });
+
+  it('a foe that dies before the step arms sends it back to waiting; the next foe arms it', () => {
+    const c = waiting();
+    c.match.state.players.plants.energy = 0; // started by the foe, but not armed: it cannot be paid for
+    const first = foe(c, 1, 5);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    c.match.state.players.plants.energy = 500;
+    c.match.state.units = c.match.state.units.filter((u) => u !== first);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    expect(c.tutorial!.holding).toBe(false);
+    run(c, 10);
+    expect(c.tutorial!.glove.peek()).toBeNull();
+    foe(c, 1, 5);
+    c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'tile', ...TILE }, holding: true });
+  });
+
+  it('the scripted trickle (a Brain Eater down lane 1) arms the step on arrival, within a minute of the card being picked', () => {
+    const c = w4Controller(W4['p4-4']!);
+    for (let i = 0; i < seconds(60) && !c.tutorial!.holding; i++) c.step();
+    c.match.state.players.plants.energy = 500;
+    c.select('pumpkinSquash');
+    let armedAt = -1;
+    for (let i = 0; i < seconds(60) && armedAt < 0; i++) {
+      c.step();
+      if (c.tutorial!.glove.peek() !== null) armedAt = tick(c);
+    }
+    expect(armedAt).toBeGreaterThan(0);
+    const near = c.match.state.units.filter((u) => u.faction === 'zombies' && u.lane === 1 && u.x - 3.5 >= 0 && u.x - 3.5 <= 2);
+    expect(near.length).toBeGreaterThan(0);
   });
 });
