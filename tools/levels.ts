@@ -9,27 +9,28 @@
  *   npx tsx tools/levels.ts --seeds 50         fewer seeds (quicker, noisier)
  *   npx tsx tools/levels.ts --world 2          only world 2's levels (both sides)
  *   npx tsx tools/levels.ts --only p1-3,z1-8   only these levels (a regex also works: --only 'p1-')
- *   npx tsx tools/levels.ts --who average      only these stand-ins (comma list)
+ *   npx tsx tools/levels.ts --who average      only these stand-ins (comma list; `child` is a measuring tool, never in the default list)
  *   npx tsx tools/levels.ts --free             Free Play instead of the levels
  *   npx tsx tools/levels.ts --set path=value   a Balance number changed (e.g. bosses.brainTitan.hp=5000)
+ *   --pace N                                   the child's cards a minute (default `DEFAULT_PACE`; 0 = the fast first child)
  *   --workers N                                worker threads (default 3, never more than 3)
  */
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import { LEVELS } from '../src/adventure/levels';
+import { LEVELS, heroHidden } from '../src/adventure/levels';
 import { BALANCE, cloneBalance } from '../src/data/balance';
 import type { Balance } from '../src/data/balance';
 import {
   playFreePlay, playLevel, summariseFreePlay, summariseLevel,
 } from '../src/ai/levelChecks';
 import type { FreePlayed, LevelPlayed } from '../src/ai/levelChecks';
-import { LEVEL_STAND_INS } from '../src/ai/levelStandIns';
+import { LEVEL_STAND_INS, createLevelStandIn } from '../src/ai/levelStandIns';
 import type { LevelStandIn } from '../src/ai/levelStandIns';
 import type { Faction } from '../src/sim/types';
 
 type Job =
-  | { kind: 'level'; id: string; who: LevelStandIn; first: number; seeds: number; sets: string[] }
-  | { kind: 'free'; side: Faction; who: LevelStandIn; first: number; seeds: number; sets: string[] };
+  | { kind: 'level'; id: string; who: LevelStandIn; first: number; seeds: number; sets: string[]; pace?: number | null }
+  | { kind: 'free'; side: Faction; who: LevelStandIn; first: number; seeds: number; sets: string[]; pace?: number | null };
 
 /** A balance with `path=value` changes (paths from the Balance's root). */
 export function patchedBalance(sets: readonly string[]): Balance {
@@ -56,7 +57,12 @@ function work(job: Job): LevelPlayed[] | FreePlayed[] {
     if (job.kind === 'level') {
       const def = LEVELS.find((l) => l.id === job.id);
       if (def === undefined) throw new Error(`no level ${job.id}`);
-      out.push(playLevel(def, job.who, seed, b));
+      const pace = job.pace;
+      // The child at another pace (--pace N; 0 = the fast first child): swap the stand-in, same hero rule as standInFor.
+      const wrap = job.who === 'child' && pace !== undefined
+        ? () => createLevelStandIn('child', def.side, seed, { hero: !heroHidden(def, LEVELS), pace: pace === 0 ? null : pace })
+        : undefined;
+      out.push(wrap === undefined ? playLevel(def, job.who, seed, b) : playLevel(def, job.who, seed, b, LEVELS, wrap));
     } else {
       out.push(playFreePlay(job.side, job.who, seed, b));
     }
@@ -111,6 +117,8 @@ async function main(): Promise<void> {
   const only = arg('--only');
   const who = (arg('--who')?.split(',') ?? LEVEL_STAND_INS) as LevelStandIn[];
   const sets = process.argv.flatMap((a, i) => (process.argv[i - 1] === '--set' ? a.split(',') : []));
+  const paceArg = arg('--pace');
+  const pace = paceArg === undefined ? undefined : Number(paceArg);
   const pool = new Pool(Number(arg('--workers') ?? 3));
   const t0 = Date.now();
   try {
@@ -133,8 +141,8 @@ async function main(): Promise<void> {
     // Every series at once, so the three workers stay busy.
     const runs = pick.flatMap((def) => who.map((w) => ({ def, w })));
     const results = await Promise.all(runs.map(({ def, w }) =>
-      pool.series((f, n) => ({ kind: 'level', id: def.id, who: w, first: f, seeds: n, sets }), first, seeds)));
-    console.log(`seeds ${first}..${first + seeds - 1}${sets.length > 0 ? `  set ${sets.join(',')}` : ''}`);
+      pool.series((f, n) => ({ kind: 'level', id: def.id, who: w, first: f, seeds: n, sets, pace }), first, seeds)));
+    console.log(`seeds ${first}..${first + seeds - 1}${pace === undefined ? '' : `  child pace ${pace}`}${sets.length > 0 ? `  set ${sets.join(',')}` : ''}`);
     console.log('level  stand-in   win%  stars  3*%   min   clock  base  boss  none');
     runs.forEach(({ def, w }, i) => {
       const s = summariseLevel(results[i] as LevelPlayed[]);
