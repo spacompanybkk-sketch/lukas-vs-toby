@@ -154,6 +154,21 @@ describe('p4-4 teaches the Squash through the real tutorial', () => {
     expect(armedAt).toBeLessThanOrEqual(seconds(60));
   });
 
+  // Plan ruling 12 / F5: the Medium computer must not be what arms it; the scripted trickle alone does.
+  it.each([3, 7, 11])('seed %i: with no computer, the scripted lane-1 trickle alone arms the step before 60 s, with a foe in the window', (seed) => {
+    const c = tapped({ ...real, opponent: null }, seed);
+    let armedAt = -1;
+    for (let i = 0; i < seconds(60) && armedAt < 0; i++) {
+      const before = foeInWindow(c);
+      c.step();
+      if (c.tutorial!.glove.peek() !== null) {
+        armedAt = c.match.state.tick;
+        expect(before || foeInWindow(c), 'a scripted foe stood in the window').toBe(true);
+      }
+    }
+    expect(armedAt, 'armed by the trickle alone').toBeGreaterThan(0);
+  });
+
   it('without the scripted foe (no waves, no computer) it never arms: no zombie ever stands in the window', () => {
     const c = tapped({ ...real, waves: [], opponent: null });
     for (let i = 0; i < seconds(40); i++) {
