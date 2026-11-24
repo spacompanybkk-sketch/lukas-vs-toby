@@ -140,7 +140,9 @@ Backyard each bring the next card (plants: Potato Mine, Kernel-pult; zombies: De
 Skeleton Archer), level 3 and level 6 of the Moonlit Meadow the next two plants (Mango-pult,
 Avocado Bunker), and level 3 and level 6 of the Frozen Tundra the next two zombies (Hot Topic,
 Cowboy Zombie). The Desert Canyon brings one more of each at level 3 and level 6: the plants the
-Torchwood and the Cherry Bomber, the zombies the Necromancer and the Trident Zombie. Each is shown
+Torchwood and the Cherry Bomber, the zombies the Necromancer and the Trident Zombie. The Frozen
+Tundra (plants) and the Moonlit Meadow (zombies) bring the last card of each side, at level 3: the
+**Pumpkin Squash** (p4-3) and **Brain Rot** (z4-3); levels 4 on deal it. Each is shown
 turning on a turntable on the result screen. A level deals only the
 cards it lists that the player has. Quick Battle always has all ten.
 
@@ -176,10 +178,12 @@ bar (a tap skips it).
 
 The Adventure travels five worlds. Lukas's plants go **Backyard → Meadow → Desert → Tundra →
 Citadel**; Toby's zombies come the other way, so his world 1 is the Citadel (`arenaOf` in
-`src/data/worlds.ts`). Each side has three worlds of levels so far: the plants the Backyard, the
-Moonlit Meadow and the Desert Canyon, the zombies the Citadel, the Frozen Tundra and the Desert
-Canyon (all below); world 4 on is a padlocked island. The level ids keep each side's own order
-(`p2-…` is the Meadow, `z2-…` the Tundra, `p3-…` and `z3-…` the Desert on either side).
+`src/data/worlds.ts`). Each side has four worlds of levels so far: the plants the Backyard, the
+Moonlit Meadow, the Desert Canyon and the Frozen Tundra, the zombies the Citadel, the Frozen
+Tundra, the Desert Canyon and the Moonlit Meadow (all below); world 5 is a padlocked island on both
+sides. The level ids keep each side's own order (`p2-…` is the Meadow, `z2-…` the Tundra, `p3-…`
+and `z3-…` the Desert on either side, `p4-…` the Tundra and `z4-…` the Meadow). World 4 opens
+when the side has won p3-8 / z3-8, and not before.
 
 | World | Look | Weather | Twist | Music |
 |--|--|--|--|--|
@@ -354,6 +358,116 @@ average player three-starred 30-48% at 240 s); the bases are tuned per level in 
 recorded in `KNOWN_MISSES` (`tests/ai/long/levelBands.ts`); `npm run test:balance` expects those
 misses.
 
+### Frozen Tundra (plants, world 4)
+
+Lukas's fourth world, `p4-1` … `p4-8` (`src/adventure/levels/p4.ts`), opens when he has won p3-8
+(the next-level button leads straight on; before that the island is grey with a padlock). White and
+blue, ice crystals, falling snow, bells. It is the Tundra of the zombies' world 2 with the sides
+swapped: the ice is still `twist: { iceLanes: [...] }` (whatever walks an icy lane comes ×1.6 as
+fast), but here it is the zombies who slide at the plants, so the icy lane is defended first and
+further forward.
+
+**The ice lesson.** p4-1 opens on the ice pan, as z2-1 did for Toby: the match holds, the icy lanes
+pulse, a see-through zombie slides down one; any tap ends it (a glove taps the lawn after 3 s). p4-4
+teaches the new card by the glove: the card, then its tile (the second lane, column 3, iced) only when a foe
+walks within two tiles in front of it, so the Squash lands on a zombie; a scripted Brain Eater
+trickle down that lane guarantees one comes early.
+
+| Level | Kind | Ice lanes | What it is about |
+|--|--|--|--|
+| 1 | Survive 150 s | 2 | The ice lesson: guard the shiny lane first |
+| 2 | Battle | 1, 3 | A Potato Mine on the ice catches a slider |
+| 3 | Conveyor 150 s | 0, 4 | Belt cards go to the fast lanes first; **unlocks the Pumpkin Squash** |
+| 4 | Battle | 1, 3 | The Pumpkin Squash leaps on whatever slides in (card lesson, waits for the foe) |
+| 5 | Survive 170 s | 0, 2, 4 | Kernel butter stops a slider in its tracks (Hot Topics, Very Fast Walker rushes) |
+| 6 | Battle | 0, 2, 4 | A Cherry Bomber on the icy rush |
+| 7 | Survive 180 s | 0, 1, 3, 4 | The Trident pierces a row: stagger plants across lanes |
+| 8 | Boss | 0, 2, 4 | The Yeti, on the iced middle lane; snow pups down lanes 0 and 4 |
+
+**The Yeti** (p4-8) walks the iced middle lane: a white shaggy giant with cream horns, a blue face
+and a club. In its first phase it slams the plants in front of it with the club (warning tiles
+first) and calls three snow pups (Very Fast Walkers). At two thirds of its health a **snow fort**
+goes up round it for six seconds (a dome in snow white and ice blue; peas ping off it, lobbed shots
+get through at half) and icy breath curls in front of its mouth. Phase 2 adds the **avalanche**:
+one lane blinks navy in a dark outline for two seconds, then the plants in it are stunned for two.
+At a third of its health the second fort goes up, and phase 3 brings the avalanche on two lanes and
+Skeleton Warriors in place of the pups. Its summons land in random lanes. Numbers:
+`Balance.bosses.yeti`; looks: `src/render/models/bosses/yeti.ts` and `BOSS_LOOK.yeti`.
+
+**Where the Tundra departs from the content design's starting numbers** (measured with
+`tools/levels.ts --world 4`; each reason is in a comment in `p4.ts`):
+
+| What | Design | Shipped | Why |
+|--|--|--|--|
+| Yeti hp | 6500-9000 (guide; 7500 start) | **10000** | The expert's fight ran 1.6-1.8 min at 6500-7500 against the 2.5-5 target (2.62-2.65 at 10000); and the plants' base hits back, so an idle player beat a weaker Yeti |
+| p4-8 base | plants 5500 | **14000** | An idle player wins any base much above 1.4 times the Yeti's hp; at 10000 hp none of 60 idle seeds win up to a 14000 base |
+| p4-1 base | plants 5000 | 3700 | And the Brain Eaters thin out for the first minute, then come every 3.5 s: the ramp keeps the beginner past 1.5 min and separates the expert from the average player |
+| p4-2 | zombies 2500, Medium ×0.65 | 2400, ×0.64 | Tuned into the average player's win band |
+| p4-3 | plants 5500 | 6250 | A belt is played alike by the average player and the expert (see below) |
+| p4-4 | zombies 3000, ×0.7; plants base unstated | 2000, ×0.75, plants 6300 | A battle's three stars ask the plants' base at 80% |
+| p4-5 | plants 5500 | 2100 | |
+| p4-6 | zombies 3000 | 2000, plants 6700 | |
+| p4-7 | plants 5500 | 6500 | |
+
+From p4-4 on the average player's win share is a recorded miss and the plants' three-star share is
+held to the zombies' star band instead (`plantStarBand`): the expert floor (95% wins) leaves no
+room for a lower average win. p4-3's average win (88-93%) and the 3-star shares of p4-4 and p4-6
+(0-1%) are in `KNOWN_MISSES` (`tests/ai/long/levelBands.ts`); `npm run test:balance` expects them.
+
+### Moonlit Meadow (zombies, world 4)
+
+Toby's fourth world, `z4-1` … `z4-8` (`src/adventure/levels/z4.ts`), opens when he has won z3-8.
+Night blues, a moon, mushrooms, fireflies, a soft lullaby. The fog is still `twist: { fog: n }`,
+but here the plants are the ones who cannot see: a zombie walks safe in the mist until it is close,
+and Archers, Tridents and Brain Rot must walk closer too. The reach ramps 7, 7, 6, 6, 5, 5, 5, 5.
+These are the younger player's levels: short and forgiving, with the beginner on Easy winning at
+least half of them (`beginnerWinMin`).
+
+**The fog lesson.** z4-1 opens on the fog pan: the match holds, a see-through Peashooter shoots a
+pea that puffs out in the mist, and a see-through Brain Eater walks in from the right to the puff
+point and on to the Peashooter, untouched; any tap ends it. z4-4 teaches **Brain Rot** by the
+glove: the card, then the far end of the third lane.
+
+| Level | Kind | Fog | What it is about |
+|--|--|--|--|
+| 1 | Battle | 7 | The fog lesson: in the mist the plants cannot shoot far, so sneak close (no computer) |
+| 2 | Battle | 7 | Archers and Tridents have to walk closer too (Easy computer) |
+| 3 | Breakthrough 240 s | 6 | Shooters at the back cannot all reach the front plants: eat the Walnut wall first; **unlocks Brain Rot** |
+| 4 | Battle | 6 | Brain Rot leaves poison puddles under the plants (card lesson) |
+| 5 | Conveyor 270 s | 5 | The belt in the mist, against a garden that grows |
+| 6 | Breakthrough 300 s | 5 | The Necromancer heals the pack and Brain Rot melts the Kernel-pults |
+| 7 | Battle | 5 | Everything at once (Easy computer, every plant card but the Squash) |
+| 8 | Boss | 5 | The Glowcap |
+
+**The Glowcap** (z4-8) stands across lanes 1 to 3 in front of the plant base: a violet cap
+freckled with glowing spots over a pale stalk with a round face. In its first phase it squirts
+**spore bombs** (glowing violet lobs that splash a tile, a red landing ring first) and grows Peashooters. At half
+health its **cap shells** (deep blue) slide shut over its face for eight seconds and every hit counts half. Phase 2 is the
+**spore cloud**: four zombie tiles blink in dark purple pixel smoke inside a lilac outline while its
+spots light up, then the cloud lands and poisons whoever stands in it; it keeps squirting and
+grows Avocado Bunkers. The purple is nothing like a boulder, the fog or a Brain Rot puddle. Numbers:
+`Balance.bosses.glowcap`; looks: `src/render/models/bosses/glowcap.ts` and `BOSS_LOOK.glowcap`.
+
+**Where the Meadow departs from the content design's starting numbers** (measured with
+`tools/levels.ts --world 4`; each reason is in a comment in `z4.ts` and in the design's "Shipped z4"
+note):
+
+| What | Design | Shipped | Why |
+|--|--|--|--|
+| Glowcap hp | 10000-14000 (guide; 12000 start) | **19000** | The expert's fight ran 2.2 min at 14000 against the 2.5-5 target, 2.5-2.6 min at 19000 |
+| z4-6 clock | 240 s | **300 s** | The stars count the clock left: at 240 s the base that holds the average player in his band lets the expert break the garden in 1.4 min, under the 1.5 minimum (plan ruling 6) |
+| z4-3 clock | 240 s | 240 s | As designed; the plants' base is 11000, not 5000 (which broke in about a minute) |
+| Zombie bases (z4-1, 2, 4, 5, 7, 8) | 7000, 3800, 4000, 9300, 4000, 11000 | 500, 600, 550, 2000, 520, 2000 | Under fog only a plant at column 10 minus the fog minus a half or further forward can hit the zombie base, so at the designed bases nobody lost a star (100% three stars everywhere); a small base lets a few stray shots cost one |
+| Plant bases (z4-2, 3, 4, 5, 6, 7) | 5000, 5000, 5000, 7000, 4000, 4000 | 4200, 11000, 4200, 16000, 10000, 3800 | Tuned per level (z4-5's broke in 1.2 min at 7000) |
+| Easy computer income (z4-2, 4, 7) | x1.8, x1.8, x2.0 | x3.6, x2.7, x3.3 | More plants forward means more stray shots at the small bases |
+| z4-1's garden | regrows in columns 0-2 | columns 3-4 | Plants in columns 0-2 can never reach the zombie base under fog 7 |
+| z4-8's Peashooters | [0,3] [4,3] | [0,5] [4,5] | Under fog 5 a column-3 Peashooter never reaches the base |
+
+z4-7's average three-star share and its expert lead, z4-2's lead on block 1001 and the z4-4 versus
+z4-6 trend are recorded misses (`KNOWN_MISSES`).
+
+### All the worlds
+
 **The four twists.** A level names its twist tiles (`LevelDef.twist`); how strong each one is
 lives in `Balance.twists`. Both sides are affected the same way.
 
@@ -370,7 +484,7 @@ plain tile is free.
 
 **Bosses** may change their attacks at each shield mark (phases) and can use a generic strike:
 it announces tiles or lanes with blinking warning tiles, then hits them (Titan and Oak fight as
-before; the Moon Howler, the Frost Melon, the Sand Pharaoh and the Cactus King use both). A boss that falls mid wind-up takes its
+before; the Moon Howler, the Frost Melon, the Sand Pharaoh, the Cactus King, the Yeti and the Glowcap use both). A boss that falls mid wind-up takes its
 warning with it.
 
 **The map.** One island per world, in the side's own order, with wooden arrow pictures to step
@@ -409,7 +523,7 @@ With the dev server running (`npm run dev`, port 5273):
 | `/?scene=fx-gallery` | The effects, statuses and projectiles |
 | `/?scene=hud-gallery` | The HUD in every state |
 | `/?scene=stress&units=150` | The phase-1 crowd for the perf tool; `&mix` for the mixed roster |
-| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow, `frostMelon` for the Melon on the Tundra's ice, `sandPharaoh` and `cactusKing` in the Desert's rocks and dust; `&table=shipped` plays the shipped numbers) |
+| `/?scene=boss-demo&boss=brainTitan` | A boss on the real lawn (`elderOak` for the Oak, `moonHowler` for the Howler in the Meadow, `frostMelon` for the Melon on the Tundra's ice, `sandPharaoh` and `cactusKing` in the Desert's rocks and dust, `yeti` on the Tundra's ice lanes under the snow, `glowcap` in the Meadow's fog with fireflies; `&table=shipped` plays the shipped numbers, the Yeti and the Glowcap with the hp their demos pin: 4500 and 12000) |
 
 In a production build (`npm run preview`, port 5274) the same addresses work; add `&debug` for
 the test hooks.
