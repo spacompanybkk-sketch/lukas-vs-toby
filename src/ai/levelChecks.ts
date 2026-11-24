@@ -26,6 +26,12 @@ import { opponentOf } from './difficulty';
 import { FAVOURITES, STAND_IN_DIFFICULTY, createLevelStandIn } from './levelStandIns';
 import { heroHidden } from '../adventure/levels';
 import type { LevelStandIn } from './levelStandIns';
+
+/**
+ * The stand-ins the band tests gate on (step-4 ruling 4): a fixed three. `LEVEL_STAND_INS` is what
+ * `record` prints; the `child` stand-in is a recorded signal and never enters an `expect` or a miss key.
+ */
+export const GATED_STAND_INS = ['beginner', 'average', 'expert'] as const satisfies readonly LevelStandIn[];
 import { MAX_MATCH_TICKS } from './runMatch';
 
 // ---- The campaign's curve (ruling 11) ----
@@ -64,6 +70,19 @@ export function averageStarBand(i: number): WinBand {
   if (!Number.isInteger(i) || i <= LEVELS_PER_WORLD || i > LAST_LEVEL) throw new RangeError(`no star band on campaign level ${i}`);
   const target = 75 - (35 * (i - 9)) / 31;
   return { target, lo: target - 10, hi: target + 10 };
+}
+
+/**
+ * The plants' 3-star band (step-4 ruling 2): from p4-4 (campaign level 28) the plants' win band is a
+ * recorded miss (tuned to what the expert floor allows) and their 3-star share is held to the
+ * zombie-style `averageStarBand(i)` instead, `lo` 5 lower on a boss. Null for zombies and before i 28.
+ */
+export function plantStarBand(def: Pick<LevelDef, 'side' | 'world' | 'n' | 'kind'>): WinBand | null {
+  if (def.side !== 'plants') return null;
+  const i = campaignIndex(def);
+  if (i < 28) return null;
+  const b = averageStarBand(i);
+  return def.kind === 'boss' ? { ...b, lo: b.lo - 5 } : b;
 }
 
 /**

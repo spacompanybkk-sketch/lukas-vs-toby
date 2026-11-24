@@ -3,9 +3,10 @@ import { LEVELS, levelById } from '../../src/adventure/levels';
 import type { LevelDef } from '../../src/adventure/types';
 import {
   AVERAGE_STARS, BOSS_THREE_STARS, FAVOURITE_COUNT, STAR_LEVEL, averageCoinsOn, averageStarBand, averageUpgrades, averageWinBand,
-  beginnerWinMin, bossStarBand, campaignIndex, coinsBefore, EXPERT_WIN_MIN, favouritesAt, levelGate, playIdle, standInSave,
+  beginnerWinMin, bossStarBand, campaignIndex, coinsBefore, EXPERT_WIN_MIN, favouritesAt, GATED_STAND_INS, levelGate, plantStarBand, playIdle, standInSave,
 } from '../../src/ai/levelChecks';
-import { FAVOURITES } from '../../src/ai/levelStandIns';
+import { FAVOURITES, LEVEL_STAND_INS } from '../../src/ai/levelStandIns';
+import { knownMiss } from './long/levelBands';
 import { upgradeCost } from '../../src/progress/upgrades';
 import type { CardKey, Faction } from '../../src/sim/types';
 
@@ -176,5 +177,60 @@ describe('world 2\'s bands (step-2 plan rulings 5-6)', () => {
     expect(playIdle(levelById('p1-1')!, 1).won).toBe(false);
     expect(playIdle(levelById('z1-2')!, 1).won).toBe(false);
     expect(playIdle(levelById('p1-3')!, 1).won).toBe(true);
+  });
+});
+
+describe('the plants\' star band (step-4 ruling 2)', () => {
+  const at = (id: string): ReturnType<typeof plantStarBand> => plantStarBand(levelById(id) ?? stubById(id));
+  function stubById(id: string): LevelDef {
+    const side: Faction = id[0] === 'p' ? 'plants' : 'zombies';
+    const [w, n] = id.slice(1).split('-').map(Number) as [number, number];
+    return { ...stub(side, (w - 1) * 8 + n), world: w as 1 | 2 | 3 | 4 | 5, n, id, kind: n === 8 ? 'boss' : 'battle' };
+  }
+
+  it('is null for zombies and for plant levels before campaign level 28', () => {
+    expect(at('p3-8')).toBeNull();
+    expect(at('p4-3')).toBeNull();
+    expect(at('z4-4')).toBeNull();
+    expect(at('z5-8')).toBeNull();
+  });
+
+  it('is averageStarBand(i) from p4-4 (i 28): about 43.5-63.5', () => {
+    const b = at('p4-4')!;
+    expect(b).toEqual(averageStarBand(28));
+    expect(b.lo).toBeCloseTo(43.5, 0);
+    expect(b.hi).toBeCloseTo(63.5, 0);
+  });
+
+  it('a plant boss sits 5 lower: p4-8 lo is averageStarBand(32).lo - 5, the rest as the trend', () => {
+    const b = at('p4-8')!;
+    expect(b.lo).toBeCloseTo(averageStarBand(32).lo - 5, 10);
+    expect(b.hi).toBeCloseTo(averageStarBand(32).hi, 10);
+    expect(b.target).toBeCloseTo(averageStarBand(32).target, 10);
+  });
+});
+
+describe('block-aware known misses (step-4 ruling 3)', () => {
+  const table = { 'a x': 'all', 'b y @1001': 'one block', 'c z': 'plain', 'c z @2001': 'specific' };
+  it('a plain key applies to every block', () => {
+    for (const first of [1, 1001, 2001]) expect(knownMiss('a x', first, table)).toBe('all');
+  });
+  it('an @<first> key applies to that block only', () => {
+    expect(knownMiss('b y', 1001, table)).toBe('one block');
+    expect(knownMiss('b y', 1, table)).toBeUndefined();
+    expect(knownMiss('b y', 2001, table)).toBeUndefined();
+  });
+  it('the block key wins over a plain key; unknown names are undefined', () => {
+    expect(knownMiss('c z', 2001, table)).toBe('specific');
+    expect(knownMiss('c z', 1, table)).toBe('plain');
+    expect(knownMiss('nope', 1, table)).toBeUndefined();
+  });
+});
+
+describe('the gated stand-ins (step-4 ruling 4)', () => {
+  it('are the beginner, the average player and the expert, a subset of the recorded ones (child stays out of every gate)', () => {
+    expect([...GATED_STAND_INS]).toEqual(['beginner', 'average', 'expert']);
+    for (const who of GATED_STAND_INS) expect(LEVEL_STAND_INS).toContain(who);
+    expect(GATED_STAND_INS as readonly string[]).not.toContain('child');
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { levelsFor } from '../../../src/adventure/levels';
 import type { LevelDef } from '../../../src/adventure/types';
 import {
-  EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, bossStarBand, campaignIndex, levelGate, playFreePlay, playIdle,
+  EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, bossStarBand, campaignIndex, GATED_STAND_INS, levelGate, plantStarBand, playFreePlay, playIdle,
   playLevelSeries, summariseFreePlay, summariseLevel,
 } from '../../../src/ai/levelChecks';
 import type { FreePlayStats, LevelStats } from '../../../src/ai/levelChecks';
@@ -102,9 +102,18 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'free play breakthrough: the average player breaks more gardens than the beginner': 'average 13 / 14 / 14 v beginner 14 / 14 / 14 gardens (not more): the beginner now plays with the same nine cards and no longer trails him',
 };
 
-/** One test, or `it.fails` when the band is a known miss. */
-function band(name: string, check: () => Promise<void>): void {
-  if (name in KNOWN_MISSES) it.fails(`${name} (known miss: ${KNOWN_MISSES[name]})`, check, LONG_MS);
+/**
+ * The recorded miss for `name` on the seed block starting at `first`: the key `${name} @${first}`
+ * (that block only) or else the plain `name` (every block, as the world 1-3 entries are).
+ */
+export function knownMiss(name: string, first: number, table: Readonly<Record<string, string>> = KNOWN_MISSES): string | undefined {
+  return table[`${name} @${first}`] ?? table[name];
+}
+
+/** One test, or `it.fails` when the band is a known miss on this block. */
+export function band(name: string, check: () => Promise<void>, first: number): void {
+  const miss = knownMiss(name, first);
+  if (miss !== undefined) it.fails(`${name} (known miss: ${miss})`, check, LONG_MS);
   else it(name, check, LONG_MS);
 }
 
@@ -156,6 +165,7 @@ export const IDLE_SEEDS = 20;
  * way (`record`).
  */
 function curveBandTests(world: 2 | 3 | 4 | 5, sides: readonly Faction[], first: number): void {
+  const bandIn = (name: string, check: () => Promise<void>): void => band(name, check, first);
   const stats = levelStats(first);
   for (const side of sides) {
     const levels = levelsFor(side, world);
@@ -164,36 +174,40 @@ function curveBandTests(world: 2 | 3 | 4 | 5, sides: readonly Faction[], first: 
         const boss = def.kind === 'boss';
         const i = campaignIndex(def);
         const gate = levelGate(def);
-        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
+        bandIn(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
         const floor = beginnerWinMin(i, side);
-        if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
+        if (floor !== null) bandIn(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
         if (gate === 'win') {
           const avg = averageWinBand(i, boss);
-          band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
+          bandIn(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
+          const plantStar = plantStarBand(def);
+          if (plantStar !== null) {
+            bandIn(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, plantStar.lo, plantStar.hi, `${def.id} (trend ${plantStar.target.toFixed(1)})`));
+          }
         } else if (gate === 'stars') {
           const star = averageStarBand(i);
-          band(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, star.lo, star.hi, `${def.id} (trend ${star.target.toFixed(1)})`));
-          band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, STAR_LEVEL.averageWinMin, 100, def.id));
-          band(`${def.id} the expert three-stars at least ${STAR_LEVEL.expertLead} points more often than the average player`, async () => {
+          bandIn(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, star.lo, star.hi, `${def.id} (trend ${star.target.toFixed(1)})`));
+          bandIn(`${def.id} average win`, async () => within((await stats(def, 'average')).win, STAR_LEVEL.averageWinMin, 100, def.id));
+          bandIn(`${def.id} the expert three-stars at least ${STAR_LEVEL.expertLead} points more often than the average player`, async () => {
             const lead = (await stats(def, 'expert')).threeStars - (await stats(def, 'average')).threeStars;
             expect(lead, def.id).toBeGreaterThanOrEqual(STAR_LEVEL.expertLead - SLACK);
           });
         } else {
           const boss3 = bossStarBand(world);
-          band(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, boss3.lo, boss3.hi, def.id));
+          bandIn(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, boss3.lo, boss3.hi, def.id));
         }
-        band(`${def.id} an idle player loses (${IDLE_SEEDS} seeds)`, async () => {
+        bandIn(`${def.id} an idle player loses (${IDLE_SEEDS} seeds)`, async () => {
           const won = Array.from({ length: IDLE_SEEDS }, (_, k) => playIdle(def, first + k)).filter((r) => r.won).length;
           expect(won, def.id).toBe(0);
         });
-        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
-          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
+        bandIn(`${def.id} every seed ends (clock, base or boss)`, async () => {
+          for (const who of GATED_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
         });
-        for (const who of LEVEL_STAND_INS) {
-          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
+        for (const who of GATED_STAND_INS) {
+          bandIn(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
         }
       }
-      band(`${side} world ${world}: no level harder for the average player than the level two after it`, async () => {
+      bandIn(`${side} world ${world}: no level harder for the average player than the level two after it`, async () => {
         const w = await Promise.all(levels.map(async (d) => (await stats(d, 'average')).win));
         for (let n = 0; n + 2 < w.length; n++) expect(w[n]!, `${levels[n]!.id} v ${levels[n + 2]!.id}`).toBeGreaterThanOrEqual(w[n + 2]! - SLACK);
       });
@@ -220,6 +234,7 @@ async function record(levels: readonly LevelDef[], stats: (def: LevelDef, who: L
 
 /** The Backyard's bands on seeds `first`..`first + SEEDS - 1`. */
 function backyardBandTests(first: number): void {
+  const bandIn = (name: string, check: () => Promise<void>): void => band(name, check, first);
   const stats = levelStats(first);
 
   for (const side of ['plants', 'zombies'] as const satisfies readonly Faction[]) {
@@ -227,46 +242,46 @@ function backyardBandTests(first: number): void {
     describe(`the Backyard as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
       for (const def of levels) {
         const boss = def.kind === 'boss';
-        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, 95, 100, def.id));
+        bandIn(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, 95, 100, def.id));
         // The average player's band for world 1 (coordinator, after the first review): he wins
         // every level at 90% or more; his challenge here is the stars (below).
-        band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, 90, 100, def.id));
-        band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, 70, 100, def.id));
-        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
-          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
+        bandIn(`${def.id} average win`, async () => within((await stats(def, 'average')).win, 90, 100, def.id));
+        bandIn(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, 70, 100, def.id));
+        bandIn(`${def.id} every seed ends (clock, base or boss)`, async () => {
+          for (const who of GATED_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
         });
-        for (const who of LEVEL_STAND_INS) {
-          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
+        for (const who of GATED_STAND_INS) {
+          bandIn(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
         }
-        band(`${def.id} expert 3 stars`, async () => within((await stats(def, 'expert')).threeStars, 50, 100, def.id));
-        band(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, 20, 100, def.id));
+        bandIn(`${def.id} expert 3 stars`, async () => within((await stats(def, 'expert')).threeStars, 50, 100, def.id));
+        bandIn(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, 20, 100, def.id));
         if (def.kind === 'breakthrough') {
           // Skill shows (Task 8 review): the expert breaks the garden in time more often than the average player.
-          band(`${def.id} the expert three-stars at least 5 points more often than the average player`, async () => {
+          bandIn(`${def.id} the expert three-stars at least 5 points more often than the average player`, async () => {
             expect((await stats(def, 'expert')).threeStars - (await stats(def, 'average')).threeStars).toBeGreaterThanOrEqual(5);
           });
         }
       }
       const all = (who: LevelStandIn, read: (s: LevelStats) => number): Promise<number[]> =>
         Promise.all(levels.map(async (d) => read(await stats(d, who))));
-      band(`${side} boss: average 3 stars`, async () => within((await all('average', (s) => s.threeStars))[7]!, 35, 60, 'level 8'));
+      bandIn(`${side} boss: average 3 stars`, async () => within((await all('average', (s) => s.threeStars))[7]!, 35, 60, 'level 8'));
       // The trend of the average player's 3 stars, in two parts so each holds or misses on its own.
-      band(`${side} average 3 stars: the second half three-starred less often than the first`, async () => {
+      bandIn(`${side} average 3 stars: the second half three-starred less often than the first`, async () => {
         const w = await all('average', (s) => s.threeStars);
         const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
         expect(mean(w.slice(4)), 'second half').toBeLessThan(mean(w.slice(0, 4)));
       });
-      band(`${side} average 3 stars: no level more than 15 points above the level two before it`, async () => {
+      bandIn(`${side} average 3 stars: no level more than 15 points above the level two before it`, async () => {
         const w = await all('average', (s) => s.threeStars);
         for (let n = 2; n < w.length; n++) expect(w[n]!, `level ${n + 1} v ${n - 1}`).toBeLessThanOrEqual(w[n - 2]! + 15);
       });
-      band(`${side} no level harder for the average player than the level two after it`, async () => {
+      bandIn(`${side} no level harder for the average player than the level two after it`, async () => {
         // Harder = a lower win rate. The 1-point allowance (the brief's "within 1 point") lets equal
         // levels differ by a seed or two.
         const w = await all('average', (s) => s.win);
         for (let n = 0; n + 2 < w.length; n++) expect(w[n]!, `level ${n + 1} v ${n + 3}`).toBeGreaterThanOrEqual(w[n + 2]! - SLACK);
       });
-      band(`${side} the beginner's curve: neighbours within 10 points`, async () => {
+      bandIn(`${side} the beginner's curve: neighbours within 10 points`, async () => {
         const w = await all('beginner', (s) => s.win);
         for (let n = 0; n + 1 < w.length; n++) expect(Math.abs(w[n + 1]! - w[n]!), `level ${n + 1} v ${n + 2}`).toBeLessThanOrEqual(10 + SLACK);
       });
@@ -280,6 +295,7 @@ export function freePlayBandTests(): void {
 }
 
 function freePlayBlock(first: number): void {
+  const bandIn = (name: string, check: () => Promise<void>): void => band(name, check, first);
   const free = new Map<string, Promise<FreePlayStats>>();
   const freeStats = (side: Faction, who: LevelStandIn): Promise<FreePlayStats> => {
     const key = `${side}:${who}`;
@@ -292,10 +308,10 @@ function freePlayBlock(first: number): void {
   };
 
   describe(`Free Play's first steps (seeds ${first}..${first + SEEDS - 1})`, () => {
-    band('free play survive beginner', async () => within((await freeStats('plants', 'beginner')).medianScore, 4, 8, 'waves', 0));
-    band('free play survive average', async () => within((await freeStats('plants', 'average')).medianScore, 10, 20, 'waves', 0));
-    band('free play survive expert', async () => within((await freeStats('plants', 'expert')).medianScore, 25, Infinity, 'waves', 0));
-    band('free play survive: the average player rarely plays over 20 minutes', async () => {
+    bandIn('free play survive beginner', async () => within((await freeStats('plants', 'beginner')).medianScore, 4, 8, 'waves', 0));
+    bandIn('free play survive average', async () => within((await freeStats('plants', 'average')).medianScore, 10, 20, 'waves', 0));
+    bandIn('free play survive expert', async () => within((await freeStats('plants', 'expert')).medianScore, 25, Infinity, 'waves', 0));
+    bandIn('free play survive: the average player rarely plays over 20 minutes', async () => {
       within((await freeStats('plants', 'average')).over20, 0, 5, 'share over 20 min');
     });
     // The coordinator's fair reading after the clock bonus went to 45 s: the beginner breaks 3-6
@@ -305,15 +321,15 @@ function freePlayBlock(first: number): void {
     // / 2001; at least one on 97.5-98.5%), the average 10 and the expert 17-18: the same width of
     // band (4) round where he now is, 5-9. The zombie side is Toby's and meant to forgive; the
     // ranking checks below are unchanged.
-    band('free play breakthrough beginner', async () => {
+    bandIn('free play breakthrough beginner', async () => {
       const s = await freeStats('zombies', 'beginner');
       within(s.atLeastOne, 70, 100, 'share with a garden');
       within(s.medianScore, 5, 9, 'gardens', 0);
     });
-    band('free play breakthrough: the average player breaks more gardens than the beginner', async () => {
+    bandIn('free play breakthrough: the average player breaks more gardens than the beginner', async () => {
       expect((await freeStats('zombies', 'average')).medianScore).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);
     });
-    band('free play breakthrough: the expert breaks more gardens than the average player and the beginner', async () => {
+    bandIn('free play breakthrough: the expert breaks more gardens than the average player and the beginner', async () => {
       const e = (await freeStats('zombies', 'expert')).medianScore;
       expect(e).toBeGreaterThan((await freeStats('zombies', 'average')).medianScore);
       expect(e).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);

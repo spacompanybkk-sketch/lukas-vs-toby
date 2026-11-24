@@ -20,8 +20,9 @@ import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { LEVELS, heroHidden } from '../src/adventure/levels';
 import { BALANCE, cloneBalance } from '../src/data/balance';
 import type { Balance } from '../src/data/balance';
+import type { LevelDef } from '../src/adventure/types';
 import {
-  playFreePlay, playLevel, summariseFreePlay, summariseLevel,
+  averageStarBand, bossStarBand, campaignIndex, plantStarBand, playFreePlay, playLevel, summariseFreePlay, summariseLevel,
 } from '../src/ai/levelChecks';
 import type { FreePlayed, LevelPlayed } from '../src/ai/levelChecks';
 import { LEVEL_STAND_INS, createLevelStandIn } from '../src/ai/levelStandIns';
@@ -111,6 +112,14 @@ function arg(name: string): string | undefined {
   return i < 0 ? undefined : process.argv[i + 1];
 }
 
+/** The 3-star band a level is tuned to, printed so a tuner has the target: the plants from p4-4 (`plantStarBand`), z4 (`averageStarBand`; the boss `bossStarBand`). */
+function starBandNote(def: LevelDef): string {
+  const b = def.side === 'plants' ? plantStarBand(def)
+    : def.world === 4 ? (def.kind === 'boss' ? bossStarBand(4) : averageStarBand(campaignIndex(def)))
+    : null;
+  return b === null ? '' : `${b.lo.toFixed(1)}-${b.hi.toFixed(1)}`;
+}
+
 async function main(): Promise<void> {
   const first = Number(arg('--first') ?? 1);
   const seeds = Number(arg('--seeds') ?? 200);
@@ -143,11 +152,11 @@ async function main(): Promise<void> {
     const results = await Promise.all(runs.map(({ def, w }) =>
       pool.series((f, n) => ({ kind: 'level', id: def.id, who: w, first: f, seeds: n, sets, pace }), first, seeds)));
     console.log(`seeds ${first}..${first + seeds - 1}${pace === undefined ? '' : `  child pace ${pace}`}${sets.length > 0 ? `  set ${sets.join(',')}` : ''}`);
-    console.log('level  stand-in   win%  stars  3*%   min   clock  base  boss  none');
+    console.log('level  stand-in   win%  stars  3*%   min   clock  base  boss  none  3* band');
     runs.forEach(({ def, w }, i) => {
       const s = summariseLevel(results[i] as LevelPlayed[]);
       const e = s.ends;
-      console.log(`${def.id.padEnd(6)} ${w.padEnd(9)} ${s.win.toFixed(1).padStart(5)}  ${String(s.medianStars).padStart(4)}  ${s.threeStars.toFixed(0).padStart(4)}  ${s.minutes.toFixed(2).padStart(4)}  ${e.clock.toFixed(0).padStart(5)} ${e.base.toFixed(0).padStart(5)} ${e.boss.toFixed(0).padStart(5)} ${e.none.toFixed(0).padStart(5)}`);
+      console.log(`${def.id.padEnd(6)} ${w.padEnd(9)} ${s.win.toFixed(1).padStart(5)}  ${String(s.medianStars).padStart(4)}  ${s.threeStars.toFixed(0).padStart(4)}  ${s.minutes.toFixed(2).padStart(4)}  ${e.clock.toFixed(0).padStart(5)} ${e.base.toFixed(0).padStart(5)} ${e.boss.toFixed(0).padStart(5)} ${e.none.toFixed(0).padStart(5)}  ${starBandNote(def)}`);
     });
   } finally {
     await pool.close();
