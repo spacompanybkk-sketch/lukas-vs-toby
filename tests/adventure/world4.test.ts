@@ -55,9 +55,9 @@ describe('the world-4 bosses', () => {
     expect(BOSS_HALF_WIDTH.glowcap).toBe(1);
   });
 
-  it('have their rows: the Yeti\'s hp tuned to 10000 (Task 6), the Glowcap\'s still the stub (Task 7 tunes it)', () => {
+  it('have their rows: the Yeti\'s hp tuned to 10000 (Task 6), the Glowcap\'s to 19000 (Task 7)', () => {
     expect(BALANCE.bosses.yeti.hp).toBe(10000);
-    expect(BALANCE.bosses.glowcap.hp).toBe(12000);
+    expect(BALANCE.bosses.glowcap.hp).toBe(19000);
   });
 });
 

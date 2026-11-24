@@ -71,8 +71,8 @@ describe('mapStones(save, side, world)', () => {
     expect(stones.map((x) => x.state)).toEqual(['next', 'closed', 'closed', 'closed', 'closed', 'closed', 'closed', 'closed']);
   });
   it('a world without levels has no stones', () => {
-    expect(mapStones(fresh, 'zombies', 4)).toEqual([]);
-    expect(mapStones(fresh, 'zombies', 4, MORE)).toEqual([]);
+    expect(mapStones(fresh, 'zombies', 5)).toEqual([]);
+    expect(mapStones(fresh, 'zombies', 5, MORE)).toEqual([]);
   });
 });
 
