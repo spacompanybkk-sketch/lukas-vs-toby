@@ -538,16 +538,29 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
 export const CHILD = {
   burst: { min: 2, max: 3 },
   burstSpacing: 10,
+  /** The original idle gap between bursts (4-10 s): the `pace: null` variant, the fast first child. */
   gap: { min: 120, max: 300 },
+  /**
+   * The pace of a person who loses track of energy: cards sent per minute, on average. Each gap is drawn
+   * so that the burst before it, plus the gap, takes `cards x 60 / cardsPerMinute` seconds, give or take
+   * `paceJitter`; the energy he does not spend just banks. `DEFAULT_PACE` is the pace `child` plays at.
+   */
+  paceJitter: 0.3,
+  /** About 20% of bursts are a single card. */
+  singleShare: 0.2,
   favouriteShare: 0.7,
   switchEvery: { min: 600, max: 1200 },
-  reaction: { min: 60, max: 90 },
+  /** He sees a new open lane (or the plants' change) 2-4 s late. */
+  reaction: { min: 60, max: 120 },
   power: { min: 30, max: 90 },
   /** Card weight: 1, plus up to 2 for the newest, up to 2 for the dearest, plus this for the last pick. */
   repeatBonus: 1,
   /** A burst stuck on recharging cards waits this long (about 1.5 s) before it gives up. */
   patience: 45,
 } as const;
+
+/** The pace `child` plays at by default (cards a minute): set by the sweep in child-standin-report.md. */
+export const DEFAULT_PACE = 6;
 
 const between = (rng: BotRng, r: { min: number; max: number }): number => r.min + randomInt(rng, r.max - r.min + 1);
 
@@ -562,14 +575,17 @@ function openLane(lawn: readonly LaneView[], not: number, rng: BotRng): number {
 /**
  * The child, for the zombie side. The plant side is not modelled yet: it is the `beginner`.
  */
-function createChild(side: Faction, seed: number, hero: boolean): Bot {
+function createChild(side: Faction, seed: number, hero: boolean, pace: number | null = DEFAULT_PACE): Bot {
   if (side === 'plants') return createBeginner(side, seed, hero); // plant side: aliased to the beginner
   const rng = rngFor(seed, 'child', side);
   let favourite = randomInt(rng, LANES);
   let nextBurst = between(rng, CHILD.gap);
   let left = 0; // cards still to send in this burst
   let nextSend = 0;
-  let want = between(rng, CHILD.burst);
+  const drawWant = (): number => (nextRandom(rng) < CHILD.singleShare ? 1 : between(rng, CHILD.burst));
+  let want = drawWant();
+  let burstStart = 0;
+  let burstCards = 0;
   let giveUp = 0; // the tick a burst that cannot go on ends
   let lastCard: CardKey | null = null;
   let switchAt = between(rng, CHILD.switchEvery);
@@ -639,7 +655,7 @@ function createChild(side: Faction, seed: number, hero: boolean): Bot {
       }
       // The cards: a burst of 2-3, then an idle gap.
       const onBelt = s.config.belt !== null && s.config.belt.side === side;
-      if (left === 0 && now >= nextBurst && canStart(match, onBelt)) { left = want; nextSend = now; giveUp = now + CHILD.patience; }
+      if (left === 0 && now >= nextBurst && canStart(match, onBelt)) { left = want; burstStart = now; burstCards = 0; nextSend = now; giveUp = now + CHILD.patience; }
       if (left > 0 && now >= nextSend) {
         const l = lane();
         let cmd: Command | null = null;
@@ -651,8 +667,13 @@ function createChild(side: Faction, seed: number, hero: boolean): Bot {
           const card = pickCard(match, l);
           if (card !== null) { cmd = sendCommand(card, l); lastCard = card; }
         }
-        if (cmd !== null) { out.push(cmd); left -= 1; nextSend = now + CHILD.burstSpacing; } else if (now >= giveUp) left = 0; // cards still recharging: he waits a moment, then gives up
-        if (left === 0) { nextBurst = now + between(rng, CHILD.gap); want = between(rng, CHILD.burst); }
+        if (cmd !== null) { out.push(cmd); left -= 1; burstCards += 1; nextSend = now + CHILD.burstSpacing; } else if (now >= giveUp) left = 0; // cards still recharging: he waits a moment, then gives up
+        if (left === 0) {
+          // The pace: the burst and its gap take burstCards x 60 / pace seconds, give or take; never shorter than the burst.
+          const cycle = pace === null ? 0 : Math.round((Math.max(burstCards, 1) * 1800 / pace) * (1 + CHILD.paceJitter * (2 * nextRandom(rng) - 1)));
+          nextBurst = pace === null ? now + between(rng, CHILD.gap) : Math.max(now + CHILD.gap.min / 2, burstStart + cycle);
+          want = drawWant();
+        }
       }
       return out;
     },
@@ -669,13 +690,14 @@ export interface StrongExpert { readonly table?: Partial<SkillTable>; readonly s
 /**
  * A stand-in of `kind` for `side` in one match (see the note at the top). `hero` false: a level
  * where the child has no hero button yet (`heroHidden`); the stand-in never fires the hero.
- * `strong` (the expert only, probes): see `StrongExpert`.
+ * `strong` (the expert only, probes): see `StrongExpert`. `pace` (the child only): cards a minute, or
+ * null for the fast first child (`CHILD.gap`).
  */
 export function createLevelStandIn(
-  kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean; strong?: StrongExpert } = {},
+  kind: LevelStandIn, side: Faction, seed: number, opts: { hero?: boolean; strong?: StrongExpert; pace?: number | null } = {},
 ): Bot {
   const hero = opts.hero ?? true;
   if (kind === 'beginner') return createBeginner(side, seed, hero);
-  if (kind === 'child') return createChild(side, seed, hero);
+  if (kind === 'child') return createChild(side, seed, hero, opts.pace === undefined ? DEFAULT_PACE : opts.pace);
   return createSensible(kind, side, seed, hero, kind === 'expert' ? opts.strong ?? null : null);
 }
