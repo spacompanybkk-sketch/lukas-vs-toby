@@ -85,19 +85,12 @@ describe('a card unlocked in world 4', () => {
   ] as const)('%s: the graduate\'s Free Play hand holds %s once world 4 unlocks it, and not before', (side, card) => {
     const p = side === 'plants' ? 'p' : 'z';
     const unlock = levelById(`${p}4-3`);
-    if (unlock?.unlocks === card) {
-      // The shipped campaign: the card is unlocked by the third level of world 4. A graduate of the campaign
-      // without that level (and the world-4 levels after it) does not hold it; with the whole campaign he does.
-      const without = LEVELS.filter((l) => !(l.side === side && l.world === 4 && l.n >= 3));
-      expect(without.some((l) => l.unlocks === card)).toBe(false);
-      expect(freePlayCards(without)[side]).not.toContain(card);
-      expect(freePlayCards(LEVELS)[side]).toContain(card);
-    } else {
-      // The side's world 4 is not written yet (Task 7 writes z4): an injected unlock level stands in for it.
-      const base = [...LEVELS.filter((l) => l.world <= 3)];
-      const l3 = w4(side, 3, { unlocks: card, cards: side === 'plants' ? ['peashooter'] : ['brainEater'] });
-      expect(freePlayCards(base)[side]).not.toContain(card);
-      expect(freePlayCards([...base, l3])[side]).toContain(card);
-    }
+    // The shipped campaign: the card is unlocked by the third level of world 4. A graduate of the campaign
+    // without that level (and the world-4 levels after it) does not hold it; with the whole campaign he does.
+    expect(unlock?.unlocks).toBe(card);
+    const without = LEVELS.filter((l) => !(l.side === side && l.world === 4 && l.n >= 3));
+    expect(without.some((l) => l.unlocks === card)).toBe(false);
+    expect(freePlayCards(without)[side]).not.toContain(card);
+    expect(freePlayCards(LEVELS)[side]).toContain(card);
   });
 });
