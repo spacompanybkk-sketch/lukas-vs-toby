@@ -94,7 +94,7 @@ describe('the level stand-ins', () => {
   });
 
   it('difficulty: the beginner on Easy, the others on Normal; only the average player buys upgrades', () => {
-    expect(STAND_IN_DIFFICULTY).toEqual({ beginner: 'easy', average: 'medium', expert: 'medium' });
+    expect(STAND_IN_DIFFICULTY).toEqual({ beginner: 'easy', average: 'medium', expert: 'medium', child: 'easy' });
     const z8 = levelById('z1-8')!;
     expect(Object.keys(standInSave('average', z8).upgrades).length).toBeGreaterThan(0);
     expect(standInSave('expert', z8).upgrades).toEqual({});

@@ -9,7 +9,7 @@
  *   npx tsx tools/levels.ts --seeds 50         fewer seeds (quicker, noisier)
  *   npx tsx tools/levels.ts --world 2          only world 2's levels (both sides)
  *   npx tsx tools/levels.ts --only p1-3,z1-8   only these levels (a regex also works: --only 'p1-')
- *   npx tsx tools/levels.ts --who average      only these stand-ins (comma list)
+ *   npx tsx tools/levels.ts --who average      only these stand-ins (comma list; `child` is a measuring tool, never in the default list)
  *   npx tsx tools/levels.ts --free             Free Play instead of the levels
  *   npx tsx tools/levels.ts --set path=value   a Balance number changed (e.g. bosses.brainTitan.hp=5000)
  *   --workers N                                worker threads (default 3, never more than 3)

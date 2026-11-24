@@ -22,6 +22,9 @@
  * expert push one lane with every zombie (`breakthroughLane`): the expert reads which lane gives as
  * the computer reads a lane and stacks it, the average player takes the one with the fewest plants.
  *
+ * - **child** (a measuring tool, zombies only): how a 5-year-old or a casual adult taps - bursts of 2-3
+ *   cards into a favourite lane, then a long idle gap (`CHILD`, `createChild`).
+ *
  * Every stand-in handles the conveyor (no energy, cards from the belt): it takes the belt card that
  * fits best (the beginner a random one) to a sensible tile or lane. Each is a pure function of the
  * match it is shown and its own seeded random numbers; make one per match.
@@ -30,13 +33,14 @@
 import type { Balance } from '../data/balance';
 import { isBoss, isStanding } from '../sim/lookup';
 import type { Match } from '../sim/match';
-import { randomInt } from '../sim/rng';
+import { nextRandom, randomInt } from '../sim/rng';
 import { COLS, LANES, PLANT_COLS } from '../sim/types';
 import type { BossKey, CardKey, Command, Faction, SpellKey, Unit } from '../sim/types';
 import { createBasicBot, SKILLS, POWER_PACING } from './basicBot';
 import type { SkillTable } from './basicBot';
 import type { Bot, Skill } from './bot';
 import { shotDps } from './laneModel';
+import { UNIT_INFO } from '../data/units';
 import { freeTile, placeCommand, randomLegal, readLawn, sendCommand, shuffledLanes } from './lawn';
 import type { BotRng, LaneView } from './lawn';
 import { childPower } from './powers';
@@ -44,11 +48,15 @@ import { choose } from './wants';
 import { cardsFor, laneSurplus, newZombieMemory } from './zombieStrategy';
 import type { ZombieMemory } from './zombieStrategy';
 
-export type LevelStandIn = 'beginner' | 'average' | 'expert';
+export type LevelStandIn = 'beginner' | 'average' | 'expert' | 'child';
+/**
+ * The three stand-ins the band tests judge. `child` (a measuring tool, see `createChild`) is left out
+ * on purpose: no bands judge it yet. `tools/levels.ts --who child` reaches it.
+ */
 export const LEVEL_STAND_INS: readonly LevelStandIn[] = ['beginner', 'average', 'expert'];
 
 /** Each stand-in's Adventure difficulty (income only: Easy ×1.25, Normal ×1). */
-export const STAND_IN_DIFFICULTY: Readonly<Record<LevelStandIn, Skill>> = { beginner: 'easy', average: 'medium', expert: 'medium' };
+export const STAND_IN_DIFFICULTY: Readonly<Record<LevelStandIn, Skill>> = { beginner: 'easy', average: 'medium', expert: 'medium', child: 'easy' };
 
 /** The beginner taps once every 4–6 s (ticks, drawn per tap). */
 export const BEGINNER_TAP = { min: 120, max: 180 } as const;
@@ -69,7 +77,7 @@ export const FAVOURITES: Readonly<Record<Faction, readonly CardKey[]>> = {
 };
 
 /** The skill table each stand-in decides with (the beginner has none: he taps). */
-export function standInTable(kind: Exclude<LevelStandIn, 'beginner'>, side: Faction): SkillTable {
+export function standInTable(kind: 'average' | 'expert', side: Faction): SkillTable {
   if (kind === 'expert') return SKILLS[side].hard;
   return {
     ...SKILLS[side].medium, ...POWER_PACING.medium, thinkEvery: AVERAGE.every, randomShare: AVERAGE.randomShare,
@@ -77,7 +85,7 @@ export function standInTable(kind: Exclude<LevelStandIn, 'beginner'>, side: Fact
   };
 }
 
-const SALT: Readonly<Record<LevelStandIn, number>> = { beginner: 0x1e7e_0001, average: 0x1e7e_0002, expert: 0x1e7e_0003 };
+const SALT: Readonly<Record<LevelStandIn, number>> = { beginner: 0x1e7e_0001, average: 0x1e7e_0002, expert: 0x1e7e_0003, child: 0x1e7e_0004 };
 
 function rngFor(seed: number, kind: LevelStandIn, side: Faction): BotRng {
   return { rng: (seed ^ SALT[kind] ^ (side === 'plants' ? 0x0100_0000 : 0x0200_0000)) >>> 0 };
@@ -516,6 +524,142 @@ function createSensible(kind: 'average' | 'expert', side: Faction, seed: number,
 }
 
 /**
+ * The child (a measuring tool; zombies only), modelled on a 5-year-old or a casual adult who taps in
+ * bursts. All numbers are ticks (30 per second) unless noted.
+ * - Bursts: waits until it can pay for `burst` (2-3) cards, sends them `burstSpacing` apart (about 1 s
+ *   in all), then sits idle `gap` (4-10 s, drawn per burst).
+ * - Lanes: a favourite lane gets `favouriteShare` of the sends, otherwise a neighbouring lane. Every
+ *   `switchEvery` (20-40 s) it looks for a lane with the fewest plants and moves its favourite there
+ *   after `reaction` (2-3 s).
+ * - Cards: affordable cards weighted towards the newest and the most expensive ("the cool one"), and a
+ *   little towards its last pick.
+ * - Hero and spells: pressed `power` (1-3 s) after they light, into the favourite lane, no targeting.
+ */
+export const CHILD = {
+  burst: { min: 2, max: 3 },
+  burstSpacing: 10,
+  gap: { min: 120, max: 300 },
+  favouriteShare: 0.7,
+  switchEvery: { min: 600, max: 1200 },
+  reaction: { min: 60, max: 90 },
+  power: { min: 30, max: 90 },
+  /** Card weight: 1, plus up to 2 for the newest, up to 2 for the dearest, plus this for the last pick. */
+  repeatBonus: 1,
+  /** A burst stuck on recharging cards waits this long (about 1.5 s) before it gives up. */
+  patience: 45,
+} as const;
+
+const between = (rng: BotRng, r: { min: number; max: number }): number => r.min + randomInt(rng, r.max - r.min + 1);
+
+/** The lane with the fewest plants (a random one of any tie) other than `not`, as the child sees it. */
+function openLane(lawn: readonly LaneView[], not: number, rng: BotRng): number {
+  let fewest = Infinity;
+  for (const v of lawn) if (v.lane !== not) fewest = Math.min(fewest, v.plants.length);
+  const open = lawn.filter((v) => v.lane !== not && v.plants.length === fewest);
+  return (open[randomInt(rng, open.length)] as LaneView).lane;
+}
+
+/**
+ * The child, for the zombie side. The plant side is not modelled yet: it is the `beginner`.
+ */
+function createChild(side: Faction, seed: number, hero: boolean): Bot {
+  if (side === 'plants') return createBeginner(side, seed, hero); // plant side: aliased to the beginner
+  const rng = rngFor(seed, 'child', side);
+  let favourite = randomInt(rng, LANES);
+  let nextBurst = between(rng, CHILD.gap);
+  let left = 0; // cards still to send in this burst
+  let nextSend = 0;
+  let want = between(rng, CHILD.burst);
+  let giveUp = 0; // the tick a burst that cannot go on ends
+  let lastCard: CardKey | null = null;
+  let switchAt = between(rng, CHILD.switchEvery);
+  let pending: { lane: number; at: number } | null = null;
+  const readyAt: Partial<Record<SpellKey | 'hero', { since: number; wait: number }>> = {};
+
+  const lane = (): number => {
+    if (nextRandom(rng) < CHILD.favouriteShare) return favourite;
+    const near = [favourite - 1, favourite + 1].filter((l) => l >= 0 && l < LANES);
+    return near[randomInt(rng, near.length)] as number;
+  };
+
+  const pickCard = (match: Match, l: number): CardKey | null => {
+    const cards = match.state.config.cards.zombies;
+    // He has counted his burst: first a card that leaves enough for the ones still to come, else any he can pay.
+    const cheapest = Math.min(...cards.map((c) => UNIT_INFO[c].price));
+    const maxPrice = Math.max(...cards.map((c) => UNIT_INFO[c].price));
+    const weigh = (spare: number): Array<{ c: CardKey; w: number }> => cards
+      .map((c, i) => ({ c, w: 1 + (cards.length > 1 ? 2 * i / (cards.length - 1) : 0) + 2 * UNIT_INFO[c].price / maxPrice + (c === lastCard ? CHILD.repeatBonus : 0) }))
+      .filter(({ c }) => UNIT_INFO[c].price <= spare && match.check(sendCommand(c, l)) === null);
+    const energy = match.state.players[side].energy;
+    let options = weigh(energy - (left - 1) * cheapest);
+    if (options.length === 0) options = weigh(energy);
+    if (options.length === 0) return null;
+    let roll = nextRandom(rng) * options.reduce((n, o) => n + o.w, 0);
+    for (const o of options) { roll -= o.w; if (roll < 0) return o.c; }
+    return (options[options.length - 1] as { c: CardKey }).c;
+  };
+
+  /** Can the child pay for `want` cards now? (the cheapest card's price times `want`; a belt: that many cards on it) */
+  const canStart = (match: Match, onBelt: boolean): boolean => {
+    const s = match.state;
+    if (onBelt) return s.belt.length >= Math.min(want, s.config.belt?.slots ?? want);
+    const cheapest = Math.min(...s.config.cards.zombies.map((c) => UNIT_INFO[c].price));
+    return s.players[side].energy >= want * cheapest;
+  };
+
+  return {
+    faction: side,
+    think(match) {
+      const s = match.state;
+      if (s.winner !== null) return [];
+      const out: Command[] = [];
+      const now = s.tick;
+      // The favourite: look every 20-40 s, move after the reaction time.
+      if (pending !== null && now >= pending.at) { favourite = pending.lane; pending = null; }
+      if (pending === null && now >= switchAt) {
+        pending = { lane: openLane(readLawn(s), favourite, rng), at: now + between(rng, CHILD.reaction) };
+        switchAt = now + between(rng, CHILD.switchEvery);
+      }
+      // The glowing buttons, 1-3 s after they light, into the favourite lane.
+      const player = s.players[side];
+      const lit = (key: SpellKey | 'hero', on: boolean): boolean => {
+        if (!on) { delete readyAt[key]; return false; }
+        const r = (readyAt[key] ??= { since: now, wait: between(rng, CHILD.power) });
+        return now - r.since >= r.wait;
+      };
+      let power: SpellKey | 'hero' | null = null;
+      if (lit('hero', hero && s.config.heroes[side] && player.heroTimer === 0)) power = 'hero';
+      for (const slot of player.spells) if (lit(slot.key, slot.timer === 0) && power === null) power = slot.key;
+      if (power !== null) {
+        for (let tries = 0; tries < 6; tries++) {
+          const cmd: Command = power === 'hero' ? { type: 'hero', faction: side, lane: favourite }
+            : { type: 'spell', faction: side, spell: power, lane: favourite, col: randomInt(rng, COLS) };
+          if (match.check(cmd) === null) { out.push(cmd); delete readyAt[power]; break; }
+        }
+      }
+      // The cards: a burst of 2-3, then an idle gap.
+      const onBelt = s.config.belt !== null && s.config.belt.side === side;
+      if (left === 0 && now >= nextBurst && canStart(match, onBelt)) { left = want; nextSend = now; giveUp = now + CHILD.patience; }
+      if (left > 0 && now >= nextSend) {
+        const l = lane();
+        let cmd: Command | null = null;
+        if (onBelt) {
+          const slot = randomInt(rng, s.belt.length);
+          const c: Command = { type: 'belt', faction: 'zombies', slot, lane: l, col: COLS - 1 };
+          if (match.check(c) === null) cmd = c;
+        } else {
+          const card = pickCard(match, l);
+          if (card !== null) { cmd = sendCommand(card, l); lastCard = card; }
+        }
+        if (cmd !== null) { out.push(cmd); left -= 1; nextSend = now + CHILD.burstSpacing; } else if (now >= giveUp) left = 0; // cards still recharging: he waits a moment, then gives up
+        if (left === 0) { nextBurst = now + between(rng, CHILD.gap); want = between(rng, CHILD.burst); }
+      }
+      return out;
+    },
+  };
+}
+
+/**
  * A stronger expert, for probes (worlds plan Task 8 review): `table` changes his skill table (e.g.
  * a faster look or a wider defence margin); `stack` (zombies) plays a battle as he plays a
  * Breakthrough, every zombie down the lane that gives.
@@ -532,5 +676,6 @@ export function createLevelStandIn(
 ): Bot {
   const hero = opts.hero ?? true;
   if (kind === 'beginner') return createBeginner(side, seed, hero);
+  if (kind === 'child') return createChild(side, seed, hero);
   return createSensible(kind, side, seed, hero, kind === 'expert' ? opts.strong ?? null : null);
 }
