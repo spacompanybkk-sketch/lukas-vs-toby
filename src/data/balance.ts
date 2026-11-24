@@ -513,26 +513,30 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
         ],
       ],
     },
-    // The world-4 bosses: STUB rows (worlds-4 plan Task 1), phase-1 numbers from content design §2, so
-    // the tables are complete. Task 4 writes the real rows (strikes, summons, cadences).
+    // The world-4 bosses (worlds-4 plan Task 4, content design §2, Rulings 8-9), the world-2/3
+    // cadence: phase 1 one attack every 8-12 s, then each mark opens its phase with the strike (the
+    // avalanche / the spore cloud). Tunable start values: the level tasks tune hp (Yeti 6500-9000,
+    // Glowcap 10000-14000 planned).
     yeti: {
       recharge: 0, hp: 7500, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [
-        { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 0.5, bouncesStraight: false },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.66, 0.33], seconds: 6, damageFactor: 0.5, bouncesStraight: true }, // the snow fort: pults answer it
       ],
       phases: [
         [
-          { kind: 'summon', everySeconds: 9, unit: 'veryFastWalker', count: 2, level: 1 },
+          { kind: 'summon', everySeconds: 8, unit: 'veryFastWalker', count: 3, level: 1 }, // snow pups
           { kind: 'slam', everySeconds: 11, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
         ],
         [
-          { kind: 'summon', everySeconds: 5, unit: 'brainEater', count: 2, level: 2 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2, target: 'lanes', count: 1, damage: 80, status: { kind: 'stun', seconds: 2 } }, // the avalanche: one lane, wind-up 2 s
+          { kind: 'summon', everySeconds: 5, unit: 'veryFastWalker', count: 2, level: 2 },
           { kind: 'slam', everySeconds: 7, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
         ],
         [
-          { kind: 'summon', everySeconds: 5, unit: 'brainEater', count: 2, level: 2 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2, target: 'lanes', count: 2, damage: 80, status: { kind: 'stun', seconds: 2 } }, // two lanes
+          { kind: 'summon', everySeconds: 5, unit: 'skeletonWarrior', count: 2, level: 2 },
           { kind: 'slam', everySeconds: 6, windupSeconds: 1.5, damage: 380, sideDamage: 160, reach: 0.6 },
         ],
       ],
@@ -541,16 +545,17 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       recharge: 0, hp: 12000, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
-        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false },
+        { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false }, // the cap plates
       ],
       phases: [
         [
-          { kind: 'barrage', everySeconds: 9, count: 3, damage: 200, splash: 0.75, speed: 5 },
+          { kind: 'barrage', everySeconds: 9, count: 3, damage: 180, splash: 1.0, speed: 5 }, // spore bombs
           { kind: 'summon', everySeconds: 12, unit: 'peashooter', count: 2, level: 1, minCol: 1, maxCol: 4 },
         ],
         [
-          { kind: 'barrage', everySeconds: 7, count: 4, damage: 200, splash: 0.75, speed: 5 },
-          { kind: 'summon', everySeconds: 12, unit: 'walnutBomb', count: 2, level: 1, minCol: 2, maxCol: 5 },
+          { kind: 'strike', everySeconds: 6, windupSeconds: 2.5, target: 'tiles', count: 4, damage: 40, status: { kind: 'poison', seconds: 4, dps: 20 } }, // the spore cloud: four zombie tiles
+          { kind: 'barrage', everySeconds: 7, count: 4, damage: 180, splash: 1.0, speed: 5 },
+          { kind: 'summon', everySeconds: 14, unit: 'avocadoBunker', count: 1, level: 1, minCol: 2, maxCol: 5 },
         ],
       ],
     },
