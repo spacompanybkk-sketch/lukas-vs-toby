@@ -109,6 +109,15 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'p4-8 average win': `99.5 / 100 / 100 (boss band 39.3-60.3; expert 100): ${TUNDRA_P4_BOSS}`,
   'p4-8 average 3 stars': `9 / 9 / 8 (band 34-59; expert 54 / 56 / 53): ${TUNDRA_P4_BOSS}`,
   'plants world 4: no level harder for the average player than the level two after it': 'p4-1 v p4-3: 67 v 93, 66 v 88.5, 71 v 88.5; p4-3 v p4-5: 93 / 88.5 / 88.5 v 100; p4-4 v p4-6: 58 / 58 / 59.5 v 70 / 69 / 69; p4-6 v p4-8: 70 / 69 / 69 v 99.5 / 100 / 100 (the belt and the survive levels take the average player to what the expert gets, and p4-1 sits in the win band, whose top is 71)',
+  // The Moonlit Meadow, the zombies' world 4 (worlds-4 plan Task 7; numbers: blocks 1 / 1001 / 2001, 200 seeds each).
+  // Under fog the zombie base is only hurt by plants at column 3-5 or further forward, so the battles' stars are tuned with a
+  // small zombie base (450-2000, see z4.ts): the average player's three stars fall only as fast as his wins do, and the expert
+  // floor (95) and his 85% floor leave z4-7 above its star band.
+  'z4-7 average 3 stars': 'average 66.5 / 62 / 61.5 (band 40.2-60.2; wins 93 / 91 / 93.5, expert 73 / 69 / 71.5 at 97 / 96 / 98.5): every base small enough to take the average player under 61 (zombie base 300-350 at plant base 3000-3200) takes the expert under the 95 floor (92.5-94.5) or the average player under his 85% win floor (88 / 84)',
+  'z4-7 the expert three-stars at least 10 points more often than the average player @1': 'expert 73 v average 66.5: lead +6.5 (need +10 within 1); blocks 2 and 3 are +7 / +10: the expert and the average player play the fog alike on a small base',
+  'z4-7 the expert three-stars at least 10 points more often than the average player @1001': 'expert 69 v average 62: lead +7 (need +10 within 1); blocks 1 and 3 are +6.5 / +10: the expert and the average player play the fog alike on a small base',
+  'z4-2 the expert three-stars at least 10 points more often than the average player @1001': 'expert 66.5 v average 59: lead +7.5 (need +10 within 1); blocks 1 and 3 are +10.5 / +11.5 and hold',
+  'zombies world 4: no level harder for the average player than the level two after it': 'z4-4 v z4-6: 92.5 / 91 / 89.5 v 100 / 100 / 100 (the Brain Rot battle holds the average player at 89.5-92.5 on a base small enough to keep his three stars in band, the clock level is 100% wins until a base so big that his stars leave the band: 13000 at 300 s gives 88% wins and 13 / 2% three stars); every other pair holds',
   // Free Play: a graduate now holds nine cards a side (step-3 Task 8, blocks 1 / 1001 / 2001, 200 seeds
   // each). Survive is bimodal as in step 2: the average player's median is wave 12 / 12 / 11.5 (band
   // 10-20: holds), but 29 / 24.5 / 24.5% of his runs pass 20 minutes (was 18 / 14 / 15.5); the expert's

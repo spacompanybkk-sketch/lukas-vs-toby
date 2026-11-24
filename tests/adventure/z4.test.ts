@@ -19,7 +19,9 @@ import { w4Controller } from '../app/world4Lessons';
  * z4-4. The tuned numbers (computer incomes, bases, the Glowcap's hp) are not pinned here:
  * `tools/levels.ts --world 4` measures them.
  *
- * Clock deviations (plan ruling 6), pinned below: z4-3 240 s (as designed), z4-5 270 s, z4-6 240 s.
+ * Clocks (plan ruling 6), pinned below: z4-3 240 s and z4-5 270 s as designed; z4-6 300 s, not the
+ * designed 240 s (at 240 s the base that keeps the average player's three stars in band lets the
+ * expert break the garden in 1.4 min, under the 1.5 minimum).
  */
 const TABLE = [
   { kind: 'battle', fog: 7, cards: 9, seconds: null, unlocks: null },
@@ -27,7 +29,7 @@ const TABLE = [
   { kind: 'breakthrough', fog: 6, cards: 9, seconds: 240, unlocks: 'brainRot' },
   { kind: 'battle', fog: 6, cards: 10, seconds: null, unlocks: null },
   { kind: 'conveyor', fog: 5, cards: 0, seconds: 270, unlocks: null },
-  { kind: 'breakthrough', fog: 5, cards: 10, seconds: 240, unlocks: null },
+  { kind: 'breakthrough', fog: 5, cards: 10, seconds: 300, unlocks: null },
   { kind: 'battle', fog: 5, cards: 10, seconds: null, unlocks: null },
   { kind: 'boss', fog: 5, cards: 10, seconds: null, unlocks: null },
 ] as const;
@@ -99,7 +101,8 @@ describe('the Moonlit Meadow for the zombies (z4-1 … z4-8)', () => {
   });
 
   it('z4-5 plays out: all 20 arrive on free tiles (none skipped) with no zombie in the way', () => {
-    const l = levels[4]!;
+    // The tuned zombie base is small (the garden's stray shots end an idle match early): a big one lets the whole clock run.
+    const l = { ...levels[4]!, baseHp: { ...levels[4]!.baseHp, zombies: 1_000_000 } };
     const m = new Match(levelConfig(l, standInSave('average', l), 1));
     let spawned = 0;
     let skipped = 0;
@@ -157,13 +160,17 @@ describe('the Moonlit Meadow for the zombies (z4-1 … z4-8)', () => {
     }
   });
 
-  it('z4-8: the Glowcap stands in lane 2 over the prepared Kernel-pults; the Peashooters are on free tiles', () => {
+  // Deviation from the design's [0,3] [4,3]: under fog 5 a Peashooter reaches the zombie base only
+  // from column 5 (col + 0.5 + 5 >= 10), so a column-3 one never costs a star (everyone 100% three stars).
+  it('z4-8: the Glowcap stands in lane 2; the Kernel-pults at [1,1] [3,1], the Peashooters at column 5 where they reach the base', () => {
     const l = levels[7]!;
     expect(l.boss).toEqual({ key: 'glowcap', lane: 2 });
     const c = levelConfig(l, standInSave('average', l), 1);
     expect(c.boss).toMatchObject({ key: 'glowcap', lane: 2 });
     expect(l.prepared.filter((s) => s.unit === 'kernelPult').map((s) => tile(s.lane, s.col!))).toEqual(['1,1', '3,1']);
-    expect(l.prepared.filter((s) => s.unit === 'peashooter').map((s) => s.lane).sort()).toEqual([0, 4]);
+    expect(l.prepared.filter((s) => s.unit === 'peashooter').map((s) => tile(s.lane, s.col!))).toEqual(['0,5', '4,5']);
+    const fog = l.twist!.fog as number;
+    for (const s of l.prepared.filter((x) => x.unit === 'peashooter')) expect(s.col! + 0.5 + fog, 'reaches the zombie base').toBeGreaterThanOrEqual(10);
   });
 
   // The glove lane of z4-4 (`TEACHES`): Brain Rot goes down lane 2 from the spawn edge (col 9).

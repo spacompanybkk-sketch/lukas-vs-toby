@@ -543,7 +543,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
       ],
     },
     glowcap: {
-      recharge: 0, hp: 12000, armor: 0, speed: 0,
+      // hp 19000, tuned from 12000 (guide 10000-14000): the expert's Glowcap fight runs 2.2 min at 14000 and 2.5-2.6 min at 19000 (the 2.5-5 target); the average player's fight 2.8 min.
+      recharge: 0, hp: 19000, armor: 0, speed: 0,
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1, col: 0, guardFactor: 0.5,
       patterns: [
         { kind: 'shield', everySeconds: 0, atHealth: [0.5], seconds: 8, damageFactor: 0.5, bouncesStraight: false }, // the cap plates

@@ -78,6 +78,8 @@ Kinds run S B C B S B S Boss for the plants (as the Meadow) and B B Br B C Br B 
 | z4-7 | battle | 5 | Everything at once | Easy ×2.0; all plant cards but Pu | 10 | plants 4000, zombies 4000 |
 | z4-8 | boss | 5 | Glowcap (§2) | prepared P at [0,3] [4,3], K at [1,1] [3,1] | 10 | zombies 11000 |
 
+Shipped z4 (2026-11-24, worlds-4 Task 7): under fog only a plant at column 10 − fog − 0.5 or further forward can hit the zombie base, so at the designed bases nobody lost a star (100% three stars on z4-1..z4-8). The zombie bases are small (z4-1 500, z4-2 600, z4-4 550, z4-5 2000, z4-7 520, z4-8 2000), z4-1 regrows in columns 3–4, z4-8's Peashooters stand at [0,5] [4,5], the Easy computers run ×3.6 / ×2.7 / ×3.3, the enemy bases are 4200 / 11000 / 4200 / 16000 / 10000 / 3800 (z4-2 / 3 / 4 / 5 / 6 / 7), and z4-6's clock is 300 s (ruling 6). z4-7's average 3-star share and its expert lead, z4-2's lead on block 1001 and the z4-4 v z4-6 trend are recorded misses (`KNOWN_MISSES`).
+
 ### Step 5: Dark Citadel for the plants, the Backyard finale for the zombies
 
 **Plants, p5 (i 33–40), lava 15 dps.** Lava burns whatever stands on it, both sides, bosses too (ruling 6). Two ideas: never plant on lava; let the zombies stand on it.
@@ -126,7 +128,7 @@ All use the existing toolkit (`slam`, `summon`, `barrage`, `shield`, `strike` wi
 |---|---|---|
 | Built from | `bipedModel`, bulky: white fur blocks, blue face, two horns, an icicle club; `phaseParts`: frost breath | plant kit, half resolution: a giant glowing mushroom with spots that light, a stalk face, `pupils` |
 | Size | scale 3, half width 0, lane 2 (iced: it comes ×1.6 as fast), speed 0.1 | scale 4, half width 1, column 0, guardFactor 0.5 |
-| hp | 7500, tune 6500–9000; tuned to 10000 (2026-11-24): the expert's fight ran 1.6–1.8 min at 6500–7500 against the 2.5–5 target, and with the plants' base hitting back an idle player beats a weaker Yeti (7500: 1 of 60 seeds wins at a 9000 base), so base and hp go together (p4-8: base 14000) | 12000, tune 10000–14000 |
+| hp | 7500, tune 6500–9000; tuned to 10000 (2026-11-24): the expert's fight ran 1.6–1.8 min at 6500–7500 against the 2.5–5 target, and with the plants' base hitting back an idle player beats a weaker Yeti (7500: 1 of 60 seeds wins at a 9000 base), so base and hp go together (p4-8: base 14000) | 12000, tune 10000–14000; tuned to 19000 (2026-11-24): the expert's fight ran 2.2 min at 14000 against the 2.5–5 target and 2.5–2.6 min at 19000 (the average player 2.8, the beginner 3.1) |
 | Shields | at 0.66 and 0.33: 6 s snow fort, ×0.5 (the `dome` recoloured) | at 0.5: 8 s the cap closes, ×0.5 (new `cap` variant: the model's `capL`/`capR`) |
 | Phase 1 | summon 3 VFW every 8 s (they slide in lanes 0 and 4); slam every 11 s | barrage of 3 spore bombs every 9 s, 180, splash 1.0; summon 2 P in columns 1–4 every 12 s |
 | Phase 2 | **avalanche**: strike 1 lane, 2 s wind-up, 80, stun 2 s; summon 2 VFW at level 2; slam every 7 s | **spore cloud**: strike 4 tiles with zombies, 2.5 s wind-up, 40, poison 4 s at 20 dps; barrage of 4; summon 1 Av in columns 2–5 every 14 s |
