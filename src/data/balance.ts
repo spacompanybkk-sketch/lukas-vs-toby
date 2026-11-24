@@ -518,7 +518,8 @@ export const BALANCE: DeepReadonly<Balance> = deepFreeze<Balance>({
     // avalanche / the spore cloud). Tunable start values: the level tasks tune hp (Yeti 6500-9000,
     // Glowcap 10000-14000 planned).
     yeti: {
-      recharge: 0, hp: 7500, armor: 0, speed: 0.1,
+      // hp 10000, tuned from the stub's 7500 (guide 6500-9000): the expert's Yeti fight runs 2.5-2.7 min (the 2.5-5 target) at 10000, 1.8 min at 7500.
+      recharge: 0, hp: 10000, armor: 0, speed: 0.1,
       melee: { damage: 40, interval: 1.5, reach: 0.6 },
       maxStunSeconds: 1, stunFalloff: 0.5, stunWindowSeconds: 10, hitCap: 0.1,
       patterns: [

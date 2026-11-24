@@ -320,6 +320,9 @@ function fightConfig(boss: BossConfig, seed: number): MatchConfig {
     ...defaultConfig(seed, BALANCE), mode: 'boss', boss, spells: { plants: 0, zombies: 0 }, heroes: { plants: false, zombies: false },
     startEnergy: { plants: 600, zombies: 400 },
   };
+  // The scripted fight is a fixed list of commands, not a defence: with the Yeti's tuned hp (Task 6) the fight runs long
+  // enough that the zombie base (default hp) falls before the second mark, so both bases are large enough for the Yeti's hp to decide it.
+  if (boss.faction === 'zombies') c.baseHp = { plants: 40_000, zombies: 40_000 };
   if (boss.faction === 'plants') {
     c.incomeMultiplier = { ...c.incomeMultiplier, zombies: 2 };
     c.baseHp = { ...c.baseHp, zombies: 20_000 };

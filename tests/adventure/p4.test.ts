@@ -3,6 +3,7 @@ import { levelConfig } from '../../src/adventure/campaign';
 import { LEVELS, levelById, levelsFor } from '../../src/adventure/levels';
 import { P4 } from '../../src/adventure/levels/p4';
 import { playIdle, standInSave } from '../../src/ai/levelChecks';
+import { createLevelStandIn } from '../../src/ai/levelStandIns';
 import { BALANCE, seconds } from '../../src/data/balance';
 import { ALL_CARDS, factionOf } from '../../src/data/units';
 import { newSave } from '../../src/progress/save';
@@ -53,12 +54,12 @@ describe('the Frozen Tundra (p4-1 … p4-8)', () => {
     });
   });
 
-  it('base health: a battle sets the zombie base, the others the plants\'; the boss starts on 600 energy', () => {
+  it('base health: a battle sets the zombie base (and may set the plants\'), the others the plants\'; the boss starts on 600 energy', () => {
     for (const l of levels) {
-      const side = l.kind === 'battle' ? 'zombies' : 'plants';
-      const other = side === 'zombies' ? 'plants' : 'zombies';
-      expect(Number.isInteger(l.baseHp?.[side]) && l.baseHp![side]! >= 1, `${l.id} ${side}`).toBe(true);
-      expect(l.baseHp?.[other], `${l.id} ${other}`).toBeUndefined();
+      // A battle sets both bases (tuned: the zombie base is the level's length, the plants' what the stars measure on).
+      const sides = l.kind === 'battle' ? ['zombies' as const] : ['plants' as const];
+      for (const side of sides) expect(Number.isInteger(l.baseHp?.[side]) && l.baseHp![side]! >= 1, `${l.id} ${side}`).toBe(true);
+      if (l.kind !== 'battle') expect(l.baseHp?.zombies, `${l.id} zombies`).toBeUndefined();
     }
     expect(levels.map((l) => l.startEnergy)).toEqual([null, null, null, null, null, null, null, 600]);
     expect(levels.every((l) => l.prepared.length === 0)).toBe(true);
@@ -166,6 +167,23 @@ describe('p4-4 teaches the Squash through the real tutorial', () => {
     expect(foes.length).toBeGreaterThan(0);
     expect(foes.every((s) => s.unit === 'brainEater')).toBe(true);
     expect(Math.min(...foes.map((s) => s.at))).toBeLessThanOrEqual(30);
+  });
+});
+
+// Task 4's carry: on the real ten-card p4-8 the expert still plays the Yeti's recipe (a Walnut Bomb at
+// column 4, a Mango-pult at 2, the Pumpkin Squash at 3 of its lane); the other plants do not take [2,3] first.
+describe('the expert on the real p4-8', () => {
+  it.each([1, 2, 3, 4, 5, 6])('plants the Yeti\'s recipe in lane 2 (seed %i)', (seed) => {
+    const def = levelById('p4-8')!;
+    const m = new Match(levelConfig(def, standInSave('expert', def, LEVELS), seed));
+    const bot = createLevelStandIn('expert', def.side, seed);
+    const lane2: string[] = [];
+    for (let i = 0; i < seconds(120) && m.state.winner === null; i++) {
+      const cmds = bot.think(m);
+      for (const c of cmds) if (c.type === 'place' && c.lane === 2) lane2.push(`${c.unit}@${c.col}`);
+      m.step(cmds);
+    }
+    for (const r of ['walnutBomb@4', 'mangoPult@2', 'pumpkinSquash@3']) expect(lane2, r).toContain(r);
   });
 });
 

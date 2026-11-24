@@ -126,7 +126,7 @@ All use the existing toolkit (`slam`, `summon`, `barrage`, `shield`, `strike` wi
 |---|---|---|
 | Built from | `bipedModel`, bulky: white fur blocks, blue face, two horns, an icicle club; `phaseParts`: frost breath | plant kit, half resolution: a giant glowing mushroom with spots that light, a stalk face, `pupils` |
 | Size | scale 3, half width 0, lane 2 (iced: it comes ×1.6 as fast), speed 0.1 | scale 4, half width 1, column 0, guardFactor 0.5 |
-| hp | 7500, tune 6500–9000 | 12000, tune 10000–14000 |
+| hp | 7500, tune 6500–9000; tuned to 10000 (2026-11-24): the expert's fight ran 1.6–1.8 min at 6500–7500 against the 2.5–5 target, and with the plants' base hitting back an idle player beats a weaker Yeti (7500: 1 of 60 seeds wins at a 9000 base), so base and hp go together (p4-8: base 14000) | 12000, tune 10000–14000 |
 | Shields | at 0.66 and 0.33: 6 s snow fort, ×0.5 (the `dome` recoloured) | at 0.5: 8 s the cap closes, ×0.5 (new `cap` variant: the model's `capL`/`capR`) |
 | Phase 1 | summon 3 VFW every 8 s (they slide in lanes 0 and 4); slam every 11 s | barrage of 3 spore bombs every 9 s, 180, splash 1.0; summon 2 P in columns 1–4 every 12 s |
 | Phase 2 | **avalanche**: strike 1 lane, 2 s wind-up, 80, stun 2 s; summon 2 VFW at level 2; slam every 7 s | **spore cloud**: strike 4 tiles with zombies, 2.5 s wind-up, 40, poison 4 s at 20 dps; barrage of 4; summon 1 Av in columns 2–5 every 14 s |
