@@ -381,6 +381,8 @@ export class BattleView {
     // The statuses' and the puddles' instanced shapes (glowing stars and bubbles compile a program of their own the first time).
     this.marks.warm();
     this.puddles.warm();
+    // The floating numbers' sprite program (the first "+25" of a fight would compile it mid-fight).
+    this.fx.warmText();
   }
 
   /**
