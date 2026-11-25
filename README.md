@@ -432,9 +432,9 @@ glove: the card, then the far end of the third lane.
 |--|--|--|--|
 | 1 | Battle | 7 | The fog lesson: in the mist the plants cannot shoot far, so sneak close (no computer) |
 | 2 | Battle | 7 | Archers and Tridents have to walk closer too (Easy computer) |
-| 3 | Breakthrough 240 s | 6 | Shooters at the back cannot all reach the front plants: eat the Walnut wall first; **unlocks Brain Rot** |
+| 3 | Breakthrough 300 s | 6 | Shooters at the back cannot all reach the front plants: eat the Walnut wall first; **unlocks Brain Rot** |
 | 4 | Battle | 6 | Brain Rot leaves poison puddles under the plants (card lesson) |
-| 5 | Conveyor 270 s | 5 | The belt in the mist, against a garden that grows |
+| 5 | Conveyor 330 s | 5 | The belt in the mist, against a garden that grows |
 | 6 | Breakthrough 300 s | 5 | The Necromancer heals the pack and Brain Rot melts the Kernel-pults |
 | 7 | Battle | 5 | Everything at once (Easy computer, every plant card but the Squash) |
 | 8 | Boss | 5 | The Glowcap |
@@ -464,12 +464,18 @@ note):
 | z4-1's garden | regrows in columns 0-2 | columns 3-4 | Plants in columns 0-2 can never reach the zombie base under fog 7 |
 | z4-8's Peashooters | [0,3] [4,3] | [0,5] [4,5] | Under fog 5 a column-3 Peashooter never reaches the base |
 
-The easing (`tools/levels.ts --who child --pace 6`) takes the child stand-in to 94-100% on z4-1 and z4-2, 70-80% on z4-3 and
-43-57% on z4-4, 5 and 7 (z4-6 86-89%, the Glowcap 70-78%; was 38-50%, 6-12%). The cost is the stars: the
+The easing (`tools/levels.ts --who child --pace 6`) takes the child stand-in to 94-100% on z4-1 and z4-2, 69.5-80% on z4-3 and
+43.5-57% on z4-4, 5 and 7. z4-6 (86-89%) and the Glowcap (70-78%) were not touched; before the easing the child won 48 / 45 / 50%
+of z4-1..3, 12 / 8 / 7.5% of z4-4, 5 and 7 and, on z4-6 and the Glowcap, the same shares as now. The cost is the stars: the
 average player's three-star share on z4-1, 2, 3, 4, 5 and 7, and the expert's lead on z4-1, 2, 4, 5 and 7,
-are recorded misses (`KNOWN_MISSES`, "eased for a five-year-old"). The e2e tap walk (`LVT_W4_WALK=1`) plays at Medium income with one
-random-lane card every 3.4 s: it lost 12 of 12 before and, after the easing, z4-1 and z4-2 are within its reach but z4-3 is not (its Walnut
-wall holds against random lanes whatever the plants' base; the expert's 1.5 minute floor stops a smaller base).
+are recorded misses (`KNOWN_MISSES`, "eased for a five-year-old").
+
+The child's order of difficulty is not a ramp. His win share on z4-1..8 is roughly 100, 97, 70-80, 44-56, 46-57, 86-89, 50-54
+and 70-78%, so z4-6 and z4-8 are easier for him than z4-4, z4-5 and z4-7 (their targets were already met, so they were not tuned;
+`child` is a recorded signal, not a gated stand-in, so there is no `KNOWN_MISSES` entry for it).
+
+The e2e tap walk (`LVT_W4_WALK=1`) plays at Medium income with one random-lane card every 3.4 s. It lost 12 of 12 before the
+easing; after it, it won z4-1, won 0 of 9 tries on z4-2 and 0 of 8 on z4-3.
 
 ### All the worlds
 

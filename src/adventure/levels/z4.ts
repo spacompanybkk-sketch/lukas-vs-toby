@@ -17,18 +17,25 @@ import { garden, growing, regrow } from './helpers';
  * column `10 - f - 0.5` or further forward can hit the base at all (column 3 under fog 7, 4 under
  * 6, 5 under 5). At the designed bases (3800-9300) no stand-in ever lost a star on z4-1..z4-8 (100%
  * three stars everywhere, the expert no better than the beginner), so on the battles, the belt and
- * the boss the zombie base is small (450-2000): a handful of stray shots costs a star, and the
- * band, not the base's size, is what the tuning aims at. The computers' incomes are higher than
- * the table's x1.8 / x2.0 for the same reason (more plants forward, more stray shots).
+ * the boss the zombie base is small (2000-6000 since Task 10, 450-2000 before): a handful of stray shots
+ * costs a star, and the band, not the base's size, is what the tuning aims at. The computers'
+ * incomes are x1.0 (z4-2), x1.8 (z4-4) and x2.0 (z4-7): the table's x1.8 / x1.8 / x2.0 except z4-2's,
+ * which is lower; before Task 10 they were x3.6 / x2.7 / x3.3 (higher than the table, for the same
+ * reason: more plants forward, more stray shots).
  *
  * Eased for a five-year-old (worlds-4 Task 10, Michal 2026-11-25): Toby's tap walk lost 12 of 12, and
  * the child stand-in (`tools/levels.ts --who child --pace 6`) won only 48 / 45 / 50% of z4-1..3 and
  * 12 / 8 / 7.5% of z4-4, z4-5, z4-7. The small bases were what sank him (a few stray shots ended the
  * match), so they grew to 2000-6000, the computers' incomes fell, z4-5's garden grows slower and
- * z4-3 / z4-5 run longer. The child now wins 94-100% of z4-1 and z4-2, 69-80% of z4-3 and 43-57% of z4-4, 5, 7 on every
- * block (z4-6 87%, the Glowcap 70-78% as before). The cost: the average player and the expert
+ * z4-3 / z4-5 run longer. The child now wins 94-100% of z4-1 and z4-2, 69.5-80% of z4-3 and 43.5-57% of z4-4, 5, 7 on every
+ * block (z4-6 86-89%, the Glowcap 70-78% as before). The cost: the average player and the expert
  * three-star almost always, so those star bands and the expert's lead are recorded misses in
  * `KNOWN_MISSES`, not loosened.
+ *
+ * The child's difficulty order is not a ramp: his win share on z4-1..8 is roughly 100, 97, 70-80, 44-56, 46-57,
+ * 86-89, 50-54, 70-78, so z4-6 and z4-8 are easier for him than z4-4, z4-5 and z4-7 (their targets were already
+ * met, so they were not tuned; `child` is a recorded signal, not a gated stand-in). The browser tap walk
+ * (`LVT_W4_WALK`, Medium income, one random-lane card every 3.4 s) won z4-1, won 0 of 9 tries on z4-2 and 0 of 8 on z4-3.
  */
 
 /** A level with nothing scripted; each entry below says only what differs. */
@@ -71,7 +78,7 @@ export const Z4: LevelDef[] = [
     waves: regrow('peashooter', [[40, 1, 3], [80, 3, 3], [120, 2, 3], [160, 1, 4], [200, 3, 4], [240, 2, 4]]),
   },
   {
-    // The one idea: Archers and Tridents have to walk closer too. The Easy computer on x1.0 (design x1.8, x3.6 until Task 10) and a zombie base of 6000 (was 600): the tap walk at Medium income wins about 40% of tries at this setting, 0% at x3.6.
+    // The one idea: Archers and Tridents have to walk closer too. The Easy computer on x1.0 (design x1.8, x3.6 until Task 10) and a zombie base of 6000 (was 600): the stray shots of a computer that weak no longer end the child's matches.
     ...base('z4-2', 2), side: 'zombies', kind: 'battle', cards: NINE,
     baseHp: { plants: 4200, zombies: 6000 }, twist: { fog: 7 },
     opponent: { skill: 'easy', cards: EIGHT_PLANTS, incomeScale: 1.0 },
@@ -94,8 +101,8 @@ export const Z4: LevelDef[] = [
     unlocks: 'brainRot',
   },
   {
-    // The one idea: Brain Rot leaves poison puddles under the plants. The Easy computer on x2.7 (design
-    // x1.8), now with the Cherry Bomber; income x1.8 and zombie base 2000 since Task 10 (was x2.7 and 550).
+    // The one idea: Brain Rot leaves poison puddles under the plants. The Easy computer on x1.8 (the
+    // design's), now with the Cherry Bomber; income x1.8 and zombie base 2000 since Task 10 (was x2.7 and 550).
     ...base('z4-4', 4), side: 'zombies', kind: 'battle', cards: TEN,
     baseHp: { plants: 4200, zombies: 2000 }, twist: { fog: 6 },
     opponent: { skill: 'easy', cards: NINE_PLANTS, incomeScale: 1.8 },

@@ -19,10 +19,10 @@ import { w4Controller } from '../app/world4Lessons';
  * z4-4. The tuned numbers (computer incomes, bases, the Glowcap's hp) are not pinned here:
  * `tools/levels.ts --world 4` measures them.
  *
- * Clocks (plan ruling 6), pinned below: z4-3 300 s (designed 240 s) and z4-5 330 s (designed 270 s), both
- * lengthened when the Meadow was eased for the five-year-old (Task 10, Michal 2026-11-25: his tap walk lost 12
- * of 12); z4-6 300 s, not the designed 240 s (at 240 s the base that keeps the average player's three stars in band lets the
- * expert break the garden in 1.4 min, under the 1.5 minimum).
+ * Clocks, pinned below: z4-3 and z4-6 run 300 s, not the designed 240 s (plan ruling 6; z4-6's reason: at 240 s
+ * the base that keeps the average player's three stars in band lets the expert break the garden in 1.4 min,
+ * under the 1.5 minimum; z4-3 was lengthened for the five-year-old, Task 10). z4-5 runs 330 s (designed 270 s):
+ * controller ruling "z4-5 330 s accepted (Task 10, eased for a five-year-old, Michal 2026-11-25)".
  */
 const TABLE = [
   { kind: 'battle', fog: 7, cards: 9, seconds: null, unlocks: null },

@@ -579,7 +579,7 @@ export class Effects {
   }
 
   /**
-   * Draws the first floating-text sprite at no size for the next `frames` frames. three.js compiles a sprite's program
+   * Draws the first floating-text sprite at no size for `frames - 1` frames (`update` counts the warm-up down before the frame is drawn, so the last count hides it first). three.js compiles a sprite's program
    * (and uploads its canvas) at its first draw, a hitch of 300 ms at DPR 2 on the M3, and the first "+25" or damage number
    * of a fight would take it mid-fight; the battle view calls this as it comes on, so that draw is the first frame's.
    */

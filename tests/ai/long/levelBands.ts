@@ -113,11 +113,11 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   // The Moonlit Meadow, the zombies' world 4 (worlds-4 plan Task 7, eased by Task 10: eased for a five-year-old, Michal
   // 2026-11-25; numbers: blocks 1 / 1001 / 2001, 200 seeds each). His tap walk lost 12 of 12, so the zombie bases are
   // bigger (2000-6000), the computers' incomes lower and the belt slower and longer; the child stand-in (pace 6) now wins
-  // z4-1..z4-3 at 70-100 and z4-4, 5, 7 at 43-57% (targets 60 / 40) and the average player and the expert three-star almost always. The
+  // z4-1..z4-3 at 69.5-100 and z4-4, 5, 7 at 43-57% (targets 60 / 40) and the average player and the expert three-star almost always. The
   // star bands and the expert's lead are not met on z4-1, 2, 3, 4, 5 and 7 (z4-3's lead holds) and are recorded here, not loosened.
   'z4-1 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 46.9-66.9; wins 100, expert 100): plants base 4500 (was 5500) and zombie base 2500 (was 500), so the tap walk (Medium income, random lanes) can win; child 100 / 100 / 100% wins'),
   'z4-1 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
-  'z4-2 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 45.8-65.8; wins 100, expert 100): computer income x1.0 (was x3.6) and zombie base 6000 (was 600), so the tap walk wins about 40% of its tries; child 97 / 94.5 / 98% wins'),
+  'z4-2 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 45.8-65.8; wins 100, expert 100): computer income x1.0 (was x3.6) and zombie base 6000 (was 600), the browser tap walk won 0 of 9 tries here; child 97 / 94.5 / 98% wins'),
   'z4-2 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
   'z4-3 average 3 stars': Z4_EASED('average 88.5 / 90.5 / 89 (band 44.7-64.7; wins 100, expert 100): the 300 s clock (was 240) leaves most of it for the average player; child 80 / 69.5 / 71% wins'),
   'z4-4 average 3 stars': Z4_EASED('average 94.5 / 94 / 96.5 (band 43.5-63.5; wins 100, expert 98 / 99 / 98): computer income x1.8 (was x2.7) and a 2000 zombie base; child 50.5 / 43.5 / 55.5% wins'),

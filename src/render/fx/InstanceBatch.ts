@@ -3,6 +3,9 @@ import { DynamicDrawUsage, InstancedMesh, Matrix4, type BufferGeometry, type Mat
 /** What a batch's copies do with the sun's shadow (default: neither cast nor receive). */
 export interface BatchShadows { cast?: boolean; receive?: boolean }
 
+/** A copy scaled to nothing, for the warm-up. */
+const NOTHING = new Matrix4().makeScale(0, 0, 0);
+
 /**
  * Many copies of one shape in one draw call. The pieces it draws stay ordinary objects in the
  * scene graph, posed as before (and kept hidden, so the renderer skips them); each frame the
@@ -13,9 +16,6 @@ export interface BatchShadows { cast?: boolean; receive?: boolean }
  * copies). Never frustum-culled: its pieces are spread over the whole lawn, and one bounding
  * sphere for them all would be stale as soon as they move.
  */
-/** A copy scaled to nothing, for the warm-up. */
-const NOTHING = new Matrix4().makeScale(0, 0, 0);
-
 export class InstanceBatch {
   readonly mesh: InstancedMesh;
   private n = 0;

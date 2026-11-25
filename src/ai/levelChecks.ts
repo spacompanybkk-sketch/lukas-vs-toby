@@ -26,13 +26,13 @@ import { opponentOf } from './difficulty';
 import { FAVOURITES, STAND_IN_DIFFICULTY, createLevelStandIn } from './levelStandIns';
 import { heroHidden } from '../adventure/levels';
 import type { LevelStandIn } from './levelStandIns';
+import { MAX_MATCH_TICKS } from './runMatch';
 
 /**
  * The stand-ins the band tests gate on (step-4 ruling 4): a fixed three. `LEVEL_STAND_INS` is what
  * `record` prints; the `child` stand-in is a recorded signal and never enters an `expect` or a miss key.
  */
 export const GATED_STAND_INS = ['beginner', 'average', 'expert'] as const satisfies readonly LevelStandIn[];
-import { MAX_MATCH_TICKS } from './runMatch';
 
 // ---- The campaign's curve (ruling 11) ----
 
