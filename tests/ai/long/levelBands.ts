@@ -45,6 +45,7 @@ const BEGINNER_FLOOR = 'the beginner floor (70% on Easy) and the band top collid
 const TOBY_FLOOR = 'the zombie levels are the younger player\'s: the beginner floor (70% on Easy) is kept. Wherever the average player drops into his band the beginner wins 28-50%';
 const TUNDRA_BELT = 'the sensible players break the 7000 base before the growing garden bites; a 9000 base holds the average player 1.52-1.58 min (on the line) and takes the beginner to 3.4 min and 87.5-89%';
 
+const Z4_EASED = (numbers: string): string => `${numbers}; eased for a five-year-old, Michal 2026-11-25 (worlds-4 Task 10)`;
 const TUNDRA_P4_BELT = 'a belt is played alike by the average player and the expert (tuned base 6250: the expert 94.5 / 96 / 97); every density that takes the average player down takes the expert with him (a denser early rush with a 8000 base: expert 69 / 67.5 / 68, average 54 / 59.5 / 54)';
 const TUNDRA_P4_BATTLE = 'a battle\'s 3 stars need the plants\' base at 80% when the zombie base falls, which the average player does in 0-6% of his wins whatever the bases (plants 6000-12000, zombies 1200-3000, Medium income ×0.7-1.0: 0-6%)';
 const TUNDRA_P4_SURVIVE = 'the expert and the average player hold the same waves (expert 100 on every block): any wave dense enough to beat the average player beats the expert too (hot topics and flags: no gap; with a ramp of Brain Eaters at a 5000 base: expert 77.5, average 70)';
@@ -109,15 +110,22 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'p4-8 average win': `99.5 / 100 / 100 (boss band 39.3-60.3; expert 100): ${TUNDRA_P4_BOSS}`,
   'p4-8 average 3 stars': `8.5 / 9 / 8 (band 34-59; expert 53.5 / 55.5 / 52.5): ${TUNDRA_P4_BOSS}`,
   'plants world 4: no level harder for the average player than the level two after it': 'p4-1 v p4-3: 67 v 93, 66 v 88.5, 71 v 88.5; p4-3 v p4-5: 93 / 88.5 / 88.5 v 100; p4-4 v p4-6: 58 / 58 / 59.5 v 70 / 69 / 69; p4-6 v p4-8: 70 / 69 / 69 v 99.5 / 100 / 100 (the belt and the survive levels take the average player to what the expert gets, and p4-1 sits in the win band, whose top is 71)',
-  // The Moonlit Meadow, the zombies' world 4 (worlds-4 plan Task 7; numbers: blocks 1 / 1001 / 2001, 200 seeds each).
-  // Under fog the zombie base is only hurt by plants at column 3-5 or further forward, so the battles' stars are tuned with a
-  // small zombie base (450-2000, see z4.ts): the average player's three stars fall only as fast as his wins do, and the expert
-  // floor (95) and his 85% floor leave z4-7 above its star band.
-  'z4-7 average 3 stars': 'average 66.5 / 62 / 61.5 (band 40.2-60.2; wins 93 / 91 / 93.5, expert 73 / 69 / 71.5 at 97 / 96 / 98.5): every base small enough to take the average player under 61 (zombie base 300-350 at plant base 3000-3200) takes the expert under the 95 floor (92.5-94.5) or the average player under his 85% win floor (88 / 84)',
-  'z4-7 the expert three-stars at least 10 points more often than the average player @1': 'expert 73 v average 66.5: lead +6.5 (need +10 within 1); blocks 2 and 3 are +7 / +10: the expert and the average player play the fog alike on a small base',
-  'z4-7 the expert three-stars at least 10 points more often than the average player @1001': 'expert 69 v average 62: lead +7 (need +10 within 1); blocks 1 and 3 are +6.5 / +10: the expert and the average player play the fog alike on a small base',
-  'z4-2 the expert three-stars at least 10 points more often than the average player @1001': 'expert 66.5 v average 59: lead +7.5 (need +10 within 1); blocks 1 and 3 are +10.5 / +11.5 and hold',
-  'zombies world 4: no level harder for the average player than the level two after it': 'z4-4 v z4-6: 92.5 / 91 / 89.5 v 100 / 100 / 100 (the Brain Rot battle holds the average player at 89.5-92.5 on a base small enough to keep his three stars in band, the clock level is 100% wins until a base so big that his stars leave the band: 13000 at 300 s gives 88% wins and 13 / 2% three stars); every other pair holds',
+  // The Moonlit Meadow, the zombies' world 4 (worlds-4 plan Task 7, eased by Task 10: eased for a five-year-old, Michal
+  // 2026-11-25; numbers: blocks 1 / 1001 / 2001, 200 seeds each). His tap walk lost 12 of 12, so the zombie bases are
+  // bigger (2000-6000), the computers' incomes lower and the belt slower and longer; the child stand-in (pace 6) now wins
+  // z4-1..z4-3 at 70-100 and z4-4, 5, 7 at 43-57% (targets 60 / 40) and the average player and the expert three-star almost always. The
+  // star bands and the expert's lead are not met on z4-1, 2, 3, 4, 5 and 7 (z4-3's lead holds) and are recorded here, not loosened.
+  'z4-1 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 46.9-66.9; wins 100, expert 100): plants base 4500 (was 5500) and zombie base 2500 (was 500), so the tap walk (Medium income, random lanes) can win; child 100 / 100 / 100% wins'),
+  'z4-1 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
+  'z4-2 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 45.8-65.8; wins 100, expert 100): computer income x1.0 (was x3.6) and zombie base 6000 (was 600), so the tap walk wins about 40% of its tries; child 97 / 94.5 / 98% wins'),
+  'z4-2 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
+  'z4-3 average 3 stars': Z4_EASED('average 88.5 / 90.5 / 89 (band 44.7-64.7; wins 100, expert 100): the 300 s clock (was 240) leaves most of it for the average player; child 80 / 69.5 / 71% wins'),
+  'z4-4 average 3 stars': Z4_EASED('average 94.5 / 94 / 96.5 (band 43.5-63.5; wins 100, expert 98 / 99 / 98): computer income x1.8 (was x2.7) and a 2000 zombie base; child 50.5 / 43.5 / 55.5% wins'),
+  'z4-4 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 98 / 99 / 98 v average 94.5 / 94 / 96.5: lead +3.5 / +5 / +1.5 (need +10 within 1)'),
+  'z4-5 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 42.4-62.4; wins 100, expert 100): plants base 14000 (was 16000), a Peashooter every 24 s (was 12), a 330 s clock (was 270) and a 4000 zombie base; child 45.5 / 57 / 53% wins'),
+  'z4-5 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
+  'z4-7 average 3 stars': Z4_EASED('average 98.5 / 96.5 / 98.5 (band 40.2-60.2; wins 100, expert 99.5 / 99 / 99.5): computer income x2.0 (was x3.3) and a 2000 zombie base; child 51 / 53.5 / 49.5% wins'),
+  'z4-7 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 99.5 / 99 / 99.5 v average 98.5 / 96.5 / 98.5: lead +1 / +2.5 / +1 (need +10 within 1)'),
   // Free Play: a graduate holds ten cards a side since worlds 4 (Pumpkin Squash reaches the hand; worlds-4 plan Task 8,
   // blocks 1 / 1001 / 2001, 200 seeds each). Survive is bimodal as in steps 2 and 3: the average player's median is
   // wave 18 / 13.5 / 16 (band 10-20: holds), but 47 / 43 / 44% of his runs pass 20 minutes (was 29 / 24.5 / 24.5 at 9 cards

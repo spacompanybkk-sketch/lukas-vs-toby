@@ -456,15 +456,20 @@ note):
 |--|--|--|--|
 | Glowcap hp | 10000-14000 (guide; 12000 start) | **19000** | The expert's fight ran 2.2 min at 14000 against the 2.5-5 target, 2.5-2.6 min at 19000 |
 | z4-6 clock | 240 s | **300 s** | The stars count the clock left: at 240 s the base that holds the average player in his band lets the expert break the garden in 1.4 min, under the 1.5 minimum (plan ruling 6) |
-| z4-3 clock | 240 s | 240 s | As designed; the plants' base is 11000, not 5000 (which broke in about a minute) |
-| Zombie bases (z4-1, 2, 4, 5, 7, 8) | 7000, 3800, 4000, 9300, 4000, 11000 | 500, 600, 550, 2000, 520, 2000 | Under fog only a plant at column 10 minus the fog minus a half or further forward can hit the zombie base, so at the designed bases nobody lost a star (100% three stars everywhere); a small base lets a few stray shots cost one |
-| Plant bases (z4-2, 3, 4, 5, 6, 7) | 5000, 5000, 5000, 7000, 4000, 4000 | 4200, 11000, 4200, 16000, 10000, 3800 | Tuned per level (z4-5's broke in 1.2 min at 7000) |
-| Easy computer income (z4-2, 4, 7) | x1.8, x1.8, x2.0 | x3.6, x2.7, x3.3 | More plants forward means more stray shots at the small bases |
+| z4-3 clock | 240 s | **300 s** | Eased for a five-year-old (Michal, 2026-11-25): the child stand-in broke the garden inside 240 s on half the seeds; the plants' base is 11000, not 5000 (which broke in about a minute) |
+| z4-5 clock, garden | 270 s, a Peashooter every 12 s | **330 s**, every **24 s** (11 tiles) | Eased: the child needed more than the 4.5 minutes; the plants' base is 14000 (designed 7000) |
+| Zombie bases (z4-1, 2, 4, 5, 7, 8) | 7000, 3800, 4000, 9300, 4000, 11000 | 2500, 6000, 2000, 4000, 2000, 2000 | Under fog only a plant at column 10 minus the fog minus a half or further forward can hit the zombie base, so at the designed bases nobody lost a star (100% three stars everywhere); a small base lets a few stray shots cost one. Eased for a five-year-old (Michal, 2026-11-25) the bases grew from 500, 600, 550, 2000, 520 (z4-8's stays 2000), because a few stray shots then ended the child's matches (z4-1 2500 and z4-2 6000 so that the tap walk can win) |
+| Plant bases (z4-1, 2, 3, 4, 5, 6, 7) | 7000, 5000, 5000, 5000, 7000, 4000, 4000 | 4500, 4200, 11000, 4200, 14000, 10000, 3800 | Tuned per level (z4-5's broke in 1.2 min at 7000; z4-1's came down from 5500 with the five-year-old easing) |
+| Easy computer income (z4-2, 4, 7) | x1.8, x1.8, x2.0 | x1.0, x1.8, x2.0 | More plants forward means more stray shots at the small bases; z4-2, z4-4 and z4-7 were x3.6, x2.7 and x3.3 before the five-year-old easing |
 | z4-1's garden | regrows in columns 0-2 | columns 3-4 | Plants in columns 0-2 can never reach the zombie base under fog 7 |
 | z4-8's Peashooters | [0,3] [4,3] | [0,5] [4,5] | Under fog 5 a column-3 Peashooter never reaches the base |
 
-z4-7's average three-star share and its expert lead, z4-2's lead on block 1001 and the z4-4 versus
-z4-6 trend are recorded misses (`KNOWN_MISSES`).
+The easing (`tools/levels.ts --who child --pace 6`) takes the child stand-in to 94-100% on z4-1 and z4-2, 70-80% on z4-3 and
+43-57% on z4-4, 5 and 7 (z4-6 86-89%, the Glowcap 70-78%; was 38-50%, 6-12%). The cost is the stars: the
+average player's three-star share on z4-1, 2, 3, 4, 5 and 7, and the expert's lead on z4-1, 2, 4, 5 and 7,
+are recorded misses (`KNOWN_MISSES`, "eased for a five-year-old"). The e2e tap walk (`LVT_W4_WALK=1`) plays at Medium income with one
+random-lane card every 3.4 s: it lost 12 of 12 before and, after the easing, z4-1 and z4-2 are within its reach but z4-3 is not (its Walnut
+wall holds against random lanes whatever the plants' base; the expert's 1.5 minute floor stops a smaller base).
 
 ### All the worlds
 

@@ -19,16 +19,17 @@ import { w4Controller } from '../app/world4Lessons';
  * z4-4. The tuned numbers (computer incomes, bases, the Glowcap's hp) are not pinned here:
  * `tools/levels.ts --world 4` measures them.
  *
- * Clocks (plan ruling 6), pinned below: z4-3 240 s and z4-5 270 s as designed; z4-6 300 s, not the
- * designed 240 s (at 240 s the base that keeps the average player's three stars in band lets the
+ * Clocks (plan ruling 6), pinned below: z4-3 300 s (designed 240 s) and z4-5 330 s (designed 270 s), both
+ * lengthened when the Meadow was eased for the five-year-old (Task 10, Michal 2026-11-25: his tap walk lost 12
+ * of 12); z4-6 300 s, not the designed 240 s (at 240 s the base that keeps the average player's three stars in band lets the
  * expert break the garden in 1.4 min, under the 1.5 minimum).
  */
 const TABLE = [
   { kind: 'battle', fog: 7, cards: 9, seconds: null, unlocks: null },
   { kind: 'battle', fog: 7, cards: 9, seconds: null, unlocks: null },
-  { kind: 'breakthrough', fog: 6, cards: 9, seconds: 240, unlocks: 'brainRot' },
+  { kind: 'breakthrough', fog: 6, cards: 9, seconds: 300, unlocks: 'brainRot' },
   { kind: 'battle', fog: 6, cards: 10, seconds: null, unlocks: null },
-  { kind: 'conveyor', fog: 5, cards: 0, seconds: 270, unlocks: null },
+  { kind: 'conveyor', fog: 5, cards: 0, seconds: 330, unlocks: null },
   { kind: 'breakthrough', fog: 5, cards: 10, seconds: 300, unlocks: null },
   { kind: 'battle', fog: 5, cards: 10, seconds: null, unlocks: null },
   { kind: 'boss', fog: 5, cards: 10, seconds: null, unlocks: null },
@@ -88,19 +89,19 @@ describe('the Moonlit Meadow for the zombies (z4-1 … z4-8)', () => {
     expect(z41.waves.map((s) => s.at)).toEqual([40, 80, 120, 160, 200, 240]);
   });
 
-  it('z4-5 grows as z3-5 does without rocks: 20 Peashooters from 20 s, one every 12 s, on the next free tile', () => {
+  it('z4-5 grows as z3-5 does without rocks: 11 Peashooters from 20 s, one every 24 s, on the next free tile', () => {
     const z45 = levels[4]!;
     expect(z45.prepared.map((s) => tile(s.lane, s.col!))).toEqual(['1,2', '3,2', '2,3']);
-    expect(z45.waves).toHaveLength(20);
+    expect(z45.waves).toHaveLength(11);
     expect(z45.waves.every((s) => s.unit === 'peashooter')).toBe(true);
-    expect(z45.waves.map((s) => s.at)).toEqual(Array.from({ length: 20 }, (_, i) => 20 + i * 12));
+    expect(z45.waves.map((s) => s.at)).toEqual(Array.from({ length: 11 }, (_, i) => 20 + i * 24));
     expect(z45.waves.at(-1)!.at).toBeLessThan(z45.seconds!);
     // Lanes 1, 3, 0, 4, 2 in turn, columns 1, 0, 4, 5, 2, 3, 6, 7 in turn: lane 1 first, skipping its (1,2).
     expect(z45.waves.slice(0, 7).map((s) => tile(s.lane, s.col!))).toEqual(['1,1', '1,0', '1,4', '1,5', '1,3', '1,6', '1,7']);
     expect(z45.twist).toEqual({ fog: 5 });
   });
 
-  it('z4-5 plays out: all 20 arrive on free tiles (none skipped) with no zombie in the way', () => {
+  it('z4-5 plays out: all 11 arrive on free tiles (none skipped) with no zombie in the way', () => {
     // The tuned zombie base is small (the garden's stray shots end an idle match early): a big one lets the whole clock run.
     const l = { ...levels[4]!, baseHp: { ...levels[4]!.baseHp, zombies: 1_000_000 } };
     const m = new Match(levelConfig(l, standInSave('average', l), 1));
@@ -112,7 +113,7 @@ describe('the Moonlit Meadow for the zombies (z4-1 … z4-8)', () => {
         if (e.type === 'waveSkipped') skipped++;
       }
     }
-    expect([spawned, skipped]).toEqual([20, 0]);
+    expect([spawned, skipped]).toEqual([11, 0]);
   });
 
   it('unlocks Brain Rot after z4-3, dealt from z4-4 on (the belt of z4-5 carries it)', () => {
