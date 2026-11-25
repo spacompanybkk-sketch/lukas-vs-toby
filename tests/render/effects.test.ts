@@ -124,7 +124,7 @@ describe('Effects.warmText', () => {
 
   const sprites = (effects: Effects): Sprite[] => effects.group.children.filter((o): o is Sprite => o instanceof Sprite);
 
-  it('draws the first floating-text sprite at no size for three frames (its program compiles as the view comes on), then hides it', () => {
+  it('draws the first floating-text sprite at no size for two drawn frames (the default 3 counts down in `update`, which runs before the draw; its program compiles as the view comes on), then hides it', () => {
     const effects = withCanvas();
     expect(sprites(effects).length).toBeGreaterThan(0);
     expect(sprites(effects).every((sprite) => !sprite.visible)).toBe(true);

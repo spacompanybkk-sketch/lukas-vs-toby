@@ -462,8 +462,8 @@ test('foe wait (p3-7): the Cherry Bomber card is pointed at first; its tile show
 });
 
 // ---- Worlds step 4, Task 3: the ice pan for the plants, the fog pan for the zombies ---------------
-// World 4 has no level files yet: the stand-ins on the debug hook carry the lessons written ahead of
-// them (plants world 4 = the Tundra's ice, zombies world 4 = the Meadow's fog).
+// World 4 has real level files now (p4-* the Frozen Tundra's ice, z4-* the Moonlit Meadow's fog): `playStandIn`
+// opens the real p4-1 / z4-1 from the map (`previewWorlds` never copies over a world with real levels).
 
 test('ice pan (p4-1, the plants\' side): the lanes pulse, the glove taps after 3 s, a tap ends it and the level plays', async ({ page }) => {
   test.setTimeout(120_000);

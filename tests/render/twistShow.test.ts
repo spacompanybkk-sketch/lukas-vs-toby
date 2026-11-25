@@ -1,4 +1,5 @@
 import { Box3, Color, Mesh, Vector3 } from 'three';
+import type { Material } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { GHOST_PUFF, GHOST_SKID, ICE_LIGHT, TwistShow } from '../../src/render/world/TwistTiles';
 import { ModelInstance } from '../../src/render/voxel/rig';
@@ -653,10 +654,18 @@ describe('TwistShow: fog on the zombies\' side', () => {
   it('dispose frees the walker too, and is safe twice', () => {
     const show = new TwistShow('fog', fogLawn(6), puffs(), 'zombies');
     play(show, 3);
-    const geometries: number[] = [];
-    show.group.traverse((o) => { if (o instanceof Mesh) o.geometry.addEventListener('dispose', () => geometries.push(1)); });
+    const freed = new Set<Material>();
+    const materials = new Set<Material>();
+    show.walker!.object.traverse((o) => {
+      if (!(o instanceof Mesh)) return;
+      const material = o.material as Material;
+      materials.add(material);
+      material.addEventListener('dispose', () => freed.add(material));
+    });
+    expect(materials.size).toBeGreaterThan(0);
     show.dispose();
     show.dispose();
+    expect([...freed]).toEqual([...materials]);
     expect(show.disposed).toBe(true);
     expect(show.group.children).toHaveLength(0);
     expect(show.group.parent).toBeNull();

@@ -49,7 +49,7 @@ const key = (): string => test.info().project.name;
 async function open(page: Page): Promise<void> {
   await openTitle(page);
   const has = await page.evaluate(() => ((window.__lvt as any).levels as { id: string }[]).some((l) => l.id === 'z4-1'));
-  test.skip(!has, 'this build has no Moonlit Meadow levels for the zombies yet');
+  expect(has, 'z4-1 is missing from ALL: the Moonlit Meadow levels for the zombies are gone from this build').toBe(true);
 }
 
 /** The title, with the storage the previous test left (if any), and Lukas logged in on Home. */
