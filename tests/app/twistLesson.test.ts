@@ -4,10 +4,13 @@ import { TEACHES } from '../../src/adventure/levels/teaches';
 import { BattleController } from '../../src/app/BattleController';
 import { TWIST_HINT_SECONDS, stepsToTeach, twistShown } from '../../src/app/tutorial';
 import { NO_TWIST } from '../../src/sim/lawn';
+import type { LevelDef } from '../../src/adventure/types';
+import type { LawnConfig } from '../../src/sim/types';
 import { seconds } from '../../src/data/balance';
 import { hashState } from '../../src/sim/hash';
 import { W2, lessonController, w2Save } from './world2Lessons';
 import { W3, w3Controller, w3Save } from './world3Lessons';
+import { W4, w4Controller, w4Save } from './world4Lessons';
 
 // Step 2, Task 3: the twist lesson (`show: 'twist'`) and the four new-card glove lessons.
 
@@ -338,3 +341,167 @@ describe('the world-3 glove lessons (card, then tile, as p1-2)', () => {
     });
   }
 });
+
+// ---- Worlds step 4, Task 3: the ice pan for the plants, the fog pan for the zombies, two glove lessons ----
+
+describe('the world-4 lessons in TEACHES (content design §3)', () => {
+  it('p4-1 and z4-1 show their twist and nothing else; p4-4 and z4-4 are card then tile', () => {
+    expect(TEACHES['p4-1']).toEqual([{ id: 'p4-1.ice', show: 'twist', until: 'tapped' }]);
+    expect(TEACHES['z4-1']).toEqual([{ id: 'z4-1.fog', show: 'twist', until: 'tapped' }]);
+    expect(TEACHES['p4-4']).toEqual([
+      { id: 'p4-4.squash-card', show: 'card', card: 'pumpkinSquash', until: 'selected' },
+      { id: 'p4-4.squash-tile', show: 'tile', card: 'pumpkinSquash', lane: 1, col: 3, until: 'placed', after: 'foe' },
+    ]);
+    expect(TEACHES['z4-4']).toEqual([
+      { id: 'z4-4.rot-card', show: 'card', card: 'brainRot', until: 'selected' },
+      { id: 'z4-4.rot-lane', show: 'tile', card: 'brainRot', lane: 2, col: 9, until: 'placed' },
+    ]);
+    // The unlock levels teach nothing (the result's turntable shows the new unit).
+    for (const id of ['p4-3', 'p4-6', 'z4-3', 'z4-6']) expect(TEACHES[id], id).toBeUndefined();
+  });
+
+  it('the glove tiles are checked with match.check: the Squash on its iced lane, Brain Rot down its lane', () => {
+    for (const id of ['p4-4', 'z4-4']) {
+      const def = W4[id]!;
+      const c = w4Controller(def);
+      const tile = def.teaches!.find((s) => s.show === 'tile');
+      if (tile?.show !== 'tile') throw new Error('a tile step');
+      expect(c.match.check({ type: 'place', faction: def.side, unit: tile.card, lane: tile.lane, col: tile.col }), id).toBeNull();
+    }
+    expect(W4['p4-4']!.twist!.iceLanes).toContain(1);
+  });
+});
+
+describe.each([
+  ['p4-1', 'plants', 'ice', 'peashooter'],
+  ['z4-1', 'zombies', 'fog', 'brainEater'],
+] as const)('%s: the %s pan', (id, side, kind, card) => {
+  const def = W4[id]!;
+  const step = `${id}.${kind}`;
+
+  it(`the lawn shows ${kind}`, () => {
+    expect(twistShown(prepareLawn(def), step)).toBe(kind);
+  });
+
+  it(`holds the match from its first tick with no glove; the twist shows (${kind}); 3 s on the glove says "tap"; Pause waits`, () => {
+    const c = w4Controller(def);
+    const t = c.tutorial!;
+    expect(t.current?.id).toBe(step);
+    c.step();
+    run(c, 2);
+    expect(t.holding).toBe(true);
+    expect(t.twist.peek()).toEqual({ step, kind, holding: true });
+    expect(t.glove.peek()).toBeNull();
+    run(c, seconds(TWIST_HINT_SECONDS) - 5);
+    expect(t.glove.peek()).toBeNull();
+    run(c, 5);
+    expect(t.glove.peek()).toEqual({ aim: { kind: 'tap' }, holding: true, step });
+    run(c, seconds(30));
+    expect(tick(c)).toBe(1);
+    c.setPaused(true);
+    run(c, seconds(5));
+    c.tapTwist(); // a tap on the menu is no tap on the pan
+    expect(t.current?.id).toBe(step);
+    c.setPaused(false);
+    expect(t.holding).toBe(true);
+  });
+
+  it('any tap ends it - the tap itself does nothing else; the match runs on', () => {
+    const taps: ((c: BattleController) => void)[] = [
+      (c) => { c.click({ lane: 0, col: 3 }, null); },
+      (c) => { c.click({ lane: 2, col: side === 'plants' ? 1 : 9 }, null); },
+      (c) => { c.click(null, null); },
+      (c) => c.select(card),
+      (c) => c.select(card), // zombies: a re-tap of a selected card is a tap too
+      (c) => c.toggleShovel(),
+      (c) => c.tapTwist(),
+    ];
+    for (const tap of taps) {
+      const c = w4Controller(def);
+      run(c, 4);
+      tap(c);
+      expect(c.tutorial!.current).toBeNull();
+      expect(c.tutorial!.taught.peek()).toEqual([step]);
+      expect(c.tutorial!.twist.peek()).toBeNull();
+      expect(c.hud.denied.peek()).toBe(0);
+      run(c, 30);
+      expect(c.match.state.units.filter((u) => u.faction === side)).toHaveLength(0);
+      expect(tick(c)).toBe(31);
+    }
+  });
+
+  it('a tap on the card after it was already selected (a re-tap) still ends the pan on the zombies\' side', () => {
+    const c = w4Controller(def);
+    run(c, 4);
+    c.hud.selected.value = card; // already in hand
+    c.select(card);
+    expect(c.tutorial!.current).toBeNull();
+    expect(c.hud.selected.peek()).toBe(card);
+  });
+
+  it('shows once per player; HELP (replay) shows it again', () => {
+    const save = { ...w4Save(side), teached: [step] };
+    expect(w4Controller(def, 3, save).tutorial).toBeNull();
+    const again = w4Controller(def, 3, save, true);
+    run(again, 3);
+    expect(again.tutorial!.twist.peek()?.kind).toBe(kind);
+  });
+});
+
+describe('the world-4 glove lessons (card, then tile)', () => {
+  for (const id of ['z4-4']) {
+    it(`${id}: the card, then its lane; the new unit stands there`, () => {
+      const def = W4[id]!;
+      const c = w4Controller(def);
+      const [cardStep, tileStep] = def.teaches!;
+      if (cardStep?.show !== 'card' || tileStep?.show !== 'tile') throw new Error('card then tile');
+      for (let i = 0; i < seconds(60) && !c.tutorial!.holding; i++) c.step();
+      expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: cardStep.card }, holding: true, step: cardStep.id });
+      c.select(cardStep.card);
+      const aim = c.tutorial!.glove.peek()!.aim;
+      if (aim.kind !== 'tile') throw new Error('tile');
+      expect(aim.lane).toBe(tileStep.lane);
+      expect(c.click({ lane: aim.lane, col: aim.col }, null)).toBeNull();
+      c.step();
+      expect(c.tutorial!.taught.peek()).toEqual([cardStep.id, tileStep.id]);
+    });
+
+    it(`${id}: a re-tap of the selected card keeps it selected, still advances the lesson, and the lane then sends`, () => {
+      const def = W4[id]!;
+      const c = w4Controller(def);
+      const [cardStep, tileStep] = def.teaches!;
+      if (cardStep?.show !== 'card' || tileStep?.show !== 'tile') throw new Error('card then tile');
+      c.step();
+      // Toby picked Brain Rot before it was usable (no energy for it): nothing held, the pick stays.
+      c.match.state.players.zombies.energy = 0;
+      c.hud.selected.value = cardStep.card;
+      run(c, 3);
+      expect(c.tutorial!.current?.id).toBe(cardStep.id);
+      c.match.state.players.zombies.energy = 500;
+      run(c, 3);
+      expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: cardStep.card }, holding: true });
+      c.select(cardStep.card); // the re-tap
+      expect(c.hud.selected.peek()).toBe(cardStep.card);
+      expect(c.tutorial!.current?.id).toBe(tileStep.id);
+      expect(c.tutorial!.glove.peek()?.aim).toMatchObject({ kind: 'tile', lane: tileStep.lane });
+      expect(c.click({ lane: tileStep.lane, col: tileStep.col }, null)).toBeNull();
+      c.step();
+      expect(c.tutorial!.current).toBeNull();
+      expect(c.tutorial!.taught.peek()).toEqual([cardStep.id, tileStep.id]);
+    });
+  }
+
+  it('p4-4: the Squash card is picked first, then the tile steps wait for a foe (tutorial.test.ts has the wait)', () => {
+    const def = W4['p4-4']!;
+    const c = w4Controller(def);
+    for (let i = 0; i < seconds(60) && !c.tutorial!.holding; i++) c.step();
+    expect(c.tutorial!.glove.peek()).toMatchObject({ aim: { kind: 'card', card: 'pumpkinSquash' }, holding: true, step: 'p4-4.squash-card' });
+    c.select('pumpkinSquash');
+    expect(c.tutorial!.current?.id).toBe('p4-4.squash-tile');
+  });
+});
+
+/** The lawn config a level plays on (its twist, as the match builds it). */
+function prepareLawn(def: LevelDef): LawnConfig {
+  return w4Controller(def).match.state.config.lawn;
+}

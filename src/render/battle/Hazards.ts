@@ -27,6 +27,8 @@ const C = {
   shine: '#F4FFB0',
   bubble: '#C8F22E',
 } as const;
+/** Brain Rot's puddle colours, for the tests that keep the bosses' warnings apart from them. */
+export const PUDDLE_COLORS = C;
 
 interface Puddle {
   root: Group;
@@ -124,6 +126,11 @@ export class Hazards {
       this.group.add(root);
       this.puddles.push({ root, decal, material, bubbles, id: -1, age: 0, life: 1, born: 0, active: false });
     }
+  }
+
+  /** Draws the bubbles once at no size, so the first puddle compiles and uploads nothing (see `InstanceBatch.warm`). */
+  warm(): void {
+    this.bubbles.warm();
   }
 
   /** Puddles on the lawn now. */

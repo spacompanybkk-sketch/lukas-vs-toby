@@ -85,6 +85,26 @@ function freshStars(save: Save, side: Faction, world: World, stones: Stone[]): S
   return new Set(stones.filter((s) => s.stars > (seen[s.def.id] ?? 0)).map((s) => s.def.id));
 }
 
+/** The gap kept between the player's picture and the next stone's badge when the picture has to move off the number. */
+const MARKER_GAP = 4;
+
+/**
+ * Where the player's picture goes across the screen (`x`, the middle of the flag's cloth): the cloth is
+ * a fixed distance from its stone in tiles, so on the far row of the lawn (stones 3 and 8) it lies close
+ * and the picture, which is a fixed size in pixels, can land on the badge's number (the zombies' stone 8,
+ * where the cloth flies to the right of the number). When the picture would cover the number it moves out
+ * sideways, on the side it was already on, to just clear the whole badge. Anywhere else it is left where the flag is.
+ */
+function clearOfNumber(m: HTMLElement, stoneEl: HTMLElement | undefined, x: number, stoneX: number): number {
+  const n = stoneEl?.querySelector('.stone__n')?.getBoundingClientRect();
+  const b = stoneEl?.querySelector('.stone__badge')?.getBoundingClientRect();
+  if (n === undefined || b === undefined || n.width === 0) return x;
+  const dx = x - stoneX;
+  const half = m.offsetWidth / 2;
+  if (dx - half >= n.right - stoneX + MARKER_GAP || dx + half <= n.left - stoneX - MARKER_GAP) return x;
+  return stoneX + (dx >= 0 ? b.right - stoneX + MARKER_GAP + half : b.left - stoneX - MARKER_GAP - half);
+}
+
 const SIDE_TABS: { side: Faction; boy: keyof BoyPortraits; label: string }[] = [
   { side: 'plants', boy: 'lukas', label: 'Lukas’s plants' },
   { side: 'zombies', boy: 'toby', label: 'Toby’s zombies' },
@@ -230,7 +250,10 @@ export function MapScreen({ side, card, world: asked, portraits = {}, boys = {},
     }
     const m = marker.current;
     if (m !== null && l.flag !== null) {
-      m.style.transform = `translate3d(${Math.round(l.flag.x)}px, ${Math.round(l.flag.y)}px, 0)`;
+      const x = Math.round(l.flag.x);
+      const sp = l.stones[m.dataset.marker ?? ''];
+      const shift = sp === undefined ? x : clearOfNumber(m, els.current.get(m.dataset.marker ?? ''), x, Math.round(sp.x));
+      m.style.transform = `translate3d(${shift}px, ${Math.round(l.flag.y)}px, 0)`;
       m.dataset.placed = '';
     }
     root.current?.style.setProperty('--hop', `${l.hop}px`);

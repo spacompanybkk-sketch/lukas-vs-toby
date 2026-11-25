@@ -119,4 +119,25 @@ export const TEACHES: Readonly<Record<string, readonly TutorialStep[]>> = {
     { id: 'z3-7.trident-card', show: 'card', card: 'tridentZombie', until: 'selected' },
     { id: 'z3-7.trident-lane', show: 'tile', card: 'tridentZombie', lane: 1, col: 9, until: 'placed' },
   ],
+
+  // World 4 (content design §3, plan Rulings 11-12). Written ahead of the level files (`p4.ts`,
+  // `z4.ts`, Tasks 6-7), as the earlier worlds' were.
+  //
+  // The Frozen Tundra's ice for the plants: the icy lanes pulse and a ghost zombie slides down one;
+  // any tap ends it.
+  'p4-1': [{ id: 'p4-1.ice', show: 'twist', until: 'tapped' }],
+  // The Pumpkin Squash: its tile on lane 1 (iced; the tile itself is free) waits, with no glove and
+  // nothing held, until a foe stands within 2 tiles in front of it, so the squash lands on a zombie.
+  'p4-4': [
+    { id: 'p4-4.squash-card', show: 'card', card: 'pumpkinSquash', until: 'selected' },
+    { id: 'p4-4.squash-tile', show: 'tile', card: 'pumpkinSquash', lane: 1, col: 3, until: 'placed', after: 'foe' },
+  ],
+  // The Meadow's fog for the zombies: the ghost Peashooter's pea puffs out at the reach, a ghost
+  // Brain Eater walks to the puff point and on to the Peashooter; any tap ends it.
+  'z4-1': [{ id: 'z4-1.fog', show: 'twist', until: 'tapped' }],
+  // Brain Rot, the first level that deals it: down the third lane, the far end.
+  'z4-4': [
+    { id: 'z4-4.rot-card', show: 'card', card: 'brainRot', until: 'selected' },
+    { id: 'z4-4.rot-lane', show: 'tile', card: 'brainRot', lane: 2, col: 9, until: 'placed' },
+  ],
 };

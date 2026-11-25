@@ -104,8 +104,20 @@ async function toMap(page: Page, side: Side, world = 3): Promise<void> {
   await press(page.locator(`[data-side="${side}"]`));
   await expect(page.locator('[data-screen="map"]')).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window.__lvt as any).map?.isOpen)).toBe(true);
+  // The map opens on the world of the next level: with the Desert won that is the Tundra / Meadow now, one arrow back.
+  if (world === 3 && await page.locator('[data-screen="map"]').getAttribute('data-world') === '4') {
+    await press(page.locator('[data-action="world-prev"]'));
+  }
   await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-world', String(world));
   if (world === 3) await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
+}
+
+/** With the Desert won the map opens on the next world (the Tundra / the Meadow): one arrow back to the Desert's stones. */
+async function backToDesert(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => (window.__lvt as any).map?.isOpen)).toBe(true);
+  if (await page.locator('[data-screen="map"]').getAttribute('data-world') === '4') await press(page.locator('[data-action="world-prev"]'));
+  await expect(page.locator('[data-screen="map"]')).toHaveAttribute('data-world', '3');
+  await expect.poll(() => page.locator('[data-stone][data-placed]').count()).toBe(8);
 }
 
 async function startFromMap(page: Page, id: string): Promise<void> {
@@ -429,6 +441,7 @@ test('Lukas: p3-4 teaches the Torchwood by the glove (card, then tile); p3-5; p3
   expect((await progress(page)).teached).toEqual(expect.arrayContaining(['p3-7.cherry-card', 'p3-7.cherry-tile']));
   await win(page, 'plants', 'p3-7');
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  await backToDesert(page);
   await expect(page.locator('[data-stone="p3-8"]')).toHaveAttribute('data-state', 'next');
   expect(await glContexts(page)).toBe(1);
   await keep(page, 'plants');
@@ -608,9 +621,11 @@ test('p3-8: the Sand Pharaoh - entrance card, boss bar with its face, staff slam
   await expect(page.locator(`.lresult__stars[data-lit="${stars}"]`)).toBeVisible();
   await expect(page.locator(`[data-coins-earned="${30 * stars}"]`)).toBeVisible();
   expect((await progress(page)).coins).toBe(coins + 30 * stars);
-  // The Desert's last level: no level after it, so no next-level button.
-  await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
+  // The Desert is no longer the last world (the Tundra follows): the next-level button leads on to p4-1.
+  await expect(page.locator('[data-action="next-level"]')).toHaveCount(1);
+  await expect(page.locator('[data-action="next-level"]')).toHaveAttribute('data-next', 'p4-1');
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  await backToDesert(page);
   await expect(page.locator('[data-stone="p3-8"]')).toHaveAttribute('data-stars', String(stars));
   await expect(page.locator('[data-stone][data-state="done"]')).toHaveCount(8);
   expect(await glContexts(page)).toBe(1);
@@ -717,6 +732,7 @@ test('Toby: z3-4 teaches the Necromancer by the glove (card, then lane); z3-5; z
     .some((u: { key: string; lane: number }) => u.key === 'tridentZombie' && u.lane === 1))).toBe(true);
   await win(page, 'zombies', 'z3-7');
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  await backToDesert(page);
   await expect(page.locator('[data-stone="z3-8"]')).toHaveAttribute('data-state', 'next');
   expect(await glContexts(page)).toBe(1);
   await keep(page, 'zombies');
@@ -891,8 +907,11 @@ test('z3-8: the Cactus King - entrance card, boss bar with its face, needles, Ke
   await expect(page.locator(`.lresult__stars[data-lit="${stars}"]`)).toBeVisible();
   await expect(page.locator(`[data-coins-earned="${30 * stars}"]`)).toBeVisible();
   expect((await progress(page)).coins).toBe(coins + 30 * stars);
-  await expect(page.locator('[data-action="next-level"]')).toHaveCount(0);
+  // The Meadow follows the Desert for Toby: the next-level button leads on to z4-1.
+  await expect(page.locator('[data-action="next-level"]')).toHaveCount(1);
+  await expect(page.locator('[data-action="next-level"]')).toHaveAttribute('data-next', 'z4-1');
   await press(page.locator('[data-screen="result"] [data-action="map"]'));
+  await backToDesert(page);
   await expect(page.locator('[data-stone="z3-8"]')).toHaveAttribute('data-stars', String(stars));
   await expect(page.locator('[data-stone][data-state="done"]')).toHaveCount(8);
   expect(await glContexts(page)).toBe(1);
@@ -909,6 +928,7 @@ for (const [side, ids] of [['plants', ['p3-5', 'p3-3']], ['zombies', ['z3-5', 'z
     const counts: number[] = [];
     await toMap(page, side);
     for (let round = 0; round < 10; round++) {
+      await backToDesert(page); // the map opens on the next world after a result
       await expect.poll(() => page.evaluate(() => (window.__lvt as any).stage.lawn.world)).toBe('desert');
       await frames(page, 3);
       counts.push(await geometries());

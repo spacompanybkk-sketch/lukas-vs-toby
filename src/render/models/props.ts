@@ -362,6 +362,35 @@ function frozenMelonGeometry(): BufferGeometry {
   return blob(FROZEN_MELON_SIZE / n, n, n, n, round, (i, j) => (j >= n - 2 ? frost : j === 0 ? under : i % 3 === 0 ? stripe : body));
 }
 
+/** The Glowcap's spore bomb: longest edge (tiles), its trail of purple puffs and how fast it rolls (turns a second). */
+export const SPORE_BOMB_SIZE = 0.46;
+export const SPORE_BOMB_TRAIL = 0xb07cf0;
+export const SPORE_BOMB_TUMBLE = 0.8;
+const SPORE = { body: '#B03AD8', spot: '#E9FFB5', rim: '#5C1A93', under: '#35106B', glint: '#E8B8FF' } as const;
+
+/**
+ * The Glowcap's barrage (the simulation's `acorn`, drawn as its boss's look asks): a round bomb of
+ * glowing violet, freckled with pale green-yellow spots, a dark band and underside and a bright lilac glint on top, so it
+ * is neither a pea (green), a melon (blue, striped) nor a needle (a thin spike), and it stands off the Meadow's
+ * grass. Seven cells each way; it glows.
+ */
+function sporeBombGeometry(): BufferGeometry {
+  const n = 7;
+  const body = paint(SPORE.body);
+  const spot = paint(SPORE.spot);
+  const rim = paint(SPORE.rim);
+  const under = paint(SPORE.under);
+  const glint = paint(SPORE.glint);
+  return blob(SPORE_BOMB_SIZE / n, n, n, n, round, (i, j, k) => {
+    if (j === 0) return under;
+    if (j >= n - 2 && i <= 3 && k <= 3) return glint;
+    if ((i + 2 * j + 3 * k) % 5 === 0) return spot;
+    // A darker band low on the bomb, so it reads as a round thing lit from above.
+    if (j === 1) return rim;
+    return body;
+  });
+}
+
 /** The Cactus King's needle: longest edge (tiles) and the pale green of the short trail it leaves. */
 export const NEEDLE_SIZE = 0.56;
 export const NEEDLE_TRAIL = 0xa6db78;
@@ -497,6 +526,14 @@ export function makeProjectile(kind: ProjectileKind, burning = false): Object3D 
 export function makeNeedle(): Object3D {
   const mesh = new Mesh(shared('needle', needleGeometry), plasticMaterial());
   mesh.name = 'projectile-needle';
+  mesh.castShadow = true;
+  return mesh;
+}
+
+/** A spore bomb, centred on its own origin, SPORE_BOMB_SIZE across, glowing (the Glowcap's barrage). */
+export function makeSporeBomb(): Object3D {
+  const mesh = new Mesh(shared('spore-bomb', sporeBombGeometry), glowingProp());
+  mesh.name = 'projectile-spore-bomb';
   mesh.castShadow = true;
   return mesh;
 }

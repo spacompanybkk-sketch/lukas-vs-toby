@@ -64,7 +64,7 @@ export const UNIT_INFO: Record<CardKey, UnitInfo> = buildInfo();
 /** The side of each unit that is not a card. */
 const NON_CARD_FACTION: Record<Exclude<UnitKey, CardKey>, Faction> = {
   boneMinion: 'zombies', rock: 'plants', brainTitan: 'zombies', elderOak: 'plants',
-  moonHowler: 'zombies', frostMelon: 'plants', sandPharaoh: 'zombies', cactusKing: 'plants',
+  moonHowler: 'zombies', frostMelon: 'plants', sandPharaoh: 'zombies', cactusKing: 'plants', yeti: 'zombies', glowcap: 'plants',
 };
 
 /** Which side a unit fights for: a card's own side, the zombies' for a Bone Minion, the Brain Titan, the Moon Howler and the Sand Pharaoh, the plants' for a rock, the Elder Oak, the Frost Melon and the Cactus King. */

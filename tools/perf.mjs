@@ -31,6 +31,8 @@
 //   --scenes=melon                          the Frost Melon's boss demo in the Tundra (ice, snow), opt-in
 //   --scenes=pharaoh                        the Sand Pharaoh's boss demo in the Desert (rocks, dust), opt-in
 //   --scenes=cactus                         the Cactus King's boss demo in the Desert (rocks, dust), opt-in
+//   --scenes=yeti                           the Yeti's boss demo on the Tundra's ice lanes under the snow, opt-in
+//   --scenes=glowcap                        the Glowcap's boss demo in the Meadow's fog with fireflies, opt-in
 //   --scenes=howler-p2-8,meadow-p2-7        the real game: p2-8's Howler fight with a full garden, and
 //                                           p2-7 (a busy Meadow survive level: full garden, its waves
 //                                           and flags walking, nobody dying), opt-in
@@ -76,6 +78,10 @@ const SCENES = [
   // Step 3 Task 2 (opt-in): the Desert Canyon's two boss fights (their boss demos) with the rocks and the dust.
   { name: 'pharaoh', query: 'scene=boss-demo&boss=sandPharaoh&seed=1', setup: 'pharaoh', optIn: true },
   { name: 'cactus', query: 'scene=boss-demo&boss=cactusKing&seed=1', setup: 'cactus', optIn: true },
+  // Step 4 Task 2 (opt-in): the Tundra's and the Meadow's last two boss fights (their boss demos), the Yeti on the ice
+  // lanes under the snow, the Glowcap in the fog with fireflies.
+  { name: 'yeti', query: 'scene=boss-demo&boss=yeti&seed=1', setup: 'yeti', optIn: true },
+  { name: 'glowcap', query: 'scene=boss-demo&boss=glowcap&seed=1', setup: 'glowcap', optIn: true },
   // Step 2 Task 9 (opt-in): the real Meadow levels, the Howler's fight and a busy survive level.
   { name: 'howler-p2-8', query: '', setup: 'howlerLevel', optIn: true },
   { name: 'meadow-p2-7', query: '', setup: 'meadowBusy', optIn: true },
@@ -397,6 +403,30 @@ const GAME_SETUPS = {
       return { units: s.units.length, projectiles: s.projectiles.length, cactus: s.units.some((u) => u.key === 'cactusKing'), rocks: s.config.lawn.rocks.length };
     });
   },
+  /**
+   * The Yeti demo moved on to 14 s, so what is measured (from about 17 s) holds its first uses of everything: the slam at 17.5 s,
+   * the snow fort and its breath at 18.8 s, the first avalanche on one ice lane at 22.7 s, the summoned pups, the garden firing.
+   */
+  async yeti(page) {
+    return page.evaluate(() => {
+      const b = window.__lvt.battle;
+      b.advance(14);
+      const s = b.match.state;
+      return { units: s.units.length, projectiles: s.projectiles.length, yeti: s.units.some((u) => u.key === 'yeti'), ice: s.config.lawn.ice?.lanes ?? null };
+    });
+  },
+  /**
+   * The Glowcap demo moved on to 33 s, so what is measured (from about 36 s) holds its first uses: the cap shells at 36.9 s,
+   * the first spore cloud winding up at 40.4 s and landing at 42.9 s, its spore bombs, and the fall at 47.3 s.
+   */
+  async glowcap(page) {
+    return page.evaluate(() => {
+      const b = window.__lvt.battle;
+      b.advance(33);
+      const s = b.match.state;
+      return { units: s.units.length, projectiles: s.projectiles.length, glowcap: s.units.some((u) => u.key === 'glowcap'), fog: s.config.lawn.fog };
+    });
+  },
   /** The Melon demo moved on to 20 s (its second barrage in the air, ten zombies on the ice, its Peashooters firing), then left to play live. */
   async melon(page) {
     return page.evaluate(() => {
@@ -552,6 +582,9 @@ function measure(page, warmUpMs, intervals, finishFrames, pinScale) {
       medianMs: median(times),
       p95Ms: high(times, 0.95),
       worstMs: high(times, 1),
+      // Where the long frames fell: how many ran over 50 ms, and when (ms into the measurement) the worst one ended.
+      over50: times.filter((t) => t > 50).length,
+      worstAtMs: Math.round(times.slice(0, times.indexOf(Math.max(...times)) + 1).reduce((a, b) => a + b, 0)),
       frameCallbackMedianMs: median(frameCpu),
       frameCallbackP95Ms: high(frameCpu, 0.95),
       drawCpuMedianMs: median(cpu),
@@ -639,7 +672,7 @@ async function main() {
         for (const w of warnings) console.log(`\n!!!!!! WARNING: ${w} !!!!!!\n`);
         const ms = (v) => v.toFixed(1).padStart(5);
         console.log(
-          `${mode.name.padEnd(13)} ${scene.name.padEnd(16)} dpr ${deviceScaleFactor}  interval median ${ms(row.medianMs)} p95 ${ms(row.p95Ms)} worst ${ms(row.worstMs)} ms  `
+          `${mode.name.padEnd(13)} ${scene.name.padEnd(16)} dpr ${deviceScaleFactor}  interval median ${ms(row.medianMs)} p95 ${ms(row.p95Ms)} worst ${ms(row.worstMs)} ms (at ${row.worstAtMs} ms, ${row.over50} over 50)  `
           + `frame cb ${ms(row.frameCallbackMedianMs)}  draw cpu ${ms(row.drawCpuMedianMs)}  draw+finish ${ms(row.drawFinishedMedianMs)} (p95 ${ms(row.drawFinishedP95Ms)})  `
           + `scale ${row.renderScale.toFixed(2)}  calls ${row.drawCallsPerFrame}  tris ${row.trianglesPerFrame}  load ${load.toFixed(1)}${errors.length ? `  ERRORS: ${errors.join(' | ')}` : ''}`,
         );

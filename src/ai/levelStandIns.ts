@@ -363,12 +363,23 @@ export interface BossAnswer {
  *   a recipe in its lane: a Peashooter at column 1, a Torchwood at column 3 in front of it (fire
  *   peas), over the rocks of its lane; the average player puts three Peashooters. The Cactus King
  *   (a plant boss) has no entry: only the expert's strike dodge knows its rockfall.
+ * - Yeti: its snow fort bounces straight shots, so the expert follows a recipe in its lane: a Walnut
+ *   Bomb at column 4 (the pups), a Mango-pult at column 2, a Pumpkin Squash at column 3; the average
+ *   player puts three Peashooters. The Glowcap (a plant boss) has no entry: only the expert's strike
+ *   dodge knows its spore cloud.
  */
 export const BOSS_ANSWER: Readonly<Partial<Record<BossKey, Readonly<Record<'average' | 'expert', BossAnswer>>>>> = {
   brainTitan: { expert: { cards: ['kernelPult'], want: 2 }, average: { cards: ['peashooter'], want: 3 } },
   moonHowler: { expert: { cards: ['mangoPult', 'kernelPult'], want: 2, cols: [3, 4] }, average: { cards: ['peashooter'], want: 3 } },
   sandPharaoh: {
     expert: { cards: ['peashooter', 'torchwood'], want: 2, recipe: [['peashooter', 1], ['torchwood', 3]] },
+    average: { cards: ['peashooter'], want: 3 },
+  },
+  yeti: {
+    expert: {
+      cards: ['walnutBomb', 'mangoPult', 'pumpkinSquash'], want: 3,
+      recipe: [['walnutBomb', 4], ['mangoPult', 2], ['pumpkinSquash', 3]],
+    },
     average: { cards: ['peashooter'], want: 3 },
   },
 };

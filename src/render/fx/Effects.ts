@@ -263,6 +263,8 @@ export class Effects {
   private nextPop = 0;
   private readonly rings: Ring[] = [];
   private readonly texts: FloatingText[] = [];
+  /** Frames the warm-up sprite (`warmText`) is still drawn at no size. */
+  private warmingText = 0;
   /** Particles owed to each object that has an aura or a trail, between frames. */
   private readonly owed = new WeakMap<Object3D, number>();
   private nextFlash = 0;
@@ -577,6 +579,21 @@ export class Effects {
   }
 
   /**
+   * Draws the first floating-text sprite at no size for `frames - 1` frames (`update` counts the warm-up down before the frame is drawn, so the last count hides it first). three.js compiles a sprite's program
+   * (and uploads its canvas) at its first draw, a hitch of 300 ms at DPR 2 on the M3, and the first "+25" or damage number
+   * of a fight would take it mid-fight; the battle view calls this as it comes on, so that draw is the first frame's.
+   */
+  warmText(frames = 3): void {
+    const slot = this.texts[0];
+    if (slot === undefined || slot.active) return;
+    slot.sprite.scale.set(0, 0, 1);
+    slot.sprite.position.set(5, 0.5, 2.5);
+    slot.sprite.frustumCulled = false;
+    slot.sprite.visible = true;
+    this.warmingText = frames;
+  }
+
+  /**
    * Moves everything on by `dtSeconds` of game time: the flashes, rings and floating numbers,
    * and the particle pool given to the constructor. That pool belongs to these effects from
    * then on: call this once a frame and never `Particles.update` yourself (a direct call is
@@ -600,6 +617,11 @@ export class Effects {
       if (!slot.active) continue;
       slot.age += dt;
       this.applyPop(slot, camera);
+    }
+    if (this.warmingText > 0 && --this.warmingText === 0) {
+      const warm = this.texts[0];
+      if (warm !== undefined && !warm.active) warm.sprite.visible = false;
+      if (warm !== undefined) warm.sprite.frustumCulled = true;
     }
     for (const slot of this.texts) {
       if (!slot.active) continue;

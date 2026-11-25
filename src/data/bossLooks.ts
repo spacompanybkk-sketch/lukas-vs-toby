@@ -31,9 +31,11 @@ export interface BossShows {
    * Its shield: a glass dome round it (shots ping off), the same dome glowing in moonlight
    * (`moon`), bark plates clapping shut (the model's `barkL`/`barkR`, which may be any material:
    * the Cactus King's are green spines, see `plateChips`), ice plates (`iceL`/`iceR`), or a
-   * swirling ring of sand pixels round it (`sand`).
+   * swirling ring of sand pixels round it (`sand`), the same dome tinted snow white and ice blue
+   * (`snow`: the Yeti's fort), or two shells of cap clapping shut (the model's `capL`/`capR`: the
+   * Glowcap's, handled like `bark` and `ice`).
    */
-  shield: 'dome' | 'moon' | 'bark' | 'ice' | 'sand';
+  shield: 'dome' | 'moon' | 'bark' | 'ice' | 'sand' | 'snow' | 'cap';
   /** The chips that fly off its shut `bark` plates, and the ring thrown as they go up (hex): left out, walnut bark. */
   plateChips?: readonly string[];
   /**
@@ -70,8 +72,11 @@ export interface BossShows {
    * pups, with wolf ears (the Howler's), or wrapped in bandages as mummies (the Pharaoh's).
    */
   summonLook?: 'pups' | 'mummies';
-  /** What its barrage throws: acorns (left out), frozen melons that tumble and trail ice, or cactus needles that fly point first. */
-  barrage?: 'acorn' | 'frozenMelon' | 'needle';
+  /**
+   * What its barrage throws: acorns (left out), frozen melons that tumble and trail ice, cactus needles that fly
+   * point first, or glowing spore bombs that tumble and trail purple puffs.
+   */
+  barrage?: 'acorn' | 'frozenMelon' | 'needle' | 'sporeBomb';
   /**
    * Seconds its slam clip (`ability`) takes to raise the arm; the clip is sped up or slowed so the
    * rise fills each slam's own wind-up. Left out: the clip is timed to the wind-up as it is.
@@ -294,6 +299,80 @@ export const BOSS_LOOK: Record<BossKey, BossLook> = {
       // the outline, a darker navy (white went faint on the snow lane). The blow lands in bright ice.
       strikeWarnings: { stun: { fill: '#0A2A70', frame: '#06163F', opacity: 0.85, blow: '#39C6FF' } },
       barrage: 'frozenMelon',
+    },
+  },
+  // Worlds-4 plan Task 2: the Tundra's and the Meadow's last bosses.
+  yeti: {
+    // The model is a unit's voxels, bulkier than the Titan and the Pharaoh.
+    scale: 3,
+    // A white shaggy head: two cream horns, a heavy brow, a blue face with a dark nose and two fangs.
+    face: [
+      [1, 0, 2, 4, '#EADFC0'],
+      [9, 0, 2, 4, '#EADFC0'],
+      [0, 3, 12, 9, '#F2F8FC'],
+      [0, 3, 1, 9, '#B7CEDE'],
+      [11, 3, 1, 9, '#B7CEDE'],
+      [1, 3, 10, 2, '#B7CEDE'],
+      [2, 5, 8, 6, '#5CB4E8'],
+      [2, 9, 8, 2, '#2F82BD'],
+      [3, 5, 2, 3, 'eye'],
+      [7, 6, 2, 2, 'eye'],
+      [5, 8, 2, 2, '#1B4F7C'],
+      [3, 10, 6, 1, '#101C2A'],
+      [4, 9, 1, 1, '#F4EBDD'],
+      [7, 9, 1, 1, '#F4EBDD'],
+    ],
+    bar: { fill: '#8FDCFF', hi: '#D4F4FF' },
+    call: 'yetiRoar',
+    defeat: 'yetiDefeat',
+    fx: {
+      roar: 'cheer', summon: 'ring', shield: 'snow', defeat: 'shards', eyes: 'still',
+      // The avalanche: both arms and the club thrown up, shaking, through the strike's wind-up.
+      strike: 'shoot',
+      // From its first shield mark: icy breath in front of its mouth.
+      phaseParts: ['frostBreath'],
+      shards: ['#F2F8FC', '#B7CEDE', '#8FDCFF', '#D4F4FF', '#EADFC0'],
+      slamRise: 1.5,
+      // The avalanche's lanes: the Frost Melon's navy blinking inside a dark navy outline (any icy blue is lost on the
+      // Tundra's snow and ice), and the blow lands in white snow.
+      strikeWarnings: { stun: { fill: '#0A2A70', frame: '#06163F', opacity: 0.85, blow: '#FFFFFF' } },
+    },
+  },
+  glowcap: {
+    // The model is at half resolution, like the Oak's (see glowcap.ts).
+    scale: 4,
+    // A violet cap freckled with glowing spots over a pale stalk with a round face, teal cheeks and a little "o" mouth.
+    face: [
+      [1, 0, 10, 2, '#5B2A9E'],
+      [0, 2, 12, 3, '#8E4BD8'],
+      [0, 4, 12, 1, '#3E1D74'],
+      [2, 1, 2, 1, '#D8FF9A'],
+      [7, 2, 2, 1, '#D8FF9A'],
+      [4, 3, 1, 1, '#D8FF9A'],
+      [2, 5, 8, 7, '#F1E6CC'],
+      [3, 8, 1, 1, '#4FE3C1'],
+      [8, 8, 1, 1, '#4FE3C1'],
+      [3, 6, 2, 2, 'eye'],
+      [7, 6, 2, 2, 'eye'],
+      [5, 9, 2, 2, '#3B1530'],
+    ],
+    bar: { fill: '#8E4BD8', hi: '#B07CF0' },
+    call: 'glowcapPuff',
+    defeat: 'glowcapDefeat',
+    fx: {
+      roar: 'ability', summon: 'sparkles', shield: 'cap', defeat: 'shards', eyes: 'follow',
+      // The spore cloud: the cap swells and shudders through the strike's wind-up.
+      strike: 'cheer',
+      // Its spots light up and blink with the lanes about to be clouded.
+      strikeParts: ['spotsLit'],
+      // Its shells: violet and glowing green chips, not walnut bark.
+      plateChips: ['#4B2490', '#8E4BD8', '#D8FF9A', '#B07CF0'],
+      // The cap sags: violet, pale and glowing chips.
+      shards: ['#8E4BD8', '#5B2A9E', '#B07CF0', '#D8FF9A', '#F1E6CC'],
+      // The spore cloud's tiles: dark purple smoke, a crawling pixel dither, inside a light lilac outline (purple, so it
+      // is no boulder, no fog and no Brain Rot puddle). The blow lands in glowing violet.
+      strikeWarnings: { poison: { fill: '#5A1FA8', frame: '#E4D2FF', opacity: 0.88, dither: true, blow: '#B07CF0' } },
+      barrage: 'sporeBomb',
     },
   },
 };

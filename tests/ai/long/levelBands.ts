@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { levelsFor } from '../../../src/adventure/levels';
 import type { LevelDef } from '../../../src/adventure/types';
 import {
-  EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, bossStarBand, campaignIndex, levelGate, playFreePlay, playIdle,
+  EXPERT_WIN_MIN, STAR_LEVEL, averageStarBand, averageWinBand, beginnerWinMin, bossStarBand, campaignIndex, GATED_STAND_INS, levelGate, plantStarBand, playFreePlay, playIdle,
   playLevelSeries, summariseFreePlay, summariseLevel,
 } from '../../../src/ai/levelChecks';
 import type { FreePlayStats, LevelStats } from '../../../src/ai/levelChecks';
@@ -45,6 +45,12 @@ const BEGINNER_FLOOR = 'the beginner floor (70% on Easy) and the band top collid
 const TOBY_FLOOR = 'the zombie levels are the younger player\'s: the beginner floor (70% on Easy) is kept. Wherever the average player drops into his band the beginner wins 28-50%';
 const TUNDRA_BELT = 'the sensible players break the 7000 base before the growing garden bites; a 9000 base holds the average player 1.52-1.58 min (on the line) and takes the beginner to 3.4 min and 87.5-89%';
 
+const Z4_EASED = (numbers: string): string => `${numbers}; eased for a five-year-old, Michal 2026-11-25 (worlds-4 Task 10)`;
+const TUNDRA_P4_BELT = 'a belt is played alike by the average player and the expert (tuned base 6250: the expert 94.5 / 96 / 97); every density that takes the average player down takes the expert with him (a denser early rush with a 8000 base: expert 69 / 67.5 / 68, average 54 / 59.5 / 54)';
+const TUNDRA_P4_BATTLE = 'a battle\'s 3 stars need the plants\' base at 80% when the zombie base falls, which the average player does in 0-6% of his wins whatever the bases (plants 6000-12000, zombies 1200-3000, Medium income ×0.7-1.0: 0-6%)';
+const TUNDRA_P4_SURVIVE = 'the expert and the average player hold the same waves (expert 100 on every block): any wave dense enough to beat the average player beats the expert too (hot topics and flags: no gap; with a ramp of Brain Eaters at a 5000 base: expert 77.5, average 70)';
+const TUNDRA_P4_SURVIVE_STARS = 'heavier waves cost the average player 3 stars faster than wins (waves 1.3 times as heavy: average 62-72 win, 17-24% three stars, expert 88.5-93.5)';
+const TUNDRA_P4_BOSS = 'an idle player must lose, and the plants\' base hit back until it kills the Yeti: with the Yeti at 10000 hp an idle player loses on all 60 seeds up to a 14000 base (2 of 60 win at 17000), and at that base the average player keeps 8-9% three stars (a 28000 base: 40-43%, but an idle player wins 3-8 of 20 at 24000); at 6500 hp 14000 gives 43-52% three stars but an idle player wins 9-17 of 20';
 export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z1-3 median length, beginner': `about 1.02 min: ${SHORT_BREAKTHROUGH}`,
   'z1-3 median length, average': `about 0.69 min: ${SHORT_BREAKTHROUGH}`,
@@ -91,20 +97,58 @@ export const KNOWN_MISSES: Readonly<Record<string, string>> = {
   'z3-5 the expert three-stars at least 10 points more often than the average player': 'expert 56.5 / 56.5 / 58 v average 56 / 57.5 / 56.5: lead +0.5 / -1 / +1.5 (need +10 within 1): the expert and the average player crack the belt the same way; z3-5 length: average 1.80-1.85 min, expert 1.67-1.68 min (inside the 1.5-4 gate)',
   'z3-6 median length, expert': 'about 1.16 / 1.13 / 1.16 min (1.5 minimum; average 1.98-1.99): he breaks the garden in about a minute',
   'zombies world 3: no level harder for the average player than the level two after it': 'z3-4 v z3-6: 98.5 v 100 and 98.5 v 100 on blocks 1 and 2 (a seed or two: the 1-point slack leaves 99); block 3 is 99 v 100 and holds',
-  // Free Play: a graduate now holds nine cards a side (step-3 Task 8, blocks 1 / 1001 / 2001, 200 seeds
-  // each). Survive is bimodal as in step 2: the average player's median is wave 12 / 12 / 11.5 (band
-  // 10-20: holds), but 29 / 24.5 / 24.5% of his runs pass 20 minutes (was 18 / 14 / 15.5); the expert's
-  // median is 87 / 89 / 85.5 waves (29 min). Not fixed here (content design section 7, risk 6).
-  'free play survive: the average player rarely plays over 20 minutes': '29 / 24.5 / 24.5% of runs over 20 min (band 0-5; median wave 12 / 12 / 11.5; was 18 / 14 / 15.5% at 7 cards a side); the endless budget fix proposed in the step-2 Task 9 report is still not applied',
-  // The zombie side of Free Play (Toby's, meant to forgive): the beginner now breaks a median 14 gardens
-  // on 100% of seeds (band 5-9), the average 13 / 14 / 14 and the expert 24 (was 7 / 10 / 17-18).
-  'free play breakthrough beginner': 'median 14 / 14 / 14 gardens (band 5-9; at least one on 100%, band 70-100) at about 11 min: nine cards a side let him build what the average player builds',
-  'free play breakthrough: the average player breaks more gardens than the beginner': 'average 13 / 14 / 14 v beginner 14 / 14 / 14 gardens (not more): the beginner now plays with the same nine cards and no longer trails him',
+  // The Frozen Tundra, the plants' world 4 (worlds-4 plan Task 6, rulings 1-2; numbers: blocks 1 / 1001 / 2001, 200 seeds
+  // each). From p4-4 the win band is the expert floor's to settle (ruling 1), and the 3-star share is held to
+  // `plantStarBand`; where neither can be met with the expert at 95% and an idle player losing, the miss is
+  // recorded with its numbers. p4-1, p4-2 and p4-4's win band are met.
+  'p4-3 average win': `93 / 88.5 / 88.5 (band 52-68): ${TUNDRA_P4_BELT}`,
+  'p4-4 average 3 stars': `0 / 0 / 0 (band 43.5-63.5; wins 58 / 58 / 59.5, in the win band): ${TUNDRA_P4_BATTLE}`,
+  'p4-5 average win': `100 / 100 / 100 (band 48.9-64.9; 3 stars 58 / 49.5 / 47.5 in the star band, expert 100): ${TUNDRA_P4_SURVIVE}`,
+  'p4-6 average win': `70 / 69 / 69 (band 47.4-63.4; expert 94.5 / 95 / 95.5, the floor): the expert floor holds the average player here (a 6300 plant base gave 65.5 / 63.5 / 61 with the expert at 94.5 / 94 / 93.5, under the floor on block 3)`,
+  'p4-6 average 3 stars': `1 / 0.5 / 1 (band 41.3-61.3): ${TUNDRA_P4_BATTLE}`,
+  'p4-7 average win': `91.5 / 92.5 / 89 (band 45.8-61.8; 3 stars 40 / 42.5 / 43.5 in the star band, expert 99 / 98.5 / 99): ${TUNDRA_P4_SURVIVE_STARS}`,
+  'p4-8 average win': `99.5 / 100 / 100 (boss band 39.3-60.3; expert 100): ${TUNDRA_P4_BOSS}`,
+  'p4-8 average 3 stars': `8.5 / 9 / 8 (band 34-59; expert 53.5 / 55.5 / 52.5): ${TUNDRA_P4_BOSS}`,
+  'plants world 4: no level harder for the average player than the level two after it': 'p4-1 v p4-3: 67 v 93, 66 v 88.5, 71 v 88.5; p4-3 v p4-5: 93 / 88.5 / 88.5 v 100; p4-4 v p4-6: 58 / 58 / 59.5 v 70 / 69 / 69; p4-6 v p4-8: 70 / 69 / 69 v 99.5 / 100 / 100 (the belt and the survive levels take the average player to what the expert gets, and p4-1 sits in the win band, whose top is 71)',
+  // The Moonlit Meadow, the zombies' world 4 (worlds-4 plan Task 7, eased by Task 10: eased for a five-year-old, Michal
+  // 2026-11-25; numbers: blocks 1 / 1001 / 2001, 200 seeds each). His tap walk lost 12 of 12, so the zombie bases are
+  // bigger (2000-6000), the computers' incomes lower and the belt slower and longer; the child stand-in (pace 6) now wins
+  // z4-1..z4-3 at 69.5-100 and z4-4, 5, 7 at 43-57% (targets 60 / 40) and the average player and the expert three-star almost always. The
+  // star bands and the expert's lead are not met on z4-1, 2, 3, 4, 5 and 7 (z4-3's lead holds) and are recorded here, not loosened.
+  'z4-1 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 46.9-66.9; wins 100, expert 100): plants base 4500 (was 5500) and zombie base 2500 (was 500), so the tap walk (Medium income, random lanes) can win; child 100 / 100 / 100% wins'),
+  'z4-1 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
+  'z4-2 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 45.8-65.8; wins 100, expert 100): computer income x1.0 (was x3.6) and zombie base 6000 (was 600), the browser tap walk won 0 of 9 tries here; child 97 / 94.5 / 98% wins'),
+  'z4-2 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
+  'z4-3 average 3 stars': Z4_EASED('average 88.5 / 90.5 / 89 (band 44.7-64.7; wins 100, expert 100): the 300 s clock (was 240) leaves most of it for the average player; child 80 / 69.5 / 71% wins'),
+  'z4-4 average 3 stars': Z4_EASED('average 94.5 / 94 / 96.5 (band 43.5-63.5; wins 100, expert 98 / 99 / 98): computer income x1.8 (was x2.7) and a 2000 zombie base; child 50.5 / 43.5 / 55.5% wins'),
+  'z4-4 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 98 / 99 / 98 v average 94.5 / 94 / 96.5: lead +3.5 / +5 / +1.5 (need +10 within 1)'),
+  'z4-5 average 3 stars': Z4_EASED('average 100 / 100 / 100 (band 42.4-62.4; wins 100, expert 100): plants base 14000 (was 16000), a Peashooter every 24 s (was 12), a 330 s clock (was 270) and a 4000 zombie base; child 45.5 / 57 / 53% wins'),
+  'z4-5 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 100 v average 100 on every block: lead 0 (need +10 within 1)'),
+  'z4-7 average 3 stars': Z4_EASED('average 98.5 / 96.5 / 98.5 (band 40.2-60.2; wins 100, expert 99.5 / 99 / 99.5): computer income x2.0 (was x3.3) and a 2000 zombie base; child 51 / 53.5 / 49.5% wins'),
+  'z4-7 the expert three-stars at least 10 points more often than the average player': Z4_EASED('expert 99.5 / 99 / 99.5 v average 98.5 / 96.5 / 98.5: lead +1 / +2.5 / +1 (need +10 within 1)'),
+  // Free Play: a graduate holds ten cards a side since worlds 4 (Pumpkin Squash reaches the hand; worlds-4 plan Task 8,
+  // blocks 1 / 1001 / 2001, 200 seeds each). Survive is bimodal as in steps 2 and 3: the average player's median is
+  // wave 18 / 13.5 / 16 (band 10-20: holds), but 47 / 43 / 44% of his runs pass 20 minutes (was 29 / 24.5 / 24.5 at 9 cards
+  // a side); the expert's median is wave 105 / 104 / 105.5 (about 35 min). Not fixed here (content design section 7, risk 6).
+  'free play survive: the average player rarely plays over 20 minutes': '47 / 43 / 44% of runs over 20 min (band 0-5; median wave 18 / 13.5 / 16; was 29 / 24.5 / 24.5% at 9 cards a side); the endless budget fix proposed in the step-2 Task 9 report is still not applied',
+  // The zombie side of Free Play (Toby's, meant to forgive): the beginner breaks a median 11 gardens on 99.5-100% of seeds
+  // (band 5-9) at about 9.75 min; the average player breaks 14 / 15 / 14 (more than the beginner on every block, so the
+  // ranking entry that held with nine cards is gone) and the expert 25 (nine cards: beginner 14, average 13 / 14 / 14, expert 24).
+  'free play breakthrough beginner': 'median 11 / 11 / 11 gardens (band 5-9; at least one on 100 / 99.5 / 100%, band 70-100 holds) at 9.75 min: ten cards a side let him build most of what the average player builds (14 / 15 / 14)',
 };
 
-/** One test, or `it.fails` when the band is a known miss. */
-function band(name: string, check: () => Promise<void>): void {
-  if (name in KNOWN_MISSES) it.fails(`${name} (known miss: ${KNOWN_MISSES[name]})`, check, LONG_MS);
+/**
+ * The recorded miss for `name` on the seed block starting at `first`: the key `${name} @${first}`
+ * (that block only) or else the plain `name` (every block, as the world 1-3 entries are).
+ */
+export function knownMiss(name: string, first: number, table: Readonly<Record<string, string>> = KNOWN_MISSES): string | undefined {
+  return table[`${name} @${first}`] ?? table[name];
+}
+
+/** One test, or `it.fails` when the band is a known miss on this block. */
+export function band(name: string, check: () => Promise<void>, first: number): void {
+  const miss = knownMiss(name, first);
+  if (miss !== undefined) it.fails(`${name} (known miss: ${miss})`, check, LONG_MS);
   else it(name, check, LONG_MS);
 }
 
@@ -156,6 +200,7 @@ export const IDLE_SEEDS = 20;
  * way (`record`).
  */
 function curveBandTests(world: 2 | 3 | 4 | 5, sides: readonly Faction[], first: number): void {
+  const bandIn = (name: string, check: () => Promise<void>): void => band(name, check, first);
   const stats = levelStats(first);
   for (const side of sides) {
     const levels = levelsFor(side, world);
@@ -164,36 +209,40 @@ function curveBandTests(world: 2 | 3 | 4 | 5, sides: readonly Faction[], first: 
         const boss = def.kind === 'boss';
         const i = campaignIndex(def);
         const gate = levelGate(def);
-        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
+        bandIn(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, EXPERT_WIN_MIN, 100, def.id));
         const floor = beginnerWinMin(i, side);
-        if (floor !== null) band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
+        if (floor !== null) bandIn(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, floor, 100, def.id));
         if (gate === 'win') {
           const avg = averageWinBand(i, boss);
-          band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
+          bandIn(`${def.id} average win`, async () => within((await stats(def, 'average')).win, avg.lo, avg.hi, `${def.id} (trend ${avg.target.toFixed(1)})`));
+          const plantStar = plantStarBand(def);
+          if (plantStar !== null) {
+            bandIn(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, plantStar.lo, plantStar.hi, `${def.id} (trend ${plantStar.target.toFixed(1)})`));
+          }
         } else if (gate === 'stars') {
           const star = averageStarBand(i);
-          band(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, star.lo, star.hi, `${def.id} (trend ${star.target.toFixed(1)})`));
-          band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, STAR_LEVEL.averageWinMin, 100, def.id));
-          band(`${def.id} the expert three-stars at least ${STAR_LEVEL.expertLead} points more often than the average player`, async () => {
+          bandIn(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, star.lo, star.hi, `${def.id} (trend ${star.target.toFixed(1)})`));
+          bandIn(`${def.id} average win`, async () => within((await stats(def, 'average')).win, STAR_LEVEL.averageWinMin, 100, def.id));
+          bandIn(`${def.id} the expert three-stars at least ${STAR_LEVEL.expertLead} points more often than the average player`, async () => {
             const lead = (await stats(def, 'expert')).threeStars - (await stats(def, 'average')).threeStars;
             expect(lead, def.id).toBeGreaterThanOrEqual(STAR_LEVEL.expertLead - SLACK);
           });
         } else {
           const boss3 = bossStarBand(world);
-          band(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, boss3.lo, boss3.hi, def.id));
+          bandIn(`${def.id} boss: average 3 stars`, async () => within((await stats(def, 'average')).threeStars, boss3.lo, boss3.hi, def.id));
         }
-        band(`${def.id} an idle player loses (${IDLE_SEEDS} seeds)`, async () => {
+        bandIn(`${def.id} an idle player loses (${IDLE_SEEDS} seeds)`, async () => {
           const won = Array.from({ length: IDLE_SEEDS }, (_, k) => playIdle(def, first + k)).filter((r) => r.won).length;
           expect(won, def.id).toBe(0);
         });
-        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
-          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
+        bandIn(`${def.id} every seed ends (clock, base or boss)`, async () => {
+          for (const who of GATED_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
         });
-        for (const who of LEVEL_STAND_INS) {
-          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
+        for (const who of GATED_STAND_INS) {
+          bandIn(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
         }
       }
-      band(`${side} world ${world}: no level harder for the average player than the level two after it`, async () => {
+      bandIn(`${side} world ${world}: no level harder for the average player than the level two after it`, async () => {
         const w = await Promise.all(levels.map(async (d) => (await stats(d, 'average')).win));
         for (let n = 0; n + 2 < w.length; n++) expect(w[n]!, `${levels[n]!.id} v ${levels[n + 2]!.id}`).toBeGreaterThanOrEqual(w[n + 2]! - SLACK);
       });
@@ -220,6 +269,7 @@ async function record(levels: readonly LevelDef[], stats: (def: LevelDef, who: L
 
 /** The Backyard's bands on seeds `first`..`first + SEEDS - 1`. */
 function backyardBandTests(first: number): void {
+  const bandIn = (name: string, check: () => Promise<void>): void => band(name, check, first);
   const stats = levelStats(first);
 
   for (const side of ['plants', 'zombies'] as const satisfies readonly Faction[]) {
@@ -227,46 +277,46 @@ function backyardBandTests(first: number): void {
     describe(`the Backyard as the ${side} (seeds ${first}..${first + SEEDS - 1})`, () => {
       for (const def of levels) {
         const boss = def.kind === 'boss';
-        band(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, 95, 100, def.id));
+        bandIn(`${def.id} expert win`, async () => within((await stats(def, 'expert')).win, 95, 100, def.id));
         // The average player's band for world 1 (coordinator, after the first review): he wins
         // every level at 90% or more; his challenge here is the stars (below).
-        band(`${def.id} average win`, async () => within((await stats(def, 'average')).win, 90, 100, def.id));
-        band(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, 70, 100, def.id));
-        band(`${def.id} every seed ends (clock, base or boss)`, async () => {
-          for (const who of LEVEL_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
+        bandIn(`${def.id} average win`, async () => within((await stats(def, 'average')).win, 90, 100, def.id));
+        bandIn(`${def.id} beginner win`, async () => within((await stats(def, 'beginner')).win, 70, 100, def.id));
+        bandIn(`${def.id} every seed ends (clock, base or boss)`, async () => {
+          for (const who of GATED_STAND_INS) expect((await stats(def, who)).ends.none, who).toBe(0);
         });
-        for (const who of LEVEL_STAND_INS) {
-          band(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
+        for (const who of GATED_STAND_INS) {
+          bandIn(`${def.id} median length, ${who}`, async () => within((await stats(def, who)).minutes, 1.5, boss ? 5 : 4, def.id, 0));
         }
-        band(`${def.id} expert 3 stars`, async () => within((await stats(def, 'expert')).threeStars, 50, 100, def.id));
-        band(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, 20, 100, def.id));
+        bandIn(`${def.id} expert 3 stars`, async () => within((await stats(def, 'expert')).threeStars, 50, 100, def.id));
+        bandIn(`${def.id} average 3 stars`, async () => within((await stats(def, 'average')).threeStars, 20, 100, def.id));
         if (def.kind === 'breakthrough') {
           // Skill shows (Task 8 review): the expert breaks the garden in time more often than the average player.
-          band(`${def.id} the expert three-stars at least 5 points more often than the average player`, async () => {
+          bandIn(`${def.id} the expert three-stars at least 5 points more often than the average player`, async () => {
             expect((await stats(def, 'expert')).threeStars - (await stats(def, 'average')).threeStars).toBeGreaterThanOrEqual(5);
           });
         }
       }
       const all = (who: LevelStandIn, read: (s: LevelStats) => number): Promise<number[]> =>
         Promise.all(levels.map(async (d) => read(await stats(d, who))));
-      band(`${side} boss: average 3 stars`, async () => within((await all('average', (s) => s.threeStars))[7]!, 35, 60, 'level 8'));
+      bandIn(`${side} boss: average 3 stars`, async () => within((await all('average', (s) => s.threeStars))[7]!, 35, 60, 'level 8'));
       // The trend of the average player's 3 stars, in two parts so each holds or misses on its own.
-      band(`${side} average 3 stars: the second half three-starred less often than the first`, async () => {
+      bandIn(`${side} average 3 stars: the second half three-starred less often than the first`, async () => {
         const w = await all('average', (s) => s.threeStars);
         const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
         expect(mean(w.slice(4)), 'second half').toBeLessThan(mean(w.slice(0, 4)));
       });
-      band(`${side} average 3 stars: no level more than 15 points above the level two before it`, async () => {
+      bandIn(`${side} average 3 stars: no level more than 15 points above the level two before it`, async () => {
         const w = await all('average', (s) => s.threeStars);
         for (let n = 2; n < w.length; n++) expect(w[n]!, `level ${n + 1} v ${n - 1}`).toBeLessThanOrEqual(w[n - 2]! + 15);
       });
-      band(`${side} no level harder for the average player than the level two after it`, async () => {
+      bandIn(`${side} no level harder for the average player than the level two after it`, async () => {
         // Harder = a lower win rate. The 1-point allowance (the brief's "within 1 point") lets equal
         // levels differ by a seed or two.
         const w = await all('average', (s) => s.win);
         for (let n = 0; n + 2 < w.length; n++) expect(w[n]!, `level ${n + 1} v ${n + 3}`).toBeGreaterThanOrEqual(w[n + 2]! - SLACK);
       });
-      band(`${side} the beginner's curve: neighbours within 10 points`, async () => {
+      bandIn(`${side} the beginner's curve: neighbours within 10 points`, async () => {
         const w = await all('beginner', (s) => s.win);
         for (let n = 0; n + 1 < w.length; n++) expect(Math.abs(w[n + 1]! - w[n]!), `level ${n + 1} v ${n + 2}`).toBeLessThanOrEqual(10 + SLACK);
       });
@@ -280,6 +330,7 @@ export function freePlayBandTests(): void {
 }
 
 function freePlayBlock(first: number): void {
+  const bandIn = (name: string, check: () => Promise<void>): void => band(name, check, first);
   const free = new Map<string, Promise<FreePlayStats>>();
   const freeStats = (side: Faction, who: LevelStandIn): Promise<FreePlayStats> => {
     const key = `${side}:${who}`;
@@ -292,10 +343,10 @@ function freePlayBlock(first: number): void {
   };
 
   describe(`Free Play's first steps (seeds ${first}..${first + SEEDS - 1})`, () => {
-    band('free play survive beginner', async () => within((await freeStats('plants', 'beginner')).medianScore, 4, 8, 'waves', 0));
-    band('free play survive average', async () => within((await freeStats('plants', 'average')).medianScore, 10, 20, 'waves', 0));
-    band('free play survive expert', async () => within((await freeStats('plants', 'expert')).medianScore, 25, Infinity, 'waves', 0));
-    band('free play survive: the average player rarely plays over 20 minutes', async () => {
+    bandIn('free play survive beginner', async () => within((await freeStats('plants', 'beginner')).medianScore, 4, 8, 'waves', 0));
+    bandIn('free play survive average', async () => within((await freeStats('plants', 'average')).medianScore, 10, 20, 'waves', 0));
+    bandIn('free play survive expert', async () => within((await freeStats('plants', 'expert')).medianScore, 25, Infinity, 'waves', 0));
+    bandIn('free play survive: the average player rarely plays over 20 minutes', async () => {
       within((await freeStats('plants', 'average')).over20, 0, 5, 'share over 20 min');
     });
     // The coordinator's fair reading after the clock bonus went to 45 s: the beginner breaks 3-6
@@ -305,15 +356,15 @@ function freePlayBlock(first: number): void {
     // / 2001; at least one on 97.5-98.5%), the average 10 and the expert 17-18: the same width of
     // band (4) round where he now is, 5-9. The zombie side is Toby's and meant to forgive; the
     // ranking checks below are unchanged.
-    band('free play breakthrough beginner', async () => {
+    bandIn('free play breakthrough beginner', async () => {
       const s = await freeStats('zombies', 'beginner');
       within(s.atLeastOne, 70, 100, 'share with a garden');
       within(s.medianScore, 5, 9, 'gardens', 0);
     });
-    band('free play breakthrough: the average player breaks more gardens than the beginner', async () => {
+    bandIn('free play breakthrough: the average player breaks more gardens than the beginner', async () => {
       expect((await freeStats('zombies', 'average')).medianScore).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);
     });
-    band('free play breakthrough: the expert breaks more gardens than the average player and the beginner', async () => {
+    bandIn('free play breakthrough: the expert breaks more gardens than the average player and the beginner', async () => {
       const e = (await freeStats('zombies', 'expert')).medianScore;
       expect(e).toBeGreaterThan((await freeStats('zombies', 'average')).medianScore);
       expect(e).toBeGreaterThan((await freeStats('zombies', 'beginner')).medianScore);

@@ -3,8 +3,10 @@ import { brainTitan } from './bosses/brainTitan';
 import { cactusKing } from './bosses/cactusKing';
 import { elderOak } from './bosses/elderOak';
 import { frostMelon } from './bosses/frostMelon';
+import { glowcap } from './bosses/glowcap';
 import { moonHowler } from './bosses/moonHowler';
 import { sandPharaoh } from './bosses/sandPharaoh';
+import { yeti } from './bosses/yeti';
 import type { BossKey } from '../../sim/types';
 import type { ModelDef } from '../voxel/types';
 import { avocadoBunker } from './plants/avocadoBunker';
@@ -75,6 +77,8 @@ export const BOSS_MODELS: Readonly<Record<BossKey, ModelDef>> = {
   frostMelon,
   sandPharaoh,
   cactusKing,
+  yeti,
+  glowcap,
 };
 
 for (const def of [peashooter, sunflower, walnutBomb, potatoMine, kernelPult, mangoPult, avocadoBunker, torchwood, cherryBomber, pumpkinSquash, brainEater, veryFastWalker, skeletonWarrior, desertZombie, skeletonArcher, hotTopic, cowboyZombie, necromancer, tridentZombie, brainRot, boneMinion, ...Object.values(BOSS_MODELS)]) registerModel(def);

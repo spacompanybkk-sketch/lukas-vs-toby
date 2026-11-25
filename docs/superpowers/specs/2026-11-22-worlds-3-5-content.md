@@ -63,7 +63,7 @@ Kinds run S B C B S B S Boss for the plants (as the Meadow) and B B Br B C Br B 
 | p4-5 | survive 170 s | 0, 2, 4 | Kernel butter stops a slider in its tracks | HT + VFW rush flags at 60 s and 110 s down the iced lanes | 10 | plants 5500 |
 | p4-6 | battle | 0, 2, 4 | A Cherry on the icy rush | Medium ×0.75; + N TZ | 10 | zombies 3000 |
 | p4-7 | survive 180 s | 0, 1, 3, 4 | The Trident pierces a row: stagger plants across lanes | TZ + SW flags at 80 s and 140 s; N trickle | 10 | plants 5500 |
-| p4-8 | boss | 0, 2, 4 | Yeti (§2), on the iced middle lane | boss in lane 2; VFW "snow pups" in lanes 0 and 4 | 10 | plants 5500, start energy 600 |
+| p4-8 | boss | 0, 2, 4 | Yeti (§2), on the iced middle lane | boss in lane 2; VFW "snow pups" in lanes 0 and 4 | 10 | plants 14000 (designed 5500), start energy 600 |
 
 **Zombies, z4 (i 25–32), fog 7→5.** The zombies' view of fog: the plants can only shoot `fog` tiles, so a zombie walks safe in the mist until it is close; Archers, Tridents and Brain Rot must walk closer too. Fog reach ramps 7, 7, 6, 6, 5, 5, 5, 5 (the Meadow's ramp).
 
@@ -77,6 +77,10 @@ Kinds run S B C B S B S Boss for the plants (as the Meadow) and B B Br B C Br B 
 | z4-6 | breakthrough 240 s | 5 | Necromancer heals the pack; Brain Rot melts the Kernel-pults | Av at column 5 in lanes 1–3, K behind; mines in lanes 0 and 4 | 10 | plants 4000, zombies 14000 |
 | z4-7 | battle | 5 | Everything at once | Easy ×2.0; all plant cards but Pu | 10 | plants 4000, zombies 4000 |
 | z4-8 | boss | 5 | Glowcap (§2) | prepared P at [0,3] [4,3], K at [1,1] [3,1] | 10 | zombies 11000 |
+
+Shipped z4 (2026-11-24, worlds-4 Task 7; numbers as eased in Task 10, below): under fog only a plant at column 10 − fog − 0.5 or further forward can hit the zombie base, so at the designed bases nobody lost a star (100% three stars on z4-1..z4-8). The zombie bases are small (z4-1 2500, z4-2 6000, z4-4 2000, z4-5 4000, z4-7 2000, z4-8 2000), z4-1 regrows in columns 3–4, z4-8's Peashooters stand at [0,5] [4,5], the Easy computers run ×1.0 / ×1.8 / ×2.0 (z4-2 / z4-4 / z4-7), the plants' bases are 4500 / 4200 / 11000 / 4200 / 14000 / 10000 / 3800 (z4-1..z4-7), and the clocks are 300 s (z4-3, z4-6) and 330 s (z4-5). The average player's three-star share (z4-1, 2, 3, 4, 5, 7) and the expert's lead (z4-1, 2, 4, 5, 7) are recorded misses (`KNOWN_MISSES`).
+
+Eased (Task 10, 2026-11-25): Michal asked for the Meadow to be winnable by a five-year-old. The first Task 7 numbers were zombie bases 500 / 600 / 550 / 2000 / 520 (z4-1, 2, 4, 5, 7; z4-8 stays 2000), Easy incomes ×3.6 / ×2.7 / ×3.3 (z4-2 / z4-4 / z4-7), z4-1's plants' base 5500, z4-5's plants' base 16000, clock 270 s and a Peashooter every 12 s (20 tiles), and z4-3's clock 240 s. On them the child stand-in won only 48 / 45 / 50% of z4-1..3 and 12 / 8 / 7.5% of z4-4, 5, 7 (and Toby's browser tap walk lost 12 of 12), because a few stray shots ended his matches on a small base. Task 10 grew the bases, cut the computers' incomes, slowed z4-5's garden (every 24 s, 11 tiles) and lengthened the clocks (z4-3 300 s, z4-5 330 s). The child now wins 94–100% of z4-1 and z4-2, 69.5–80% of z4-3 and 43.5–57% of z4-4, 5 and 7; z4-6 (86–89%) and z4-8 (70–78%) were not touched.
 
 ### Step 5: Dark Citadel for the plants, the Backyard finale for the zombies
 
@@ -126,7 +130,7 @@ All use the existing toolkit (`slam`, `summon`, `barrage`, `shield`, `strike` wi
 |---|---|---|
 | Built from | `bipedModel`, bulky: white fur blocks, blue face, two horns, an icicle club; `phaseParts`: frost breath | plant kit, half resolution: a giant glowing mushroom with spots that light, a stalk face, `pupils` |
 | Size | scale 3, half width 0, lane 2 (iced: it comes ×1.6 as fast), speed 0.1 | scale 4, half width 1, column 0, guardFactor 0.5 |
-| hp | 7500, tune 6500–9000 | 12000, tune 10000–14000 |
+| hp | 7500, tune 6500–9000; tuned to 10000 (2026-11-24): the expert's fight ran 1.6–1.8 min at 6500–7500 against the 2.5–5 target, and with the plants' base hitting back an idle player beats a weaker Yeti (7500: 1 of 60 seeds wins at a 9000 base), so base and hp go together (p4-8: base 14000) | 12000, tune 10000–14000; tuned to 19000 (2026-11-24): the expert's fight ran 2.2 min at 14000 against the 2.5–5 target and 2.5–2.6 min at 19000 (the average player 2.8, the beginner 3.1) |
 | Shields | at 0.66 and 0.33: 6 s snow fort, ×0.5 (the `dome` recoloured) | at 0.5: 8 s the cap closes, ×0.5 (new `cap` variant: the model's `capL`/`capR`) |
 | Phase 1 | summon 3 VFW every 8 s (they slide in lanes 0 and 4); slam every 11 s | barrage of 3 spore bombs every 9 s, 180, splash 1.0; summon 2 P in columns 1–4 every 12 s |
 | Phase 2 | **avalanche**: strike 1 lane, 2 s wind-up, 80, stun 2 s; summon 2 VFW at level 2; slam every 7 s | **spore cloud**: strike 4 tiles with zombies, 2.5 s wind-up, 40, poison 4 s at 20 dps; barrage of 4; summon 1 Av in columns 2–5 every 14 s |

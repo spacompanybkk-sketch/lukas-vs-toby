@@ -257,6 +257,11 @@ export class StatusMarks {
     }
   }
 
+  /** Draws every shape's batch once at no size, so no status's first sighting compiles or uploads anything (see `InstanceBatch.warm`). */
+  warm(): void {
+    for (let i = 0; i < this.batches.length; i++) (this.batches[i] as InstanceBatch).warm();
+  }
+
   /** Marks showing now. */
   get active(): number {
     return this.live.length;

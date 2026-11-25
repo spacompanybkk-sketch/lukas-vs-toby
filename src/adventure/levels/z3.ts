@@ -1,7 +1,6 @@
 import type { CardKey } from '../../sim/types';
-import { PLANT_COLS } from '../../sim/types';
 import type { LevelDef, Spawn } from '../types';
-import { garden, regrow, rocks } from './helpers';
+import { garden, growing, regrow, rocks } from './helpers';
 
 /**
  * The Desert Canyon: the zombies' third world (`z3-*`), rocks. On a zombie level the rocks stand in
@@ -42,14 +41,8 @@ const BELT_GARDEN: [number, number][] = [[1, 2], [3, 2], [2, 3]];
  * 0, 4, 2 in turn, the columns 1, 0, 4, 5, 2, 3, 6, 7 in turn, skipping a rock or a tile already
  * taken: 20 new tiles, the last at 248 s (the clock is 270 s).
  */
-function growing(): Spawn[] {
-  const taken = new Set([...BELT_ROCKS, ...BELT_GARDEN].map(([lane, col]) => lane * PLANT_COLS + col));
-  const free: [number, number][] = [];
-  for (const lane of [1, 3, 0, 4, 2]) {
-    for (const col of [1, 0, 4, 5, 2, 3, 6, 7]) if (!taken.has(lane * PLANT_COLS + col)) free.push([lane, col]);
-  }
-  return regrow('peashooter', free.slice(0, 20).map(([lane, col], i): [number, number, number] => [20 + i * 12, lane, col]));
-}
+const growingGarden = (): Spawn[] =>
+  growing('peashooter', [...BELT_ROCKS, ...BELT_GARDEN], [1, 3, 0, 4, 2], [1, 0, 4, 5, 2, 3, 6, 7]);
 
 export const Z3: LevelDef[] = [
   {
@@ -89,12 +82,12 @@ export const Z3: LevelDef[] = [
   },
   {
     // The one idea: the belt, and the garden can't grow on rocks. Three Peashooters at the start and
-    // one more every 12 s (`growing`).
+    // one more every 12 s (`growingGarden`).
     ...base('z3-5', 5), side: 'zombies', kind: 'conveyor', cards: BELT,
     belt: { everySeconds: 5, cards: BELT },
     seconds: 270, baseHp: { plants: 20000, zombies: 15500 }, twist: { rocks: rocks(BELT_ROCKS) },
     prepared: garden('peashooter', BELT_GARDEN),
-    waves: growing(),
+    waves: growingGarden(),
   },
   {
     // The one idea: a Skeleton in front and a Necromancer behind - the pair outlasts a Bunker. An

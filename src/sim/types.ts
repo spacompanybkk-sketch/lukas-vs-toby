@@ -21,14 +21,14 @@ export type CardKey = PlantKey | ZombieKey;
  * The bosses (spec 8): the Brain Titan (a zombie, ends the plants' Backyard) and the Elder Oak (a
  * plant, ends the zombies'). Never cards; a level brings one on through `MatchConfig.boss`.
  */
-export type BossKey = 'brainTitan' | 'elderOak' | 'moonHowler' | 'frostMelon' | 'sandPharaoh' | 'cactusKing';
+export type BossKey = 'brainTitan' | 'elderOak' | 'moonHowler' | 'frostMelon' | 'sandPharaoh' | 'cactusKing' | 'yeti' | 'glowcap';
 /**
  * How many lanes either side of its own a boss also stands in: its body's width (geometry, like
  * `LANES`, not a tuning number). The Elder Oak, set in lane 2, stands in lanes 1–3: it blocks and is
  * hit there as if it stood in each, and a lane-wide power or spell hits it once. The Frost Melon
- * stands as wide as the Oak; the Moon Howler walks one lane, as the Titan does. The Sand Pharaoh walks one lane, the Cactus King stands as wide as the Oak.
+ * stands as wide as the Oak; the Moon Howler walks one lane, as the Titan does. The Sand Pharaoh walks one lane, the Cactus King stands as wide as the Oak. The Yeti walks one lane, the Glowcap stands as wide as the Oak.
  */
-export const BOSS_HALF_WIDTH: Record<BossKey, number> = { brainTitan: 0, elderOak: 1, moonHowler: 0, frostMelon: 1, sandPharaoh: 0, cactusKing: 1 };
+export const BOSS_HALF_WIDTH: Record<BossKey, number> = { brainTitan: 0, elderOak: 1, moonHowler: 0, frostMelon: 1, sandPharaoh: 0, cactusKing: 1, yeti: 0, glowcap: 1 };
 /**
  * Every unit that can stand on the lawn: the cards, and those that are never cards: the Bone Minion
  * (a zombie), the rock of the Rock Wall spell (a plant: no attack, no merge, no bounty) and the bosses.

@@ -1,5 +1,5 @@
-import { Mesh, MeshBasicMaterial, PerspectiveCamera, Vector3 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { Mesh, MeshBasicMaterial, PerspectiveCamera, Sprite, Vector3 } from 'three';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Effects, HEAL_GLOW } from '../../src/render/fx/Effects';
 import { Particles } from '../../src/render/fx/Particles';
 import { PIXEL_FONT_HEIGHT, pixelText } from '../../src/render/fx/pixelFont';
@@ -109,5 +109,45 @@ describe('pixelText (floating numbers drawn pixel-hard)', () => {
   it('draws an unknown character as a question mark, and at most 8 characters', () => {
     expect(pixelText('é').cells).toEqual(pixelText('?').cells);
     expect(pixelText('1234567890').width).toBe(pixelText('12345678').width);
+  });
+});
+
+describe('Effects.warmText', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Effects built where a 2D canvas exists (a stub: node has none), so the floating-text sprites are made. */
+  function withCanvas(): Effects {
+    const context = { fillRect() {}, clearRect() {}, fillText() {}, imageSmoothingEnabled: true };
+    vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => context }) });
+    return make();
+  }
+
+  const sprites = (effects: Effects): Sprite[] => effects.group.children.filter((o): o is Sprite => o instanceof Sprite);
+
+  it('draws the first floating-text sprite at no size for two drawn frames (the default 3 counts down in `update`, which runs before the draw; its program compiles as the view comes on), then hides it', () => {
+    const effects = withCanvas();
+    expect(sprites(effects).length).toBeGreaterThan(0);
+    expect(sprites(effects).every((sprite) => !sprite.visible)).toBe(true);
+    effects.warmText();
+    const warm = sprites(effects)[0]!;
+    expect(warm.visible).toBe(true);
+    expect(warm.scale.x).toBe(0);
+    expect(warm.frustumCulled).toBe(false);
+    effects.update(1 / 60, camera);
+    effects.update(1 / 60, camera);
+    expect(warm.visible).toBe(true);
+    effects.update(1 / 60, camera);
+    expect(warm.visible).toBe(false);
+    expect(warm.frustumCulled).toBe(true);
+    expect(sprites(effects).filter((sprite) => sprite.visible)).toHaveLength(0);
+  });
+
+  it('leaves a number that is already floating alone, and a number asked for during the warm-up still shows', () => {
+    const effects = withCanvas();
+    effects.warmText();
+    effects.floatText(new Vector3(3, 1, 2.5), '+25', '#FFD54A');
+    run(effects, 0.2);
+    expect(sprites(effects).filter((sprite) => sprite.visible)).toHaveLength(1);
+    expect(sprites(effects)[0]!.scale.x).toBeGreaterThan(0);
   });
 });

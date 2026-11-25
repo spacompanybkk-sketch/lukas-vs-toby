@@ -44,7 +44,7 @@ async function playStandIn(page: Page, side: 'plants' | 'zombies', world: 2 | 3 
     for (let k = 1; k < w; k++) for (let m = 1; m <= 8; m++) stars[`${l}${k}-${m}`] = 2;
     for (let m = 1; m < upTo; m++) stars[`${l}${w}-${m}`] = 2;
     const ids = (lvt.levels as { teaches: { id: string }[] | null }[]).flatMap((d) => (d.teaches ?? []).map((t) => t.id))
-      .filter((id) => !withLessons || !/^[pz][23]-/.test(id));
+      .filter((id) => !withLessons || !/^[pz][234]-/.test(id));
     const second = w >= 2;
     const earned = s === 'plants'
       ? ['potatoMine', 'kernelPult', ...(second && (w > 2 || upTo > 3) ? ['mangoPult'] : []), ...(second && (w > 2 || upTo > 6) ? ['avocadoBunker'] : [])]
@@ -458,6 +458,59 @@ test('foe wait (p3-7): the Cherry Bomber card is pointed at first; its tile show
   await tapAt(page, await tilePoint(page, 2, 4));
   await expect.poll(async () => (await plantOn(page, 2, 4))?.key).toBe('cherryBomber');
   await expect(page.locator('[data-tutorial]')).toHaveCount(0);
+  expect(await glContexts(page)).toBe(1);
+});
+
+// ---- Worlds step 4, Task 3: the ice pan for the plants, the fog pan for the zombies ---------------
+// World 4 has real level files now (p4-* the Frozen Tundra's ice, z4-* the Moonlit Meadow's fog): `playStandIn`
+// opens the real p4-1 / z4-1 from the map (`previewWorlds` never copies over a world with real levels).
+
+test('ice pan (p4-1, the plants\' side): the lanes pulse, the glove taps after 3 s, a tap ends it and the level plays', async ({ page }) => {
+  test.setTimeout(120_000);
+  const dir = process.env.LVT_SHOTS_DIR;
+  const shot = (name: string) => dir === undefined ? Promise.resolve() : page.screenshot({ path: `${dir}/${name}.png` }).then(() => undefined);
+  await playStandIn(page, 'plants', 4, true);
+  await expect.poll(() => lawnWorld(page)).toBe('tundra');
+  const catcher = page.locator('[data-twist="ice"]');
+  await expect(catcher).toBeVisible();
+  await expect.poll(() => showing(page)).toBe('ice');
+  const held = await tick(page);
+  expect(held).toBeLessThanOrEqual(2);
+  await shot('ice-pan-plants');
+  await expect(page.locator('[data-tutorial] [data-glove="tap"][data-glove-x]')).toHaveCount(1, { timeout: 10_000 });
+  expect(await tick(page)).toBe(held);
+  const size = page.viewportSize()!;
+  await tapAt(page, { x: size.width / 2, y: Math.round(size.height * 0.2) });
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  await expect.poll(() => showing(page)).toBeNull();
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
+  expect(await page.evaluate(() => (window.__lvt as any).players.player.value.teached as string[])).toContain('p4-1.ice');
+  await place(page, 'peashooter', 2, 1);
+  await expect.poll(async () => (await plantOn(page, 2, 1))?.key).toBe('peashooter');
+  expect(await glContexts(page)).toBe(1);
+});
+
+test('fog pan (z4-1, the zombies\' side): a ghost Brain Eater walks to the puff point; any tap ends it and the level plays', async ({ page }) => {
+  test.setTimeout(120_000);
+  const dir = process.env.LVT_SHOTS_DIR;
+  const shot = (name: string) => dir === undefined ? Promise.resolve() : page.screenshot({ path: `${dir}/${name}.png` }).then(() => undefined);
+  await playStandIn(page, 'zombies', 4, true);
+  await expect.poll(() => lawnWorld(page)).toBe('meadow');
+  await expect(page.locator('[data-twist="fog"]')).toBeVisible();
+  await expect.poll(() => showing(page)).toBe('fog');
+  expect(await page.evaluate(() => (window.__lvt as any).session.twistShow.walker !== null)).toBe(true);
+  const held = await tick(page);
+  await expect.poll(() => page.evaluate(() => {
+    const w = (window.__lvt as any).session.twistShow.walker.object;
+    return w.visible === true;
+  }), { intervals: [16], timeout: 10_000 }).toBe(true);
+  await shot('fog-pan-zombies');
+  const size = page.viewportSize()!;
+  await tapAt(page, { x: size.width / 2, y: Math.round(size.height * 0.2) });
+  await expect(page.locator('[data-twist]')).toHaveCount(0);
+  await expect.poll(() => tick(page)).toBeGreaterThan(held + 10);
+  await place(page, 'brainEater', 1, 9);
+  await expect.poll(async () => (await units(page)).filter((u) => u.faction === 'zombies').length).toBe(1);
   expect(await glContexts(page)).toBe(1);
 });
 
